@@ -16,13 +16,14 @@ const API = "https://loopway.test";
 let db: Db;
 let app: ReturnType<typeof createApi>;
 let configDir: string;
+const emails: { to: string; text: string }[] = [];
 
 // The CLI talks to the real API app in-process; only the network hop is skipped.
 const apiFetch = ((input: string | URL | Request, init?: RequestInit) => app.request(input, init)) as typeof fetch;
 
 beforeAll(async () => {
   db = await openDb({ pgliteDir: "memory://" });
-  app = createApi({ getDb: async () => db, publicBaseUrl: API });
+  app = createApi({ getDb: async () => db, publicBaseUrl: API, sendEmail: async (e) => void emails.push(e) });
 });
 afterAll(() => db.close());
 
@@ -91,6 +92,22 @@ describe("auth", () => {
     expect(await runJson("whoami")).toMatchObject({ name: "Matthew", api_url: API });
   });
 
+  it("login trades an emailed code for a key and saves it", async () => {
+    await createUser(db, { name: "Matthew", email: "m@example.com" });
+    await expect(run("login", "--url", API, "--email", "m@example.com")).rejects.toThrow(/--code is required/);
+    const code = emails.at(-1)!.text.match(/\b(\d{6})\b/)![1]!;
+    expect(await run("login", "--url", API, "--email", "m@example.com", "--code", code)).toMatch(/Logged in/);
+    expect((await savedConfig()).api_url).toBe(API);
+    expect(await runJson("whoami")).toMatchObject({ name: "Matthew", email: "m@example.com" });
+  });
+
+  it("login rejects a wrong code without saving anything", async () => {
+    await createUser(db, { name: "Other", email: "o@example.com" });
+    await expect(run("login", "--url", API, "--email", "o@example.com")).rejects.toThrow();
+    await expect(run("login", "--url", API, "--email", "o@example.com", "--code", "000000")).rejects.toThrow(/invalid or has expired/);
+    expect(await savedConfig()).toBeUndefined();
+  });
+
   it("config rejects a bad key without saving it", async () => {
     await expect(run("config", "--url", API, "--key", "lw_nope")).rejects.toThrow(/rejected that API key/);
     expect(await savedConfig()).toBeUndefined();
@@ -103,7 +120,7 @@ describe("auth", () => {
   });
 
   it("loadConfig: env over config.json over defaults; trailing slashes dropped on save", async () => {
-    expect(await loadConfig(configDir, {})).toEqual({ api_url: "http://localhost:3000", api_key: undefined });
+    expect(await loadConfig(configDir, {})).toEqual({ api_url: "https://loopway.craftmill.dev", api_key: undefined });
     await writeConfig(configDir, { api_url: "https://file.test/", api_key: "lw_file" });
     expect(await loadConfig(configDir, {})).toEqual({ api_url: "https://file.test", api_key: "lw_file" });
     expect(await loadConfig(configDir, { LOOPWAY_API_URL: "https://env.test", LOOPWAY_API_KEY: "lw_env" })).toEqual({

@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 
 /** UUIDv7: time-ordered, so `ORDER BY id` is arrival order and makes a stable pagination cursor. */
 export function uuidv7(now = Date.now()): string {
@@ -15,6 +15,8 @@ export const isUuid = (s: string) => UUID_RE.test(s);
 
 export const newApiKey = () => `lw_${randomBytes(32).toString("base64url")}`;
 export const newLockToken = () => `lk_${randomBytes(18).toString("base64url")}`;
+/** Six digits, for a person to type. */
+export const newLoginCode = () => String(randomInt(0, 1_000_000)).padStart(6, "0");
 export const newSecret = () => randomBytes(32).toString("hex");
 
 export const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");

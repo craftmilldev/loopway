@@ -21,6 +21,31 @@ export async function configure(ctx: Context, opts: { url?: string; key?: string
   ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
 }
 
+/** Emails a one-time code, trades it for an API key, and saves the key. Replaces the account's previous key. */
+export async function login(ctx: Context, opts: { url?: string; email?: string; code?: string }) {
+  const current = await loadConfig(ctx.configDir, ctx.env);
+  const url = opts.url ?? current.api_url;
+  const client = new LoopwayClient({ baseUrl: url, fetch: ctx.fetch });
+
+  const email = opts.email ?? (ctx.interactive ? await promptEmail() : undefined);
+  if (!email) throw new UsageError("--email is required when not running in a terminal");
+
+  if (!opts.code) {
+    await client.requestLoginCode(email);
+    ctx.out(`If ${bold(email)} has a loopway account, a login code is on its way.`);
+  }
+  const code = opts.code ?? (ctx.interactive ? await promptCode() : undefined);
+  if (!code) throw new UsageError("--code is required when not running in a terminal; request one by running `loopway login --email <email>` first and then re-run with it");
+
+  const { api_key, user } = await client.verifyLoginCode(email, code).catch((err: unknown) => {
+    if (err instanceof ApiError && err.code === "invalid_code") throw new UsageError(err.message);
+    throw err;
+  });
+  await writeConfig(ctx.configDir, { api_url: url, api_key });
+  ctx.out(`Logged in to ${url} as ${bold(user.name)}${user.email ? ` <${user.email}>` : ""}`);
+  ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
+}
+
 export async function clearConfig(ctx: Context) {
   const removed = await removeConfig(ctx.configDir);
   ctx.out(removed ? `Removed ${configPath(ctx.configDir)}` : "Nothing to remove; no config saved.");
@@ -61,6 +86,24 @@ async function promptKey() {
   const v = await p.password({
     message: "API key (from `npm run user:create`)",
     validate: (v) => (v?.trim() ? undefined : "Required"),
+  });
+  if (p.isCancel(v)) throw new CancelledError();
+  return v.trim();
+}
+
+async function promptEmail() {
+  const v = await p.text({
+    message: "Email",
+    validate: (v) => (/^\S+@\S+\.\S+$/.test(v?.trim() ?? "") ? undefined : "Enter an email address"),
+  });
+  if (p.isCancel(v)) throw new CancelledError();
+  return v.trim();
+}
+
+async function promptCode() {
+  const v = await p.text({
+    message: "Login code from the email",
+    validate: (v) => (/^\d{6}$/.test(v?.trim() ?? "") ? undefined : "Enter the 6-digit code"),
   });
   if (p.isCancel(v)) throw new CancelledError();
   return v.trim();

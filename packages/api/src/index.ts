@@ -2,6 +2,7 @@
 import { Hono } from "hono";
 import { createApi } from "./api.js";
 import { getDb } from "./db/index.js";
+import { consoleSender, resendSender } from "./email.js";
 
 const app = new Hono();
 
@@ -10,6 +11,12 @@ app.route(
   createApi({
     getDb,
     publicBaseUrl: process.env.PUBLIC_BASE_URL || undefined,
+    sendEmail: process.env.RESEND_API_KEY
+      ? resendSender({
+          apiKey: process.env.RESEND_API_KEY,
+          from: process.env.RESEND_FROM || "loopway <login@loopway.craftmill.dev>",
+        })
+      : consoleSender,
   }),
 );
 

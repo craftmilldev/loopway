@@ -2,6 +2,7 @@ import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z, ZodError } from "zod";
 import type { Db } from "./db/index.js";
+import { consoleSender, type SendEmail } from "./email.js";
 import { isUuid } from "./ids.js";
 import { getSource, sources } from "./sources/index.js";
 import * as store from "./store.js";
@@ -11,6 +12,8 @@ export interface ApiOptions {
   getDb: () => Promise<Db>;
   /** Base for webhook URLs. Defaults to the request origin. */
   publicBaseUrl?: string;
+  /** Delivers login codes. Defaults to printing them to the console. */
+  sendEmail?: SendEmail;
 }
 
 type Env = { Variables: { db: Db; user: User } };
@@ -63,6 +66,30 @@ export function createApi(opts: ApiOptions) {
     if (result.kind === "ignored") return c.json({ ignored: true, reason: result.reason }, 200);
     const { id, duplicate } = await store.insertEvent(c.var.db, inbox.id, result.event);
     return c.json({ id, duplicate }, duplicate ? 200 : 202);
+  });
+
+  // Login: email a one-time code, then trade it for an API key. Replaces the user's current key.
+  // The first step answers the same whether or not the email belongs to a user.
+  app.post("/auth/login", async (c) => {
+    const { email } = z.object({ email: z.string().trim().email().max(320) }).parse(await jsonBody(c));
+    const login = await store.createLoginCode(c.var.db, email);
+    if (login) {
+      await (opts.sendEmail ?? consoleSender)({
+        to: login.user.email!,
+        subject: `Your loopway login code: ${login.code}`,
+        text: `Your loopway login code is ${login.code}\n\nIt expires in ${store.LOGIN_CODE_TTL_MINUTES} minutes. If you didn't ask for it, ignore this email.`,
+      });
+    }
+    return c.json({ sent: true }, 202);
+  });
+
+  app.post("/auth/verify", async (c) => {
+    const input = z
+      .object({ email: z.string().trim().email().max(320), code: z.string().trim().regex(/^\d{6}$/) })
+      .parse(await jsonBody(c));
+    const result = await store.redeemLoginCode(c.var.db, input.email, input.code);
+    if (!result) throw new ApiError(401, "invalid_code", "That code is invalid or has expired");
+    return c.json({ api_key: result.apiKey, user: serializeUser(result.user) }, 201);
   });
 
   // ---------- Authenticated ----------

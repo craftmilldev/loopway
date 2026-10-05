@@ -95,6 +95,16 @@ export class LoopwayClient {
     this.fetch = opts.fetch ?? fetch;
   }
 
+  /** Emails a one-time code to the user with this address. Answers the same for unknown addresses. */
+  async requestLoginCode(email: string) {
+    await this.request("POST", "/auth/login", { email });
+  }
+
+  /** Trades the emailed code for a new API key. */
+  verifyLoginCode(email: string, code: string) {
+    return this.request<{ api_key: string; user: User }>("POST", "/auth/verify", { email, code });
+  }
+
   me() {
     return this.request<User>("GET", "/me");
   }

@@ -1,6 +1,6 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import { LIST_STATUSES } from "./client.js";
-import { clearConfig, configure, whoami } from "./commands/auth.js";
+import { clearConfig, configure, login, whoami } from "./commands/auth.js";
 import { getEvent, listEvents, lockEvent, markProcessed, nextEvent, unlockEvent } from "./commands/events.js";
 import { createInbox, listInboxes, showInbox, splitList } from "./commands/inboxes.js";
 import type { Context } from "./context.js";
@@ -22,6 +22,14 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
   const tokenOpt = () => new Option("--token <lock_token>", "lock token (defaults to the one this machine holds)");
 
   // ---------- auth ----------
+
+  program
+    .command("login")
+    .description("log in with an emailed one-time code and save the API key (replaces your previous key)")
+    .option("--url <url>", "API base URL (default https://loopway.craftmill.dev)")
+    .option("--email <email>", "your account's email (prompted for if omitted)")
+    .option("--code <code>", "the 6-digit code from the email (prompted for if omitted)")
+    .action((opts) => login(ctx, opts));
 
   program
     .command("config")
