@@ -102,7 +102,7 @@ export class LoopwayClient {
 
   /** Trades the emailed code for a new API key. */
   verifyLoginCode(email: string, code: string) {
-    return this.request<{ api_key: string; user: User }>("POST", "/auth/verify", { email, code });
+    return this.request<{ api_key: string; user: User; created: boolean }>("POST", "/auth/verify", { email, code });
   }
 
   me() {

@@ -68,15 +68,16 @@ export function createApi(opts: ApiOptions) {
     return c.json({ id, duplicate }, duplicate ? 200 : 202);
   });
 
-  // Login: email a one-time code, then trade it for an API key. Replaces the user's current key.
-  // The first step answers the same whether or not the email belongs to a user or a code was already sent.
-  // A user gets at most one code per TTL; asking again before it expires sends nothing.
+  // Login: email a one-time code, then trade it for an API key. Replaces the user's current key, or creates
+  // the user if the email is new (only after the code proves they own it).
+  // The first step answers the same whether or not a code was already sent.
+  // An address gets at most one code per TTL; asking again before it expires sends nothing.
   app.post("/auth/login", async (c) => {
     const { email } = z.object({ email: z.string().trim().email().max(320) }).parse(await jsonBody(c));
     const login = await store.createLoginCode(c.var.db, email);
-    if (login?.code) {
+    if (login.code) {
       await (opts.sendEmail ?? consoleSender)({
-        to: login.user.email!,
+        to: login.email,
         subject: `Your loopway login code: ${login.code}`,
         text: `Your loopway login code is ${login.code}\n\nIt expires in ${store.LOGIN_CODE_TTL_MINUTES} minutes. If you didn't ask for it, ignore this email.`,
       });
@@ -90,7 +91,7 @@ export function createApi(opts: ApiOptions) {
       .parse(await jsonBody(c));
     const result = await store.redeemLoginCode(c.var.db, input.email, input.code);
     if (!result) throw new ApiError(401, "invalid_code", "That code is invalid or has expired");
-    return c.json({ api_key: result.apiKey, user: serializeUser(result.user) }, 201);
+    return c.json({ api_key: result.apiKey, user: serializeUser(result.user), created: result.created }, 201);
   });
 
   // ---------- Authenticated ----------

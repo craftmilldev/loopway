@@ -309,12 +309,29 @@ describe("login", () => {
     expect(sent).toHaveLength(before + 3);
   });
 
-  it("says nothing about unknown emails and sends them nothing", async () => {
+  it("creates a user when an unknown email proves it owns the address", async () => {
     const a = loginApp();
-    const before = sent.length;
-    expect((await post(a, "/auth/login", { email: "nobody@example.com" })).status).toBe(202);
-    expect(sent).toHaveLength(before);
-    expect((await post(a, "/auth/verify", { email: "nobody@example.com", code: "ABCD2345" })).status).toBe(401);
+    expect((await post(a, "/auth/login", { email: "New.Person@example.com" })).status).toBe(202);
+    expect(sent.at(-1)!.to).toBe("new.person@example.com");
+    expect((await db.query(`SELECT 1 FROM loopway.users WHERE email = 'new.person@example.com'`))).toHaveLength(0);
+
+    expect((await post(a, "/auth/verify", { email: "new.person@example.com", code: "ABCD2345" })).status).toBe(401);
+    expect((await db.query(`SELECT 1 FROM loopway.users WHERE email = 'new.person@example.com'`))).toHaveLength(0);
+
+    const res = await post(a, "/auth/verify", { email: "new.person@example.com", code: lastCode() });
+    expect(res.status).toBe(201);
+    const { api_key, user, created } = await res.json();
+    expect(created).toBe(true);
+    expect(user).toMatchObject({ name: "new.person", email: "new.person@example.com" });
+    expect((await a.request("/me", { headers: { authorization: `Bearer ${api_key}` } })).status).toBe(200);
+  });
+
+  it("does not report existing users as created", async () => {
+    const a = loginApp();
+    await createUser(db, { name: "Old", email: "old@example.com" });
+    await post(a, "/auth/login", { email: "old@example.com" });
+    const { created } = await (await post(a, "/auth/verify", { email: "old@example.com", code: lastCode() })).json();
+    expect(created).toBe(false);
   });
 
   it("locks a code after too many wrong guesses", async () => {

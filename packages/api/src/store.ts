@@ -39,49 +39,52 @@ export const LOGIN_CODE_TTL_MINUTES = 10;
 const MAX_LOGIN_ATTEMPTS = 5;
 
 /**
- * Starts a login for the user with this email. `code` is undefined when there is no such user, or when
- * a code was already issued and hasn't expired: one email per user per TTL, so this can't be used to spam them.
+ * Starts a login for this email, whether or not it belongs to a user yet (redeeming the code creates the user).
+ * `code` is undefined when one was already issued and hasn't expired: one email per address per TTL,
+ * so this can't be used to spam anyone.
  */
-export async function createLoginCode(db: Db, email: string): Promise<{ user: User; code?: string } | undefined> {
-  const [user] = await db.query<User>(
-    `SELECT id, name, email, created_at FROM loopway.users WHERE lower(email) = lower($1)`,
-    [email],
-  );
-  if (!user) return undefined;
+export async function createLoginCode(db: Db, email: string): Promise<{ email: string; code?: string }> {
+  const addr = email.toLowerCase();
   const code = newLoginCode();
-  // user_id is unique, so concurrent requests can't both get a code.
-  await db.query(`DELETE FROM loopway.login_codes WHERE user_id = $1 AND expires_at <= now()`, [user.id]);
+  // email is unique, so concurrent requests can't both get a code.
+  await db.query(`DELETE FROM loopway.login_codes WHERE email = $1 AND expires_at <= now()`, [addr]);
   const issued = await db.query(
-    `INSERT INTO loopway.login_codes (id, user_id, code_hash, expires_at)
+    `INSERT INTO loopway.login_codes (id, email, code_hash, expires_at)
      VALUES ($1, $2, $3, now() + $4::int * interval '1 minute')
-     ON CONFLICT (user_id) DO NOTHING RETURNING id`,
-    [uuidv7(), user.id, sha256(code), LOGIN_CODE_TTL_MINUTES],
+     ON CONFLICT (email) DO NOTHING RETURNING id`,
+    [uuidv7(), addr, sha256(code), LOGIN_CODE_TTL_MINUTES],
   );
-  return { user, code: issued.length ? code : undefined };
+  return { email: addr, code: issued.length ? code : undefined };
 }
 
 /**
- * Trades a valid, unexpired code for a new API key (which replaces the user's current one).
- * Codes are single-use and die after too many wrong guesses.
+ * Trades a valid, unexpired code for an API key. An existing user's key is replaced; an email with no user
+ * gets one created (named after the part before the @). Codes are single-use and die after too many wrong guesses.
  */
 export async function redeemLoginCode(
   db: Db,
   email: string,
   code: string,
-): Promise<{ user: User; apiKey: string } | undefined> {
-  const [row] = await db.query<{ id: string; code_hash: string; user_id: string }>(
-    `UPDATE loopway.login_codes c SET attempts = attempts + 1
-     FROM loopway.users u
-     WHERE u.id = c.user_id AND lower(u.email) = lower($1) AND c.expires_at > now() AND c.attempts < $2
-     RETURNING c.id, c.code_hash, c.user_id`,
-    [email, MAX_LOGIN_ATTEMPTS],
+): Promise<{ user: User; apiKey: string; created: boolean } | undefined> {
+  const addr = email.toLowerCase();
+  const [row] = await db.query<{ id: string; code_hash: string }>(
+    `UPDATE loopway.login_codes SET attempts = attempts + 1
+     WHERE email = $1 AND expires_at > now() AND attempts < $2
+     RETURNING id, code_hash`,
+    [addr, MAX_LOGIN_ATTEMPTS],
   );
   if (!row || !safeEqual(row.code_hash, sha256(normalizeLoginCode(code)))) return undefined;
   const [used] = await db.query<{ id: string }>(`DELETE FROM loopway.login_codes WHERE id = $1 RETURNING id`, [row.id]);
   if (!used) return undefined;
-  const apiKey = await rotateApiKey(db, row.user_id);
-  const [user] = await db.query<User>(`SELECT id, name, email, created_at FROM loopway.users WHERE id = $1`, [row.user_id]);
-  return { user: user!, apiKey };
+  const [existing] = await db.query<User>(
+    `SELECT id, name, email, created_at FROM loopway.users WHERE lower(email) = $1`,
+    [addr],
+  );
+  if (!existing) {
+    const { user, apiKey } = await createUser(db, { name: addr.split("@")[0]!, email: addr });
+    return { user, apiKey, created: true };
+  }
+  return { user: existing, apiKey: await rotateApiKey(db, existing.id), created: false };
 }
 
 // ---------- Inboxes ----------
