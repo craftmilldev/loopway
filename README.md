@@ -19,14 +19,7 @@ npm test                      # every workspace, in-memory PGlite
 
 Root scripts forward to the workspaces; `npm run <script> -w @loopway/api` (or `@loopway/cli`) runs one directly.
 
-Create a user (with the server stopped — PGlite allows one process at a time):
-
-```bash
-npm run user:create -- --name Matthew [--email you@example.com]
-# → { "user": {...}, "token": "eyJ...", "expires_at": "..." }   a 30-day session token (needs TOKEN_SECRET)
-```
-
-With `DATABASE_URL` set this creates the user in that database instead (e.g. Neon in production).
+Create a user with `loopway login` (the CLI creates the user if the email is new).
 
 To receive real GitHub webhooks locally, expose the port (e.g. `cloudflared tunnel --url localhost:3000`) and set `PUBLIC_BASE_URL` to the tunnel URL.
 
@@ -36,7 +29,7 @@ To receive real GitHub webhooks locally, expose the port (e.g. `cloudflared tunn
 2. Run migrations once from your machine against the direct URL: `DATABASE_URL='postgresql://...' npm run db:migrate`
 3. In Vercel, import the repo, set **Root Directory** to `packages/api`, and set env vars: `DATABASE_URL_POOLED` (the pooled URL), `DATABASE_URL` (the direct URL), `TOKEN_SECRET` (signs session tokens; `openssl rand -hex 32`), and optionally `PUBLIC_BASE_URL`. The server uses `DATABASE_URL_POOLED` when it's set.
 4. Deploy. Vercel picks up `packages/api/src/index.ts` as a Hono app automatically.
-5. Create users from your machine: `DATABASE_URL='postgresql://...' npm run user:create -- --name Matthew`
+5. Create users with `loopway login` pointed at your deployment.
 
 Tables live in a `loopway` schema (not `public`) with RLS enabled and no policies, so a Data API (Neon's is opt-in) can't reach them.
 
@@ -75,7 +68,7 @@ loopway events done <inbox> <event>
 
 ## API
 
-Users are created with `npm run user:create` (see above). Every endpoint except `/webhooks/*`, `/health` and `/` takes `Authorization: Bearer <token>`. The token is a session JWT from `loopway login` (or `npm run user:create`), valid 30 days.
+Users are created with `loopway login` (see above). Every endpoint except `/webhooks/*`, `/health` and `/` takes `Authorization: Bearer <token>`. The token is a session JWT from `loopway login`, valid 30 days.
 Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 
 ### Users
@@ -176,7 +169,7 @@ packages/api/
   src/db/               driver adapter (PGlite | postgres.js) + migrations
   src/sources/          source adapters; github.ts is the first
   src/cloudevents.ts    CloudEvent type + validation
-  scripts/              dev server, migrate, create-user
+  scripts/              dev server, migrate
   test/api.test.ts      end-to-end tests (TEST_DATABASE_URL=... to run against real Postgres)
 packages/cli/
   src/index.ts          `loopway` entry: error handling + exit codes
