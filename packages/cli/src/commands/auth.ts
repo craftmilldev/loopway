@@ -21,7 +21,7 @@ export async function configure(ctx: Context, opts: { url?: string; key?: string
   ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
 }
 
-/** Emails a one-time code, trades it for an API key, and saves the key. Replaces the account's previous key. */
+/** Emails a one-time code, trades it for a new API key, and saves the key. Other keys keep working. */
 export async function login(ctx: Context, opts: { url?: string; email?: string; code?: string }) {
   const current = await loadConfig(ctx.configDir, ctx.env);
   const url = opts.url ?? current.api_url;

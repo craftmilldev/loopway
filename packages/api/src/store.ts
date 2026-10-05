@@ -22,9 +22,12 @@ export async function createUser(db: Db, input: { name: string; email?: string |
 }
 
 export async function findUserByApiKey(db: Db, apiKey: string): Promise<User | undefined> {
+  const hash = sha256(apiKey);
   const [user] = await db.query<User>(
-    `SELECT id, name, email, created_at FROM loopway.users WHERE api_key_hash = $1`,
-    [sha256(apiKey)],
+    `SELECT id, name, email, created_at FROM loopway.users
+     WHERE api_key_hash = $1
+        OR id IN (SELECT user_id FROM loopway.login_keys WHERE key_hash = $1)`,
+    [hash],
   );
   return user;
 }
@@ -61,7 +64,7 @@ export async function createLoginCode(db: Db, email: string): Promise<{ user: Us
 }
 
 /**
- * Trades a valid, unexpired code for a new API key (which replaces the user's current one).
+ * Trades a valid, unexpired code for a new API key. Other keys the user has keep working.
  * Codes are single-use and die after too many wrong guesses.
  */
 export async function redeemLoginCode(
@@ -79,7 +82,12 @@ export async function redeemLoginCode(
   if (!row || !safeEqual(row.code_hash, sha256(normalizeLoginCode(code)))) return undefined;
   const [used] = await db.query<{ id: string }>(`DELETE FROM loopway.login_codes WHERE id = $1 RETURNING id`, [row.id]);
   if (!used) return undefined;
-  const apiKey = await rotateApiKey(db, row.user_id);
+  const apiKey = newApiKey();
+  await db.query(`INSERT INTO loopway.login_keys (id, user_id, key_hash) VALUES ($1, $2, $3)`, [
+    uuidv7(),
+    row.user_id,
+    sha256(apiKey),
+  ]);
   const [user] = await db.query<User>(`SELECT id, name, email, created_at FROM loopway.users WHERE id = $1`, [row.user_id]);
   return { user: user!, apiKey };
 }
