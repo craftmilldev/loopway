@@ -5,19 +5,19 @@ Accepts webhooks from defined sources, stores them as [CloudEvents](https://gith
 - **Stack:** TypeScript + [Hono](https://hono.dev), zero-config on Vercel.
 - **DB:** Postgres everywhere. Locally [PGlite](https://pglite.dev) (embedded, no server); on Vercel, [Neon](https://neon.tech) via `DATABASE_URL`. Same SQL on both.
 - **Data types:** `User` → owns `Inbox`es → which receive `Event`s.
-- **Sources:** `github` (more can be added in `packages/api/src/sources/`).
-- **Packages:** npm workspaces — [`packages/api`](packages/api) (the server) and [`packages/cli`](packages/cli) (the `loopway` command, a client of the API).
+- **Sources:** `github` (more can be added in `packages/web/src/sources/`).
+- **Packages:** npm workspaces — [`packages/web`](packages/web) (the server) and [`packages/cli`](packages/cli) (the `loopway` command, a client of the API).
 
 ## Run locally
 
 ```bash
 npm install                   # installs every workspace
-cp packages/api/.env.example packages/api/.env
-npm run dev                   # http://localhost:3000, data in packages/api/.data/pglite
+cp packages/web/.env.example packages/web/.env
+npm run dev                   # http://localhost:3000, data in packages/web/.data/pglite
 npm test                      # every workspace, in-memory PGlite
 ```
 
-Root scripts forward to the workspaces; `npm run <script> -w @loopway/api` (or `@loopway/cli`) runs one directly.
+Root scripts forward to the workspaces; `npm run <script> -w @loopway/web` (or `@loopway/cli`) runs one directly.
 
 Create a user with `loopway login` (the CLI creates the user if the email is new).
 
@@ -27,11 +27,15 @@ To receive real GitHub webhooks locally, expose the port (e.g. `cloudflared tunn
 
 1. In Neon → Connect, copy both connection strings: the **direct** one and the **pooled** one (host contains `-pooler`).
 2. Run migrations once from your machine against the direct URL: `DATABASE_URL='postgresql://...' npm run db:migrate`
-3. In Vercel, import the repo, set **Root Directory** to `packages/api`, and set env vars: `DATABASE_URL_POOLED` (the pooled URL), `DATABASE_URL` (the direct URL), `TOKEN_SECRET` (signs session tokens; `openssl rand -hex 32`), and optionally `PUBLIC_BASE_URL`. The server uses `DATABASE_URL_POOLED` when it's set.
-4. Deploy. Vercel picks up `packages/api/src/index.ts` as a Hono app automatically.
+3. In Vercel, import the repo, set **Root Directory** to `packages/web`, and set env vars: `DATABASE_URL_POOLED` (the pooled URL), `DATABASE_URL` (the direct URL), `TOKEN_SECRET` (signs session tokens; `openssl rand -hex 32`), and optionally `PUBLIC_BASE_URL`. The server uses `DATABASE_URL_POOLED` when it's set.
+4. Deploy. Vercel picks up `packages/web/src/index.ts` as a Hono app automatically.
 5. Create users with `loopway login` pointed at your deployment.
 
 Tables live in a `loopway` schema (not `public`) with RLS enabled and no policies, so a Data API (Neon's is opt-in) can't reach them.
+
+## Web UI
+
+The same Hono app serves a small web UI: `/` (how to use loopway), `/login` (same email-code flow as the CLI; the session token is kept in `localStorage`), `/dashboard` (your inboxes and a create form) and `/dashboard/<inbox>` (events, newest first, expandable JSON, hide-processed toggle). `GET /api` is a bare health check.
 
 ## CLI
 
@@ -68,7 +72,7 @@ loopway events done <inbox> <event>
 
 ## API
 
-Users are created with `loopway login` (see above). Every endpoint except `/webhooks/*`, `/health` and `/` takes `Authorization: Bearer <token>`. The token is a session JWT from `loopway login`, valid 30 days.
+Users are created with `loopway login` (see above). Every endpoint except `/webhooks/*`, `/health`, `/api` and the web pages takes `Authorization: Bearer <token>`. The token is a session JWT from `loopway login`, valid 30 days.
 Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 
 ### Users
@@ -162,9 +166,10 @@ done
 ## Layout
 
 ```
-packages/api/
+packages/web/
   src/index.ts          Vercel entry (default-exports the Hono app)
   src/api.ts            routes, auth, serialization
+  src/ui.ts             web UI: home, /login, /dashboard (HTML + vanilla JS + styles)
   src/store.ts          all SQL
   src/db/               driver adapter (PGlite | postgres.js) + migrations
   src/sources/          source adapters; github.ts is the first
@@ -183,4 +188,4 @@ packages/cli/
 
 ### Adding a source
 
-Implement `SourceAdapter` (`packages/api/src/sources/types.ts`): `parseConfig` (validate + defaults), `publicConfig`, optional `setup`, and `receive(headers, rawBody) → event | ignored | rejected`. Register it in `packages/api/src/sources/index.ts`. `loopway inbox create` lists it automatically and asks for its config as JSON; add a dedicated prompt flow in `packages/cli/src/commands/inboxes.ts` if it deserves one.
+Implement `SourceAdapter` (`packages/web/src/sources/types.ts`): `parseConfig` (validate + defaults), `publicConfig`, optional `setup`, and `receive(headers, rawBody) → event | ignored | rejected`. Register it in `packages/web/src/sources/index.ts`. `loopway inbox create` lists it automatically and asks for its config as JSON; add a dedicated prompt flow in `packages/cli/src/commands/inboxes.ts` if it deserves one.

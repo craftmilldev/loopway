@@ -8,6 +8,7 @@ import { getSource, sources } from "./sources/index.js";
 import * as store from "./store.js";
 import type { EventRow, Inbox, User } from "./store.js";
 import { signSessionToken, verifyToken } from "./tokens.js";
+import { createWeb } from "./ui.js";
 
 export interface ApiOptions {
   getDb: () => Promise<Db>;
@@ -45,9 +46,9 @@ export function createApi(opts: ApiOptions) {
 
   // ---------- Public ----------
 
-  app.get("/", (c) =>
-    c.json({ name: "loopway", sources: Object.keys(sources), docs: "https://github.com/cloudevents/spec" }),
-  );
+  app.route("/", createWeb());
+
+  app.get("/api", (c) => c.json({ ok: true }));
 
   app.get("/health", async (c) => {
     await c.var.db.query("SELECT 1");
