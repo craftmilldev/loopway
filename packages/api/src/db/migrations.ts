@@ -71,4 +71,21 @@ CREATE TABLE loopway.login_codes (
 ALTER TABLE loopway.login_codes ENABLE ROW LEVEL SECURITY;
 `,
   },
+  {
+    // Codes are now keyed by email so they can be issued before the user exists. They live 10 minutes, so drop them.
+    version: "003_login_codes_by_email",
+    sql: `
+DROP TABLE loopway.login_codes;
+CREATE TABLE loopway.login_codes (
+  id          uuid PRIMARY KEY,
+  email       text NOT NULL UNIQUE,
+  code_hash   text NOT NULL,
+  attempts    integer NOT NULL DEFAULT 0,
+  expires_at  timestamptz NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE loopway.login_codes ENABLE ROW LEVEL SECURITY;
+`,
+  },
 ];

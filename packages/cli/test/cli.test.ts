@@ -101,6 +101,13 @@ describe("auth", () => {
     expect(await runJson("whoami")).toMatchObject({ name: "Matthew", email: "m@example.com" });
   });
 
+  it("login creates an account for an unknown email once the code is entered", async () => {
+    await expect(run("login", "--url", API, "--email", "fresh@example.com")).rejects.toThrow(/--code is required/);
+    const code = emails.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
+    expect(await run("login", "--url", API, "--email", "fresh@example.com", "--code", code)).toMatch(/Created your account/);
+    expect(await runJson("whoami")).toMatchObject({ name: "fresh", email: "fresh@example.com" });
+  });
+
   it("login rejects a wrong code without saving anything", async () => {
     await createUser(db, { name: "Other", email: "o@example.com" });
     await expect(run("login", "--url", API, "--email", "o@example.com")).rejects.toThrow();

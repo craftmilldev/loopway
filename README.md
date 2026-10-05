@@ -50,7 +50,7 @@ npm run build -w @loopway/cli && npm link -w @loopway/cli      # or put `loopway
 ```
 
 ```bash
-loopway login                          # emails you a one-time code, trades it for an API key, saves it
+loopway login                          # emails you a one-time code, trades it for an API key, saves it (new emails get an account)
 loopway config                         # or paste an existing API URL + key; verifies with GET /me
 loopway whoami
 loopway clear-config                   # deletes ~/.loopway/config.json
@@ -82,8 +82,8 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 
 | | |
 |---|---|
-| `POST /auth/login` `{email}` | Email an 8-character code (valid 10 min) via Resend. Always `202`, whether or not the email has an account. At most one email per user per 10 minutes; asking again sooner sends nothing. |
-| `POST /auth/verify` `{email, code}` | Trade the code for a new API key (`201 {api_key, user}`). Single use, 5 guesses. Replaces the user's current key. |
+| `POST /auth/login` `{email}` | Email an 8-character code (valid 10 min) via Resend. Always `202`. At most one email per address per 10 minutes; asking again sooner sends nothing. |
+| `POST /auth/verify` `{email, code}` | Trade the code for an API key (`201 {api_key, user, created}`). Single use, 5 guesses. Replaces an existing user's key; if the email has no user yet, creates one (named after the part before the `@`). |
 | `GET /me` | Current user. |
 | `POST /me/api-key` | Rotate key. Old key stops working immediately. |
 
