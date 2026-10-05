@@ -25,7 +25,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
 
   program
     .command("login")
-    .description("log in with an emailed one-time code and save the API key (replaces your previous key; creates an account for a new email)")
+    .description("log in with an emailed one-time code and save a 30-day session token (creates an account for a new email)")
     .option("--url <url>", "API base URL (default https://loopway.craftmill.dev)")
     .option("--email <email>", "your email (prompted for if omitted)")
     .option("--code <code>", "the 8-character code from the email (prompted for if omitted)")
@@ -35,7 +35,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .command("config")
     .description("set the API URL and key in ~/.loopway/config.json")
     .option("--url <url>", "API base URL, e.g. https://loopway.example.com")
-    .option("--key <api_key>", "API key (prompted for if omitted; LOOPWAY_API_KEY also works)")
+    .option("--key <api_key>", "token (prompted for if omitted; LOOPWAY_API_KEY also works)")
     .action((opts) => configure(ctx, opts));
 
   program

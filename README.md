@@ -23,7 +23,7 @@ Create a user (with the server stopped — PGlite allows one process at a time):
 
 ```bash
 npm run user:create -- --name Matthew [--email you@example.com]
-# → { "user": {...}, "api_key": "lw_..." }   only the hash is stored; save the key
+# → { "user": {...}, "token": "eyJ...", "expires_at": "..." }   a 30-day session token (needs TOKEN_SECRET)
 ```
 
 With `DATABASE_URL` set this creates the user in that database instead (e.g. Neon in production).
@@ -75,7 +75,7 @@ loopway events done <inbox> <event>
 
 ## API
 
-Users are created with `npm run user:create` (see above). Every endpoint except `/webhooks/*`, `/health` and `/` takes `Authorization: Bearer <token>`. A token is either a session token (a JWT from `loopway login`, valid 30 days) or an `lw_` API key (no expiry).
+Users are created with `npm run user:create` (see above). Every endpoint except `/webhooks/*`, `/health` and `/` takes `Authorization: Bearer <token>`. The token is a session JWT from `loopway login` (or `npm run user:create`), valid 30 days.
 Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 
 ### Users
@@ -83,9 +83,8 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 | | |
 |---|---|
 | `POST /auth/login` `{email}` | Email an 8-character code (valid 10 min) via Resend. Always `202`. At most one email per address per 10 minutes; asking again sooner sends nothing. |
-| `POST /auth/verify` `{email, code}` | Trade the code for a session token (`201 {token, expires_at, user, created}`). Single use, 5 guesses. Existing API keys keep working; if the email has no user yet, creates one (named after the part before the `@`). |
+| `POST /auth/verify` `{email, code}` | Trade the code for a session token (`201 {token, expires_at, user, created}`). Single use, 5 guesses. If the email has no user yet, creates one (named after the part before the `@`). |
 | `GET /me` | Current user. |
-| `POST /me/api-key` | Rotate key. Old key stops working immediately. |
 
 ### Inboxes
 
@@ -156,7 +155,7 @@ Event shape:
 ### Consumer loop
 
 ```bash
-API=http://localhost:3000; KEY=lw_...; INBOX=...
+API=http://localhost:3000; KEY=<token>; INBOX=...
 while :; do
   ev=$(curl -s -X POST "$API/inboxes/$INBOX/events/next" -H "authorization: Bearer $KEY")
   [ -z "$ev" ] && { sleep 5; continue; }

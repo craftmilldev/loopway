@@ -13,7 +13,7 @@ export async function configure(ctx: Context, opts: { url?: string; key?: string
 
   const client = new LoopwayClient({ baseUrl: url, apiKey: key, fetch: ctx.fetch });
   const user = await client.me().catch((err: unknown) => {
-    if (err instanceof ApiError && err.status === 401) throw new UsageError(`${url} rejected that API key.`);
+    if (err instanceof ApiError && err.status === 401) throw new UsageError(`${url} rejected that token.`);
     throw err;
   });
   await writeConfig(ctx.configDir, { api_url: url, api_key: key });
@@ -84,7 +84,7 @@ async function promptUrl(current: string) {
 
 async function promptKey() {
   const v = await p.password({
-    message: "API key (from `npm run user:create`)",
+    message: "Token (from `npm run user:create`)",
     validate: (v) => (v?.trim() ? undefined : "Required"),
   });
   if (p.isCancel(v)) throw new CancelledError();

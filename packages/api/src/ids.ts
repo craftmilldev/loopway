@@ -13,7 +13,6 @@ export function uuidv7(now = Date.now()): string {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isUuid = (s: string) => UUID_RE.test(s);
 
-export const newApiKey = () => `lw_${randomBytes(32).toString("base64url")}`;
 export const newLockToken = () => `lk_${randomBytes(18).toString("base64url")}`;
 /**
  * Eight characters (40 bits) of Crockford base32, which has no I/L/O/U look-alikes, for a person to type.

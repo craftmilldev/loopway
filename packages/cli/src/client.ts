@@ -100,7 +100,7 @@ export class LoopwayClient {
     await this.request("POST", "/auth/login", { email });
   }
 
-  /** Trades the emailed code for a new API key. */
+  /** Trades the emailed code for a session token. */
   verifyLoginCode(email: string, code: string) {
     return this.request<{ token: string; expires_at: string; user: User; created: boolean }>("POST", "/auth/verify", { email, code });
   }

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createApi } from "@loopway/api/api";
 import { openDb, type Db } from "@loopway/api/db";
 import { createUser } from "@loopway/api/store";
+import { signSessionToken } from "@loopway/api/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { loadConfig, writeConfig } from "../src/config.js";
@@ -12,6 +13,7 @@ import type { Context } from "../src/context.js";
 import { createProgram } from "../src/program.js";
 
 const API = "https://loopway.test";
+const SECRET = "test-secret";
 
 let db: Db;
 let app: ReturnType<typeof createApi>;
@@ -23,7 +25,7 @@ const apiFetch = ((input: string | URL | Request, init?: RequestInit) => app.req
 
 beforeAll(async () => {
   db = await openDb({ pgliteDir: "memory://" });
-  app = createApi({ getDb: async () => db, publicBaseUrl: API, tokenSecret: "test-secret", sendEmail: async (e) => void emails.push(e) });
+  app = createApi({ getDb: async () => db, publicBaseUrl: API, tokenSecret: SECRET, sendEmail: async (e) => void emails.push(e) });
 });
 afterAll(() => db.close());
 
@@ -54,9 +56,10 @@ const runJson = async (...args: string[]) => JSON.parse(await run(...args, "--js
 const savedConfig = (dir = configDir) => readFile(join(dir, "config.json"), "utf8").then(JSON.parse, () => undefined);
 
 async function configured(name = "Matthew") {
-  const { apiKey } = await createUser(db, { name });
-  await run("config", "--url", API, "--key", apiKey);
-  return apiKey;
+  const { user } = await createUser(db, { name });
+  const key = signSessionToken(user.id, SECRET).token;
+  await run("config", "--url", API, "--key", key);
+  return key;
 }
 
 async function sendGithub(inbox: { id: string; config: { secret: string } }, event: string, payload: unknown) {
@@ -116,7 +119,7 @@ describe("auth", () => {
   });
 
   it("config rejects a bad key without saving it", async () => {
-    await expect(run("config", "--url", API, "--key", "lw_nope")).rejects.toThrow(/rejected that API key/);
+    await expect(run("config", "--url", API, "--key", "nope")).rejects.toThrow(/rejected that token/);
     expect(await savedConfig()).toBeUndefined();
   });
 
@@ -137,7 +140,8 @@ describe("auth", () => {
   });
 
   it("env vars override the config file", async () => {
-    const { apiKey } = await createUser(db, { name: "Env" });
+    const { user } = await createUser(db, { name: "Env" });
+    const apiKey = signSessionToken(user.id, SECRET).token;
     const out: string[] = [];
     const ctx: Context = {
       configDir,

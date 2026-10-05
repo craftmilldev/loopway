@@ -100,9 +100,7 @@ export function createApi(opts: ApiOptions) {
 
   // ---------- Authenticated ----------
 
-  // Two kinds of bearer token: `lw_` API keys never expire; anything else is a session JWT that does.
   async function userForToken(db: Db, token: string) {
-    if (token.startsWith("lw_")) return store.findUserByApiKey(db, token);
     const claims = verifyToken(token, opts.tokenSecret);
     return claims ? store.findUserById(db, claims.sub) : undefined;
   }
@@ -117,11 +115,6 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.get("/me", (c) => c.json(serializeUser(c.var.user)));
-
-  authed.post("/me/api-key", async (c) => {
-    const apiKey = await store.rotateApiKey(c.var.db, c.var.user.id);
-    return c.json({ api_key: apiKey }, 201);
-  });
 
   authed.get("/sources", (c) =>
     c.json({ data: Object.values(sources).map((s) => ({ type: s.type, description: s.description })) }),

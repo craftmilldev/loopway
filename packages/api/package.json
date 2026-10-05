@@ -11,7 +11,8 @@
     ".": "./src/index.ts",
     "./api": "./src/api.ts",
     "./db": "./src/db/index.ts",
-    "./store": "./src/store.ts"
+    "./store": "./src/store.ts",
+    "./tokens": "./src/tokens.ts"
   },
   "scripts": {
     "dev": "tsx watch scripts/dev.ts",
