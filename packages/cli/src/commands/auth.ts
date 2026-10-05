@@ -84,7 +84,7 @@ async function promptUrl(current: string) {
 
 async function promptKey() {
   const v = await p.password({
-    message: "Token (from `npm run user:create`)",
+    message: "Token",
     validate: (v) => (v?.trim() ? undefined : "Required"),
   });
   if (p.isCancel(v)) throw new CancelledError();

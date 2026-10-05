@@ -102,7 +102,7 @@ let shared: Promise<Db> | undefined;
 
 /**
  * Process-wide DB, configured from env. Reused across requests (and across invocations on warm Vercel functions).
- * Prefers Neon's pooled URL for serving; scripts (migrate, user:create) use the direct DATABASE_URL.
+ * Prefers Neon's pooled URL for serving; scripts (migrate) use the direct DATABASE_URL.
  */
 export function getDb(): Promise<Db> {
   if (!shared) {
