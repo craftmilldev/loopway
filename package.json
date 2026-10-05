@@ -7,25 +7,18 @@
   "engines": {
     "node": ">=22"
   },
+  "workspaces": [
+    "packages/api",
+    "packages/cli"
+  ],
   "scripts": {
-    "dev": "tsx watch scripts/dev.ts",
-    "start": "tsx scripts/dev.ts",
-    "db:migrate": "tsx scripts/migrate.ts",
-    "user:create": "tsx scripts/create-user.ts",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@electric-sql/pglite": "^0.5.8",
-    "hono": "^4.13.13",
-    "postgres": "^3.4.9",
-    "zod": "^4.6.5"
-  },
-  "devDependencies": {
-    "@hono/node-server": "^2.1.3",
-    "@types/node": "^22.0.0",
-    "tsx": "^4.23.15",
-    "typescript": "^5.9.0",
-    "vitest": "^5.0.3"
+    "dev": "npm run dev -w @loopway/api",
+    "start": "npm run start -w @loopway/api",
+    "db:migrate": "npm run db:migrate -w @loopway/api",
+    "user:create": "npm run user:create -w @loopway/api --",
+    "cli": "npm run start -w @loopway/cli --",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm test --workspaces",
+    "typecheck": "npm run typecheck --workspaces"
   }
 }

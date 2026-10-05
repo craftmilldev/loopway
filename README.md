@@ -5,16 +5,19 @@ Accepts webhooks from defined sources, stores them as [CloudEvents](https://gith
 - **Stack:** TypeScript + [Hono](https://hono.dev), zero-config on Vercel.
 - **DB:** Postgres everywhere. Locally [PGlite](https://pglite.dev) (embedded, no server); on Vercel, [Neon](https://neon.tech) via `DATABASE_URL`. Same SQL on both.
 - **Data types:** `User` → owns `Inbox`es → which receive `Event`s.
-- **Sources:** `github` (more can be added in `src/sources/`).
+- **Sources:** `github` (more can be added in `packages/api/src/sources/`).
+- **Packages:** npm workspaces — [`packages/api`](packages/api) (the server) and [`packages/cli`](packages/cli) (the `loopway` command, a client of the API).
 
 ## Run locally
 
 ```bash
-npm install
-cp .env.example .env
-npm run dev                   # http://localhost:3000, data in ./.data/pglite
-npm test                      # in-memory PGlite
+npm install                   # installs every workspace
+cp packages/api/.env.example packages/api/.env
+npm run dev                   # http://localhost:3000, data in packages/api/.data/pglite
+npm test                      # every workspace, in-memory PGlite
 ```
+
+Root scripts forward to the workspaces; `npm run <script> -w @loopway/api` (or `@loopway/cli`) runs one directly.
 
 Create a user (with the server stopped — PGlite allows one process at a time):
 
@@ -31,11 +34,43 @@ To receive real GitHub webhooks locally, expose the port (e.g. `cloudflared tunn
 
 1. In Neon → Connect, copy both connection strings: the **direct** one and the **pooled** one (host contains `-pooler`).
 2. Run migrations once from your machine against the direct URL: `DATABASE_URL='postgresql://...' npm run db:migrate`
-3. In Vercel, import the repo and set env vars: `DATABASE_URL_POOLED` (the pooled URL), `DATABASE_URL` (the direct URL), and optionally `PUBLIC_BASE_URL`. The server uses `DATABASE_URL_POOLED` when it's set.
-4. Deploy. Vercel picks up `src/index.ts` as a Hono app automatically.
+3. In Vercel, import the repo, set **Root Directory** to `packages/api`, and set env vars: `DATABASE_URL_POOLED` (the pooled URL), `DATABASE_URL` (the direct URL), and optionally `PUBLIC_BASE_URL`. The server uses `DATABASE_URL_POOLED` when it's set.
+4. Deploy. Vercel picks up `packages/api/src/index.ts` as a Hono app automatically.
 5. Create users from your machine: `DATABASE_URL='postgresql://...' npm run user:create -- --name Matthew`
 
 Tables live in a `loopway` schema (not `public`) with RLS enabled and no policies, so a Data API (Neon's is opt-in) can't reach them.
+
+## CLI
+
+`loopway` lives in `packages/cli` and talks to the API over HTTP.
+
+```bash
+npm run cli -- <command>                                       # from the repo, no build
+npm run build -w @loopway/cli && npm link -w @loopway/cli      # or put `loopway` on your PATH
+```
+
+```bash
+loopway config                         # prompts for API URL + key, verifies with GET /me
+loopway whoami
+loopway clear-config                   # deletes ~/.loopway/config.json
+
+loopway inbox create                   # interactive: name → source → events → secret → confirm
+loopway inbox list
+loopway inbox show <inbox>             # webhook setup + pending/locked/processed counts
+
+loopway events list <inbox> [--status pending] [--type 'com.github.pull_request.*'] [--limit 20] [--all]
+loopway events get  <inbox> <event> [--data]
+loopway events next <inbox> [--ttl 600]
+loopway events lock <inbox> <event> [--ttl 600]
+loopway events unlock <inbox> <event>
+loopway events done <inbox> <event>
+```
+
+- `<inbox>` is an inbox id or its exact name.
+- Every read command takes `--json` for the raw API response. `events next --json` prints nothing when the inbox is empty.
+- `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`); without a terminal it runs from flags alone.
+- Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `http://localhost:3000`.
+- Lock tokens from `next`/`lock` are kept in `~/.loopway/locks.json` until they expire, so `lock` (renew), `unlock` and `done` on the same machine don't need `--token`.
 
 ## API
 
@@ -132,16 +167,25 @@ done
 ## Layout
 
 ```
-src/index.ts            Vercel entry (default-exports the Hono app)
-src/api.ts              routes, auth, serialization
-src/store.ts            all SQL
-src/db/                 driver adapter (PGlite | postgres.js) + migrations
-src/sources/            source adapters; github.ts is the first
-src/cloudevents.ts      CloudEvent type + validation
-scripts/                dev server, migrate, create-user
-test/api.test.ts        end-to-end tests (TEST_DATABASE_URL=... to run against real Postgres)
+packages/api/
+  src/index.ts          Vercel entry (default-exports the Hono app)
+  src/api.ts            routes, auth, serialization
+  src/store.ts          all SQL
+  src/db/               driver adapter (PGlite | postgres.js) + migrations
+  src/sources/          source adapters; github.ts is the first
+  src/cloudevents.ts    CloudEvent type + validation
+  scripts/              dev server, migrate, create-user
+  test/api.test.ts      end-to-end tests (TEST_DATABASE_URL=... to run against real Postgres)
+packages/cli/
+  src/index.ts          `loopway` entry: error handling + exit codes
+  src/program.ts        commands and flags (commander)
+  src/commands/         auth, inboxes (incl. the create TUI, @clack/prompts), events
+  src/client.ts         typed API client
+  src/config.ts         ~/.loopway/config.json
+  src/locks.ts          ~/.loopway/locks.json
+  test/cli.test.ts      runs commands against the real API app in-process
 ```
 
 ### Adding a source
 
-Implement `SourceAdapter` (`src/sources/types.ts`): `parseConfig` (validate + defaults), `publicConfig`, optional `setup`, and `receive(headers, rawBody) → event | ignored | rejected`. Register it in `src/sources/index.ts`.
+Implement `SourceAdapter` (`packages/api/src/sources/types.ts`): `parseConfig` (validate + defaults), `publicConfig`, optional `setup`, and `receive(headers, rawBody) → event | ignored | rejected`. Register it in `packages/api/src/sources/index.ts`. `loopway inbox create` lists it automatically and asks for its config as JSON; add a dedicated prompt flow in `packages/cli/src/commands/inboxes.ts` if it deserves one.
