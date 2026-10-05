@@ -12,7 +12,7 @@ export interface Config {
 }
 
 /** Used for anything neither the environment nor config.json sets. */
-const DEFAULTS = { api_url: "http://localhost:3000" };
+const DEFAULTS = { api_url: "https://loopway.craftmill.dev" };
 
 export const configPath = (dir: string) => join(dir, "config.json");
 

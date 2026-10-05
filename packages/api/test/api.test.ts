@@ -266,3 +266,72 @@ describe("event processing", () => {
     expect((await call("GET", `${base}?cursor=nope`, { key })).status).toBe(400);
   });
 });
+
+describe("login", () => {
+  const sent: { to: string; subject: string; text: string }[] = [];
+  const loginApp = () => createApi({ getDb: async () => db, sendEmail: async (e) => void sent.push(e) });
+  const post = (a: ReturnType<typeof createApi>, path: string, body: unknown) =>
+    a.request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const lastCode = () => sent.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
+
+  it("emails a code, trades it for a working key, and replaces the old key", async () => {
+    const a = loginApp();
+    const { apiKey: oldKey } = await createUser(db, { name: "Login", email: "login@example.com" });
+    expect((await post(a, "/auth/login", { email: "LOGIN@example.com" })).status).toBe(202);
+    expect(sent.at(-1)!.to).toBe("login@example.com");
+
+    const res = await post(a, "/auth/verify", { email: "login@example.com", code: lastCode() });
+    expect(res.status).toBe(201);
+    const { api_key, user } = await res.json();
+    expect(user.email).toBe("login@example.com");
+    const me = (key: string) => a.request("/me", { headers: { authorization: `Bearer ${key}` } });
+    expect((await me(api_key)).status).toBe(200);
+    expect((await me(oldKey)).status).toBe(401);
+
+    // single use
+    expect((await post(a, "/auth/verify", { email: "login@example.com", code: lastCode() })).status).toBe(401);
+  });
+
+  it("sends one email per user until the code expires", async () => {
+    const a = loginApp();
+    await createUser(db, { name: "Spam", email: "spam@example.com" });
+    const before = sent.length;
+    for (let i = 0; i < 5; i++) expect((await post(a, "/auth/login", { email: "spam@example.com" })).status).toBe(202);
+    expect(sent).toHaveLength(before + 1);
+    // the one code still works
+    expect((await post(a, "/auth/verify", { email: "spam@example.com", code: lastCode() })).status).toBe(201);
+    // and once it's used, a new one can be requested
+    await post(a, "/auth/login", { email: "spam@example.com" });
+    expect(sent).toHaveLength(before + 2);
+
+    await db.query(`UPDATE loopway.login_codes SET expires_at = now() - interval '1 second'`);
+    await post(a, "/auth/login", { email: "spam@example.com" });
+    expect(sent).toHaveLength(before + 3);
+  });
+
+  it("says nothing about unknown emails and sends them nothing", async () => {
+    const a = loginApp();
+    const before = sent.length;
+    expect((await post(a, "/auth/login", { email: "nobody@example.com" })).status).toBe(202);
+    expect(sent).toHaveLength(before);
+    expect((await post(a, "/auth/verify", { email: "nobody@example.com", code: "ABCD2345" })).status).toBe(401);
+  });
+
+  it("locks a code after too many wrong guesses", async () => {
+    const a = loginApp();
+    await createUser(db, { name: "Guess", email: "guess@example.com" });
+    await post(a, "/auth/login", { email: "guess@example.com" });
+    const good = lastCode();
+    const wrong = good === "00000000" ? "00000001" : "00000000";
+    for (let i = 0; i < 5; i++) {
+      expect((await post(a, "/auth/verify", { email: "guess@example.com", code: wrong })).status).toBe(401);
+    }
+    expect((await post(a, "/auth/verify", { email: "guess@example.com", code: good })).status).toBe(401);
+  });
+
+  it("rejects malformed input", async () => {
+    const a = loginApp();
+    expect((await post(a, "/auth/login", { email: "nope" })).status).toBe(400);
+    expect((await post(a, "/auth/verify", { email: "a@b.co", code: "abc" })).status).toBe(400);
+  });
+});

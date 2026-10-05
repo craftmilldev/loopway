@@ -50,7 +50,8 @@ npm run build -w @loopway/cli && npm link -w @loopway/cli      # or put `loopway
 ```
 
 ```bash
-loopway config                         # prompts for API URL + key, verifies with GET /me
+loopway login                          # emails you a one-time code, trades it for an API key, saves it
+loopway config                         # or paste an existing API URL + key; verifies with GET /me
 loopway whoami
 loopway clear-config                   # deletes ~/.loopway/config.json
 
@@ -69,7 +70,7 @@ loopway events done <inbox> <event>
 - `<inbox>` is an inbox id or its exact name.
 - Every read command takes `--json` for the raw API response. `events next --json` prints nothing when the inbox is empty.
 - `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`); without a terminal it runs from flags alone.
-- Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `http://localhost:3000`.
+- Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `https://loopway.craftmill.dev`.
 - Lock tokens from `next`/`lock` are kept in `~/.loopway/locks.json` until they expire, so `lock` (renew), `unlock` and `done` on the same machine don't need `--token`.
 
 ## API
@@ -81,6 +82,8 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 
 | | |
 |---|---|
+| `POST /auth/login` `{email}` | Email an 8-character code (valid 10 min) via Resend. Always `202`, whether or not the email has an account. At most one email per user per 10 minutes; asking again sooner sends nothing. |
+| `POST /auth/verify` `{email, code}` | Trade the code for a new API key (`201 {api_key, user}`). Single use, 5 guesses. Replaces the user's current key. |
 | `GET /me` | Current user. |
 | `POST /me/api-key` | Rotate key. Old key stops working immediately. |
 

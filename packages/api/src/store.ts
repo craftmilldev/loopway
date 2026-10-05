@@ -1,6 +1,6 @@
 import type { CloudEvent } from "./cloudevents.js";
 import type { Db } from "./db/index.js";
-import { newApiKey, newLockToken, sha256, uuidv7 } from "./ids.js";
+import { newApiKey, newLockToken, newLoginCode, normalizeLoginCode, safeEqual, sha256, uuidv7 } from "./ids.js";
 
 // ---------- Users ----------
 
@@ -33,6 +33,55 @@ export async function rotateApiKey(db: Db, userId: string): Promise<string> {
   const apiKey = newApiKey();
   await db.query(`UPDATE loopway.users SET api_key_hash = $2 WHERE id = $1`, [userId, sha256(apiKey)]);
   return apiKey;
+}
+
+export const LOGIN_CODE_TTL_MINUTES = 10;
+const MAX_LOGIN_ATTEMPTS = 5;
+
+/**
+ * Starts a login for the user with this email. `code` is undefined when there is no such user, or when
+ * a code was already issued and hasn't expired: one email per user per TTL, so this can't be used to spam them.
+ */
+export async function createLoginCode(db: Db, email: string): Promise<{ user: User; code?: string } | undefined> {
+  const [user] = await db.query<User>(
+    `SELECT id, name, email, created_at FROM loopway.users WHERE lower(email) = lower($1)`,
+    [email],
+  );
+  if (!user) return undefined;
+  const code = newLoginCode();
+  // user_id is unique, so concurrent requests can't both get a code.
+  await db.query(`DELETE FROM loopway.login_codes WHERE user_id = $1 AND expires_at <= now()`, [user.id]);
+  const issued = await db.query(
+    `INSERT INTO loopway.login_codes (id, user_id, code_hash, expires_at)
+     VALUES ($1, $2, $3, now() + $4::int * interval '1 minute')
+     ON CONFLICT (user_id) DO NOTHING RETURNING id`,
+    [uuidv7(), user.id, sha256(code), LOGIN_CODE_TTL_MINUTES],
+  );
+  return { user, code: issued.length ? code : undefined };
+}
+
+/**
+ * Trades a valid, unexpired code for a new API key (which replaces the user's current one).
+ * Codes are single-use and die after too many wrong guesses.
+ */
+export async function redeemLoginCode(
+  db: Db,
+  email: string,
+  code: string,
+): Promise<{ user: User; apiKey: string } | undefined> {
+  const [row] = await db.query<{ id: string; code_hash: string; user_id: string }>(
+    `UPDATE loopway.login_codes c SET attempts = attempts + 1
+     FROM loopway.users u
+     WHERE u.id = c.user_id AND lower(u.email) = lower($1) AND c.expires_at > now() AND c.attempts < $2
+     RETURNING c.id, c.code_hash, c.user_id`,
+    [email, MAX_LOGIN_ATTEMPTS],
+  );
+  if (!row || !safeEqual(row.code_hash, sha256(normalizeLoginCode(code)))) return undefined;
+  const [used] = await db.query<{ id: string }>(`DELETE FROM loopway.login_codes WHERE id = $1 RETURNING id`, [row.id]);
+  if (!used) return undefined;
+  const apiKey = await rotateApiKey(db, row.user_id);
+  const [user] = await db.query<User>(`SELECT id, name, email, created_at FROM loopway.users WHERE id = $1`, [row.user_id]);
+  return { user: user!, apiKey };
 }
 
 // ---------- Inboxes ----------

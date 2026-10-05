@@ -56,4 +56,19 @@ ALTER TABLE loopway.inboxes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE loopway.events  ENABLE ROW LEVEL SECURITY;
 `,
   },
+  {
+    version: "002_login_codes",
+    sql: `
+CREATE TABLE loopway.login_codes (
+  id          uuid PRIMARY KEY,
+  user_id     uuid NOT NULL UNIQUE REFERENCES loopway.users(id) ON DELETE CASCADE,
+  code_hash   text NOT NULL,
+  attempts    integer NOT NULL DEFAULT 0,
+  expires_at  timestamptz NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE loopway.login_codes ENABLE ROW LEVEL SECURITY;
+`,
+  },
 ];
