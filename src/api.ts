@@ -2,15 +2,13 @@ import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z, ZodError } from "zod";
 import type { Db } from "./db/index.js";
-import { isUuid, safeEqual } from "./ids.js";
+import { isUuid } from "./ids.js";
 import { getSource, sources } from "./sources/index.js";
 import * as store from "./store.js";
 import type { EventRow, Inbox, User } from "./store.js";
 
 export interface ApiOptions {
   getDb: () => Promise<Db>;
-  /** Enables POST /admin/users when set. */
-  adminToken?: string;
   /** Base for webhook URLs. Defaults to the request origin. */
   publicBaseUrl?: string;
 }
@@ -65,20 +63,6 @@ export function createApi(opts: ApiOptions) {
     if (result.kind === "ignored") return c.json({ ignored: true, reason: result.reason }, 200);
     const { id, duplicate } = await store.insertEvent(c.var.db, inbox.id, result.event);
     return c.json({ id, duplicate }, duplicate ? 200 : 202);
-  });
-
-  // ---------- Admin ----------
-
-  app.post("/admin/users", async (c) => {
-    const token = bearer(c);
-    if (!opts.adminToken || !token || !safeEqual(token, opts.adminToken)) {
-      throw new ApiError(401, "unauthorized", "Admin token required");
-    }
-    const input = z
-      .object({ name: z.string().min(1), email: z.email().optional() })
-      .parse(await jsonBody(c));
-    const { user, apiKey } = await store.createUser(c.var.db, input);
-    return c.json({ user: serializeUser(user), api_key: apiKey }, 201);
   });
 
   // ---------- Authenticated ----------

@@ -2,7 +2,7 @@ import { migrations } from "./migrations.js";
 
 /**
  * The only thing the rest of the app knows about the database.
- * Both drivers speak Postgres, so the SQL is identical locally (PGlite) and on Vercel (Supabase).
+ * Both drivers speak Postgres, so the SQL is identical locally (PGlite) and on Vercel (Neon).
  */
 /**
  * For jsonb params, pass the JS object itself (not JSON.stringify'd): both drivers learn the param
@@ -27,8 +27,12 @@ export async function openDb(opts: DbOptions = {}): Promise<Db> {
 
 async function openPostgres(url: string): Promise<Db> {
   const { default: postgres } = await import("postgres");
-  // prepare:false is required for Supabase's transaction pooler (Supavisor, port 6543).
-  const sql = postgres(url, { prepare: false, max: 5, idle_timeout: 20 });
+  // Neon's connection strings carry libpq's `channel_binding`, which postgres.js doesn't understand
+  // and would forward to the server as a startup parameter.
+  const u = new URL(url);
+  u.searchParams.delete("channel_binding");
+  // prepare:false: Neon's pooled endpoint (-pooler) is PgBouncer in transaction mode.
+  const sql = postgres(u.toString(), { prepare: false, max: 5, idle_timeout: 20 });
   return {
     async query<T>(text: string, params: unknown[] = []) {
       const rows = await sql.unsafe(text, params as never[]);
@@ -57,7 +61,7 @@ async function openPglite(dir: string): Promise<Db> {
       await pg.close();
     },
   };
-  // Local DBs migrate themselves; Supabase is migrated explicitly with `npm run db:migrate`.
+  // Local DBs migrate themselves; Neon is migrated explicitly with `npm run db:migrate`.
   await migrate(db);
   return db;
 }
@@ -96,10 +100,13 @@ function splitSql(sql: string): string[] {
 
 let shared: Promise<Db> | undefined;
 
-/** Process-wide DB, configured from env. Reused across requests (and across invocations on warm Vercel functions). */
+/**
+ * Process-wide DB, configured from env. Reused across requests (and across invocations on warm Vercel functions).
+ * Prefers Neon's pooled URL for serving; scripts (migrate, user:create) use the direct DATABASE_URL.
+ */
 export function getDb(): Promise<Db> {
   if (!shared) {
-    const databaseUrl = process.env.DATABASE_URL || undefined;
+    const databaseUrl = process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL || undefined;
     if (!databaseUrl && process.env.VERCEL) {
       throw new Error("DATABASE_URL must be set on Vercel (PGlite has no persistent disk there).");
     }
