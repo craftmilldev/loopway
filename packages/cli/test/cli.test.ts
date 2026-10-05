@@ -7,7 +7,7 @@ import { openDb, type Db } from "@loopway/api/db";
 import { createUser } from "@loopway/api/store";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { loadConfig, readConfig, writeConfig } from "../src/config.js";
+import { loadConfig, writeConfig } from "../src/config.js";
 import type { Context } from "../src/context.js";
 import { createProgram } from "../src/program.js";
 
@@ -49,6 +49,9 @@ async function run(...args: string[]) {
 
 const runJson = async (...args: string[]) => JSON.parse(await run(...args, "--json"));
 
+/** What's on disk in config.json, or undefined if it wasn't written. */
+const savedConfig = (dir = configDir) => readFile(join(dir, "config.json"), "utf8").then(JSON.parse, () => undefined);
+
 async function configured(name = "Matthew") {
   const { apiKey } = await createUser(db, { name });
   await run("config", "--url", API, "--key", apiKey);
@@ -83,14 +86,14 @@ async function inboxWithEvents(n: number, name = "gh") {
 describe("auth", () => {
   it("config verifies the key and writes ~/.loopway/config.json owner-only", async () => {
     const key = await configured();
-    expect(await readConfig(configDir)).toEqual({ api_url: API, api_key: key });
+    expect(await savedConfig()).toEqual({ api_url: API, api_key: key });
     expect((await stat(join(configDir, "config.json"))).mode & 0o777).toBe(0o600);
     expect(await runJson("whoami")).toMatchObject({ name: "Matthew", api_url: API });
   });
 
   it("config rejects a bad key without saving it", async () => {
     await expect(run("config", "--url", API, "--key", "lw_nope")).rejects.toThrow(/rejected that API key/);
-    expect(await readConfig(configDir)).toBeUndefined();
+    expect(await savedConfig()).toBeUndefined();
   });
 
   it("commands fail clearly when not configured", async () => {
@@ -206,7 +209,7 @@ describe("events", () => {
     await runJson("events", "lock", inbox.id, id);
     // another machine (its own config dir, same key) doesn't hold the token, so it can't take the event
     const first = configDir;
-    const key = (await readConfig(first))!.api_key;
+    const key = (await savedConfig(first)).api_key;
     configDir = await mkdtemp(join(tmpdir(), "loopway-cli-"));
     try {
       await run("config", "--url", API, "--key", key);

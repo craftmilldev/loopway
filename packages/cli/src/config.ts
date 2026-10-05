@@ -38,7 +38,8 @@ export async function resolveAuth(dir: string, env: NodeJS.ProcessEnv = process.
   return { api_url, api_key };
 }
 
-export async function readConfig(dir: string): Promise<Config | undefined> {
+/** Just config.json, without env or defaults; everything else should go through loadConfig. */
+async function readConfig(dir: string): Promise<Config | undefined> {
   const raw = await readJson(configPath(dir));
   if (!raw || typeof raw !== "object") return undefined;
   const { api_url, api_key } = raw as Partial<Config>;
