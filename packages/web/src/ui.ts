@@ -95,6 +95,9 @@ img{max-width:100%}
 .form-actions{display:flex;gap:12px;margin-top:20px}
 .btn-quiet{background:transparent;color:var(--ink-900);box-shadow:inset 0 0 0 1px var(--ink-900)}
 .btn-quiet:hover{background:var(--paper-300);color:var(--ink-900)}
+.checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px 16px;padding:8px}
+.check{display:flex;align-items:center;gap:8px;padding:0;border:0;font-family:var(--font-type);font-size:.8125rem;letter-spacing:0;text-transform:none;color:var(--ink-900);cursor:pointer}
+.check.all{grid-column:1/-1;padding-bottom:8px;border-bottom:1px solid var(--rule-hair)}
 .error{margin-top:16px;font-family:var(--font-type);font-size:.8125rem;color:var(--madder-700)}
 
 /* Pages */
@@ -129,6 +132,27 @@ details.event pre{max-height:480px;overflow:auto}
 
 const FONTS =
   "https://fonts.googleapis.com/css2?family=Sorts+Mill+Goudy:ital@0;1&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap";
+
+// The GitHub events offered as checkboxes (same list as `loopway inbox create`).
+const GITHUB_EVENTS = [
+  "push",
+  "pull_request",
+  "pull_request_review",
+  "pull_request_review_comment",
+  "issues",
+  "issue_comment",
+  "release",
+  "workflow_run",
+  "workflow_job",
+  "check_run",
+  "check_suite",
+  "create",
+  "delete",
+  "deployment_status",
+  "discussion",
+  "star",
+  "fork",
+];
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
@@ -289,6 +313,8 @@ const DASHBOARD = page({
         if (r.ok) for (const s of (await r.json()).data) source.add(new Option(s.type, s.type));
       }
     });
+    const all = document.getElementById("all-events");
+    all.addEventListener("change", () => document.querySelectorAll(".ev").forEach((c) => { c.disabled = all.checked; }));
     document.getElementById("gen").addEventListener("click", () => {
       const b = crypto.getRandomValues(new Uint8Array(24));
       document.getElementById("secret").value = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
@@ -296,7 +322,8 @@ const DASHBOARD = page({
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       err.hidden = true;
-      const events = document.getElementById("events").value.split(",").map((s) => s.trim()).filter(Boolean);
+      const events = all.checked ? ["*"] : Array.from(document.querySelectorAll(".ev:checked"), (c) => c.value);
+      if (!events.length) { err.textContent = "Pick at least one event."; err.hidden = false; return; }
       const r = await lw.api("/inboxes", { method: "POST", body: {
         name: document.getElementById("name").value,
         source_type: source.value,
@@ -305,6 +332,7 @@ const DASHBOARD = page({
       if (r.status === 401) return lw.expired(r);
       if (!r.ok) { err.textContent = await lw.message(r); err.hidden = false; return; }
       form.reset();
+      document.querySelectorAll(".ev").forEach((c) => { c.disabled = false; });
       panel.hidden = true;
       load();
     });
@@ -313,7 +341,12 @@ const DASHBOARD = page({
 <form id="create" class="panel" hidden>
   <div class="field"><label for="name">Name</label><div class="input-wrap"><input id="name" required maxlength="200"></div></div>
   <div class="field"><label for="source">Source</label><div class="input-wrap"><select id="source" required></select></div></div>
-  <div class="field"><label for="events">Events</label><div class="input-wrap"><input id="events" required placeholder="push, pull_request, issues"></div><p class="hint">Comma separated. Use * for everything.</p></div>
+  <div class="field"><label>Events</label>
+    <div class="checks">
+      <label class="check all"><input id="all-events" type="checkbox"> Everything</label>
+      ${GITHUB_EVENTS.map((e) => `<label class="check"><input class="ev" type="checkbox" value="${e}"> ${e}</label>`).join("\n      ")}
+    </div>
+    <p class="hint">Which events the inbox keeps. Anything else the webhook sends is ignored.</p></div>
   <div class="field"><label for="secret">Secret</label><div class="input-wrap"><input id="secret" required minlength="16" autocomplete="off"><button id="gen" class="btn btn-sm btn-quiet" type="button">Generate</button></div><p class="hint">At least 16 characters. You enter the same secret in the sender's webhook settings.</p></div>
   <div class="form-actions"><button class="btn" type="submit">Create inbox</button></div>
   <p id="err" class="error" hidden></p>
