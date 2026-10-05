@@ -195,7 +195,6 @@ const HOME = page({
   `,
   body: `<div class="prose">
 <p class="eyebrow">webhooks in, a queue out</p>
-<h1>loopway</h1>
 <p>loopway catches webhooks and keeps them in an inbox as <a href="https://github.com/cloudevents/spec">CloudEvents</a>. A script, a cron job or an agent then claims events one at a time, works on them, and marks them done.</p>
 
 <h2>Use it</h2>
