@@ -96,8 +96,8 @@ img{max-width:100%}
 .btn-quiet{background:transparent;color:var(--ink-900);box-shadow:inset 0 0 0 1px var(--ink-900)}
 .btn-quiet:hover{background:var(--paper-300);color:var(--ink-900)}
 .checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px 16px;padding:8px}
-.check{display:flex;align-items:center;gap:8px;padding:0;border:0;font-family:var(--font-type);font-size:.8125rem;letter-spacing:0;text-transform:none;color:var(--ink-900);cursor:pointer}
-.check.all{grid-column:1/-1;padding-bottom:8px;border-bottom:1px solid var(--rule-hair)}
+.field .check{display:flex;align-items:center;gap:8px;padding:0;border:0;font-family:var(--font-type);font-size:.8125rem;letter-spacing:0;text-transform:none;color:var(--ink-900);cursor:pointer}
+.field .check.all{grid-column:1/-1;padding-bottom:8px;border-bottom:1px solid var(--rule-hair)}
 .error{margin-top:16px;font-family:var(--font-type);font-size:.8125rem;color:var(--madder-700)}
 
 /* Pages */
