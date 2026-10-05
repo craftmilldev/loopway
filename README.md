@@ -82,7 +82,7 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 
 | | |
 |---|---|
-| `POST /auth/login` `{email}` | Email a 6-digit code (valid 10 min) via Resend. Always `202`, whether or not the email has an account. |
+| `POST /auth/login` `{email}` | Email an 8-character code (valid 10 min) via Resend. Always `202`, whether or not the email has an account. |
 | `POST /auth/verify` `{email, code}` | Trade the code for a new API key (`201 {api_key, user}`). Single use, 5 guesses. Replaces the user's current key. |
 | `GET /me` | Current user. |
 | `POST /me/api-key` | Rotate key. Old key stops working immediately. |

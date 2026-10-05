@@ -103,7 +103,7 @@ async function promptEmail() {
 async function promptCode() {
   const v = await p.text({
     message: "Login code from the email",
-    validate: (v) => (/^\d{6}$/.test(v?.trim() ?? "") ? undefined : "Enter the 6-digit code"),
+    validate: (v) => (/^[0-9A-Za-z -]{8,12}$/.test(v?.trim() ?? "") ? undefined : "Enter the 8-character code"),
   });
   if (p.isCancel(v)) throw new CancelledError();
   return v.trim();

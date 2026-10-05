@@ -95,7 +95,7 @@ describe("auth", () => {
   it("login trades an emailed code for a key and saves it", async () => {
     await createUser(db, { name: "Matthew", email: "m@example.com" });
     await expect(run("login", "--url", API, "--email", "m@example.com")).rejects.toThrow(/--code is required/);
-    const code = emails.at(-1)!.text.match(/\b(\d{6})\b/)![1]!;
+    const code = emails.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
     expect(await run("login", "--url", API, "--email", "m@example.com", "--code", code)).toMatch(/Logged in/);
     expect((await savedConfig()).api_url).toBe(API);
     expect(await runJson("whoami")).toMatchObject({ name: "Matthew", email: "m@example.com" });
@@ -104,7 +104,7 @@ describe("auth", () => {
   it("login rejects a wrong code without saving anything", async () => {
     await createUser(db, { name: "Other", email: "o@example.com" });
     await expect(run("login", "--url", API, "--email", "o@example.com")).rejects.toThrow();
-    await expect(run("login", "--url", API, "--email", "o@example.com", "--code", "000000")).rejects.toThrow(/invalid or has expired/);
+    await expect(run("login", "--url", API, "--email", "o@example.com", "--code", "00000000")).rejects.toThrow(/invalid or has expired/);
     expect(await savedConfig()).toBeUndefined();
   });
 

@@ -272,7 +272,7 @@ describe("login", () => {
   const loginApp = () => createApi({ getDb: async () => db, sendEmail: async (e) => void sent.push(e) });
   const post = (a: ReturnType<typeof createApi>, path: string, body: unknown) =>
     a.request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  const lastCode = () => sent.at(-1)!.text.match(/\b(\d{6})\b/)![1]!;
+  const lastCode = () => sent.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
 
   it("emails a code, trades it for a working key, and replaces the old key", async () => {
     const a = loginApp();
@@ -297,7 +297,7 @@ describe("login", () => {
     const before = sent.length;
     expect((await post(a, "/auth/login", { email: "nobody@example.com" })).status).toBe(202);
     expect(sent).toHaveLength(before);
-    expect((await post(a, "/auth/verify", { email: "nobody@example.com", code: "123456" })).status).toBe(401);
+    expect((await post(a, "/auth/verify", { email: "nobody@example.com", code: "ABCD2345" })).status).toBe(401);
   });
 
   it("locks a code after too many wrong guesses", async () => {
@@ -305,7 +305,7 @@ describe("login", () => {
     await createUser(db, { name: "Guess", email: "guess@example.com" });
     await post(a, "/auth/login", { email: "guess@example.com" });
     const good = lastCode();
-    const wrong = good === "000000" ? "000001" : "000000";
+    const wrong = good === "00000000" ? "00000001" : "00000000";
     for (let i = 0; i < 5; i++) {
       expect((await post(a, "/auth/verify", { email: "guess@example.com", code: wrong })).status).toBe(401);
     }

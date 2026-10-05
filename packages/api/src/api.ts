@@ -3,7 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { z, ZodError } from "zod";
 import type { Db } from "./db/index.js";
 import { consoleSender, type SendEmail } from "./email.js";
-import { isUuid } from "./ids.js";
+import { isUuid, LOGIN_CODE_RE, normalizeLoginCode } from "./ids.js";
 import { getSource, sources } from "./sources/index.js";
 import * as store from "./store.js";
 import type { EventRow, Inbox, User } from "./store.js";
@@ -85,7 +85,7 @@ export function createApi(opts: ApiOptions) {
 
   app.post("/auth/verify", async (c) => {
     const input = z
-      .object({ email: z.string().trim().email().max(320), code: z.string().trim().regex(/^\d{6}$/) })
+      .object({ email: z.string().trim().email().max(320), code: z.string().transform(normalizeLoginCode).pipe(z.string().regex(LOGIN_CODE_RE)) })
       .parse(await jsonBody(c));
     const result = await store.redeemLoginCode(c.var.db, input.email, input.code);
     if (!result) throw new ApiError(401, "invalid_code", "That code is invalid or has expired");

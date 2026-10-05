@@ -1,6 +1,6 @@
 import type { CloudEvent } from "./cloudevents.js";
 import type { Db } from "./db/index.js";
-import { newApiKey, newLockToken, newLoginCode, safeEqual, sha256, uuidv7 } from "./ids.js";
+import { newApiKey, newLockToken, newLoginCode, normalizeLoginCode, safeEqual, sha256, uuidv7 } from "./ids.js";
 
 // ---------- Users ----------
 
@@ -71,7 +71,7 @@ export async function redeemLoginCode(
      RETURNING c.id, c.code_hash, c.user_id`,
     [email, MAX_LOGIN_ATTEMPTS],
   );
-  if (!row || !safeEqual(row.code_hash, sha256(code))) return undefined;
+  if (!row || !safeEqual(row.code_hash, sha256(normalizeLoginCode(code)))) return undefined;
   const [used] = await db.query<{ id: string }>(`DELETE FROM loopway.login_codes WHERE id = $1 RETURNING id`, [row.id]);
   if (!used) return undefined;
   const apiKey = await rotateApiKey(db, row.user_id);

@@ -28,7 +28,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .description("log in with an emailed one-time code and save the API key (replaces your previous key)")
     .option("--url <url>", "API base URL (default https://loopway.craftmill.dev)")
     .option("--email <email>", "your account's email (prompted for if omitted)")
-    .option("--code <code>", "the 6-digit code from the email (prompted for if omitted)")
+    .option("--code <code>", "the 8-character code from the email (prompted for if omitted)")
     .action((opts) => login(ctx, opts));
 
   program
