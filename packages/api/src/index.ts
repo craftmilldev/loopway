@@ -14,7 +14,7 @@ app.route(
     sendEmail: process.env.RESEND_API_KEY
       ? resendSender({
           apiKey: process.env.RESEND_API_KEY,
-          from: process.env.RESEND_FROM || "loopway <login@loopway.craftmill.dev>",
+          from: "loopway <matthew@craftmill.dev>",
         })
       : consoleSender,
   }),
