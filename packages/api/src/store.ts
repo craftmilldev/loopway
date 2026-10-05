@@ -29,6 +29,11 @@ export async function findUserByApiKey(db: Db, apiKey: string): Promise<User | u
   return user;
 }
 
+export async function findUserById(db: Db, id: string): Promise<User | undefined> {
+  const [user] = await db.query<User>(`SELECT id, name, email, created_at FROM loopway.users WHERE id = $1`, [id]);
+  return user;
+}
+
 export async function rotateApiKey(db: Db, userId: string): Promise<string> {
   const apiKey = newApiKey();
   await db.query(`UPDATE loopway.users SET api_key_hash = $2 WHERE id = $1`, [userId, sha256(apiKey)]);
@@ -58,14 +63,14 @@ export async function createLoginCode(db: Db, email: string): Promise<{ email: s
 }
 
 /**
- * Trades a valid, unexpired code for an API key. An existing user's key is replaced; an email with no user
- * gets one created (named after the part before the @). Codes are single-use and die after too many wrong guesses.
+ * Trades a valid, unexpired code for the user, creating one if the email has none (named after the part before
+ * the @). Codes are single-use and die after too many wrong guesses.
  */
 export async function redeemLoginCode(
   db: Db,
   email: string,
   code: string,
-): Promise<{ user: User; apiKey: string; created: boolean } | undefined> {
+): Promise<{ user: User; created: boolean } | undefined> {
   const addr = email.toLowerCase();
   const [row] = await db.query<{ id: string; code_hash: string }>(
     `UPDATE loopway.login_codes SET attempts = attempts + 1
@@ -81,10 +86,10 @@ export async function redeemLoginCode(
     [addr],
   );
   if (!existing) {
-    const { user, apiKey } = await createUser(db, { name: addr.split("@")[0]!, email: addr });
-    return { user, apiKey, created: true };
+    const { user } = await createUser(db, { name: addr.split("@")[0]!, email: addr });
+    return { user, created: true };
   }
-  return { user: existing, apiKey: await rotateApiKey(db, existing.id), created: false };
+  return { user: existing, created: false };
 }
 
 // ---------- Inboxes ----------

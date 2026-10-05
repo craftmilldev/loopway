@@ -34,7 +34,7 @@ To receive real GitHub webhooks locally, expose the port (e.g. `cloudflared tunn
 
 1. In Neon → Connect, copy both connection strings: the **direct** one and the **pooled** one (host contains `-pooler`).
 2. Run migrations once from your machine against the direct URL: `DATABASE_URL='postgresql://...' npm run db:migrate`
-3. In Vercel, import the repo, set **Root Directory** to `packages/api`, and set env vars: `DATABASE_URL_POOLED` (the pooled URL), `DATABASE_URL` (the direct URL), and optionally `PUBLIC_BASE_URL`. The server uses `DATABASE_URL_POOLED` when it's set.
+3. In Vercel, import the repo, set **Root Directory** to `packages/api`, and set env vars: `DATABASE_URL_POOLED` (the pooled URL), `DATABASE_URL` (the direct URL), `TOKEN_SECRET` (signs session tokens; `openssl rand -hex 32`), and optionally `PUBLIC_BASE_URL`. The server uses `DATABASE_URL_POOLED` when it's set.
 4. Deploy. Vercel picks up `packages/api/src/index.ts` as a Hono app automatically.
 5. Create users from your machine: `DATABASE_URL='postgresql://...' npm run user:create -- --name Matthew`
 
@@ -50,7 +50,7 @@ npm run build -w @loopway/cli && npm link -w @loopway/cli      # or put `loopway
 ```
 
 ```bash
-loopway login                          # emails you a one-time code, trades it for an API key, saves it (new emails get an account)
+loopway login                          # emails you a one-time code, trades it for a 30-day session token, saves it (new emails get an account)
 loopway config                         # or paste an existing API URL + key; verifies with GET /me
 loopway whoami
 loopway clear-config                   # deletes ~/.loopway/config.json
@@ -75,7 +75,7 @@ loopway events done <inbox> <event>
 
 ## API
 
-Users are created with `npm run user:create` (see above). Every endpoint except `/webhooks/*`, `/health` and `/` takes `Authorization: Bearer <api_key>`.
+Users are created with `npm run user:create` (see above). Every endpoint except `/webhooks/*`, `/health` and `/` takes `Authorization: Bearer <token>`. A token is either a session token (a JWT from `loopway login`, valid 30 days) or an `lw_` API key (no expiry).
 Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 
 ### Users
@@ -83,7 +83,7 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 | | |
 |---|---|
 | `POST /auth/login` `{email}` | Email an 8-character code (valid 10 min) via Resend. Always `202`. At most one email per address per 10 minutes; asking again sooner sends nothing. |
-| `POST /auth/verify` `{email, code}` | Trade the code for an API key (`201 {api_key, user, created}`). Single use, 5 guesses. Replaces an existing user's key; if the email has no user yet, creates one (named after the part before the `@`). |
+| `POST /auth/verify` `{email, code}` | Trade the code for a session token (`201 {token, expires_at, user, created}`). Single use, 5 guesses. Existing API keys keep working; if the email has no user yet, creates one (named after the part before the `@`). |
 | `GET /me` | Current user. |
 | `POST /me/api-key` | Rotate key. Old key stops working immediately. |
 

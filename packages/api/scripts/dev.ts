@@ -1,7 +1,13 @@
 import "./env.js";
+import { randomBytes } from "node:crypto";
 import { serve } from "@hono/node-server";
-import app from "../src/index.js";
 import { getDb } from "../src/db/index.js";
+
+if (!process.env.TOKEN_SECRET) {
+  process.env.TOKEN_SECRET = randomBytes(32).toString("hex");
+  console.warn("TOKEN_SECRET is unset: using a random one, so sessions end when this server restarts.");
+}
+const { default: app } = await import("../src/index.js"); // after TOKEN_SECRET is settled
 
 await getDb(); // open + migrate PGlite up front so the first request isn't slow
 const port = Number(process.env.PORT ?? 3000);

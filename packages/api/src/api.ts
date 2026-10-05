@@ -7,6 +7,7 @@ import { isUuid, LOGIN_CODE_RE, normalizeLoginCode } from "./ids.js";
 import { getSource, sources } from "./sources/index.js";
 import * as store from "./store.js";
 import type { EventRow, Inbox, User } from "./store.js";
+import { signSessionToken, verifyToken } from "./tokens.js";
 
 export interface ApiOptions {
   getDb: () => Promise<Db>;
@@ -14,6 +15,8 @@ export interface ApiOptions {
   publicBaseUrl?: string;
   /** Delivers login codes. Defaults to printing them to the console. */
   sendEmail?: SendEmail;
+  /** Signs session tokens (JWTs). */
+  tokenSecret: string;
 }
 
 type Env = { Variables: { db: Db; user: User } };
@@ -68,7 +71,7 @@ export function createApi(opts: ApiOptions) {
     return c.json({ id, duplicate }, duplicate ? 200 : 202);
   });
 
-  // Login: email a one-time code, then trade it for an API key. Replaces the user's current key, or creates
+  // Login: email a one-time code, then trade it for a session token (a JWT that lasts 30 days), creating
   // the user if the email is new (only after the code proves they own it).
   // The first step answers the same whether or not a code was already sent.
   // An address gets at most one code per TTL; asking again before it expires sends nothing.
@@ -91,16 +94,24 @@ export function createApi(opts: ApiOptions) {
       .parse(await jsonBody(c));
     const result = await store.redeemLoginCode(c.var.db, input.email, input.code);
     if (!result) throw new ApiError(401, "invalid_code", "That code is invalid or has expired");
-    return c.json({ api_key: result.apiKey, user: serializeUser(result.user), created: result.created }, 201);
+    const { token, expiresAt } = signSessionToken(result.user.id, opts.tokenSecret);
+    return c.json({ token, expires_at: expiresAt.toISOString(), user: serializeUser(result.user), created: result.created }, 201);
   });
 
   // ---------- Authenticated ----------
 
+  // Two kinds of bearer token: `lw_` API keys never expire; anything else is a session JWT that does.
+  async function userForToken(db: Db, token: string) {
+    if (token.startsWith("lw_")) return store.findUserByApiKey(db, token);
+    const claims = verifyToken(token, opts.tokenSecret);
+    return claims ? store.findUserById(db, claims.sub) : undefined;
+  }
+
   const authed = new Hono<Env>();
   authed.use(async (c, next) => {
     const token = bearer(c);
-    const user = token ? await store.findUserByApiKey(c.var.db, token) : undefined;
-    if (!user) throw new ApiError(401, "unauthorized", "Missing or invalid API key");
+    const user = token ? await userForToken(c.var.db, token) : undefined;
+    if (!user) throw new ApiError(401, "unauthorized", "Missing, invalid or expired token");
     c.set("user", user);
     await next();
   });

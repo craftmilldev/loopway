@@ -23,7 +23,7 @@ const apiFetch = ((input: string | URL | Request, init?: RequestInit) => app.req
 
 beforeAll(async () => {
   db = await openDb({ pgliteDir: "memory://" });
-  app = createApi({ getDb: async () => db, publicBaseUrl: API, sendEmail: async (e) => void emails.push(e) });
+  app = createApi({ getDb: async () => db, publicBaseUrl: API, tokenSecret: "test-secret", sendEmail: async (e) => void emails.push(e) });
 });
 afterAll(() => db.close());
 
@@ -92,7 +92,7 @@ describe("auth", () => {
     expect(await runJson("whoami")).toMatchObject({ name: "Matthew", api_url: API });
   });
 
-  it("login trades an emailed code for a key and saves it", async () => {
+  it("login trades an emailed code for a session token and saves it", async () => {
     await createUser(db, { name: "Matthew", email: "m@example.com" });
     await expect(run("login", "--url", API, "--email", "m@example.com")).rejects.toThrow(/--code is required/);
     const code = emails.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
