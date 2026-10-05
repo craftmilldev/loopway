@@ -2,8 +2,8 @@
  * Migrations live in TS (not .sql files) so they're bundled into the Vercel function.
  * Append new entries; never edit an applied one.
  *
- * Everything is in a `loopway` schema so Supabase's Data API (which exposes `public`) never sees it.
- * RLS is enabled with no policies as a second guard; the app connects as the table owner.
+ * Everything is in a `loopway` schema (not `public`), and RLS is enabled with no policies, so a
+ * PostgREST-style Data API (e.g. Neon's, if ever turned on) can't reach it. The app connects as the table owner.
  */
 export const migrations: { version: string; sql: string }[] = [
   {

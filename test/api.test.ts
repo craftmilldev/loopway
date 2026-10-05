@@ -2,10 +2,10 @@ import { createHmac, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApi } from "../src/api.js";
 import { migrate, openDb, type Db } from "../src/db/index.js";
+import { createUser } from "../src/store.js";
 
 let db: Db;
 let app: ReturnType<typeof createApi>;
-const ADMIN = "admin-test-token";
 
 // Runs against in-memory PGlite by default. Set TEST_DATABASE_URL to run against a real Postgres
 // (the `loopway` schema in that database is dropped and recreated!).
@@ -16,7 +16,7 @@ beforeAll(async () => {
     await db.query("DROP SCHEMA IF EXISTS loopway CASCADE");
     await migrate(db);
   }
-  app = createApi({ getDb: async () => db, adminToken: ADMIN, publicBaseUrl: "https://loopway.test" });
+  app = createApi({ getDb: async () => db, publicBaseUrl: "https://loopway.test" });
 });
 afterAll(() => db.close());
 
@@ -36,9 +36,8 @@ async function call(method: string, path: string, opts: { key?: string; body?: u
 }
 
 async function newUser(name = "Matthew") {
-  const r = await call("POST", "/admin/users", { key: ADMIN, body: { name } });
-  expect(r.status).toBe(201);
-  return r.body.api_key as string;
+  const { apiKey } = await createUser(db, { name });
+  return apiKey;
 }
 
 async function newInbox(key: string, config?: unknown) {
@@ -82,9 +81,6 @@ describe("auth", () => {
   it("rejects missing/invalid keys", async () => {
     expect((await call("GET", "/me")).status).toBe(401);
     expect((await call("GET", "/me", { key: "lw_nope" })).status).toBe(401);
-  });
-  it("admin endpoint requires admin token", async () => {
-    expect((await call("POST", "/admin/users", { key: "wrong", body: { name: "x" } })).status).toBe(401);
   });
   it("rotates api key", async () => {
     const key = await newUser();

@@ -3,7 +3,7 @@
 Accepts webhooks from defined sources, stores them as [CloudEvents](https://github.com/cloudevents/spec) in a per-user **inbox**, and exposes an API to list, lock, claim, and mark events processed.
 
 - **Stack:** TypeScript + [Hono](https://hono.dev), zero-config on Vercel.
-- **DB:** Postgres everywhere. Locally [PGlite](https://pglite.dev) (embedded, no server); on Vercel, Supabase via `DATABASE_URL`. Same SQL on both.
+- **DB:** Postgres everywhere. Locally [PGlite](https://pglite.dev) (embedded, no server); on Vercel, [Neon](https://neon.tech) via `DATABASE_URL`. Same SQL on both.
 - **Data types:** `User` → owns `Inbox`es → which receive `Event`s.
 - **Sources:** `github` (more can be added in `src/sources/`).
 
@@ -11,42 +11,41 @@ Accepts webhooks from defined sources, stores them as [CloudEvents](https://gith
 
 ```bash
 npm install
-cp .env.example .env          # set LOOPWAY_ADMIN_TOKEN to anything
+cp .env.example .env
 npm run dev                   # http://localhost:3000, data in ./.data/pglite
 npm test                      # in-memory PGlite
 ```
 
-Create a user (with the server running, via the admin endpoint):
+Create a user (with the server stopped — PGlite allows one process at a time):
 
 ```bash
-curl -s localhost:3000/admin/users -H "authorization: Bearer $LOOPWAY_ADMIN_TOKEN" \
-  -H 'content-type: application/json' -d '{"name":"Matthew"}'
+npm run user:create -- --name Matthew [--email you@example.com]
 # → { "user": {...}, "api_key": "lw_..." }   only the hash is stored; save the key
 ```
 
-Or with the server stopped (PGlite allows one process at a time): `npm run user:create -- --name Matthew`.
+With `DATABASE_URL` set this creates the user in that database instead (e.g. Neon in production).
 
 To receive real GitHub webhooks locally, expose the port (e.g. `cloudflared tunnel --url localhost:3000`) and set `PUBLIC_BASE_URL` to the tunnel URL.
 
-## Deploy (Vercel + Supabase)
+## Deploy (Vercel + Neon)
 
-1. In Supabase → Connect, copy the **Transaction pooler** URI (port 6543).
-2. Run migrations once from your machine: `DATABASE_URL='postgresql://...' npm run db:migrate`
-3. In Vercel, import the repo and set env vars: `DATABASE_URL` (the pooler URI), `LOOPWAY_ADMIN_TOKEN`, and optionally `PUBLIC_BASE_URL`.
+1. In Neon → Connect, copy both connection strings: the **direct** one and the **pooled** one (host contains `-pooler`).
+2. Run migrations once from your machine against the direct URL: `DATABASE_URL='postgresql://...' npm run db:migrate`
+3. In Vercel, import the repo and set env vars: `DATABASE_URL_POOLED` (the pooled URL), `DATABASE_URL` (the direct URL), and optionally `PUBLIC_BASE_URL`. The server uses `DATABASE_URL_POOLED` when it's set.
 4. Deploy. Vercel picks up `src/index.ts` as a Hono app automatically.
+5. Create users from your machine: `DATABASE_URL='postgresql://...' npm run user:create -- --name Matthew`
 
-Tables live in a `loopway` schema (not `public`) with RLS enabled and no policies, so Supabase's auto-generated Data API can't reach them.
+Tables live in a `loopway` schema (not `public`) with RLS enabled and no policies, so a Data API (Neon's is opt-in) can't reach them.
 
 ## API
 
-Every endpoint except `/webhooks/*`, `/health` and `/` takes `Authorization: Bearer <api_key>`.
+Users are created with `npm run user:create` (see above). Every endpoint except `/webhooks/*`, `/health` and `/` takes `Authorization: Bearer <api_key>`.
 Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 
 ### Users
 
 | | |
 |---|---|
-| `POST /admin/users` `{name, email?}` | Admin token. Returns `{user, api_key}`. |
 | `GET /me` | Current user. |
 | `POST /me/api-key` | Rotate key. Old key stops working immediately. |
 

@@ -9,7 +9,6 @@ app.route(
   "/",
   createApi({
     getDb,
-    adminToken: process.env.LOOPWAY_ADMIN_TOKEN || undefined,
     publicBaseUrl: process.env.PUBLIC_BASE_URL || undefined,
   }),
 );
