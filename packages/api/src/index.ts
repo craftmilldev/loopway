@@ -6,10 +6,14 @@ import { consoleSender, resendSender } from "./email.js";
 
 const app = new Hono();
 
+const tokenSecret = process.env.TOKEN_SECRET;
+if (!tokenSecret) throw new Error("TOKEN_SECRET is required (it signs session tokens)");
+
 app.route(
   "/",
   createApi({
     getDb,
+    tokenSecret,
     publicBaseUrl: process.env.PUBLIC_BASE_URL || undefined,
     sendEmail: process.env.RESEND_API_KEY
       ? resendSender({

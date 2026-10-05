@@ -3,6 +3,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApi } from "../src/api.js";
 import { migrate, openDb, type Db } from "../src/db/index.js";
 import { createUser } from "../src/store.js";
+import { signSessionToken, verifyToken } from "../src/tokens.js";
+
+const SECRET = "test-secret";
 
 let db: Db;
 let app: ReturnType<typeof createApi>;
@@ -16,7 +19,7 @@ beforeAll(async () => {
     await db.query("DROP SCHEMA IF EXISTS loopway CASCADE");
     await migrate(db);
   }
-  app = createApi({ getDb: async () => db, publicBaseUrl: "https://loopway.test" });
+  app = createApi({ getDb: async () => db, publicBaseUrl: "https://loopway.test", tokenSecret: SECRET });
 });
 afterAll(() => db.close());
 
@@ -36,8 +39,8 @@ async function call(method: string, path: string, opts: { key?: string; body?: u
 }
 
 async function newUser(name = "Matthew") {
-  const { apiKey } = await createUser(db, { name });
-  return apiKey;
+  const { user } = await createUser(db, { name });
+  return signSessionToken(user.id, SECRET).token;
 }
 
 async function newInbox(key: string, config?: unknown) {
@@ -78,16 +81,9 @@ const prPayload = (n: number) => ({
 // ---------- tests ----------
 
 describe("auth", () => {
-  it("rejects missing/invalid keys", async () => {
+  it("rejects missing/invalid tokens", async () => {
     expect((await call("GET", "/me")).status).toBe(401);
-    expect((await call("GET", "/me", { key: "lw_nope" })).status).toBe(401);
-  });
-  it("rotates api key", async () => {
-    const key = await newUser();
-    const r = await call("POST", "/me/api-key", { key });
-    expect(r.status).toBe(201);
-    expect((await call("GET", "/me", { key })).status).toBe(401);
-    expect((await call("GET", "/me", { key: r.body.api_key })).status).toBe(200);
+    expect((await call("GET", "/me", { key: "nope" })).status).toBe(401);
   });
 });
 
@@ -267,26 +263,41 @@ describe("event processing", () => {
   });
 });
 
+describe("session tokens", () => {
+  it("rejects expired, tampered and wrongly signed tokens", async () => {
+    const { user } = await createUser(db, { name: "Tok" });
+    const me = (t: string) => call("GET", "/me", { key: t });
+    const { token } = signSessionToken(user.id, SECRET);
+    expect((await me(token)).status).toBe(200);
+    expect((await me(signSessionToken(user.id, SECRET, Date.now() - 31 * 86400_000).token)).status).toBe(401);
+    expect((await me(signSessionToken(user.id, "another-secret").token)).status).toBe(401);
+    const [h, , sig] = token.split(".");
+    const forged = Buffer.from(JSON.stringify({ sub: user.id, typ: "session", iat: 0 })).toString("base64url");
+    expect((await me(`${h}.${forged}.${sig}`)).status).toBe(401);
+    expect(verifyToken(token, SECRET)).toMatchObject({ sub: user.id, typ: "session" });
+  });
+});
+
 describe("login", () => {
   const sent: { to: string; subject: string; text: string }[] = [];
-  const loginApp = () => createApi({ getDb: async () => db, sendEmail: async (e) => void sent.push(e) });
+  const loginApp = () => createApi({ getDb: async () => db, tokenSecret: SECRET, sendEmail: async (e) => void sent.push(e) });
   const post = (a: ReturnType<typeof createApi>, path: string, body: unknown) =>
     a.request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const lastCode = () => sent.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
 
-  it("emails a code, trades it for a working key, and replaces the old key", async () => {
+  it("emails a code and trades it for a session token", async () => {
     const a = loginApp();
-    const { apiKey: oldKey } = await createUser(db, { name: "Login", email: "login@example.com" });
+    await createUser(db, { name: "Login", email: "login@example.com" });
     expect((await post(a, "/auth/login", { email: "LOGIN@example.com" })).status).toBe(202);
     expect(sent.at(-1)!.to).toBe("login@example.com");
 
     const res = await post(a, "/auth/verify", { email: "login@example.com", code: lastCode() });
     expect(res.status).toBe(201);
-    const { api_key, user } = await res.json();
+    const { token, expires_at, user } = await res.json();
     expect(user.email).toBe("login@example.com");
+    expect(Date.parse(expires_at) - Date.now()).toBeGreaterThan(29 * 86400_000);
     const me = (key: string) => a.request("/me", { headers: { authorization: `Bearer ${key}` } });
-    expect((await me(api_key)).status).toBe(200);
-    expect((await me(oldKey)).status).toBe(401);
+    expect((await me(token)).status).toBe(200);
 
     // single use
     expect((await post(a, "/auth/verify", { email: "login@example.com", code: lastCode() })).status).toBe(401);
@@ -320,7 +331,7 @@ describe("login", () => {
 
     const res = await post(a, "/auth/verify", { email: "new.person@example.com", code: lastCode() });
     expect(res.status).toBe(201);
-    const { api_key, user, created } = await res.json();
+    const { token: api_key, user, created } = await res.json();
     expect(created).toBe(true);
     expect(user).toMatchObject({ name: "new.person", email: "new.person@example.com" });
     expect((await a.request("/me", { headers: { authorization: `Bearer ${api_key}` } })).status).toBe(200);

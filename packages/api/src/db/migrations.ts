@@ -88,4 +88,11 @@ CREATE TABLE loopway.login_codes (
 ALTER TABLE loopway.login_codes ENABLE ROW LEVEL SECURITY;
 `,
   },
+  {
+    // Sessions are JWTs and nothing reads the stored key hash any more.
+    version: "004_drop_api_key_hash",
+    sql: `
+ALTER TABLE loopway.users DROP COLUMN api_key_hash;
+`,
+  },
 ];

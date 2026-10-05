@@ -13,7 +13,7 @@ export async function configure(ctx: Context, opts: { url?: string; key?: string
 
   const client = new LoopwayClient({ baseUrl: url, apiKey: key, fetch: ctx.fetch });
   const user = await client.me().catch((err: unknown) => {
-    if (err instanceof ApiError && err.status === 401) throw new UsageError(`${url} rejected that API key.`);
+    if (err instanceof ApiError && err.status === 401) throw new UsageError(`${url} rejected that token.`);
     throw err;
   });
   await writeConfig(ctx.configDir, { api_url: url, api_key: key });
@@ -21,7 +21,7 @@ export async function configure(ctx: Context, opts: { url?: string; key?: string
   ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
 }
 
-/** Emails a one-time code, trades it for an API key, and saves the key. Replaces the account's previous key, or creates the account if the email is new. */
+/** Emails a one-time code, trades it for a 30-day session token, and saves it (as `api_key` in the config). Creates the account if the email is new. */
 export async function login(ctx: Context, opts: { url?: string; email?: string; code?: string }) {
   const current = await loadConfig(ctx.configDir, ctx.env);
   const url = opts.url ?? current.api_url;
@@ -37,11 +37,11 @@ export async function login(ctx: Context, opts: { url?: string; email?: string; 
   const code = opts.code ?? (ctx.interactive ? await promptCode() : undefined);
   if (!code) throw new UsageError("--code is required when not running in a terminal; request one by running `loopway login --email <email>` first and then re-run with it");
 
-  const { api_key, user, created } = await client.verifyLoginCode(email, code).catch((err: unknown) => {
+  const { token, user, created } = await client.verifyLoginCode(email, code).catch((err: unknown) => {
     if (err instanceof ApiError && err.code === "invalid_code") throw new UsageError(err.message);
     throw err;
   });
-  await writeConfig(ctx.configDir, { api_url: url, api_key });
+  await writeConfig(ctx.configDir, { api_url: url, api_key: token });
   ctx.out(`${created ? "Created your account and logged in to" : "Logged in to"} ${url} as ${bold(user.name)}${user.email ? ` <${user.email}>` : ""}`);
   ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
 }
@@ -84,7 +84,7 @@ async function promptUrl(current: string) {
 
 async function promptKey() {
   const v = await p.password({
-    message: "API key (from `npm run user:create`)",
+    message: "Token (from `npm run user:create`)",
     validate: (v) => (v?.trim() ? undefined : "Required"),
   });
   if (p.isCancel(v)) throw new CancelledError();
