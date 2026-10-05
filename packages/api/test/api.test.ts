@@ -292,6 +292,23 @@ describe("login", () => {
     expect((await post(a, "/auth/verify", { email: "login@example.com", code: lastCode() })).status).toBe(401);
   });
 
+  it("sends one email per user until the code expires", async () => {
+    const a = loginApp();
+    await createUser(db, { name: "Spam", email: "spam@example.com" });
+    const before = sent.length;
+    for (let i = 0; i < 5; i++) expect((await post(a, "/auth/login", { email: "spam@example.com" })).status).toBe(202);
+    expect(sent).toHaveLength(before + 1);
+    // the one code still works
+    expect((await post(a, "/auth/verify", { email: "spam@example.com", code: lastCode() })).status).toBe(201);
+    // and once it's used, a new one can be requested
+    await post(a, "/auth/login", { email: "spam@example.com" });
+    expect(sent).toHaveLength(before + 2);
+
+    await db.query(`UPDATE loopway.login_codes SET expires_at = now() - interval '1 second'`);
+    await post(a, "/auth/login", { email: "spam@example.com" });
+    expect(sent).toHaveLength(before + 3);
+  });
+
   it("says nothing about unknown emails and sends them nothing", async () => {
     const a = loginApp();
     const before = sent.length;

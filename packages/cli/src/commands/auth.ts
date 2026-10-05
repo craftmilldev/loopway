@@ -32,7 +32,7 @@ export async function login(ctx: Context, opts: { url?: string; email?: string; 
 
   if (!opts.code) {
     await client.requestLoginCode(email);
-    ctx.out(`If ${bold(email)} has a loopway account, a login code is on its way.`);
+    ctx.out(`If ${bold(email)} has a loopway account, a login code is on its way (one is sent per 10 minutes; check your spam folder before asking again).`);
   }
   const code = opts.code ?? (ctx.interactive ? await promptCode() : undefined);
   if (!code) throw new UsageError("--code is required when not running in a terminal; request one by running `loopway login --email <email>` first and then re-run with it");

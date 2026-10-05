@@ -61,14 +61,12 @@ ALTER TABLE loopway.events  ENABLE ROW LEVEL SECURITY;
     sql: `
 CREATE TABLE loopway.login_codes (
   id          uuid PRIMARY KEY,
-  user_id     uuid NOT NULL REFERENCES loopway.users(id) ON DELETE CASCADE,
+  user_id     uuid NOT NULL UNIQUE REFERENCES loopway.users(id) ON DELETE CASCADE,
   code_hash   text NOT NULL,
   attempts    integer NOT NULL DEFAULT 0,
   expires_at  timestamptz NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now()
 );
-
-CREATE INDEX login_codes_user_idx ON loopway.login_codes (user_id, created_at DESC);
 
 ALTER TABLE loopway.login_codes ENABLE ROW LEVEL SECURITY;
 `,

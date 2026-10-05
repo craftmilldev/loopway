@@ -69,11 +69,12 @@ export function createApi(opts: ApiOptions) {
   });
 
   // Login: email a one-time code, then trade it for an API key. Replaces the user's current key.
-  // The first step answers the same whether or not the email belongs to a user.
+  // The first step answers the same whether or not the email belongs to a user or a code was already sent.
+  // A user gets at most one code per TTL; asking again before it expires sends nothing.
   app.post("/auth/login", async (c) => {
     const { email } = z.object({ email: z.string().trim().email().max(320) }).parse(await jsonBody(c));
     const login = await store.createLoginCode(c.var.db, email);
-    if (login) {
+    if (login?.code) {
       await (opts.sendEmail ?? consoleSender)({
         to: login.user.email!,
         subject: `Your loopway login code: ${login.code}`,

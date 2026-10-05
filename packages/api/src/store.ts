@@ -38,21 +38,26 @@ export async function rotateApiKey(db: Db, userId: string): Promise<string> {
 export const LOGIN_CODE_TTL_MINUTES = 10;
 const MAX_LOGIN_ATTEMPTS = 5;
 
-/** Starts a login for the user with this email. Undefined if there is no such user. Replaces any earlier code. */
-export async function createLoginCode(db: Db, email: string): Promise<{ user: User; code: string } | undefined> {
+/**
+ * Starts a login for the user with this email. `code` is undefined when there is no such user, or when
+ * a code was already issued and hasn't expired: one email per user per TTL, so this can't be used to spam them.
+ */
+export async function createLoginCode(db: Db, email: string): Promise<{ user: User; code?: string } | undefined> {
   const [user] = await db.query<User>(
     `SELECT id, name, email, created_at FROM loopway.users WHERE lower(email) = lower($1)`,
     [email],
   );
   if (!user) return undefined;
   const code = newLoginCode();
-  await db.query(`DELETE FROM loopway.login_codes WHERE user_id = $1`, [user.id]);
-  await db.query(
+  // user_id is unique, so concurrent requests can't both get a code.
+  await db.query(`DELETE FROM loopway.login_codes WHERE user_id = $1 AND expires_at <= now()`, [user.id]);
+  const issued = await db.query(
     `INSERT INTO loopway.login_codes (id, user_id, code_hash, expires_at)
-     VALUES ($1, $2, $3, now() + $4::int * interval '1 minute')`,
+     VALUES ($1, $2, $3, now() + $4::int * interval '1 minute')
+     ON CONFLICT (user_id) DO NOTHING RETURNING id`,
     [uuidv7(), user.id, sha256(code), LOGIN_CODE_TTL_MINUTES],
   );
-  return { user, code };
+  return { user, code: issued.length ? code : undefined };
 }
 
 /**
