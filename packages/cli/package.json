@@ -1,0 +1,33 @@
+{
+  "name": "@loopway/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Command-line client for the loopway API.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "loopway": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "tsx src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.8.1",
+    "commander": "^15.0.0"
+  },
+  "devDependencies": {
+    "@loopway/api": "*",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.3"
+  }
+}

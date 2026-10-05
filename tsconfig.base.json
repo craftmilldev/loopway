@@ -9,8 +9,6 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "verbatimModuleSyntax": true,
-    "types": ["node"],
-    "noEmit": true
-  },
-  "include": ["src", "scripts", "test"]
+    "types": ["node"]
+  }
 }
