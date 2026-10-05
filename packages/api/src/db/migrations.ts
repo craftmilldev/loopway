@@ -69,18 +69,6 @@ CREATE TABLE loopway.login_codes (
 );
 
 ALTER TABLE loopway.login_codes ENABLE ROW LEVEL SECURITY;
-
--- Keys minted by \`loopway login\`. They sit alongside users.api_key_hash, so logging in never replaces a key.
-CREATE TABLE loopway.login_keys (
-  id          uuid PRIMARY KEY,
-  user_id     uuid NOT NULL REFERENCES loopway.users(id) ON DELETE CASCADE,
-  key_hash    text NOT NULL UNIQUE,
-  created_at  timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE INDEX login_keys_user_idx ON loopway.login_keys (user_id);
-
-ALTER TABLE loopway.login_keys ENABLE ROW LEVEL SECURITY;
 `,
   },
 ];

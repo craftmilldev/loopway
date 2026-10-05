@@ -274,7 +274,7 @@ describe("login", () => {
     a.request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const lastCode = () => sent.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
 
-  it("emails a code, trades it for a working key, and leaves the old key alone", async () => {
+  it("emails a code, trades it for a working key, and replaces the old key", async () => {
     const a = loginApp();
     const { apiKey: oldKey } = await createUser(db, { name: "Login", email: "login@example.com" });
     expect((await post(a, "/auth/login", { email: "LOGIN@example.com" })).status).toBe(202);
@@ -286,16 +286,7 @@ describe("login", () => {
     expect(user.email).toBe("login@example.com");
     const me = (key: string) => a.request("/me", { headers: { authorization: `Bearer ${key}` } });
     expect((await me(api_key)).status).toBe(200);
-    expect((await me(oldKey)).status).toBe(200);
-
-    // a second login mints another key rather than replacing the first
-    sent.length = 0;
-    await db.query(`DELETE FROM loopway.login_codes`);
-    await post(a, "/auth/login", { email: "login@example.com" });
-    const second = (await (await post(a, "/auth/verify", { email: "login@example.com", code: lastCode() })).json()).api_key;
-    expect(second).not.toBe(api_key);
-    expect((await me(api_key)).status).toBe(200);
-    expect((await me(second)).status).toBe(200);
+    expect((await me(oldKey)).status).toBe(401);
 
     // single use
     expect((await post(a, "/auth/verify", { email: "login@example.com", code: lastCode() })).status).toBe(401);

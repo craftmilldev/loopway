@@ -68,7 +68,7 @@ export function createApi(opts: ApiOptions) {
     return c.json({ id, duplicate }, duplicate ? 200 : 202);
   });
 
-  // Login: email a one-time code, then trade it for a new API key. The user's other keys keep working.
+  // Login: email a one-time code, then trade it for an API key. Replaces the user's current key.
   // The first step answers the same whether or not the email belongs to a user or a code was already sent.
   // A user gets at most one code per TTL; asking again before it expires sends nothing.
   app.post("/auth/login", async (c) => {
