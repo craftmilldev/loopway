@@ -1,6 +1,6 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import { LIST_STATUSES } from "./client.js";
-import { login, logout, whoami } from "./commands/auth.js";
+import { clearConfig, configure, whoami } from "./commands/auth.js";
 import { getEvent, listEvents, lockEvent, markProcessed, nextEvent, unlockEvent } from "./commands/events.js";
 import { createInbox, listInboxes, showInbox, splitList } from "./commands/inboxes.js";
 import type { Context } from "./context.js";
@@ -13,7 +13,7 @@ export function createProgram(ctx: Context): Command {
     .addHelpText(
       "after",
       `
-Credentials are stored in ~/.loopway/config.json by \`loopway login\`.
+Credentials are stored in ~/.loopway/config.json by \`loopway config\`.
 LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     );
 
@@ -24,16 +24,16 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
   // ---------- auth ----------
 
   program
-    .command("login")
-    .description("save an API URL and key to ~/.loopway/config.json")
+    .command("config")
+    .description("set the API URL and key in ~/.loopway/config.json")
     .option("--url <url>", "API base URL, e.g. https://loopway.example.com")
     .option("--key <api_key>", "API key (prompted for if omitted; LOOPWAY_API_KEY also works)")
-    .action((opts) => login(ctx, opts));
+    .action((opts) => configure(ctx, opts));
 
   program
-    .command("logout")
-    .description("forget the saved credentials")
-    .action(() => logout(ctx));
+    .command("clear-config")
+    .description("delete ~/.loopway/config.json")
+    .action(() => clearConfig(ctx));
 
   program
     .command("whoami")

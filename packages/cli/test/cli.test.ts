@@ -49,9 +49,9 @@ async function run(...args: string[]) {
 
 const runJson = async (...args: string[]) => JSON.parse(await run(...args, "--json"));
 
-async function loggedIn(name = "Matthew") {
+async function configured(name = "Matthew") {
   const { apiKey } = await createUser(db, { name });
-  await run("login", "--url", API, "--key", apiKey);
+  await run("config", "--url", API, "--key", apiKey);
   return apiKey;
 }
 
@@ -81,22 +81,22 @@ async function inboxWithEvents(n: number, name = "gh") {
 // ---------- tests ----------
 
 describe("auth", () => {
-  it("login verifies the key and writes ~/.loopway/config.json owner-only", async () => {
-    const key = await loggedIn();
+  it("config verifies the key and writes ~/.loopway/config.json owner-only", async () => {
+    const key = await configured();
     expect(await readConfig(configDir)).toEqual({ api_url: API, api_key: key });
     expect((await stat(join(configDir, "config.json"))).mode & 0o777).toBe(0o600);
     expect(await runJson("whoami")).toMatchObject({ name: "Matthew", api_url: API });
   });
 
-  it("login rejects a bad key without saving it", async () => {
-    await expect(run("login", "--url", API, "--key", "lw_nope")).rejects.toThrow(/rejected that API key/);
+  it("config rejects a bad key without saving it", async () => {
+    await expect(run("config", "--url", API, "--key", "lw_nope")).rejects.toThrow(/rejected that API key/);
     expect(await readConfig(configDir)).toBeUndefined();
   });
 
-  it("commands fail clearly when logged out", async () => {
-    await loggedIn();
-    expect(await run("logout")).toMatch(/Logged out/);
-    await expect(run("inbox", "list")).rejects.toThrow(/Not logged in/);
+  it("commands fail clearly when not configured", async () => {
+    await configured();
+    expect(await run("clear-config")).toMatch(/Removed .*config\.json/);
+    await expect(run("inbox", "list")).rejects.toThrow(/No API URL and key configured/);
   });
 
   it("env vars override the config file", async () => {
@@ -116,7 +116,7 @@ describe("auth", () => {
 
 describe("inboxes", () => {
   it("creates from flags and lists", async () => {
-    await loggedIn();
+    await configured();
     const inbox = await runJson("inbox", "create", "--name", "prs", "--source", "github", "--events", "push, pull_request");
     expect(inbox.config.events).toEqual(["push", "pull_request"]);
     expect(inbox.webhook_url).toBe(`${API}/webhooks/${inbox.id}`);
@@ -127,12 +127,12 @@ describe("inboxes", () => {
   });
 
   it("requires --name without a terminal", async () => {
-    await loggedIn();
+    await configured();
     await expect(run("inbox", "create", "--source", "github")).rejects.toThrow(/--name is required/);
   });
 
   it("show resolves names and reports stats", async () => {
-    await loggedIn();
+    await configured();
     const inbox = await inboxWithEvents(2, "named");
     const shown = await runJson("inbox", "show", "named");
     expect(shown.id).toBe(inbox.id);
@@ -143,7 +143,7 @@ describe("inboxes", () => {
 
 describe("events", () => {
   it("list filters, paginates with --all, and get shows one", async () => {
-    await loggedIn();
+    await configured();
     const inbox = await inboxWithEvents(3);
     const page = await runJson("events", "list", inbox.id, "--limit", "2");
     expect(page.data).toHaveLength(2);
@@ -160,7 +160,7 @@ describe("events", () => {
   });
 
   it("next → done uses the remembered lock token", async () => {
-    await loggedIn();
+    await configured();
     const inbox = await inboxWithEvents(1);
     const claimed = await runJson("events", "next", inbox.name, "--ttl", "60");
     expect(claimed.lock.token).toMatch(/^lk_/);
@@ -177,7 +177,7 @@ describe("events", () => {
   });
 
   it("lock renews with the held token, unlock releases it", async () => {
-    await loggedIn();
+    await configured();
     const inbox = await inboxWithEvents(1);
     const [{ id }] = (await runJson("events", "list", inbox.id)).data;
     const first = await runJson("events", "lock", inbox.id, id, "--ttl", "30");
@@ -190,7 +190,7 @@ describe("events", () => {
   });
 
   it("surfaces API conflicts", async () => {
-    await loggedIn();
+    await configured();
     const inbox = await inboxWithEvents(1);
     const [{ id }] = (await runJson("events", "list", inbox.id)).data;
     await runJson("events", "lock", inbox.id, id);
@@ -199,7 +199,7 @@ describe("events", () => {
     const key = (await readConfig(first))!.api_key;
     configDir = await mkdtemp(join(tmpdir(), "loopway-cli-"));
     try {
-      await run("login", "--url", API, "--key", key);
+      await run("config", "--url", API, "--key", key);
       await expect(run("events", "lock", inbox.id, id)).rejects.toThrow(/locked until/);
       await expect(run("events", "done", inbox.id, id)).rejects.toThrow(/locked until/);
     } finally {
@@ -208,7 +208,7 @@ describe("events", () => {
   });
 
   it("rejects bad numbers before calling the API", async () => {
-    await loggedIn();
+    await configured();
     await expect(run("events", "next", "x", "--ttl", "0")).rejects.toThrow(/positive integer/);
   });
 });

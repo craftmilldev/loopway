@@ -32,19 +32,19 @@ export async function clearConfig(dir: string): Promise<boolean> {
 
 /**
  * The credentials a command should use: LOOPWAY_API_URL / LOOPWAY_API_KEY override the config file,
- * so CI and scripts can run without `loopway login`.
+ * so CI and scripts can run without `loopway config`.
  */
 export async function resolveAuth(dir: string, env: NodeJS.ProcessEnv = process.env): Promise<Config> {
   const file = await readConfig(dir);
   const api_url = env.LOOPWAY_API_URL || file?.api_url;
   const api_key = env.LOOPWAY_API_KEY || file?.api_key;
-  if (!api_url || !api_key) throw new NotLoggedInError();
+  if (!api_url || !api_key) throw new NotConfiguredError();
   return { api_url, api_key };
 }
 
-export class NotLoggedInError extends Error {
+export class NotConfiguredError extends Error {
   constructor() {
-    super("Not logged in. Run `loopway login` (or set LOOPWAY_API_URL and LOOPWAY_API_KEY).");
+    super("No API URL and key configured. Run `loopway config` (or set LOOPWAY_API_URL and LOOPWAY_API_KEY).");
   }
 }
 

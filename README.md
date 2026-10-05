@@ -50,9 +50,9 @@ npm run build -w @loopway/cli && npm link -w @loopway/cli      # or put `loopway
 ```
 
 ```bash
-loopway login                          # prompts for API URL + key, verifies with GET /me
+loopway config                         # prompts for API URL + key, verifies with GET /me
 loopway whoami
-loopway logout
+loopway clear-config                   # deletes ~/.loopway/config.json
 
 loopway inbox create                   # interactive: name → source → events → secret → confirm
 loopway inbox list

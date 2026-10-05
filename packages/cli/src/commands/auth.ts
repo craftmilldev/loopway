@@ -1,12 +1,12 @@
 import * as p from "@clack/prompts";
 import { ApiError, LoopwayClient } from "../client.js";
-import { clearConfig, configPath, readConfig, resolveAuth, writeConfig } from "../config.js";
+import { clearConfig as removeConfig, configPath, readConfig, resolveAuth, writeConfig } from "../config.js";
 import { authedClient, CancelledError, UsageError, type Context } from "../context.js";
 import { bold, dim, fields, json } from "../format.js";
 
 const DEFAULT_URL = "http://localhost:3000";
 
-export async function login(ctx: Context, opts: { url?: string; key?: string }) {
+export async function configure(ctx: Context, opts: { url?: string; key?: string }) {
   const existing = await readConfig(ctx.configDir);
   const url = opts.url ?? (ctx.interactive ? await promptUrl(existing?.api_url) : undefined);
   if (!url) throw new UsageError("--url is required when not running in a terminal");
@@ -19,13 +19,13 @@ export async function login(ctx: Context, opts: { url?: string; key?: string }) 
     throw err;
   });
   await writeConfig(ctx.configDir, { api_url: url.replace(/\/+$/, ""), api_key: key });
-  ctx.out(`Logged in to ${url} as ${bold(user.name)}${user.email ? ` <${user.email}>` : ""}`);
+  ctx.out(`Configured ${url} as ${bold(user.name)}${user.email ? ` <${user.email}>` : ""}`);
   ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
 }
 
-export async function logout(ctx: Context) {
-  const removed = await clearConfig(ctx.configDir);
-  ctx.out(removed ? `Logged out. Removed ${configPath(ctx.configDir)}` : "Not logged in.");
+export async function clearConfig(ctx: Context) {
+  const removed = await removeConfig(ctx.configDir);
+  ctx.out(removed ? `Removed ${configPath(ctx.configDir)}` : "Nothing to remove; no config saved.");
 }
 
 export async function whoami(ctx: Context, opts: { json?: boolean }) {
