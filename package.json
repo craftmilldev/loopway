@@ -15,7 +15,6 @@
     "dev": "npm run dev -w @loopway/web",
     "start": "npm run start -w @loopway/web",
     "db:migrate": "npm run db:migrate -w @loopway/web",
-    "user:create": "npm run user:create -w @loopway/web --",
     "cli": "npm run start -w @loopway/cli --",
     "build": "npm run build --workspaces --if-present",
     "test": "npm test --workspaces",
