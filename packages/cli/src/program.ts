@@ -78,7 +78,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .alias("ls")
     .description("list events")
     .argument("<inbox>", "inbox id or name")
-    .addOption(new Option("--status <status>", "filter by status").choices(LIST_STATUSES).default("all"))
+    .addOption(new Option("--status <status>", "filter by status (default all)").choices(LIST_STATUSES))
     .option("--type <type>", "exact CloudEvent type, or a prefix ending in * (e.g. com.github.pull_request.*)")
     .option("--limit <n>", "page size (max 100)", positiveInt)
     .addOption(new Option("--order <order>", "sort by arrival").choices(["asc", "desc"]))

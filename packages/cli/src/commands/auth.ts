@@ -1,16 +1,14 @@
 import * as p from "@clack/prompts";
 import { ApiError, LoopwayClient } from "../client.js";
-import { clearConfig as removeConfig, configPath, readConfig, resolveAuth, writeConfig } from "../config.js";
+import { clearConfig as removeConfig, configPath, loadConfig, resolveAuth, writeConfig } from "../config.js";
 import { authedClient, CancelledError, UsageError, type Context } from "../context.js";
 import { bold, dim, fields, json } from "../format.js";
 
-const DEFAULT_URL = "http://localhost:3000";
-
+/** Flags win; otherwise prompt (starting from the current URL) or, without a terminal, keep what's set. */
 export async function configure(ctx: Context, opts: { url?: string; key?: string }) {
-  const existing = await readConfig(ctx.configDir);
-  const url = opts.url ?? (ctx.interactive ? await promptUrl(existing?.api_url) : undefined);
-  if (!url) throw new UsageError("--url is required when not running in a terminal");
-  const key = opts.key ?? ctx.env.LOOPWAY_API_KEY ?? (ctx.interactive ? await promptKey() : undefined);
+  const current = await loadConfig(ctx.configDir, ctx.env);
+  const url = opts.url ?? (ctx.interactive ? await promptUrl(current.api_url) : current.api_url);
+  const key = opts.key ?? (ctx.interactive ? await promptKey() : current.api_key);
   if (!key) throw new UsageError("--key (or LOOPWAY_API_KEY) is required when not running in a terminal");
 
   const client = new LoopwayClient({ baseUrl: url, apiKey: key, fetch: ctx.fetch });
@@ -18,7 +16,7 @@ export async function configure(ctx: Context, opts: { url?: string; key?: string
     if (err instanceof ApiError && err.status === 401) throw new UsageError(`${url} rejected that API key.`);
     throw err;
   });
-  await writeConfig(ctx.configDir, { api_url: url.replace(/\/+$/, ""), api_key: key });
+  await writeConfig(ctx.configDir, { api_url: url, api_key: key });
   ctx.out(`Configured ${url} as ${bold(user.name)}${user.email ? ` <${user.email}>` : ""}`);
   ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
 }
@@ -42,10 +40,10 @@ export async function whoami(ctx: Context, opts: { json?: boolean }) {
   );
 }
 
-async function promptUrl(current?: string) {
+async function promptUrl(current: string) {
   const v = await p.text({
     message: "loopway API URL",
-    initialValue: current ?? DEFAULT_URL,
+    initialValue: current,
     validate: (v) => {
       try {
         const u = new URL(v ?? "");

@@ -7,7 +7,7 @@ import { openDb, type Db } from "@loopway/api/db";
 import { createUser } from "@loopway/api/store";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { readConfig } from "../src/config.js";
+import { loadConfig, readConfig, writeConfig } from "../src/config.js";
 import type { Context } from "../src/context.js";
 import { createProgram } from "../src/program.js";
 
@@ -96,7 +96,17 @@ describe("auth", () => {
   it("commands fail clearly when not configured", async () => {
     await configured();
     expect(await run("clear-config")).toMatch(/Removed .*config\.json/);
-    await expect(run("inbox", "list")).rejects.toThrow(/No API URL and key configured/);
+    await expect(run("inbox", "list")).rejects.toThrow(/No API key configured/);
+  });
+
+  it("loadConfig: env over config.json over defaults; trailing slashes dropped on save", async () => {
+    expect(await loadConfig(configDir, {})).toEqual({ api_url: "http://localhost:3000", api_key: undefined });
+    await writeConfig(configDir, { api_url: "https://file.test/", api_key: "lw_file" });
+    expect(await loadConfig(configDir, {})).toEqual({ api_url: "https://file.test", api_key: "lw_file" });
+    expect(await loadConfig(configDir, { LOOPWAY_API_URL: "https://env.test", LOOPWAY_API_KEY: "lw_env" })).toEqual({
+      api_url: "https://env.test",
+      api_key: "lw_env",
+    });
   });
 
   it("env vars override the config file", async () => {

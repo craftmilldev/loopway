@@ -11,7 +11,32 @@ export interface Config {
   api_key: string;
 }
 
+/** Used for anything neither the environment nor config.json sets. */
+const DEFAULTS = { api_url: "http://localhost:3000" };
+
 export const configPath = (dir: string) => join(dir, "config.json");
+
+/**
+ * The settings commands should use: LOOPWAY_API_URL / LOOPWAY_API_KEY, then config.json, then DEFAULTS.
+ * The env vars let CI and scripts run without `loopway config`. There's no default key.
+ */
+export async function loadConfig(
+  dir: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ api_url: string; api_key?: string }> {
+  const file = await readConfig(dir);
+  return {
+    api_url: env.LOOPWAY_API_URL || file?.api_url || DEFAULTS.api_url,
+    api_key: env.LOOPWAY_API_KEY || file?.api_key,
+  };
+}
+
+/** loadConfig, for commands that can't run without a key. */
+export async function resolveAuth(dir: string, env: NodeJS.ProcessEnv = process.env): Promise<Config> {
+  const { api_url, api_key } = await loadConfig(dir, env);
+  if (!api_key) throw new NotConfiguredError();
+  return { api_url, api_key };
+}
 
 export async function readConfig(dir: string): Promise<Config | undefined> {
   const raw = await readJson(configPath(dir));
@@ -21,7 +46,7 @@ export async function readConfig(dir: string): Promise<Config | undefined> {
 }
 
 export async function writeConfig(dir: string, config: Config): Promise<void> {
-  await writeJson(configPath(dir), config);
+  await writeJson(configPath(dir), { ...config, api_url: config.api_url.replace(/\/+$/, "") });
 }
 
 export async function clearConfig(dir: string): Promise<boolean> {
@@ -30,21 +55,9 @@ export async function clearConfig(dir: string): Promise<boolean> {
   return existed;
 }
 
-/**
- * The credentials a command should use: LOOPWAY_API_URL / LOOPWAY_API_KEY override the config file,
- * so CI and scripts can run without `loopway config`.
- */
-export async function resolveAuth(dir: string, env: NodeJS.ProcessEnv = process.env): Promise<Config> {
-  const file = await readConfig(dir);
-  const api_url = env.LOOPWAY_API_URL || file?.api_url;
-  const api_key = env.LOOPWAY_API_KEY || file?.api_key;
-  if (!api_url || !api_key) throw new NotConfiguredError();
-  return { api_url, api_key };
-}
-
 export class NotConfiguredError extends Error {
   constructor() {
-    super("No API URL and key configured. Run `loopway config` (or set LOOPWAY_API_URL and LOOPWAY_API_KEY).");
+    super("No API key configured. Run `loopway config` (or set LOOPWAY_API_KEY).");
   }
 }
 
