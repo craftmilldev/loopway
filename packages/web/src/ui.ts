@@ -304,7 +304,7 @@ const DASHBOARD = page({
       empty.hidden = data.length > 0;
     }
 
-    const panel = document.getElementById("create"), form = document.getElementById("form"), err = document.getElementById("err");
+    const panel = document.getElementById("create"), form = panel, err = document.getElementById("err");
     const source = document.getElementById("source");
     document.getElementById("new").addEventListener("click", async () => {
       panel.hidden = !panel.hidden;
