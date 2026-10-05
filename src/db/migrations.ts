@@ -1,0 +1,59 @@
+/**
+ * Migrations live in TS (not .sql files) so they're bundled into the Vercel function.
+ * Append new entries; never edit an applied one.
+ *
+ * Everything is in a `loopway` schema so Supabase's Data API (which exposes `public`) never sees it.
+ * RLS is enabled with no policies as a second guard; the app connects as the table owner.
+ */
+export const migrations: { version: string; sql: string }[] = [
+  {
+    version: "001_init",
+    sql: `
+CREATE TABLE loopway.users (
+  id            uuid PRIMARY KEY,
+  name          text NOT NULL,
+  email         text UNIQUE,
+  api_key_hash  text NOT NULL UNIQUE,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE loopway.inboxes (
+  id           uuid PRIMARY KEY,
+  user_id      uuid NOT NULL REFERENCES loopway.users(id) ON DELETE CASCADE,
+  name         text NOT NULL,
+  source_type  text NOT NULL,
+  config       jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX inboxes_user_idx ON loopway.inboxes (user_id);
+
+CREATE TABLE loopway.events (
+  id            uuid PRIMARY KEY,
+  inbox_id      uuid NOT NULL REFERENCES loopway.inboxes(id) ON DELETE CASCADE,
+  ce_id         text NOT NULL,
+  ce_source     text NOT NULL,
+  ce_type       text NOT NULL,
+  ce_subject    text,
+  ce_time       timestamptz,
+  cloudevent    jsonb NOT NULL,
+  received_at   timestamptz NOT NULL DEFAULT now(),
+  lock_token    text,
+  locked_until  timestamptz,
+  lock_count    integer NOT NULL DEFAULT 0,
+  processed_at  timestamptz,
+  CONSTRAINT events_ce_unique UNIQUE (inbox_id, ce_source, ce_id)
+);
+
+CREATE INDEX events_inbox_idx ON loopway.events (inbox_id, id);
+
+CREATE INDEX events_unprocessed_idx ON loopway.events (inbox_id, id) WHERE processed_at IS NULL;
+
+ALTER TABLE loopway.users   ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE loopway.inboxes ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE loopway.events  ENABLE ROW LEVEL SECURITY;
+`,
+  },
+];

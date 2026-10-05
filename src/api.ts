@@ -1,0 +1,323 @@
+import { Hono, type Context } from "hono";
+import { HTTPException } from "hono/http-exception";
+import { z, ZodError } from "zod";
+import type { Db } from "./db/index.js";
+import { isUuid, safeEqual } from "./ids.js";
+import { getSource, sources } from "./sources/index.js";
+import * as store from "./store.js";
+import type { EventRow, Inbox, User } from "./store.js";
+
+export interface ApiOptions {
+  getDb: () => Promise<Db>;
+  /** Enables POST /admin/users when set. */
+  adminToken?: string;
+  /** Base for webhook URLs. Defaults to the request origin. */
+  publicBaseUrl?: string;
+}
+
+type Env = { Variables: { db: Db; user: User } };
+
+const DEFAULT_TTL = 300;
+const MAX_TTL = 12 * 60 * 60;
+
+export function createApi(opts: ApiOptions) {
+  const app = new Hono<Env>();
+
+  app.onError((err, c) => {
+    if (err instanceof ZodError) {
+      return c.json({ error: { code: "invalid_request", message: "Invalid request", details: err.issues } }, 400);
+    }
+    if (err instanceof ApiError) return c.json({ error: { code: err.code, message: err.message } }, err.status);
+    if (err instanceof HTTPException) return c.json({ error: { code: "http_error", message: err.message } }, err.status);
+    console.error(err);
+    return c.json({ error: { code: "internal", message: "Internal server error" } }, 500);
+  });
+  app.notFound((c) => c.json({ error: { code: "not_found", message: "Route not found" } }, 404));
+
+  app.use(async (c, next) => {
+    c.set("db", await opts.getDb());
+    await next();
+  });
+
+  // ---------- Public ----------
+
+  app.get("/", (c) =>
+    c.json({ name: "loopway", sources: Object.keys(sources), docs: "https://github.com/cloudevents/spec" }),
+  );
+
+  app.get("/health", async (c) => {
+    await c.var.db.query("SELECT 1");
+    return c.json({ ok: true });
+  });
+
+  app.post("/webhooks/:inboxId", async (c) => {
+    const inboxId = c.req.param("inboxId");
+    const inbox = isUuid(inboxId) ? await store.getInbox(c.var.db, inboxId) : undefined;
+    if (!inbox) throw new ApiError(404, "not_found", "Inbox not found");
+    const source = getSource(inbox.source_type);
+    if (!source) throw new ApiError(500, "internal", `Unknown source type ${inbox.source_type}`);
+
+    const result = await source.receive(
+      { headers: c.req.raw.headers, rawBody: await c.req.text(), receivedAt: new Date() },
+      inbox.config,
+    );
+    if (result.kind === "rejected") throw new ApiError(result.status, "rejected", result.message);
+    if (result.kind === "ignored") return c.json({ ignored: true, reason: result.reason }, 200);
+    const { id, duplicate } = await store.insertEvent(c.var.db, inbox.id, result.event);
+    return c.json({ id, duplicate }, duplicate ? 200 : 202);
+  });
+
+  // ---------- Admin ----------
+
+  app.post("/admin/users", async (c) => {
+    const token = bearer(c);
+    if (!opts.adminToken || !token || !safeEqual(token, opts.adminToken)) {
+      throw new ApiError(401, "unauthorized", "Admin token required");
+    }
+    const input = z
+      .object({ name: z.string().min(1), email: z.email().optional() })
+      .parse(await jsonBody(c));
+    const { user, apiKey } = await store.createUser(c.var.db, input);
+    return c.json({ user: serializeUser(user), api_key: apiKey }, 201);
+  });
+
+  // ---------- Authenticated ----------
+
+  const authed = new Hono<Env>();
+  authed.use(async (c, next) => {
+    const token = bearer(c);
+    const user = token ? await store.findUserByApiKey(c.var.db, token) : undefined;
+    if (!user) throw new ApiError(401, "unauthorized", "Missing or invalid API key");
+    c.set("user", user);
+    await next();
+  });
+
+  authed.get("/me", (c) => c.json(serializeUser(c.var.user)));
+
+  authed.post("/me/api-key", async (c) => {
+    const apiKey = await store.rotateApiKey(c.var.db, c.var.user.id);
+    return c.json({ api_key: apiKey }, 201);
+  });
+
+  authed.get("/sources", (c) =>
+    c.json({ data: Object.values(sources).map((s) => ({ type: s.type, description: s.description })) }),
+  );
+
+  // Inboxes
+
+  authed.get("/inboxes", async (c) => {
+    const rows = await store.listInboxes(c.var.db, c.var.user.id);
+    return c.json({ data: rows.map((r) => serializeInbox(c, r)) });
+  });
+
+  authed.post("/inboxes", async (c) => {
+    const input = z
+      .object({ name: z.string().min(1).max(200), source_type: z.string(), config: z.unknown().optional() })
+      .parse(await jsonBody(c));
+    const source = getSource(input.source_type);
+    if (!source) {
+      throw new ApiError(400, "invalid_request", `Unknown source_type. Available: ${Object.keys(sources).join(", ")}`);
+    }
+    const inbox = await store.createInbox(c.var.db, {
+      userId: c.var.user.id,
+      name: input.name,
+      sourceType: source.type,
+      config: source.parseConfig(input.config),
+    });
+    return c.json(serializeInbox(c, inbox), 201);
+  });
+
+  authed.get("/inboxes/:inboxId", async (c) => {
+    const inbox = await ownedInbox(c);
+    return c.json({ ...serializeInbox(c, inbox), stats: await store.inboxStats(c.var.db, inbox.id) });
+  });
+
+  authed.patch("/inboxes/:inboxId", async (c) => {
+    const inbox = await ownedInbox(c);
+    const input = z
+      .object({ name: z.string().min(1).max(200).optional(), config: z.unknown().optional() })
+      .parse(await jsonBody(c));
+    const source = getSource(inbox.source_type)!;
+    const updated = await store.updateInbox(c.var.db, inbox.id, {
+      name: input.name,
+      config: input.config === undefined ? undefined : source.parseConfig(input.config, inbox.config),
+    });
+    return c.json(serializeInbox(c, updated));
+  });
+
+  authed.delete("/inboxes/:inboxId", async (c) => {
+    const inbox = await ownedInbox(c);
+    await store.deleteInbox(c.var.db, inbox.id);
+    return c.body(null, 204);
+  });
+
+  // Events
+
+  authed.get("/inboxes/:inboxId/events", async (c) => {
+    const inbox = await ownedInbox(c);
+    const q = z
+      .object({
+        status: z.enum(store.LIST_STATUSES).default("all"),
+        type: z.string().min(1).optional(),
+        cursor: z.string().refine(isUuid, "cursor must be an event id").optional(),
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+        order: z.enum(["asc", "desc"]).default("asc"),
+      })
+      .parse(c.req.query());
+    const { events, nextCursor } = await store.listEvents(c.var.db, inbox.id, {
+      status: q.status,
+      type: q.type,
+      after: q.cursor,
+      limit: q.limit,
+      order: q.order,
+    });
+    return c.json({ data: events.map((e) => serializeEvent(e)), next_cursor: nextCursor });
+  });
+
+  const ttlBody = z.object({ ttl_seconds: z.number().int().min(1).max(MAX_TTL).default(DEFAULT_TTL) });
+
+  authed.post("/inboxes/:inboxId/events/next", async (c) => {
+    const inbox = await ownedInbox(c);
+    const { ttl_seconds } = ttlBody.parse(await jsonBody(c));
+    const row = await store.claimNext(c.var.db, inbox.id, ttl_seconds);
+    if (!row) return c.body(null, 204);
+    return c.json(serializeEvent(row, { withLock: true }));
+  });
+
+  authed.get("/inboxes/:inboxId/events/:eventId", async (c) => {
+    const inbox = await ownedInbox(c);
+    return c.json(serializeEvent(await existingEvent(c, inbox)));
+  });
+
+  authed.post("/inboxes/:inboxId/events/:eventId/lock", async (c) => {
+    const inbox = await ownedInbox(c);
+    const input = ttlBody.extend({ lock_token: z.string().optional() }).parse(await jsonBody(c));
+    const eventId = c.req.param("eventId");
+    const row = isUuid(eventId)
+      ? await store.lockEvent(c.var.db, inbox.id, eventId, input.ttl_seconds, input.lock_token ?? null)
+      : undefined;
+    if (!row) throw conflictFor(await existingEvent(c, inbox));
+    return c.json(serializeEvent(row, { withLock: true }));
+  });
+
+  authed.post("/inboxes/:inboxId/events/:eventId/unlock", async (c) => {
+    const inbox = await ownedInbox(c);
+    const { lock_token } = z.object({ lock_token: z.string().min(1) }).parse(await jsonBody(c));
+    const eventId = c.req.param("eventId");
+    const row = isUuid(eventId) ? await store.unlockEvent(c.var.db, inbox.id, eventId, lock_token) : undefined;
+    if (!row) {
+      const current = await existingEvent(c, inbox);
+      if (current.status === "processed") throw new ApiError(409, "already_processed", "Event is already processed");
+      if (!current.lock_token) throw new ApiError(409, "not_locked", "Event is not locked");
+      throw new ApiError(409, "lock_mismatch", "lock_token does not match the current lock");
+    }
+    return c.json(serializeEvent(row));
+  });
+
+  authed.post("/inboxes/:inboxId/events/:eventId/processed", async (c) => {
+    const inbox = await ownedInbox(c);
+    const { lock_token } = z.object({ lock_token: z.string().optional() }).parse(await jsonBody(c));
+    const eventId = c.req.param("eventId");
+    const row = isUuid(eventId)
+      ? await store.markProcessed(c.var.db, inbox.id, eventId, lock_token ?? null)
+      : undefined;
+    if (row) return c.json(serializeEvent(row));
+    const current = await existingEvent(c, inbox);
+    if (current.status === "processed") return c.json(serializeEvent(current)); // idempotent
+    throw conflictFor(current);
+  });
+
+  app.route("/", authed);
+  return app;
+
+  // ---------- helpers (closures over opts) ----------
+
+  async function ownedInbox(c: Context<Env>): Promise<Inbox> {
+    const id = c.req.param("inboxId") ?? "";
+    const inbox = isUuid(id) ? await store.getInbox(c.var.db, id, c.var.user.id) : undefined;
+    if (!inbox) throw new ApiError(404, "not_found", "Inbox not found");
+    return inbox;
+  }
+
+  function serializeInbox(c: Context<Env>, inbox: Inbox) {
+    const source = getSource(inbox.source_type);
+    const base = (opts.publicBaseUrl || new URL(c.req.url).origin).replace(/\/+$/, "");
+    const webhookUrl = `${base}/webhooks/${inbox.id}`;
+    return {
+      id: inbox.id,
+      name: inbox.name,
+      source_type: inbox.source_type,
+      config: source ? source.publicConfig(inbox.config) : inbox.config,
+      webhook_url: webhookUrl,
+      setup: source?.setup?.(inbox.config, webhookUrl),
+      created_at: iso(inbox.created_at),
+    };
+  }
+}
+
+// ---------- module helpers ----------
+
+export class ApiError extends Error {
+  constructor(
+    public status: 400 | 401 | 403 | 404 | 409 | 415 | 500,
+    public code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+function bearer(c: Context): string | undefined {
+  const h = c.req.header("authorization");
+  const m = h?.match(/^Bearer\s+(.+)$/i);
+  return m?.[1]?.trim();
+}
+
+async function jsonBody(c: Context): Promise<unknown> {
+  const text = await c.req.text();
+  if (!text.trim()) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new ApiError(400, "invalid_json", "Request body must be JSON");
+  }
+}
+
+async function existingEvent(c: Context<Env>, inbox: Inbox): Promise<EventRow> {
+  const id = c.req.param("eventId") ?? "";
+  const row = isUuid(id) ? await store.getEvent(c.var.db, inbox.id, id) : undefined;
+  if (!row) throw new ApiError(404, "not_found", "Event not found");
+  return row;
+}
+
+function conflictFor(e: EventRow): ApiError {
+  if (e.status === "processed") return new ApiError(409, "already_processed", "Event is already processed");
+  if (e.status === "locked") {
+    return new ApiError(409, "locked", `Event is locked until ${iso(e.locked_until)} by another consumer`);
+  }
+  return new ApiError(409, "conflict", "Event state changed; retry");
+}
+
+function serializeUser(u: User) {
+  return { id: u.id, name: u.name, email: u.email, created_at: iso(u.created_at) };
+}
+
+function serializeEvent(e: EventRow, o: { withLock?: boolean } = {}) {
+  return {
+    id: e.id,
+    inbox_id: e.inbox_id,
+    status: e.status,
+    received_at: iso(e.received_at),
+    locked_until: e.status === "locked" ? iso(e.locked_until) : null,
+    processed_at: iso(e.processed_at),
+    lock_count: e.lock_count,
+    // The token is only ever returned to whoever just took/renewed the lock.
+    ...(o.withLock ? { lock: { token: e.lock_token, expires_at: iso(e.locked_until) } } : {}),
+    event: e.cloudevent,
+  };
+}
+
+function iso(d: Date | string | null): string | null {
+  if (d == null) return null;
+  return (d instanceof Date ? d : new Date(d)).toISOString();
+}
