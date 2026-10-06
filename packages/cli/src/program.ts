@@ -2,7 +2,7 @@ import { Command, InvalidArgumentError, Option } from "commander";
 import { LIST_STATUSES } from "./client.js";
 import { clearConfig, configure, login, whoami } from "./commands/auth.js";
 import { getEvent, listEvents, lockEvent, markProcessed, nextEvent, unlockEvent } from "./commands/events.js";
-import { createInbox, listInboxes, showInbox, splitList } from "./commands/inboxes.js";
+import { createInbox, listInboxes, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
 import { runThreads } from "./commands/threads.js";
 import type { Context } from "./context.js";
 
@@ -52,17 +52,27 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
 
   // ---------- inboxes ----------
 
-  const inbox = program.command("inbox").alias("inboxes").description("create and list inboxes");
+  const inbox = program.command("inbox").alias("inboxes").description("create, list and update inboxes");
 
   inbox
     .command("create")
     .description("create an inbox (interactive; pass flags to skip prompts)")
     .option("--name <name>", "inbox name")
-    .option("--source <type>", "source type, e.g. github")
-    .option("--events <list>", "comma-separated event names to accept (github: default all)", splitList)
-    .option("--secret <secret>", "webhook secret, 16+ chars (github: generated if omitted)")
+    .option("--source <type>", "source type: github or vercel")
+    .option("--events <list>", "comma-separated event names to accept (default all)", splitList)
+    .option("--secret <secret>", "webhook secret (github: 16+ chars, generated if omitted; vercel: the one Vercel shows)")
     .addOption(jsonOpt())
     .action((opts) => createInbox(ctx, opts));
+
+  inbox
+    .command("update")
+    .description("change an inbox's name, events or secret (asks for the secret if no flags are given)")
+    .argument("<inbox>", "inbox id or name")
+    .option("--name <name>", "new name")
+    .option("--events <list>", "comma-separated event names to accept, or *", splitList)
+    .option("--secret <secret>", "webhook secret, e.g. the one Vercel shows when you add the webhook")
+    .addOption(jsonOpt())
+    .action((ref, opts) => updateInbox(ctx, ref, opts));
 
   inbox
     .command("list")

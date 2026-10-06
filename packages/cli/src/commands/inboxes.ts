@@ -66,6 +66,21 @@ const GITHUB_EVENTS = [
   "star",
   "fork",
 ];
+const VERCEL_EVENTS = [
+  "deployment.created",
+  "deployment.succeeded",
+  "deployment.ready",
+  "deployment.promoted",
+  "deployment.rollback",
+  "deployment.error",
+  "deployment.canceled",
+  "project.created",
+  "project.removed",
+  "project.renamed",
+  "project.env-variable.created",
+  "project.env-variable.updated",
+  "project.env-variable.deleted",
+];
 const OTHER = "__other__";
 
 /**
@@ -116,7 +131,8 @@ async function createInteractive(client: LoopwayClient, opts: CreateOptions): Pr
     );
   }
 
-  const config = source === "github" ? await githubConfig(opts) : await genericConfig(opts);
+  const config =
+    source === "github" ? await githubConfig(opts) : source === "vercel" ? await vercelConfig(opts) : await genericConfig(opts);
 
   p.note(
     fields([
@@ -142,45 +158,18 @@ async function createInteractive(client: LoopwayClient, opts: CreateOptions): Pr
   }
   spin.stop(`Created ${bold(inbox.name)} ${dim(inbox.id)}`);
 
+  if (source === "vercel" && !config?.secret) {
+    p.note(setupText(inbox), "Add this webhook in Vercel → Team Settings → Webhooks");
+    p.outro(`Then paste the secret Vercel shows with ${bold(`loopway inbox update ${inbox.id}`)}`);
+    return inbox;
+  }
   p.note(setupText(inbox), source === "github" ? "Add this webhook in GitHub → Settings → Webhooks" : "Setup");
   p.outro(`Read events with ${bold(`loopway events list ${inbox.id}`)}`);
   return inbox;
 }
 
 async function githubConfig(opts: CreateOptions) {
-  let events = opts.events;
-  if (!events) {
-    const which = ask(
-      await p.select({
-        message: "Which GitHub events should this inbox accept?",
-        options: [
-          { value: "all", label: "Everything", hint: "whatever the webhook sends" },
-          { value: "pick", label: "Let me choose" },
-        ],
-      }),
-    );
-    if (which === "all") events = ["*"];
-    else {
-      const picked = ask(
-        await p.multiselect({
-          message: "Pick events (space to toggle, enter to confirm)",
-          options: [...GITHUB_EVENTS.map((e) => ({ value: e })), { value: OTHER, label: "Other…" }],
-          required: true,
-        }),
-      );
-      events = picked.filter((e) => e !== OTHER);
-      if (picked.includes(OTHER)) {
-        const extra = ask(
-          await p.text({
-            message: "Other event names (comma-separated)",
-            placeholder: "e.g. merge_group, package",
-            validate: (v) => (!splitList(v ?? "").length && !events!.length ? "Enter at least one event" : undefined),
-          }),
-        );
-        events.push(...splitList(extra));
-      }
-    }
-  }
+  const events = opts.events ?? (await pickEvents("GitHub", GITHUB_EVENTS, "e.g. merge_group, package"));
 
   let secret = opts.secret;
   if (!secret) {
@@ -204,6 +193,44 @@ async function githubConfig(opts: CreateOptions) {
   }
 
   return { events, ...(secret ? { secret } : {}) };
+}
+
+/** Vercel creates the secret when the webhook is added, so it's usually set afterwards with `inbox update`. */
+async function vercelConfig(opts: CreateOptions) {
+  const events = opts.events ?? (await pickEvents("Vercel", VERCEL_EVENTS, "e.g. domain.created, flag.updated"));
+  return { events, ...(opts.secret ? { secret: opts.secret } : {}) };
+}
+
+async function pickEvents(sender: string, known: string[], placeholder: string): Promise<string[]> {
+  const which = ask(
+    await p.select({
+      message: `Which ${sender} events should this inbox accept?`,
+      options: [
+        { value: "all", label: "Everything", hint: "whatever the webhook sends" },
+        { value: "pick", label: "Let me choose" },
+      ],
+    }),
+  );
+  if (which === "all") return ["*"];
+  const picked = ask(
+    await p.multiselect({
+      message: "Pick events (space to toggle, enter to confirm)",
+      options: [...known.map((e) => ({ value: e })), { value: OTHER, label: "Other…" }],
+      required: true,
+    }),
+  );
+  const events = picked.filter((e) => e !== OTHER);
+  if (picked.includes(OTHER)) {
+    const extra = ask(
+      await p.text({
+        message: "Other event names (comma-separated)",
+        placeholder,
+        validate: (v) => (!splitList(v ?? "").length && !events.length ? "Enter at least one event" : undefined),
+      }),
+    );
+    events.push(...splitList(extra));
+  }
+  return events;
 }
 
 /** Sources without a dedicated flow take their config as JSON. */
@@ -231,6 +258,30 @@ async function genericConfig(opts: CreateOptions): Promise<Record<string, unknow
 function flagConfig(opts: CreateOptions): Record<string, unknown> | undefined {
   const config = { ...(opts.events ? { events: opts.events } : {}), ...(opts.secret ? { secret: opts.secret } : {}) };
   return Object.keys(config).length ? config : undefined;
+}
+
+// ---------- update ----------
+
+export interface UpdateOptions {
+  name?: string;
+  events?: string[];
+  secret?: string;
+  json?: boolean;
+}
+
+/** Changes the name, events or secret. In a terminal with no flags, asks for the secret. */
+export async function updateInbox(ctx: Context, ref: string, opts: UpdateOptions) {
+  const client = await authedClient(ctx);
+  const id = await resolveInbox(client, ref);
+  let secret = opts.secret;
+  if (!opts.name && !opts.events && !secret) {
+    if (!ctx.interactive) throw new UsageError("Pass --name, --events or --secret");
+    secret = ask(await p.password({ message: "Webhook secret", validate: (v) => (!v ? "Enter the secret" : undefined) }));
+  }
+  const config = flagConfig({ events: opts.events, secret });
+  const inbox = await client.updateInbox(id, { name: opts.name, config });
+  if (opts.json) return ctx.out(json(inbox));
+  ctx.out(`Updated inbox ${bold(inbox.name)} (${inbox.id})\n\n${setupText(inbox)}`);
 }
 
 async function onlySource(client: LoopwayClient) {

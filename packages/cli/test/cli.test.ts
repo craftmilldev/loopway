@@ -184,6 +184,16 @@ describe("inboxes", () => {
     expect(shown.stats).toEqual({ pending: 2, locked: 0, processed: 0 });
     await expect(run("inbox", "show", "nope")).rejects.toThrow(/No inbox with id or name/);
   });
+
+  it("creates a vercel inbox without a secret and sets it with update", async () => {
+    await configured();
+    const inbox = await runJson("inbox", "create", "--name", "vc", "--source", "vercel", "--events", "deployment.error");
+    expect(inbox.config).toEqual({ secret: null, events: ["deployment.error"] });
+    await expect(run("inbox", "update", "vc")).rejects.toThrow(/Pass --name, --events or --secret/);
+    const updated = await runJson("inbox", "update", "vc", "--secret", "from-vercel");
+    expect(updated.config).toEqual({ secret: "from-vercel", events: ["deployment.error"] });
+    expect(await run("inbox", "update", inbox.id, "--name", "vercel")).toMatch(/Updated inbox .*vercel/);
+  });
 });
 
 describe("events", () => {

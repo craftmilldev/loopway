@@ -5,7 +5,7 @@ Accepts webhooks from defined sources, stores them as [CloudEvents](https://gith
 - **Stack:** TypeScript + [Hono](https://hono.dev), zero-config on Vercel.
 - **DB:** Postgres everywhere. Locally [PGlite](https://pglite.dev) (embedded, no server); on Vercel, [Neon](https://neon.tech) via `DATABASE_URL`. Same SQL on both.
 - **Data types:** `User` → owns `Inbox`es → which receive `Event`s.
-- **Sources:** `github` (more can be added in `packages/web/src/sources/`).
+- **Sources:** `github`, `vercel` (more can be added in `packages/web/src/sources/`).
 - **Packages:** npm workspaces — [`packages/web`](packages/web) (the server) and [`packages/cli`](packages/cli) (the `loopway` command, a client of the API).
 
 ## Run locally
@@ -35,7 +35,7 @@ Tables live in a `loopway` schema (not `public`) with RLS enabled and no policie
 
 ## Web UI
 
-The same Hono app serves a small web UI: `/` (how to use loopway), `/login` (same email-code flow as the CLI; the session token is kept in `localStorage`), `/dashboard` (your inboxes and a create form) and `/dashboard/<inbox>` (events, newest first, expandable JSON, hide-processed toggle). `GET /api` is a bare health check.
+The same Hono app serves a small web UI: `/` (how to use loopway), `/login` (same email-code flow as the CLI; the session token is kept in `localStorage`), `/dashboard` (your inboxes and a create form) and `/dashboard/<inbox>` (events, newest first, expandable JSON, hide-processed toggle, and for Vercel inboxes a form to paste the webhook secret). `GET /api` is a bare health check.
 
 The pages are a React app in `packages/web/client/`. The homepage copy is markdown in [`packages/web/content/home.md`](packages/web/content/home.md). `npm run build -w @loopway/web` bundles the app with esbuild into `packages/web/public/` (git-ignored); `npm run dev` rebuilds it on change and serves it.
 
@@ -57,6 +57,7 @@ loopway clear-config                   # deletes ~/.loopway/config.json
 loopway inbox create                   # interactive: name → source → events → secret → confirm
 loopway inbox list
 loopway inbox show <inbox>             # webhook setup + pending/locked/processed counts
+loopway inbox update <inbox> [--name n] [--events a,b] [--secret s]   # with no flags in a terminal, asks for the secret
 
 loopway events list <inbox> [--status pending] [--type 'com.github.pull_request.*'] [--limit 20] [--all]
 loopway events get  <inbox> <event> [--data]
@@ -68,7 +69,7 @@ loopway events done <inbox> <event>
 
 - `<inbox>` is an inbox id or its exact name.
 - Every read command takes `--json` for the raw API response. `events next --json` prints nothing when the inbox is empty.
-- `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`); without a terminal it runs from flags alone.
+- `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`); without a terminal it runs from flags alone. For `vercel` it doesn't ask for a secret: add the webhook in Vercel, then paste the secret Vercel shows with `loopway inbox update <inbox>` (or on the inbox's dashboard page).
 - Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `https://loopway.craftmill.dev`.
 - Lock tokens from `next`/`lock` are kept in `~/.loopway/locks.json` until they expire, so `lock` (renew), `unlock` and `done` on the same machine don't need `--token`.
 
@@ -123,16 +124,22 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 
 In GitHub → Settings → Webhooks: Payload URL = `webhook_url`, Content type = `application/json`, Secret = `config.secret`.
 
+**`vercel` config:** `{ "secret"?: string, "events"?: ["deployment.error", ...] (default ["*"]) }`. `config.secret` is `null` until set.
+
+In Vercel → Team Settings → Webhooks: Endpoint URL = `webhook_url`. Vercel shows a secret once the webhook is created; `PATCH` it into `config.secret`. Until then deliveries get `401`.
+
 ### Webhook ingestion
 
-`POST /webhooks/:inboxId` — no API key; authenticated by the source (GitHub: `X-Hub-Signature-256` HMAC).
+`POST /webhooks/:inboxId` — no API key; authenticated by the source (GitHub: `X-Hub-Signature-256` HMAC-SHA256; Vercel: `X-Vercel-Signature` HMAC-SHA1).
 
 - `202 {id, duplicate:false}` stored
 - `200 {id, duplicate:true}` redelivery of an event already stored (same CloudEvent `source`+`id`)
 - `200 {ignored:true, reason}` `ping`
-- `401` bad/missing signature · `404` unknown inbox · `422` event type not in `config.events` (GitHub shows it as a failed delivery and doesn't retry it)
+- `401` bad/missing signature (or, for Vercel, no secret set yet) · `404` unknown inbox · `422` event type not in `config.events` (GitHub shows it as a failed delivery and doesn't retry it; Vercel retries any non-2xx for up to 24 hours)
 
 GitHub → CloudEvent mapping follows the [CloudEvents GitHub adapter spec](https://github.com/cloudevents/spec/blob/main/cloudevents/adapters/github.md): `id` = `X-GitHub-Delivery`, `type` = `com.github.<event>.<action>`, `source`/`subject`/`time` per event, `data` = payload.
+
+Vercel → CloudEvent: `id` = body `id`, `type` = `com.vercel.<type>` (e.g. `com.vercel.deployment.error`), `source` = the project's API URL (`https://api.vercel.com/v9/projects/<id>`, else the team's), `subject` = what the event is about (the deployment id for `deployment.*`, the project id for `project.*`, the domain name for `domain.*`, …, else the event id, so every event has one), `time` = `createdAt`, `data` = the whole body.
 
 ### Events
 
@@ -197,7 +204,7 @@ packages/web/
   src/ui.ts             web UI: home, /login, /dashboard (HTML + vanilla JS + styles)
   src/store.ts          all SQL
   src/db/               driver adapter (PGlite | postgres.js) + migrations
-  src/sources/          source adapters; github.ts is the first
+  src/sources/          source adapters: github.ts, vercel.ts
   src/cloudevents.ts    CloudEvent type + validation
   scripts/              dev server, migrate
   test/api.test.ts      end-to-end tests (TEST_DATABASE_URL=... to run against real Postgres)
