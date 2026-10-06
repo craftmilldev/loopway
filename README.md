@@ -5,7 +5,7 @@ Accepts webhooks from defined sources, stores them as [CloudEvents](https://gith
 - **Stack:** TypeScript + [Hono](https://hono.dev), zero-config on Vercel.
 - **DB:** Postgres everywhere. Locally [PGlite](https://pglite.dev) (embedded, no server); on Vercel, [Neon](https://neon.tech) via `DATABASE_URL`. Same SQL on both.
 - **Data types:** `User` → owns `Inbox`es → which receive `Event`s.
-- **Sources:** `github` (more can be added in `packages/web/src/sources/`).
+- **Sources:** `github`, `granola` (more can be added in `packages/web/src/sources/`).
 - **Packages:** npm workspaces — [`packages/web`](packages/web) (the server) and [`packages/cli`](packages/cli) (the `loopway` command, a client of the API).
 
 ## Run locally
@@ -57,6 +57,7 @@ loopway clear-config                   # deletes ~/.loopway/config.json
 loopway inbox create                   # interactive: name → source → events → secret → confirm
 loopway inbox list
 loopway inbox show <inbox>             # webhook setup + pending/locked/processed counts
+loopway inbox update <inbox> [--name x] [--events a,b] [--secret s]
 
 loopway events list <inbox> [--status pending] [--type 'com.github.pull_request.*'] [--limit 20] [--all]
 loopway events get  <inbox> <event> [--data]
@@ -123,9 +124,20 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 
 In GitHub → Settings → Webhooks: Payload URL = `webhook_url`, Content type = `application/json`, Secret = `config.secret`.
 
+**`granola` config:** `{ "secret"?: "whsec_…" (null until set), "events"?: ["note.generated", "note.edited", "note.access_granted"] (default ["*"]) }`
+
+Granola webhooks need a Business or Enterprise plan. Granola generates the signing secret after it has the URL, so:
+
+1. `loopway inbox create --name notes --source granola` and copy its `webhook_url`.
+2. In the Granola desktop app: Settings → Connectors → Webhooks → Set up a webhook (or a folder → Integrations → Webhooks for one folder). Paste the URL.
+3. Copy the `whsec_…` secret Granola shows (only once) and run `loopway inbox update notes --secret whsec_…`. Until then the inbox answers `401`, and Granola drops those deliveries without retrying.
+4. Record a meeting, or edit a note's summary, and check `loopway events list notes`.
+
+Each event only carries `note_id`; fetch the note itself with a Granola API key (Settings → Connectors → API keys): `curl -H "Authorization: Bearer grn_…" <event source>`.
+
 ### Webhook ingestion
 
-`POST /webhooks/:inboxId` — no API key; authenticated by the source (GitHub: `X-Hub-Signature-256` HMAC).
+`POST /webhooks/:inboxId` — no API key; authenticated by the source (GitHub: `X-Hub-Signature-256` HMAC; Granola: Standard Webhooks `webhook-signature`, timestamp within 5 minutes).
 
 - `202 {id, duplicate:false}` stored
 - `200 {id, duplicate:true}` redelivery of an event already stored (same CloudEvent `source`+`id`)
@@ -133,6 +145,8 @@ In GitHub → Settings → Webhooks: Payload URL = `webhook_url`, Content type =
 - `401` bad/missing signature · `404` unknown inbox · `422` event type not in `config.events` (GitHub shows it as a failed delivery and doesn't retry it)
 
 GitHub → CloudEvent mapping follows the [CloudEvents GitHub adapter spec](https://github.com/cloudevents/spec/blob/main/cloudevents/adapters/github.md): `id` = `X-GitHub-Delivery`, `type` = `com.github.<event>.<action>`, `source`/`subject`/`time` per event, `data` = payload.
+
+Granola → CloudEvent: `id` = `webhook-id`, `type` = `ai.granola.<event_type>` (e.g. `ai.granola.note.generated`), `source` = `https://public-api.granola.ai/v1/notes/<note_id>`, `subject` = `note_id`, `time` = `occurred_at`, `data` = payload.
 
 ### Events
 

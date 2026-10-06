@@ -2,7 +2,7 @@ import { Command, InvalidArgumentError, Option } from "commander";
 import { LIST_STATUSES } from "./client.js";
 import { clearConfig, configure, login, whoami } from "./commands/auth.js";
 import { getEvent, listEvents, lockEvent, markProcessed, nextEvent, unlockEvent } from "./commands/events.js";
-import { createInbox, listInboxes, showInbox, splitList } from "./commands/inboxes.js";
+import { createInbox, listInboxes, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
 import { runThreads } from "./commands/threads.js";
 import type { Context } from "./context.js";
 
@@ -58,11 +58,21 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .command("create")
     .description("create an inbox (interactive; pass flags to skip prompts)")
     .option("--name <name>", "inbox name")
-    .option("--source <type>", "source type, e.g. github")
-    .option("--events <list>", "comma-separated event names to accept (github: default all)", splitList)
-    .option("--secret <secret>", "webhook secret, 16+ chars (github: generated if omitted)")
+    .option("--source <type>", "source type: github or granola")
+    .option("--events <list>", "comma-separated event names to accept (default all)", splitList)
+    .option("--secret <secret>", "webhook secret (github: 16+ chars, generated if omitted; granola: set it later with `inbox update`)")
     .addOption(jsonOpt())
     .action((opts) => createInbox(ctx, opts));
+
+  inbox
+    .command("update")
+    .description("rename an inbox or change the events or secret it accepts")
+    .argument("<inbox>", "inbox id or name")
+    .option("--name <name>", "new inbox name")
+    .option("--events <list>", "comma-separated event names to accept", splitList)
+    .option("--secret <secret>", "webhook secret (granola: the whsec_… secret Granola shows)")
+    .addOption(jsonOpt())
+    .action((ref, opts) => updateInbox(ctx, ref, opts));
 
   inbox
     .command("list")

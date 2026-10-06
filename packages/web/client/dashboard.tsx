@@ -30,6 +30,11 @@ const GITHUB_EVENTS = [
   "fork",
 ];
 
+const EVENTS: Record<string, string[]> = {
+  github: GITHUB_EVENTS,
+  granola: ["note.generated", "note.edited", "note.access_granted"],
+};
+
 export function Dashboard() {
   const me = lw.useMe();
   const [inboxes, setInboxes] = useState<Inbox[] | null>(null);
@@ -90,6 +95,9 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [secret, setSecret] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const sourceEvents = EVENTS[source] ?? [];
+  // Granola generates the secret itself once it has the webhook URL, so it's set after the inbox exists.
+  const granola = source === "granola";
 
   useEffect(() => {
     lw.api("/sources").then(async (r) => {
@@ -115,9 +123,10 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const events = all ? ["*"] : GITHUB_EVENTS.filter((ev) => checked.has(ev));
+    const events = all ? ["*"] : sourceEvents.filter((ev) => checked.has(ev));
     if (!events.length) return setError("Pick at least one event.");
-    const r = await lw.api("/inboxes", { method: "POST", body: { name, source_type: source, config: { events, secret } } });
+    const config = granola ? { events } : { events, secret };
+    const r = await lw.api("/inboxes", { method: "POST", body: { name, source_type: source, config } });
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) return setError(await lw.message(r));
     onCreated();
@@ -134,7 +143,15 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
       <div className="field">
         <label htmlFor="source">Source</label>
         <div className="input-wrap">
-          <select id="source" required value={source} onChange={(e) => setSource(e.target.value)}>
+          <select
+            id="source"
+            required
+            value={source}
+            onChange={(e) => {
+              setSource(e.target.value);
+              setChecked(new Set());
+            }}
+          >
             {sources.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -149,24 +166,31 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
           <label className="check all">
             <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Everything
           </label>
-          {GITHUB_EVENTS.map((ev) => (
+          {sourceEvents.map((ev) => (
             <label key={ev} className="check">
               <input type="checkbox" disabled={all} checked={checked.has(ev)} onChange={(e) => toggle(ev, e.target.checked)} /> {ev}
             </label>
           ))}
         </div>
-        <p className="hint">Which events the inbox keeps. Anything else the webhook sends is rejected and shows as a failed delivery in GitHub.</p>
+        <p className="hint">Which events the inbox keeps. Anything else the webhook sends is rejected and shows as a failed delivery in the sender.</p>
       </div>
-      <div className="field">
-        <label htmlFor="secret">Secret</label>
-        <div className="input-wrap">
-          <input id="secret" required minLength={16} autoComplete="off" value={secret} onChange={(e) => setSecret(e.target.value)} />
-          <button className="btn btn-sm btn-quiet" type="button" onClick={generate}>
-            Generate
-          </button>
+      {granola ? (
+        <p className="hint">
+          Granola makes the webhook secret. Once the inbox exists, add its webhook URL in Granola → Settings → Connectors → Webhooks, then set
+          the whsec_… secret Granola shows with <code>loopway inbox update &lt;inbox&gt; --secret whsec_…</code>.
+        </p>
+      ) : (
+        <div className="field">
+          <label htmlFor="secret">Secret</label>
+          <div className="input-wrap">
+            <input id="secret" required minLength={16} autoComplete="off" value={secret} onChange={(e) => setSecret(e.target.value)} />
+            <button className="btn btn-sm btn-quiet" type="button" onClick={generate}>
+              Generate
+            </button>
+          </div>
+          <p className="hint">At least 16 characters. You enter the same secret in the sender's webhook settings.</p>
         </div>
-        <p className="hint">At least 16 characters. You enter the same secret in the sender's webhook settings.</p>
-      </div>
+      )}
       <div className="form-actions">
         <button className="btn" type="submit">
           Create inbox

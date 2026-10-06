@@ -68,6 +68,11 @@ const GITHUB_EVENTS = [
 ];
 const OTHER = "__other__";
 
+const SETUP_TITLES: Record<string, string> = {
+  github: "Add this webhook in GitHub → Settings → Webhooks",
+  granola: "Add this webhook in Granola, then set the secret it shows with `loopway inbox update`",
+};
+
 /**
  * Interactive: walks through name → source → source config → confirm, skipping any step whose
  * value came in as a flag. Non-interactive (no TTY): flags only, so it can be scripted.
@@ -142,7 +147,7 @@ async function createInteractive(client: LoopwayClient, opts: CreateOptions): Pr
   }
   spin.stop(`Created ${bold(inbox.name)} ${dim(inbox.id)}`);
 
-  p.note(setupText(inbox), source === "github" ? "Add this webhook in GitHub → Settings → Webhooks" : "Setup");
+  p.note(setupText(inbox), SETUP_TITLES[source] ?? "Setup");
   p.outro(`Read events with ${bold(`loopway events list ${inbox.id}`)}`);
   return inbox;
 }
@@ -247,6 +252,18 @@ function ask<T>(value: T): Exclude<T, symbol> {
 function cancelled() {
   p.cancel("No inbox created.");
   return new CancelledError();
+}
+
+// ---------- update ----------
+
+/** Renames an inbox or changes its source config, e.g. to set the secret Granola generates. */
+export async function updateInbox(ctx: Context, ref: string, opts: Omit<CreateOptions, "source">) {
+  const client = await authedClient(ctx);
+  const config = flagConfig(opts);
+  if (!opts.name && !config) throw new UsageError("Nothing to update: pass --name, --events or --secret");
+  const inbox = await client.updateInbox(await resolveInbox(client, ref), { name: opts.name, config });
+  if (opts.json) return ctx.out(json(inbox));
+  ctx.out(`Updated inbox ${bold(inbox.name)} (${inbox.id})\n\n${setupText(inbox)}`);
 }
 
 // ---------- shared ----------

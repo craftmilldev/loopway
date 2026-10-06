@@ -184,6 +184,17 @@ describe("inboxes", () => {
     expect(shown.stats).toEqual({ pending: 2, locked: 0, processed: 0 });
     await expect(run("inbox", "show", "nope")).rejects.toThrow(/No inbox with id or name/);
   });
+
+  it("update sets a granola inbox's secret", async () => {
+    await configured();
+    const inbox = await runJson("inbox", "create", "--name", "notes", "--source", "granola");
+    expect(inbox.config.secret).toBeNull();
+    const secret = "whsec_" + Buffer.from("granola-key").toString("base64");
+    const updated = await runJson("inbox", "update", "notes", "--secret", secret);
+    expect(updated.config).toEqual({ secret, events: ["*"] });
+    expect(updated.setup.secret).toBe("set");
+    await expect(run("inbox", "update", "notes")).rejects.toThrow(/Nothing to update/);
+  });
 });
 
 describe("events", () => {
