@@ -1,7 +1,7 @@
-import { mkdir, open, rm, stat } from "node:fs/promises";
+import { mkdir, open, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { readJson, writeJson } from "./config.js";
+import { readJson, writeJson } from "../config.js";
 
 /**
  * Agent sessions started by `loopway threads`, kept in ~/.loopway/threads.json keyed by session id.
@@ -41,7 +41,10 @@ export async function withSessions<T>(dir: string, fn: (sessions: Sessions) => T
   try {
     const sessions = await loadSessions(dir);
     const result = fn(sessions);
-    await writeJson(threadsPath(dir), sessions);
+    // Write then rename, so loadSessions() (which doesn't take the lock) never sees a half-written file.
+    const tmp = `${threadsPath(dir)}.tmp`;
+    await writeJson(tmp, sessions);
+    await rename(tmp, threadsPath(dir));
     return result;
   } finally {
     await release();
@@ -66,4 +69,12 @@ async function lockFile(path: string, staleMs = 10_000): Promise<() => Promise<v
 
 export function findSession(sessions: Sessions, inboxId: string, key: string): string | undefined {
   return Object.keys(sessions).find((id) => sessions[id]!.inbox_id === inboxId && sessions[id]!.keys.includes(key));
+}
+
+/** The session with this id, for changes inside withSessions(); stamps updated_at. */
+export function editSession(sessions: Sessions, id: string): Session {
+  const s = sessions[id];
+  if (!s) throw new Error(`No session ${id}.`);
+  s.updated_at = new Date().toISOString();
+  return s;
 }

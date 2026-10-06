@@ -200,12 +200,14 @@ packages/web/
 packages/cli/
   src/index.ts          `loopway` entry: error handling + exit codes
   src/program.ts        commands and flags (commander)
-  src/commands/         auth, inboxes (incl. the create TUI, @clack/prompts), events, threads (dispatcher + session prompt)
+  src/commands/         auth, inboxes (incl. the create TUI, @clack/prompts), events, threads
   src/client.ts         typed API client
   src/config.ts         ~/.loopway/config.json
   src/locks.ts          ~/.loopway/locks.json
-  src/threads.ts        ~/.loopway/threads.json (sessions started by `loopway threads`)
   src/mcp.ts            minimal MCP server (HTTP, localhost) the threads dispatcher serves to its sessions
+  src/threads/          `loopway threads`: dispatcher.ts (the poll loop), routing.ts (event → session),
+                        store.ts (~/.loopway/threads.json + its lock), tools.ts (MCP link/end), agent.ts (claude -p)
+  prompts/thread.md     the prompt every thread session starts with
   test/cli.test.ts      runs commands against the real API app in-process
 ```
 

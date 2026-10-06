@@ -9,11 +9,12 @@ import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { LoopwayClient } from "../src/client.js";
-import { createDispatcher, threadPrompt, type AgentRun } from "../src/commands/threads.js";
+import { threadPrompt, type AgentRun } from "../src/threads/agent.js";
+import { Dispatcher } from "../src/threads/dispatcher.js";
 import { loadConfig, writeConfig } from "../src/config.js";
 import type { Context } from "../src/context.js";
 import { createProgram } from "../src/program.js";
-import { withSessions } from "../src/threads.js";
+import { withSessions } from "../src/threads/store.js";
 
 const API = "https://loopway.test";
 const SECRET = "test-secret";
@@ -282,7 +283,7 @@ describe("threads", () => {
       runAgent: (r) => new Promise((resolve) => (runs.push(r), busy.push(() => resolve(0)))),
     };
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
-    const d = await createDispatcher(ctx, client, inbox.id, { max, ttl: 60 });
+    const d = await Dispatcher.start(ctx, client, inbox.id, { max, ttl: 60 });
     const finish = async () => (busy.splice(0).forEach((f) => f()), await d.idle());
     // Let runs still in flight write threads.json before the config dir is removed.
     closers.push(async () => (await finish(), await d.close()));
@@ -388,8 +389,10 @@ describe("threads", () => {
     await finish();
     await done();
 
-    // #1's session ending frees its slot, and #3 takes it.
-    await mcp(runs[0]!.mcpUrl, "tools/call", { name: "end", arguments: {} });
+    // #1's session ending frees its slot, and #3 takes it. (Events from the same millisecond can
+    // arrive in either order, so find #1's run by its thread rather than assuming it went first.)
+    const [one] = Object.entries(await sessions()).find(([, s]: [string, any]) => s.keys.includes("a/b#1"))!;
+    await mcp(runs.find((r) => r.sessionId === one)!.mcpUrl, "tools/call", { name: "end", arguments: {} });
     await d.tick();
     await finish();
     await done();
