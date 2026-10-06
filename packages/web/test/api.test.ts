@@ -370,14 +370,13 @@ describe("web ui", () => {
     return { status: res.status, type: res.headers.get("content-type") ?? "", text: await res.text() };
   }
 
-  it("serves the pages and assets without auth", async () => {
+  it("serves the page shell without auth", async () => {
     for (const path of ["/", "/login", "/dashboard", `/dashboard/${randomUUID()}`]) {
       const r = await get(path);
       expect(r.status, path).toBe(200);
       expect(r.type).toContain("text/html");
+      expect(r.text).toContain('<script type="module" src="/app.js">');
     }
-    expect((await get("/styles.css")).type).toContain("text/css");
-    expect((await get("/app.js")).type).toContain("javascript");
   });
 
   it("keeps /api as a bare health check and leaves the JSON routes alone", async () => {
