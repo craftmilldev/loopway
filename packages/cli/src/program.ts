@@ -3,6 +3,7 @@ import { LIST_STATUSES } from "./client.js";
 import { clearConfig, configure, login, whoami } from "./commands/auth.js";
 import { getEvent, listEvents, lockEvent, markProcessed, nextEvent, unlockEvent } from "./commands/events.js";
 import { createInbox, listInboxes, showInbox, splitList } from "./commands/inboxes.js";
+import { runThreads } from "./commands/threads.js";
 import type { Context } from "./context.js";
 
 export function createProgram(ctx: Context): Command {
@@ -141,6 +142,18 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .addOption(tokenOpt())
     .addOption(jsonOpt())
     .action((ref, id, opts) => markProcessed(ctx, ref, id, opts));
+
+  // ---------- threads ----------
+
+  program
+    .command("threads")
+    .alias("thread")
+    .description("run a Claude Code session per issue/PR thread: poll an inbox and hand each pending event to its thread's session, starting one if none matches")
+    .argument("<inbox>", "inbox id or name")
+    .option("--max <n>", "most sessions running or waiting on a thread at once (default 3)", positiveInt)
+    .option("--interval <seconds>", "seconds between polls (default 30)", positiveInt)
+    .addOption(new Option("--ttl <seconds>", "lock duration for delivered events, renewed every poll (default 3600, max 43200)").argParser(positiveInt))
+    .action((ref, opts) => runThreads(ctx, ref, opts));
 
   return program;
 }

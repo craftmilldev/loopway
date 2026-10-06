@@ -72,6 +72,27 @@ loopway events done <inbox> <event>
 - Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `https://loopway.craftmill.dev`.
 - Lock tokens from `next`/`lock` are kept in `~/.loopway/locks.json` until they expire, so `lock` (renew), `unlock` and `done` on the same machine don't need `--token`.
 
+### Threads
+
+```bash
+loopway threads <inbox> [--max 3] [--interval 30] [--ttl 3600]   # run the dispatcher (Ctrl-C to stop)
+```
+
+`loopway threads` runs one headless Claude Code session (`claude -p --permission-mode auto`) per thread, in the current directory. A thread is an issue and the PRs linked to it, keyed by `owner/repo#number`. Every `--interval` seconds it lists the inbox's pending events:
+
+- An event for a known issue/PR is locked and handed to that thread's session (`claude --resume`). Sessions run in parallel; one that is still running gets its new events together once its current run exits.
+- Any other event starts a new session with the prompt in [`packages/cli/prompts/thread.md`](packages/cli/prompts/thread.md) (`{{inbox}}` is filled in).
+- `--max` is a hard cap on sessions holding a slot: every active session, plus an ended one until its current run exits. Events that would need another slot stay pending.
+
+Sessions talk back to the dispatcher over MCP: it serves a `loopway` server on 127.0.0.1 (one URL per session, passed with `--mcp-config`) with two tools:
+
+- `link` adds a PR to the session's thread. Sessions call it right after opening a PR; a PR whose body says `Closes #N` also joins issue N's thread on its own.
+- `end` marks the thread finished, freeing its slot once the current run exits. The session decides when that is (a close event usually means it, but not always). A later event for the thread resumes it and makes it active again.
+
+Every event delivered to a session stays locked, renewed each poll for `--ttl` seconds, until the session marks it done. Sessions are tracked in `~/.loopway/threads.json` (including the events they own, so a restarted dispatcher keeps renewing them; writes take `threads.json.lock`, so dispatchers for several inboxes can share it) and each one's transcript (stream-json) is appended to `~/.loopway/threads/<session>.log`.
+
+The inbox's GitHub webhook needs `pull_request`, `pull_request_review` and `pull_request_review_comment` (as well as `issues` and `issue_comment`) for reviews to reach sessions.
+
 ## API
 
 Users are created with `loopway login` (see above). Every endpoint except `/webhooks/*`, `/health`, `/api` and the web pages takes `Authorization: Bearer <token>`. The token is a session JWT from `loopway login`, valid 30 days.
@@ -181,10 +202,14 @@ packages/web/
 packages/cli/
   src/index.ts          `loopway` entry: error handling + exit codes
   src/program.ts        commands and flags (commander)
-  src/commands/         auth, inboxes (incl. the create TUI, @clack/prompts), events
+  src/commands/         auth, inboxes (incl. the create TUI, @clack/prompts), events, threads
   src/client.ts         typed API client
   src/config.ts         ~/.loopway/config.json
   src/locks.ts          ~/.loopway/locks.json
+  src/mcp.ts            minimal MCP server (HTTP, localhost) the threads dispatcher serves to its sessions
+  src/threads/          `loopway threads`: dispatcher.ts (the poll loop), routing.ts (event → session),
+                        store.ts (~/.loopway/threads.json + its lock), tools.ts (MCP link/end), agent.ts (claude -p)
+  prompts/thread.md     the prompt every thread session starts with
   test/cli.test.ts      runs commands against the real API app in-process
 ```
 
