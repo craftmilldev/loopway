@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { APPLE_TOUCH_ICON, FAVICON_ICO } from "./icons.js";
 
 // The web UI: static HTML shells plus a little vanilla JS that talks to the JSON API on the same origin with the
 // session token kept in localStorage. Styles are copied from craftmilldev/craftmill.dev.
@@ -171,6 +172,8 @@ function page({ title, body, script, nav }: PageOptions) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="${FONTS}" rel="stylesheet">
@@ -453,5 +456,7 @@ export function createWeb() {
   app.get("/dashboard/:inboxId", (c) => c.html(INBOX));
   app.get("/styles.css", (c) => c.body(STYLES, 200, { "content-type": "text/css; charset=utf-8" }));
   app.get("/app.js", (c) => c.body(APP_JS, 200, { "content-type": "text/javascript; charset=utf-8" }));
+  app.get("/favicon.ico", (c) => c.body(FAVICON_ICO, 200, { "content-type": "image/x-icon" }));
+  app.get("/apple-touch-icon.png", (c) => c.body(APPLE_TOUCH_ICON, 200, { "content-type": "image/png" }));
   return app;
 }

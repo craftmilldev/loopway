@@ -378,6 +378,8 @@ describe("web ui", () => {
     }
     expect((await get("/styles.css")).type).toContain("text/css");
     expect((await get("/app.js")).type).toContain("javascript");
+    expect((await get("/favicon.ico")).type).toBe("image/x-icon");
+    expect((await get("/apple-touch-icon.png")).type).toBe("image/png");
   });
 
   it("keeps /api as a bare health check and leaves the JSON routes alone", async () => {
