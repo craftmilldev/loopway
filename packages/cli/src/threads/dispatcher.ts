@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { ApiError, type Event, type LoopwayClient } from "../client.js";
 import type { Context } from "../context.js";
 import { dim } from "../format.js";
@@ -5,7 +6,7 @@ import { heldToken, rememberLock } from "../locks.js";
 import { startMcpServer, type McpServer } from "../mcp.js";
 import { spawnClaude, threadPrompt, type RunAgent } from "./agent.js";
 import { route, threadKeys } from "./routing.js";
-import { editSession, loadSessions, sessionLogPath, withSessions, type Session } from "./store.js";
+import { editSession, loadSessions, sessionLogPath, withSessions, type Session, type Sessions } from "./store.js";
 import { sessionTools } from "./tools.js";
 
 export interface ThreadsOptions {
@@ -15,6 +16,16 @@ export interface ThreadsOptions {
 }
 
 export const DEFAULTS = { max: 3, interval: 30, ttl: 3600 };
+
+/** What a dispatcher is doing right now, for the TUI. */
+export interface DispatcherState {
+  /** Pending events not handed to a session yet: queued behind --max, or waiting for their session's run to exit. */
+  raw: Event[];
+  /** This inbox's sessions. */
+  sessions: Sessions;
+  /** Sessions with a run in flight. */
+  running: ReadonlySet<string>;
+}
 
 /**
  * Hands one inbox's events to Claude Code sessions, one per thread. Each tick:
@@ -33,6 +44,7 @@ export class Dispatcher {
   private readonly runAgent: RunAgent;
   private readonly dir: string;
   private queued = 0;
+  private raw: Event[] = [];
 
   static async start(ctx: Context, client: LoopwayClient, inboxId: string, opts: ThreadsOptions = {}): Promise<Dispatcher> {
     const prompt = await threadPrompt(inboxId);
@@ -62,7 +74,21 @@ export class Dispatcher {
       route(sessions, pending, { inboxId: this.inboxId, max: this.max, running }),
     );
     this.reportWaiting(waiting);
+    const handed = new Set([...deliveries.values()].flat().map((e) => e.id));
+    this.raw = pending.filter((e) => !handed.has(e.id));
     for (const [id, events] of deliveries) await this.deliver(id, events);
+  }
+
+  /** The raw events as of the last tick, and this inbox's sessions as of now. */
+  async state(): Promise<DispatcherState> {
+    const all = await loadSessions(this.dir);
+    const sessions = Object.fromEntries(Object.entries(all).filter(([, s]) => s.inbox_id === this.inboxId));
+    return { raw: this.raw, sessions, running: new Set(this.running.keys()) };
+  }
+
+  /** A session's transcript so far, or "" if it hasn't written one. */
+  readLog(id: string): Promise<string> {
+    return readFile(sessionLogPath(this.dir, id), "utf8").catch(() => "");
   }
 
   /** Resolves once every run in flight has exited. */

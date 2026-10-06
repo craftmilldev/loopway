@@ -153,6 +153,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .option("--max <n>", "most sessions running or waiting on a thread at once (default 3)", positiveInt)
     .option("--interval <seconds>", "seconds between polls (default 30)", positiveInt)
     .addOption(new Option("--ttl <seconds>", "lock duration for delivered events, renewed every poll (default 3600, max 43200)").argParser(positiveInt))
+    .option("--no-tui", "print a plain log instead of the full-screen view of threads and their transcripts")
     .action((ref, opts) => runThreads(ctx, ref, opts));
 
   return program;

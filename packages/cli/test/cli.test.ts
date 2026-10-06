@@ -386,6 +386,10 @@ describe("threads", () => {
     expect(new Set(runs.map((r) => r.sessionId)).size).toBe(2);
     expect(await list("pending")).toHaveLength(1);
     expect(out.join("\n")).toMatch(/1 event\(s\) waiting: all 2 sessions are busy/);
+    // The TUI's view: the queued event is raw, and both sessions are working.
+    const state = await d.state();
+    expect(state.raw.map((e) => e.id)).toEqual((await list("pending")).map((e: any) => e.id));
+    expect([...state.running].sort()).toEqual(Object.keys(state.sessions).sort());
     await finish();
     await done();
 
