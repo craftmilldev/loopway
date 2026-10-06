@@ -3,13 +3,14 @@ import { readJson, writeJson } from "./config.js";
 
 /**
  * Agent sessions started by `loopway threads`, kept in ~/.loopway/threads.json keyed by session id.
- * A session owns a thread: the issues and PRs in `keys` (`owner/repo#number`). Both the dispatcher
- * and `loopway threads link` (run by the agent) write this file, so always load → change → save.
+ * A session owns a thread: the issues and PRs in `keys` (`owner/repo#number`).
  */
 export interface Session {
   inbox_id: string;
   keys: string[];
-  /** `ended` once the run that handled a close event exits; ended sessions don't count toward --max. */
+  /** Events delivered to the session and not yet processed; the dispatcher keeps their locks alive. */
+  events: string[];
+  /** `ended` once the run that handled a close event exits. Ended sessions only take a --max slot while resumed. */
   status: "active" | "ended";
   /** Whether a claude session with this id exists yet (first run uses --session-id, later ones --resume). */
   started: boolean;

@@ -74,17 +74,18 @@ loopway events done <inbox> <event>
 
 ```bash
 loopway threads <inbox> [--max 3] [--interval 60] [--ttl 3600]   # run the dispatcher (Ctrl-C to stop)
-loopway threads link <session> <ref>                             # route issue/PR <ref> (12 or owner/repo#12) to a session
 ```
 
 `loopway threads` runs one headless Claude Code session (`claude -p --permission-mode auto`) per thread, in the current directory. A thread is an issue and the PRs linked to it, keyed by `owner/repo#number`. Every `--interval` seconds it lists the inbox's pending events:
 
 - An event for a known issue/PR is locked and handed to that thread's session (`claude --resume`). A session that is still running gets its new events together once its current run exits.
-- A PR whose body says `Closes #N` joins issue N's thread. Sessions also run `loopway threads link <session> <pr>` after opening a PR.
-- Any other event starts a new session with the built-in prompt (see `threadPrompt` in `packages/cli/src/commands/threads.ts`), at most `--max` active at a time; the rest stay pending.
-- A session ends once the run that handled its `issues.closed` / `pull_request.closed` exits. Ended sessions don't count toward `--max`, but late events for their issues/PRs still go to them.
+- Any other event starts a new session with the built-in prompt (see `threadPrompt` in `packages/cli/src/commands/threads.ts`).
+- `--max` is a hard cap on sessions holding a slot: every active session, plus an ended one while it's resumed for a late event. Events that would need another slot stay pending.
+- A session ends once the run that handled its `issues.closed` / `pull_request.closed` exits.
 
-Sessions mark their events done; anything left unprocessed is delivered again when its lock (`--ttl`) expires. Sessions are tracked in `~/.loopway/threads.json` and each one's transcript (stream-json) is appended to `~/.loopway/threads/<session>.log`.
+Sessions talk back to the dispatcher over MCP: it serves a `loopway` server on 127.0.0.1 (one URL per session, passed with `--mcp-config`) whose `link` tool adds a PR to the session's thread. Sessions call it right after opening a PR; a PR whose body says `Closes #N` also joins issue N's thread on its own.
+
+Every event delivered to a session stays locked, renewed each poll for `--ttl` seconds, until the session marks it done. Sessions are tracked in `~/.loopway/threads.json` (including the events they own, so a restarted dispatcher keeps renewing them) and each one's transcript (stream-json) is appended to `~/.loopway/threads/<session>.log`.
 
 ## API
 
@@ -200,6 +201,7 @@ packages/cli/
   src/config.ts         ~/.loopway/config.json
   src/locks.ts          ~/.loopway/locks.json
   src/threads.ts        ~/.loopway/threads.json (sessions started by `loopway threads`)
+  src/mcp.ts            minimal MCP server (HTTP, localhost) the threads dispatcher serves to its sessions
   test/cli.test.ts      runs commands against the real API app in-process
 ```
 
