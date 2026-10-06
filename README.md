@@ -73,19 +73,23 @@ loopway events done <inbox> <event>
 ### Threads
 
 ```bash
-loopway threads <inbox> [--max 3] [--interval 60] [--ttl 3600]   # run the dispatcher (Ctrl-C to stop)
+loopway threads <inbox> [--max 3] [--interval 30] [--ttl 3600]   # run the dispatcher (Ctrl-C to stop)
 ```
 
 `loopway threads` runs one headless Claude Code session (`claude -p --permission-mode auto`) per thread, in the current directory. A thread is an issue and the PRs linked to it, keyed by `owner/repo#number`. Every `--interval` seconds it lists the inbox's pending events:
 
-- An event for a known issue/PR is locked and handed to that thread's session (`claude --resume`). A session that is still running gets its new events together once its current run exits.
-- Any other event starts a new session with the built-in prompt (see `threadPrompt` in `packages/cli/src/commands/threads.ts`).
-- `--max` is a hard cap on sessions holding a slot: every active session, plus an ended one while it's resumed for a late event. Events that would need another slot stay pending.
-- A session ends once the run that handled its `issues.closed` / `pull_request.closed` exits.
+- An event for a known issue/PR is locked and handed to that thread's session (`claude --resume`). Sessions run in parallel; one that is still running gets its new events together once its current run exits.
+- Any other event starts a new session with the prompt in [`packages/cli/prompts/thread.md`](packages/cli/prompts/thread.md) (`{{inbox}}` is filled in).
+- `--max` is a hard cap on sessions holding a slot: every active session, plus an ended one until its current run exits. Events that would need another slot stay pending.
 
-Sessions talk back to the dispatcher over MCP: it serves a `loopway` server on 127.0.0.1 (one URL per session, passed with `--mcp-config`) whose `link` tool adds a PR to the session's thread. Sessions call it right after opening a PR; a PR whose body says `Closes #N` also joins issue N's thread on its own.
+Sessions talk back to the dispatcher over MCP: it serves a `loopway` server on 127.0.0.1 (one URL per session, passed with `--mcp-config`) with two tools:
 
-Every event delivered to a session stays locked, renewed each poll for `--ttl` seconds, until the session marks it done. Sessions are tracked in `~/.loopway/threads.json` (including the events they own, so a restarted dispatcher keeps renewing them) and each one's transcript (stream-json) is appended to `~/.loopway/threads/<session>.log`.
+- `link` adds a PR to the session's thread. Sessions call it right after opening a PR; a PR whose body says `Closes #N` also joins issue N's thread on its own.
+- `end` marks the thread finished, freeing its slot once the current run exits. The session decides when that is (a close event usually means it, but not always). A later event for the thread resumes it and makes it active again.
+
+Every event delivered to a session stays locked, renewed each poll for `--ttl` seconds, until the session marks it done. Sessions are tracked in `~/.loopway/threads.json` (including the events they own, so a restarted dispatcher keeps renewing them; writes take `threads.json.lock`, so dispatchers for several inboxes can share it) and each one's transcript (stream-json) is appended to `~/.loopway/threads/<session>.log`.
+
+The inbox's GitHub webhook needs `pull_request`, `pull_request_review` and `pull_request_review_comment` (as well as `issues` and `issue_comment`) for reviews to reach sessions.
 
 ## API
 

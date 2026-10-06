@@ -9,10 +9,11 @@ import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { LoopwayClient } from "../src/client.js";
-import { createDispatcher, type AgentRun } from "../src/commands/threads.js";
+import { createDispatcher, threadPrompt, type AgentRun } from "../src/commands/threads.js";
 import { loadConfig, writeConfig } from "../src/config.js";
 import type { Context } from "../src/context.js";
 import { createProgram } from "../src/program.js";
+import { withSessions } from "../src/threads.js";
 
 const API = "https://loopway.test";
 const SECRET = "test-secret";
@@ -302,8 +303,8 @@ describe("threads", () => {
     return ((await res.json()) as { result: any }).result;
   }
 
-  it("routes events by issue/PR, batches while busy, follows Closes #N, and ends on close", async () => {
-    const { inbox, runs, d, finish, list, done } = await setup(3);
+  it("routes events by issue/PR, batches while busy, follows Closes #N, and ends when the session says so", async () => {
+    const { inbox, runs, out, d, finish, list, done } = await setup(3);
     await sendGithub(inbox, "issues", issue("opened", 1));
     await sendGithub(inbox, "issue_comment", comment(1));
     await d.tick();
@@ -337,10 +338,20 @@ describe("threads", () => {
     await done();
     expect((await sessions())[first!.sessionId].keys).toEqual(["a/b#1", "a/b#2"]);
 
+    // A close event alone doesn't end the thread; the session decides, through its end tool.
     await sendGithub(inbox, "pull_request", pull("closed", 2));
     await d.tick();
+    expect((await mcp(first!.mcpUrl, "tools/call", { name: "end", arguments: {} })).content[0].text).toMatch(/Ended/);
     await finish();
+    await done();
     expect((await sessions())[first!.sessionId].status).toBe("ended");
+    expect(out.at(-1)).toMatch(/ended \(exit 0\)/);
+
+    // A later event resumes it and makes it active again.
+    await sendGithub(inbox, "issue_comment", comment(2));
+    await d.tick();
+    expect(runs.at(-1)).toMatchObject({ sessionId: first!.sessionId, resume: true });
+    expect((await sessions())[first!.sessionId].status).toBe("active");
   });
 
   it("keeps a session's events locked until they're processed", async () => {
@@ -377,11 +388,8 @@ describe("threads", () => {
     await finish();
     await done();
 
-    // Closing #1 frees its slot, and #3 takes it.
-    await sendGithub(inbox, "issues", issue("closed", 1));
-    await d.tick();
-    await finish();
-    await done();
+    // #1's session ending frees its slot, and #3 takes it.
+    await mcp(runs[0]!.mcpUrl, "tools/call", { name: "end", arguments: {} });
     await d.tick();
     await finish();
     await done();
@@ -402,7 +410,7 @@ describe("threads", () => {
     const url = runs[0]!.mcpUrl;
     expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\//);
     expect((await mcp(url, "initialize", { protocolVersion: "2025-06-18" })).serverInfo.name).toBe("loopway");
-    expect((await mcp(url, "tools/list")).tools.map((t: any) => t.name)).toEqual(["link"]);
+    expect((await mcp(url, "tools/list")).tools.map((t: any) => t.name)).toEqual(["link", "end"]);
     expect((await mcp(url, "tools/call", { name: "link", arguments: { number: 9 } })).content[0].text).toMatch(/Linked a\/b#9/);
     await mcp(url, "tools/call", { name: "link", arguments: { number: 3, repo: "c/d" } });
     expect((await mcp(url, "tools/call", { name: "link", arguments: { number: "x" } })).isError).toBe(true);
@@ -414,5 +422,23 @@ describe("threads", () => {
     await sendGithub(inbox, "issue_comment", comment(9));
     await d.tick();
     expect(runs[1]).toMatchObject({ sessionId: runs[0]!.sessionId, resume: true });
+  });
+
+  it("loads the session prompt from prompts/thread.md", async () => {
+    const prompt = await threadPrompt("inbox-123");
+    expect(prompt).toContain("events from inbox inbox-123");
+    expect(prompt).not.toContain("{{");
+  });
+
+  it("serializes threads.json writes through its lock file", async () => {
+    await Promise.all(
+      Array.from({ length: 20 }, (_, i) =>
+        withSessions(configDir, (s) => {
+          s[`s${i}`] = { inbox_id: "x", keys: [], events: [], status: "active", started: false, created_at: "", updated_at: "" };
+        }),
+      ),
+    );
+    expect(Object.keys(await sessions())).toHaveLength(20);
+    await expect(stat(join(configDir, "threads.json.lock"))).rejects.toThrow();
   });
 });
