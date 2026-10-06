@@ -4,3 +4,6 @@ dist/
 .env
 .env.local
 .vercel/
+packages/web/public/*
+!packages/web/public/favicon.ico
+!packages/web/public/apple-touch-icon.png
