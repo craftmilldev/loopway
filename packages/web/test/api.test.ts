@@ -1,5 +1,8 @@
 import { createHmac, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { build } from "esbuild";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { clientBuild } from "../scripts/client.js";
 import { createApi } from "../src/api.js";
 import { migrate, openDb, type Db } from "../src/db/index.js";
 import { createUser } from "../src/store.js";
@@ -377,6 +380,16 @@ describe("web ui", () => {
       expect(r.type).toContain("text/html");
       expect(r.text).toContain('<script type="module" src="/app.js">');
       expect(r.text).toContain('<link rel="icon" href="/favicon.ico"');
+    }
+  });
+
+  it("serves the built bundle without auth", async () => {
+    await build({ ...clientBuild, logLevel: "silent" });
+    for (const [path, type] of [["/app.js", "text/javascript"], ["/app.css", "text/css"]] as const) {
+      const r = await get(path);
+      expect(r.status, path).toBe(200);
+      expect(r.type).toContain(type);
+      expect(r.text).toBe(await readFile(`public${path}`, "utf8"));
     }
   });
 

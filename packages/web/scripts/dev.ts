@@ -15,7 +15,8 @@ const { default: app } = await import("../src/index.js"); // after TOKEN_SECRET 
 
 await getDb(); // open + migrate PGlite up front so the first request isn't slow
 
-// Rebuild the web UI bundle into public/ on change, and serve public/ the way Vercel's CDN does in production.
+// Rebuild the web UI bundle into public/ on change, and serve public/ the way Vercel's CDN serves the icons in
+// production.
 await (await context(clientBuild)).watch();
 const local = new Hono();
 local.use("*", serveStatic({ root: "./public" }));
