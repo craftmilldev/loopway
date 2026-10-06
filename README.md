@@ -127,8 +127,8 @@ In GitHub → Settings → Webhooks: Payload URL = `webhook_url`, Content type =
 
 - `202 {id, duplicate:false}` stored
 - `200 {id, duplicate:true}` redelivery of an event already stored (same CloudEvent `source`+`id`)
-- `200 {ignored:true, reason}` `ping`, or an event type not in `config.events`
-- `401` bad/missing signature · `404` unknown inbox
+- `200 {ignored:true, reason}` `ping`
+- `401` bad/missing signature · `404` unknown inbox · `422` event type not in `config.events` (GitHub shows it as a failed delivery and doesn't retry it)
 
 GitHub → CloudEvent mapping follows the [CloudEvents GitHub adapter spec](https://github.com/cloudevents/spec/blob/main/cloudevents/adapters/github.md): `id` = `X-GitHub-Delivery`, `type` = `com.github.<event>.<action>`, `source`/`subject`/`time` per event, `data` = payload.
 

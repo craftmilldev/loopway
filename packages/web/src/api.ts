@@ -277,7 +277,7 @@ export function createApi(opts: ApiOptions) {
 
 export class ApiError extends Error {
   constructor(
-    public status: 400 | 401 | 403 | 404 | 409 | 415 | 500,
+    public status: 400 | 401 | 403 | 404 | 409 | 415 | 422 | 500,
     public code: string,
     message: string,
   ) {

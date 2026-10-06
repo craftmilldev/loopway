@@ -164,7 +164,7 @@ export const github: SourceAdapter<GithubConfig> = {
 
     if (event === "ping") return { kind: "ignored", reason: "ping" };
     if (!config.events.includes("*") && !config.events.includes(event)) {
-      return { kind: "ignored", reason: `event "${event}" not enabled for this inbox` };
+      return { kind: "rejected", status: 422, message: `event "${event}" not enabled for this inbox` };
     }
 
     const delivery = headers.get("x-github-delivery");

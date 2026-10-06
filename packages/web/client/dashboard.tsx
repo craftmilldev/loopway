@@ -155,7 +155,7 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
             </label>
           ))}
         </div>
-        <p className="hint">Which events the inbox keeps. Anything else the webhook sends is ignored.</p>
+        <p className="hint">Which events the inbox keeps. Anything else the webhook sends is rejected and shows as a failed delivery in GitHub.</p>
       </div>
       <div className="field">
         <label htmlFor="secret">Secret</label>
