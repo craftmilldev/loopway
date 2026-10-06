@@ -10,7 +10,7 @@ export interface IncomingWebhook {
 export type ReceiveResult =
   | { kind: "event"; event: CloudEvent }
   | { kind: "ignored"; reason: string }
-  | { kind: "rejected"; status: 400 | 401 | 403 | 415; message: string };
+  | { kind: "rejected"; status: 400 | 401 | 403 | 415 | 422; message: string };
 
 /**
  * A source type defines how an inbox is configured and how a raw webhook becomes a CloudEvent.

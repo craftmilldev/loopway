@@ -160,7 +160,7 @@ describe("github webhooks", () => {
     expect((await sendGithub({ ...inbox, id: randomUUID() }, "push", {})).status).toBe(404);
   });
 
-  it("dedupes redeliveries, ignores ping and filtered events", async () => {
+  it("dedupes redeliveries, ignores ping, rejects filtered events", async () => {
     const key = await newUser();
     const inbox = await newInbox(key, { events: ["pull_request"] });
     expect((await sendGithub(inbox, "pull_request", prPayload(1), { delivery: "same" })).status).toBe(202);
@@ -168,7 +168,9 @@ describe("github webhooks", () => {
     expect(dup.status).toBe(200);
     expect((await dup.json()).duplicate).toBe(true);
     expect(await (await sendGithub(inbox, "ping", { zen: "hi" })).json()).toMatchObject({ ignored: true });
-    expect(await (await sendGithub(inbox, "push", { ref: "x" })).json()).toMatchObject({ ignored: true });
+    const filtered = await sendGithub(inbox, "push", { ref: "x" });
+    expect(filtered.status).toBe(422);
+    expect((await filtered.json()).error.message).toBe('event "push" not enabled for this inbox');
     expect((await call("GET", `/inboxes/${inbox.id}/events`, { key })).body.data).toHaveLength(1);
   });
 });
