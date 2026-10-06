@@ -75,8 +75,10 @@ loopway events done <inbox> <event>
 ### Threads
 
 ```bash
-loopway threads <inbox> [--max 3] [--interval 30] [--ttl 3600]   # run the dispatcher (Ctrl-C to stop)
+loopway threads <inbox> [--max 3] [--interval 30] [--ttl 3600] [--no-tui]   # run the dispatcher (q or Ctrl-C to stop)
 ```
+
+In a terminal, `loopway threads` takes over the screen with four lists: raw events (pending, not yet handed to a session), working sessions (a run in flight), waiting sessions (active, waiting for their next event) and done sessions (ended, newest first). ↑/↓ moves between sessions, Tab/Shift-Tab jumps between lists, and Enter or → opens a session's transcript, which follows new output until you scroll up (↑/↓, PgUp/PgDn, Home/End). ← goes back to the lists. The dispatcher's latest log line shows at the bottom. Quitting stops the dispatcher and its sessions, as Ctrl-C does. `--no-tui`, or output that isn't a terminal, prints the plain log instead.
 
 `loopway threads` runs one headless Claude Code session (`claude -p --permission-mode auto`) per thread, in the current directory. A thread is an issue and the PRs linked to it, keyed by `owner/repo#number`. Every `--interval` seconds it lists the inbox's pending events:
 
@@ -208,9 +210,11 @@ packages/cli/
   src/locks.ts          ~/.loopway/locks.json
   src/mcp.ts            minimal MCP server (HTTP, localhost) the threads dispatcher serves to its sessions
   src/threads/          `loopway threads`: dispatcher.ts (the poll loop), routing.ts (event → session),
-                        store.ts (~/.loopway/threads.json + its lock), tools.ts (MCP link/end), agent.ts (claude -p)
+                        store.ts (~/.loopway/threads.json + its lock), tools.ts (MCP link/end), agent.ts (claude -p),
+                        tui.tsx (the Ink TUI), transcript.ts (stream-json log → readable lines)
   prompts/thread.md     the prompt every thread session starts with
   test/cli.test.ts      runs commands against the real API app in-process
+  test/tui.test.tsx     renders the threads TUI with ink-testing-library
 ```
 
 ### Adding a source
