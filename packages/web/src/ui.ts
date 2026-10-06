@@ -1,8 +1,10 @@
+import { readFile } from "node:fs/promises";
 import { Hono } from "hono";
 
 // The web UI is a React app in client/ that talks to the JSON API on the same origin. scripts/client.ts bundles it
-// into public/app.js and public/app.css; Vercel serves public/ from its CDN and scripts/dev.ts serves it locally.
-// This module only returns the HTML shell that loads the bundle.
+// into public/app.js and public/app.css. This module returns the HTML shell that loads the bundle, and serves the
+// bundle itself: Vercel's CDN only serves the public/ files that are committed (the icons), not ones the build
+// writes. The URLs are literal so Vercel's file tracing ships both files with the function.
 
 const FONTS =
   "https://fonts.googleapis.com/css2?family=Sorts+Mill+Goudy:ital@0;1&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap";
@@ -26,8 +28,20 @@ const SHELL = `<!DOCTYPE html>
 </body>
 </html>`;
 
+const BUNDLE = {
+  "/app.js": { url: new URL("../public/app.js", import.meta.url), type: "text/javascript; charset=utf-8" },
+  "/app.css": { url: new URL("../public/app.css", import.meta.url), type: "text/css; charset=utf-8" },
+};
+
 export function createWeb() {
   const app = new Hono();
   for (const path of ["/", "/login", "/dashboard", "/dashboard/:inboxId"]) app.get(path, (c) => c.html(SHELL));
+  for (const [path, { url, type }] of Object.entries(BUNDLE)) {
+    app.get(path, async (c) => {
+      const body = await readFile(url).catch(() => undefined);
+      if (!body) return c.notFound(); // not built yet
+      return c.body(body, 200, { "content-type": type });
+    });
+  }
   return app;
 }
