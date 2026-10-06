@@ -8,6 +8,8 @@ import { createUser } from "@loopway/web/store";
 import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { LoopwayClient } from "../src/client.js";
+import { createDispatcher, type AgentRun } from "../src/commands/threads.js";
 import { loadConfig, writeConfig } from "../src/config.js";
 import type { Context } from "../src/context.js";
 import { createProgram } from "../src/program.js";
@@ -251,5 +253,111 @@ describe("events", () => {
   it("rejects bad numbers before calling the API", async () => {
     await configured();
     await expect(run("events", "next", "x", "--ttl", "0")).rejects.toThrow(/positive integer/);
+  });
+});
+
+describe("threads", () => {
+  const repository = { full_name: "a/b", url: "https://api.github.com/repos/a/b" };
+  const issue = (action: string, n: number) => ({ action, issue: { number: n }, repository });
+  const comment = (n: number) => ({ action: "created", issue: { number: n }, comment: { body: "hi" }, repository });
+  const pull = (action: string, n: number, body = "") => ({ action, number: n, pull_request: { number: n, body }, repository });
+  const sessions = async () => JSON.parse(await readFile(join(configDir, "threads.json"), "utf8"));
+
+  async function setup(max: number) {
+    const key = await configured();
+    const inbox = await runJson("inbox", "create", "--name", "gh", "--source", "github");
+    const runs: AgentRun[] = [];
+    const busy: (() => void)[] = [];
+    const out: string[] = [];
+    const ctx: Context = {
+      configDir,
+      env: {},
+      interactive: false,
+      out: (t) => out.push(t),
+      fetch: apiFetch,
+      // Each run stays "busy" until the test calls release().
+      runAgent: (r) => new Promise((resolve) => (runs.push(r), busy.push(() => resolve(0)))),
+    };
+    const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
+    const d = createDispatcher(ctx, client, inbox.id, { max });
+    const finish = async () => (busy.splice(0).forEach((f) => f()), await d.idle());
+    const pending = async () => (await runJson("events", "list", inbox.id, "--status", "pending")).data.length;
+    return { inbox, runs, out, d, finish, pending };
+  }
+
+  it("routes events by issue/PR, batches while busy, follows Closes #N, and ends on close", async () => {
+    const { inbox, runs, d, finish, pending } = await setup(3);
+    await sendGithub(inbox, "issues", issue("opened", 1));
+    await sendGithub(inbox, "issue_comment", comment(1));
+    await d.tick();
+    expect(runs).toHaveLength(1);
+    const [first] = runs;
+    expect(first!.resume).toBe(false);
+    expect(first!.message).toContain(`loopway thread session ${first!.sessionId}`);
+    expect(first!.message.split("already locked for you):\n")[1]!.split("\n")).toHaveLength(2);
+    expect(await pending()).toBe(0); // both locked for the session
+
+    // While the run is busy, its new events wait; others' don't.
+    await sendGithub(inbox, "issue_comment", comment(1));
+    await d.tick();
+    expect(runs).toHaveLength(1);
+    await finish();
+    expect((await sessions())[first!.sessionId]).toMatchObject({ keys: ["a/b#1"], status: "active", started: true });
+
+    // The agent can finish events with the dispatcher's remembered lock tokens.
+    const locked = (await runJson("events", "list", inbox.id, "--status", "locked")).data;
+    for (const e of locked) expect((await runJson("events", "done", inbox.id, e.id)).status).toBe("processed");
+
+    await d.tick(); // the comment that arrived while busy
+    expect(runs[1]).toMatchObject({ sessionId: first!.sessionId, resume: true });
+    expect(runs[1]!.message).not.toContain("## 1. Triage");
+    await finish();
+
+    // A PR that closes #1 joins that thread.
+    await sendGithub(inbox, "pull_request", pull("opened", 2, "Adds it.\n\nCloses #1"));
+    await d.tick();
+    expect(runs[2]!.sessionId).toBe(first!.sessionId);
+    await finish();
+    expect((await sessions())[first!.sessionId].keys).toEqual(["a/b#1", "a/b#2"]);
+
+    await sendGithub(inbox, "pull_request", pull("closed", 2));
+    await d.tick();
+    await finish();
+    expect((await sessions())[first!.sessionId].status).toBe("ended");
+  });
+
+  it("starts a session per unmatched event, up to --max", async () => {
+    const { inbox, runs, out, d, finish, pending } = await setup(2);
+    await sendGithub(inbox, "issues", issue("opened", 1));
+    await sendGithub(inbox, "issues", issue("opened", 2));
+    await sendGithub(inbox, "issues", issue("opened", 3));
+    await d.tick();
+    expect(runs).toHaveLength(2);
+    expect(new Set(runs.map((r) => r.sessionId)).size).toBe(2);
+    expect(await pending()).toBe(1);
+    expect(out.join("\n")).toMatch(/1 event\(s\) waiting: 2 sessions are active/);
+
+    // Closing #1 frees a slot for #3.
+    await finish();
+    await sendGithub(inbox, "issues", issue("closed", 1));
+    await d.tick();
+    await finish();
+    await d.tick();
+    expect(runs.at(-1)!.resume).toBe(false);
+    expect(Object.values(await sessions()).map((s: any) => s.keys)).toContainEqual(["a/b#3"]);
+    expect(await pending()).toBe(0);
+  });
+
+  it("link adds an issue or PR to a session", async () => {
+    const { inbox, runs, d, finish } = await setup(3);
+    await sendGithub(inbox, "issues", issue("opened", 5));
+    await d.tick();
+    await finish();
+    const id = runs[0]!.sessionId;
+    expect(await run("threads", "link", id, "9")).toMatch(/Linked a\/b#9/);
+    await run("threads", "link", id, "c/d#3");
+    expect((await sessions())[id].keys).toEqual(["a/b#5", "a/b#9", "c/d#3"]);
+    await expect(run("threads", "link", randomUUID(), "9")).rejects.toThrow(/No session/);
+    await expect(run("threads", "link", id, "nine")).rejects.toThrow(/Expected an issue or PR number/);
   });
 });

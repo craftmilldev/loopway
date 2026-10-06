@@ -3,6 +3,7 @@ import { LIST_STATUSES } from "./client.js";
 import { clearConfig, configure, login, whoami } from "./commands/auth.js";
 import { getEvent, listEvents, lockEvent, markProcessed, nextEvent, unlockEvent } from "./commands/events.js";
 import { createInbox, listInboxes, showInbox, splitList } from "./commands/inboxes.js";
+import { linkThread, runThreads } from "./commands/threads.js";
 import type { Context } from "./context.js";
 
 export function createProgram(ctx: Context): Command {
@@ -141,6 +142,29 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .addOption(tokenOpt())
     .addOption(jsonOpt())
     .action((ref, id, opts) => markProcessed(ctx, ref, id, opts));
+
+  // ---------- threads ----------
+
+  const threads = program
+    .command("threads")
+    .alias("thread")
+    .description("run a Claude Code session per issue/PR thread, fed by an inbox's events");
+
+  threads
+    .command("run", { isDefault: true })
+    .description("poll an inbox and hand each pending event to its thread's session, starting one if none matches")
+    .argument("<inbox>", "inbox id or name")
+    .option("--max <n>", "most sessions active at once (default 3)", positiveInt)
+    .option("--interval <seconds>", "seconds between polls (default 60)", positiveInt)
+    .addOption(new Option("--ttl <seconds>", "lock duration for delivered events (default 3600, max 43200)").argParser(positiveInt))
+    .action((ref, opts) => runThreads(ctx, ref, opts));
+
+  threads
+    .command("link")
+    .description("send an issue or PR's events to a session (sessions run this after opening a PR)")
+    .argument("<session>", "session id")
+    .argument("<ref>", "issue or PR number, or owner/repo#number")
+    .action((id, ref) => linkThread(ctx, id, ref));
 
   return program;
 }

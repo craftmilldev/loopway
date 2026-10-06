@@ -1,4 +1,5 @@
 import { LoopwayClient } from "./client.js";
+import type { AgentRun } from "./commands/threads.js";
 import { resolveAuth } from "./config.js";
 
 /** Everything a command touches outside its arguments, so tests can swap it out. */
@@ -11,6 +12,8 @@ export interface Context {
   /** Writes one chunk of command output to stdout. */
   out: (text: string) => void;
   fetch?: typeof fetch;
+  /** Runs one `loopway threads` agent turn; defaults to headless `claude -p`. */
+  runAgent?: (run: AgentRun) => Promise<number>;
 }
 
 export async function authedClient(ctx: Context): Promise<LoopwayClient> {
