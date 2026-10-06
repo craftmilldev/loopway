@@ -47,7 +47,7 @@ Handle each delivered event by type:
   is feedback. Fix it in the worktree, commit (a new commit, never amend or force-push), and
   push. The payload gives you the comment id, `path`, `line`, and `body`. Reply on the thread
   with `gh api repos/<org>/<repo>/pulls/<n>/comments/<comment_id>/replies -f body=...`.
-  Then mark the event done. If the body has a ```suggestion block, apply it exactly.
+  Then mark the event done. If the body has a ```suggestion block, review it and then apply it if it makes sense.
 - `com.github.pull_request_review.*`: a review with an empty body just wraps its inline comments,
   so mark it done. If the body has content, treat it as feedback.
 - `com.github.issue_comment.*` on the PR: if the author is a bot (vercel[bot] etc.), mark done
