@@ -376,6 +376,7 @@ describe("web ui", () => {
       expect(r.status, path).toBe(200);
       expect(r.type).toContain("text/html");
       expect(r.text).toContain('<script type="module" src="/app.js">');
+      expect(r.text).toContain('<link rel="icon" href="/favicon.ico"');
     }
   });
 
