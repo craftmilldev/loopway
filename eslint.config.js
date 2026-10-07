@@ -17,6 +17,8 @@ export default defineConfig(
         tsconfigRootDir: import.meta.dirname,
       },
     },
+    // An async function with no await is how we satisfy interfaces that return promises.
+    rules: { "@typescript-eslint/require-await": "off" },
   },
   // The classic hook rules only; the rest of the plugin's recommended set is for the React Compiler, which we don't use.
   {

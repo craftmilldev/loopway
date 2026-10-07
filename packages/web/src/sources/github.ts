@@ -54,8 +54,8 @@ const RULES: Record<string, Rule> = {
   code_scanning_alert: { subject: "alert.number" },
   commit_comment: {
     source: (p) => {
-      const url = get(p, "comment.url");
-      const sha = get(p, "comment.commit_id");
+      const url = str(get(p, "comment.url"));
+      const sha = str(get(p, "comment.commit_id"));
       return url && sha ? `${url}/${sha}` : undefined;
     },
     subject: "comment.id",

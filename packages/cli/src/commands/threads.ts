@@ -43,7 +43,7 @@ async function pollForever(ctx: Context, dispatcher: Dispatcher, interval: numbe
       await dispatcher.tick();
     } catch (err) {
       // A flaky network shouldn't take down running sessions; try again next tick.
-      ctx.out(`error: ${err instanceof Error ? err.message : err}`);
+      ctx.out(`error: ${err instanceof Error ? err.message : String(err)}`);
     }
     await sleep(interval * 1000);
   }

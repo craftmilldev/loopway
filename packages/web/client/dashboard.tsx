@@ -18,11 +18,11 @@ export function Dashboard() {
   const load = useCallback(async () => {
     const r = await lw.api("/inboxes");
     if (!r.ok) return lw.expired(r);
-    setInboxes((await r.json()).data);
+    setInboxes(((await r.json()) as { data: Inbox[] }).data);
   }, []);
 
   useEffect(() => {
-    if (me) load();
+    if (me) void load();
   }, [me, load]);
 
   return (
@@ -37,7 +37,7 @@ export function Dashboard() {
         <CreateInbox
           onCreated={() => {
             setCreating(false);
-            load();
+            void load();
           }}
         />
       )}
@@ -101,7 +101,7 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
   }
 
   return (
-    <form className="panel" onSubmit={submit}>
+    <form className="panel" onSubmit={(e) => void submit(e)}>
       <div className="field">
         <label htmlFor="name">Name</label>
         <div className="input-wrap">

@@ -186,7 +186,8 @@ export class LoopwayClient {
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });
     } catch (err) {
-      const reason = err instanceof Error ? (err.cause instanceof Error ? err.cause.message : err.message) : err;
+      const reason =
+        err instanceof Error ? (err.cause instanceof Error ? err.cause.message : err.message) : String(err);
       throw new ApiError(0, "network_error", `Could not reach ${this.baseUrl}: ${reason}`);
     }
 

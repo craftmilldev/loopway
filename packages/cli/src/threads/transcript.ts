@@ -33,7 +33,7 @@ export function transcriptLines(log: string): TranscriptLine[] {
     if (!raw.trim()) continue;
     let r: LogRecord;
     try {
-      r = JSON.parse(raw);
+      r = JSON.parse(raw) as LogRecord;
     } catch {
       lines.push({ text: raw, kind: "error" });
       continue;

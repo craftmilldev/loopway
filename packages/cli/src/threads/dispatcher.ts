@@ -143,7 +143,7 @@ export class Dispatcher {
       });
     } catch (err) {
       code = -1;
-      this.ctx.out(`error: ${short} failed to start: ${err instanceof Error ? err.message : err}`);
+      this.ctx.out(`error: ${short} failed to start: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     const ended = await withSessions(this.dir, (sessions) => {
@@ -178,7 +178,7 @@ export class Dispatcher {
     if (!released.length) return;
     await withSessions(this.dir, (sessions) => {
       for (const [id, eventId] of released) {
-        if (sessions[id]) sessions[id]!.events = sessions[id]!.events.filter((e) => e !== eventId);
+        if (sessions[id]) sessions[id].events = sessions[id].events.filter((e) => e !== eventId);
       }
     });
   }

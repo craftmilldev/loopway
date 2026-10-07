@@ -20,13 +20,17 @@ export function token() {
 export function save(t: string) {
   try {
     localStorage.setItem(KEY, t);
-  } catch {}
+  } catch {
+    // Storage is blocked; the token just isn't kept.
+  }
 }
 
 export function clear() {
   try {
     localStorage.removeItem(KEY);
-  } catch {}
+  } catch {
+    // Storage is blocked, so there's nothing to clear.
+  }
 }
 
 export function api(
@@ -42,7 +46,7 @@ export function api(
 
 export async function message(r: Response) {
   try {
-    return (await r.json()).error.message as string;
+    return ((await r.json()) as { error: { message: string } }).error.message;
   } catch {
     return "Something went wrong (" + r.status + ").";
   }
@@ -75,8 +79,8 @@ export interface Source {
 export function useSources() {
   const [sources, setSources] = useState<Source[] | null>(null);
   useEffect(() => {
-    api("/sources").then(async (r) => {
-      if (r.ok) setSources((await r.json()).data);
+    void api("/sources").then(async (r) => {
+      if (r.ok) setSources(((await r.json()) as { data: Source[] }).data);
     });
   }, []);
   return sources;
@@ -87,11 +91,11 @@ export function useMe() {
   const [me, setMe] = useState<Me | null>(null);
   useEffect(() => {
     if (!token()) return location.replace("/login");
-    api("/me")
+    void api("/me")
       .catch(() => null)
       .then(async (r) => {
         if (!r || !r.ok) return r && expired(r);
-        setMe(await r.json());
+        setMe((await r.json()) as Me);
       });
   }, []);
   return me;

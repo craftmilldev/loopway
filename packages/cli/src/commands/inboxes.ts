@@ -248,7 +248,7 @@ export function setupText(inbox: Inbox): string {
   return fields(
     Object.entries(setup).map(([k, v]): [string, string] => [
       humanize(k),
-      Array.isArray(v) ? v.join(", ") : typeof v === "object" ? JSON.stringify(v) : String(v),
+      Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : JSON.stringify(v),
     ]),
   );
 }

@@ -2,8 +2,11 @@ import type { SourceAdapter } from "./types.js";
 
 /** Looks up source adapters by type. Callers go through this and never name a source themselves. */
 export class SourceRegistry {
+  // Each adapter has its own config type, which it both takes and returns, so only `any` holds them all.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private readonly byType = new Map<string, SourceAdapter<any>>();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(adapters: SourceAdapter<any>[]) {
     for (const a of adapters) {
       if (this.byType.has(a.type)) throw new Error(`Source type "${a.type}" is registered twice`);

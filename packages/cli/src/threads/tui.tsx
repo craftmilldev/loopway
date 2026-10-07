@@ -249,7 +249,7 @@ function poll<T>(fn: () => Promise<T>, set: (v: T) => void, ms: number): () => v
       () => {},
     );
   void run();
-  const timer = setInterval(run, ms);
+  const timer = setInterval(() => void run(), ms);
   return () => {
     live = false;
     clearInterval(timer);
