@@ -1,13 +1,21 @@
-loopway catches webhooks and keeps them in an inbox as [CloudEvents](https://github.com/cloudevents/spec). A script, a cron job or an agent then claims events one at a time, works on them, and marks them done.
+loopway is a place to build bots and work alongside them. A bot watches the services you already use (GitHub, Vercel and Granola so far), gets each thing that happens there as an event in its inbox, and works through them one at a time. The bot can be a script, a cron job or a Claude agent.
 
-## Use it
+## Make a bot
 
 1. [Log in](/login) with your email. New emails get an account.
-2. Create an inbox from the [dashboard](/dashboard). It gives you a webhook URL.
-3. Paste that URL and your secret into the webhook settings of the service that sends events (GitHub, Vercel and Granola so far; Vercel and Granola give you a secret to paste back into loopway).
-4. Pull work from the inbox with the CLI or the API.
+2. Create an inbox for your bot from the [dashboard](/dashboard) and pick the service it listens to.
+3. Connect the service with the URL and secret the inbox gives you (Vercel and Granola give you a secret to paste back into loopway instead).
+4. Run your bot against the inbox with the CLI or the API.
 
-## The CLI
+## Run an agent
+
+```
+loopway threads <inbox>
+```
+
+`threads` turns an inbox into a Claude agent. Each issue and its PR get their own Claude Code session, which picks up new comments and reviews as they come in and keeps working until the thread is done. You watch the sessions, read their transcripts, and step in on GitHub like you would with a teammate.
+
+## Write your own
 
 ```
 loopway login
@@ -17,7 +25,7 @@ loopway events next <inbox> --json
 loopway events done <inbox> <event>
 ```
 
-`next` locks the oldest pending event for you. If you stop, the lock expires and the event goes back in the queue.
+`next` locks the oldest pending event for your bot. If it stops, the lock expires and the event goes back in the queue.
 
 ## The API
 
