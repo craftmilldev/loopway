@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import type { Inbox as InboxInfo } from "./dashboard.js";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { SECRET_LATER, type Inbox as InboxInfo } from "./dashboard.js";
 import { Layout, UserNav } from "./layout.js";
 import * as lw from "./lw.js";
 
@@ -63,6 +63,7 @@ export function Inbox({ id }: { id: string }) {
           </div>
         </div>
       </div>
+      {inbox && SECRET_LATER[inbox.source_type] && <PastedSecret inbox={inbox} onSaved={setInbox} />}
       <div className="toolbar">
         <label>
           <input type="checkbox" checked={hide} onChange={(e) => setHide(e.target.checked)} /> Hide processed
@@ -94,5 +95,50 @@ export function Inbox({ id }: { id: string }) {
         )}
       </div>
     </Layout>
+  );
+}
+
+// Vercel and Granola make the signing secret when the webhook is added there, so it's pasted in here afterwards.
+function PastedSecret({ inbox, onSaved }: { inbox: InboxInfo; onSaved: (inbox: InboxInfo) => void }) {
+  const [secret, setSecret] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const isSet = !!inbox.config?.secret;
+  const { sender, where } = SECRET_LATER[inbox.source_type]!;
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const r = await lw.api("/inboxes/" + encodeURIComponent(inbox.id), { method: "PATCH", body: { config: { secret } } });
+    if (r.status === 401) return lw.expired(r);
+    if (!r.ok) return setError(await lw.message(r));
+    setSecret("");
+    onSaved({ ...inbox, ...(await r.json()) });
+  }
+
+  return (
+    <form className="panel" onSubmit={submit}>
+      <div className="field">
+        <label htmlFor="secret">Webhook secret</label>
+        <div className="input-wrap">
+          <input
+            id="secret"
+            required
+            autoComplete="off"
+            placeholder={isSet ? "set (paste a new one to replace it)" : ""}
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+          />
+          <button className="btn btn-sm" type="submit">
+            Save
+          </button>
+        </div>
+        <p className="hint">
+          {isSet
+            ? "Deliveries are checked against this secret."
+            : `Not set yet. Add the webhook in ${where} with the URL above, then paste the secret ${sender} shows. Until then deliveries are rejected.`}
+        </p>
+      </div>
+      {error && <p className="error">{error}</p>}
+    </form>
   );
 }

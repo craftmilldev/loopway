@@ -7,9 +7,10 @@ export interface Inbox {
   name: string;
   source_type: string;
   webhook_url: string;
+  config?: { secret?: string | null };
 }
 
-// The GitHub events offered as checkboxes (same list as `loopway inbox create`).
+// The events offered as checkboxes per source (same lists as `loopway inbox create`).
 const GITHUB_EVENTS = [
   "push",
   "pull_request",
@@ -29,10 +30,28 @@ const GITHUB_EVENTS = [
   "star",
   "fork",
 ];
+const VERCEL_EVENTS = [
+  "deployment.created",
+  "deployment.succeeded",
+  "deployment.ready",
+  "deployment.promoted",
+  "deployment.rollback",
+  "deployment.error",
+  "deployment.canceled",
+  "project.created",
+  "project.removed",
+  "project.renamed",
+  "project.env-variable.created",
+  "project.env-variable.updated",
+  "project.env-variable.deleted",
+];
+const GRANOLA_EVENTS = ["note.generated", "note.edited", "note.access_granted"];
+const EVENTS: Record<string, string[]> = { github: GITHUB_EVENTS, granola: GRANOLA_EVENTS, vercel: VERCEL_EVENTS };
 
-const EVENTS: Record<string, string[]> = {
-  github: GITHUB_EVENTS,
-  granola: ["note.generated", "note.edited", "note.access_granted"],
+// Senders that make the signing secret when the webhook is added there, so it's pasted in on the inbox page afterwards.
+export const SECRET_LATER: Record<string, { sender: string; where: string }> = {
+  vercel: { sender: "Vercel", where: "Vercel → Team Settings → Webhooks" },
+  granola: { sender: "Granola", where: "Granola → Settings → Connectors → Webhooks" },
 };
 
 export function Dashboard() {
@@ -95,9 +114,6 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [secret, setSecret] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const sourceEvents = EVENTS[source] ?? [];
-  // Granola generates the secret itself once it has the webhook URL, so it's set after the inbox exists.
-  const granola = source === "granola";
 
   useEffect(() => {
     lw.api("/sources").then(async (r) => {
@@ -120,12 +136,15 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
     setSecret(Array.from(b, (x) => x.toString(16).padStart(2, "0")).join(""));
   }
 
+  const later = SECRET_LATER[source];
+  const known = EVENTS[source] ?? [];
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const events = all ? ["*"] : sourceEvents.filter((ev) => checked.has(ev));
+    const events = all ? ["*"] : known.filter((ev) => checked.has(ev));
     if (!events.length) return setError("Pick at least one event.");
-    const config = granola ? { events } : { events, secret };
+    const config = later ? { events } : { events, secret };
     const r = await lw.api("/inboxes", { method: "POST", body: { name, source_type: source, config } });
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) return setError(await lw.message(r));
@@ -166,7 +185,7 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
           <label className="check all">
             <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Everything
           </label>
-          {sourceEvents.map((ev) => (
+          {known.map((ev) => (
             <label key={ev} className="check">
               <input type="checkbox" disabled={all} checked={checked.has(ev)} onChange={(e) => toggle(ev, e.target.checked)} /> {ev}
             </label>
@@ -174,11 +193,13 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
         </div>
         <p className="hint">Which events the inbox keeps. Anything else the webhook sends is rejected and shows as a failed delivery in the sender.</p>
       </div>
-      {granola ? (
-        <p className="hint">
-          Granola makes the webhook secret. Once the inbox exists, add its webhook URL in Granola → Settings → Connectors → Webhooks, then set
-          the whsec_… secret Granola shows with <code>loopway inbox update &lt;inbox&gt; --secret whsec_…</code>.
-        </p>
+      {later ? (
+        <div className="field">
+          <label>Secret</label>
+          <p className="hint">
+            {later.sender} shows the secret once you add the webhook there. Paste it in on the inbox page; until then deliveries are rejected.
+          </p>
+        </div>
       ) : (
         <div className="field">
           <label htmlFor="secret">Secret</label>

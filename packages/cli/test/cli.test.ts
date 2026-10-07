@@ -185,15 +185,24 @@ describe("inboxes", () => {
     await expect(run("inbox", "show", "nope")).rejects.toThrow(/No inbox with id or name/);
   });
 
-  it("update sets a granola inbox's secret", async () => {
+  it("creates a vercel inbox without a secret and sets it with update", async () => {
+    await configured();
+    const inbox = await runJson("inbox", "create", "--name", "vc", "--source", "vercel", "--events", "deployment.error");
+    expect(inbox.config).toEqual({ secret: null, events: ["deployment.error"] });
+    await expect(run("inbox", "update", "vc")).rejects.toThrow(/Pass --name, --events or --secret/);
+    const updated = await runJson("inbox", "update", "vc", "--secret", "from-vercel");
+    expect(updated.config).toEqual({ secret: "from-vercel", events: ["deployment.error"] });
+    expect(await run("inbox", "update", inbox.id, "--name", "vercel")).toMatch(/Updated inbox .*vercel/);
+  });
+
+  it("creates a granola inbox without a secret and sets it with update", async () => {
     await configured();
     const inbox = await runJson("inbox", "create", "--name", "notes", "--source", "granola");
-    expect(inbox.config.secret).toBeNull();
+    expect(inbox.config).toEqual({ secret: null, events: ["*"] });
     const secret = "whsec_" + Buffer.from("granola-key").toString("base64");
     const updated = await runJson("inbox", "update", "notes", "--secret", secret);
     expect(updated.config).toEqual({ secret, events: ["*"] });
     expect(updated.setup.secret).toBe("set");
-    await expect(run("inbox", "update", "notes")).rejects.toThrow(/Nothing to update/);
   });
 });
 

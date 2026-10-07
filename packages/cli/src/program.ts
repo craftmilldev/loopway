@@ -52,25 +52,25 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
 
   // ---------- inboxes ----------
 
-  const inbox = program.command("inbox").alias("inboxes").description("create and list inboxes");
+  const inbox = program.command("inbox").alias("inboxes").description("create, list and update inboxes");
 
   inbox
     .command("create")
     .description("create an inbox (interactive; pass flags to skip prompts)")
     .option("--name <name>", "inbox name")
-    .option("--source <type>", "source type: github or granola")
+    .option("--source <type>", "source type: github, granola or vercel")
     .option("--events <list>", "comma-separated event names to accept (default all)", splitList)
-    .option("--secret <secret>", "webhook secret (github: 16+ chars, generated if omitted; granola: set it later with `inbox update`)")
+    .option("--secret <secret>", "webhook secret (github: 16+ chars, generated if omitted; granola, vercel: the one they show)")
     .addOption(jsonOpt())
     .action((opts) => createInbox(ctx, opts));
 
   inbox
     .command("update")
-    .description("rename an inbox or change the events or secret it accepts")
+    .description("change an inbox's name, events or secret (asks for the secret if no flags are given)")
     .argument("<inbox>", "inbox id or name")
-    .option("--name <name>", "new inbox name")
-    .option("--events <list>", "comma-separated event names to accept", splitList)
-    .option("--secret <secret>", "webhook secret (granola: the whsec_… secret Granola shows)")
+    .option("--name <name>", "new name")
+    .option("--events <list>", "comma-separated event names to accept, or *", splitList)
+    .option("--secret <secret>", "webhook secret, e.g. the one Vercel or Granola shows when you add the webhook")
     .addOption(jsonOpt())
     .action((ref, opts) => updateInbox(ctx, ref, opts));
 

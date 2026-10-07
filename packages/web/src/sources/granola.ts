@@ -64,7 +64,7 @@ export const granola: SourceAdapter<GranolaConfig> = {
       events: config.events.includes("*") ? GRANOLA_EVENTS : config.events,
       secret: config.secret
         ? "set"
-        : "not set yet: copy the whsec_… secret Granola shows and run `loopway inbox update <inbox> --secret whsec_…`",
+        : "not set yet: paste the whsec_… secret Granola shows on the inbox page, or run `loopway inbox update <inbox> --secret whsec_…`",
     };
   },
 

@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { z } from "zod";
 import { makeCloudEvent } from "../cloudevents.js";
 import { newSecret, safeEqual } from "../ids.js";
+import { get, str, type Payload } from "./payload.js";
 import type { SourceAdapter } from "./types.js";
 
 /**
@@ -29,8 +30,6 @@ const configInput = z
     events: z.array(z.string().min(1)).min(1).optional(),
   })
   .strict();
-
-type Payload = Record<string, unknown>;
 
 interface Rule {
   /** Dotted path, or a function, for `source`. Default: repository.url → organization.url → sender.url. */
@@ -216,20 +215,6 @@ function parseBody(contentType: string, raw: string): Payload {
   const value: unknown = JSON.parse(json);
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Payload must be a JSON object");
   return value as Payload;
-}
-
-function get(obj: unknown, path: string): unknown {
-  let cur: unknown = obj;
-  for (const key of path.split(".")) {
-    if (cur == null || typeof cur !== "object") return undefined;
-    cur = (cur as Record<string, unknown>)[key];
-  }
-  return cur;
-}
-
-function str(v: unknown): string | undefined {
-  if (v === undefined || v === null || v === "") return undefined;
-  return typeof v === "string" ? v : typeof v === "number" || typeof v === "boolean" ? String(v) : undefined;
 }
 
 /** GitHub mixes ISO strings and unix-seconds integers. */
