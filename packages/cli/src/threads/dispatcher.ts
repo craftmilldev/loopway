@@ -19,7 +19,7 @@ export const DEFAULTS = { max: 3, interval: 30, ttl: 3600 };
 
 /** What a dispatcher is doing right now, for the TUI. */
 export interface DispatcherState {
-  /** Pending events not handed to a session yet: queued behind --max, or waiting for their session's run to exit. */
+  /** Pending events not handed to a session yet: queued behind --max runs, or waiting for their session's run to exit. */
   raw: Event[];
   /** This inbox's sessions. */
   sessions: Sessions;
@@ -45,6 +45,9 @@ export class Dispatcher {
   private readonly dir: string;
   private queued = 0;
   private raw: Event[] = [];
+  /** Whether a run has exited since the last tick started, and who to tell when one does. */
+  private freed = false;
+  private onFreed?: () => void;
 
   static async start(ctx: Context, client: LoopwayClient, inboxId: string, opts: ThreadsOptions = {}): Promise<Dispatcher> {
     const prompt = await threadPrompt(inboxId);
@@ -67,6 +70,7 @@ export class Dispatcher {
   }
 
   async tick(): Promise<void> {
+    this.freed = false;
     await this.renewLocks();
     const pending = await this.listPending();
     const running = new Set(this.running.keys());
@@ -89,6 +93,12 @@ export class Dispatcher {
   /** A session's transcript so far, or "" if it hasn't written one. */
   readLog(id: string): Promise<string> {
     return readFile(sessionLogPath(this.dir, id), "utf8").catch(() => "");
+  }
+
+  /** Resolves once a run has exited since the last tick started, freeing its slot for a waiting event. */
+  slotFreed(): Promise<void> {
+    if (this.freed) return Promise.resolve();
+    return new Promise((resolve) => (this.onFreed = resolve));
   }
 
   /** Resolves once every run in flight has exited. */
@@ -148,6 +158,8 @@ export class Dispatcher {
     });
     this.ctx.out(`${short} ${ended ? "ended" : "finished"} (exit ${code})`);
     this.running.delete(id);
+    this.freed = true;
+    this.onFreed?.();
   }
 
   /** Keeps every event a live session owns locked until it's processed; forgets the ones that are. */
@@ -206,7 +218,7 @@ export class Dispatcher {
   private reportWaiting(waiting: number): void {
     if (waiting === this.queued) return;
     this.queued = waiting;
-    if (waiting) this.ctx.out(dim(`${waiting} event(s) waiting: all ${this.max} sessions are busy.`));
+    if (waiting) this.ctx.out(dim(`${waiting} event(s) waiting: ${this.max} sessions are already running.`));
   }
 }
 
