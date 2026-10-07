@@ -221,7 +221,6 @@ packages/web/
   src/cloudevents.ts    CloudEvent type + validation
   scripts/              dev server, migrate
   test/api.test.ts      end-to-end tests (TEST_DATABASE_URL=... to run against real Postgres)
-  test/sources/         one webhook test file per source
 packages/cli/
   src/index.ts          `loopway` entry: error handling + exit codes
   src/program.ts        commands and flags (commander)
@@ -244,6 +243,6 @@ packages/cli/
    - what clients show: `label`, `description`, common `events`, `secret` (`{from: "loopway", minLength}` if loopway makes it, `{from: "sender"}` if the sender shows one after the webhook is added) and `webhookSettings`
    - `parseConfig` (validate + defaults), `publicConfig`, optional `setup`, and `receive(headers, rawBody) → event | ignored | rejected`
 2. Add it to the list in `packages/web/src/sources/index.ts`.
-3. Add `packages/web/test/sources/<type>.test.ts` (`test/helpers.ts` gives it an app and database) and its config and CloudEvent mapping to this README.
+3. Add its webhook tests to `packages/web/test/api.test.ts`, and its config and CloudEvent mapping to this README.
 
 Nothing else names a source: the API, `loopway inbox create` and the dashboard build their forms from `GET /sources`, and the inbox page offers a secret form for any `sender` source.
