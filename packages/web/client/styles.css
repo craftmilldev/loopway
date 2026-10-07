@@ -68,10 +68,19 @@ img{max-width:100%}
   .nav-spacer{flex-basis:100%;height:0}
 }
 
+/* Wordmark (client/wordmark.svg, inlined so these colors apply) */
+.loopway-wordmark{
+  --loopway-ink:#19110c;
+  --loopway-red:#e92f12;
+  --loopway-shadow:#821e0f;
+  --loopway-blue:#4a7991;
+  --loopway-cream:#f6e8e5;
+}
+
 /* Simple header bar */
 .post-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px 20px;max-width:var(--measure-page);margin:0 auto;padding:16px 24px 8px;border-bottom:3px double var(--ink-900);font-family:var(--font-type);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-400)}
-.post-nav .wordmark{color:var(--ink-900);letter-spacing:.15em;font-family:var(--font-text);font-size:1.25rem}
-.post-nav .wordmark:hover{color:var(--ink-900)}
+.post-nav .wordmark{display:block;line-height:0}
+.post-nav .wordmark svg{width:auto;height:40px}
 .post-nav a{white-space:nowrap}
 .post-nav .eyebrow{order:1;flex-basis:100%}
 
