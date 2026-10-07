@@ -75,9 +75,7 @@ export async function migrate(db: Db): Promise<string[]> {
      )`,
   );
   const done = new Set(
-    (await db.query<{ version: string }>(`SELECT version FROM loopway.schema_migrations`)).map(
-      (r) => r.version,
-    ),
+    (await db.query<{ version: string }>(`SELECT version FROM loopway.schema_migrations`)).map((r) => r.version),
   );
   const applied: string[] = [];
   for (const m of migrations) {

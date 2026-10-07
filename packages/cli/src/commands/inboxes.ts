@@ -215,7 +215,9 @@ export async function updateInbox(ctx: Context, ref: string, opts: UpdateOptions
   let secret = opts.secret;
   if (!opts.name && !opts.events && !secret) {
     if (!ctx.interactive) throw new UsageError("Pass --name, --events or --secret");
-    secret = ask(await p.password({ message: "Webhook secret", validate: (v) => (!v ? "Enter the secret" : undefined) }));
+    secret = ask(
+      await p.password({ message: "Webhook secret", validate: (v) => (!v ? "Enter the secret" : undefined) }),
+    );
   }
   const config = flagConfig({ events: opts.events, secret });
   const inbox = await client.updateInbox(id, { name: opts.name, config });

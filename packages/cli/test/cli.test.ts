@@ -29,7 +29,12 @@ const apiFetch = ((input: string | URL | Request, init?: RequestInit) => app.req
 
 beforeAll(async () => {
   db = await openDb({ pgliteDir: "memory://" });
-  app = createApi({ getDb: async () => db, publicBaseUrl: API, tokenSecret: SECRET, sendEmail: async (e) => void emails.push(e) });
+  app = createApi({
+    getDb: async () => db,
+    publicBaseUrl: API,
+    tokenSecret: SECRET,
+    sendEmail: async (e) => void emails.push(e),
+  });
 });
 afterAll(() => db.close());
 
@@ -111,14 +116,18 @@ describe("auth", () => {
   it("login creates an account for an unknown email once the code is entered", async () => {
     await expect(run("login", "--url", API, "--email", "fresh@example.com")).rejects.toThrow(/--code is required/);
     const code = emails.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
-    expect(await run("login", "--url", API, "--email", "fresh@example.com", "--code", code)).toMatch(/Created your account/);
+    expect(await run("login", "--url", API, "--email", "fresh@example.com", "--code", code)).toMatch(
+      /Created your account/,
+    );
     expect(await runJson("whoami")).toMatchObject({ name: "fresh", email: "fresh@example.com" });
   });
 
   it("login rejects a wrong code without saving anything", async () => {
     await createUser(db, { name: "Other", email: "o@example.com" });
     await expect(run("login", "--url", API, "--email", "o@example.com")).rejects.toThrow();
-    await expect(run("login", "--url", API, "--email", "o@example.com", "--code", "00000000")).rejects.toThrow(/invalid or has expired/);
+    await expect(run("login", "--url", API, "--email", "o@example.com", "--code", "00000000")).rejects.toThrow(
+      /invalid or has expired/,
+    );
     expect(await savedConfig()).toBeUndefined();
   });
 
@@ -162,7 +171,16 @@ describe("auth", () => {
 describe("inboxes", () => {
   it("creates from flags and lists", async () => {
     await configured();
-    const inbox = await runJson("inbox", "create", "--name", "prs", "--source", "github", "--events", "push, pull_request");
+    const inbox = await runJson(
+      "inbox",
+      "create",
+      "--name",
+      "prs",
+      "--source",
+      "github",
+      "--events",
+      "push, pull_request",
+    );
     expect(inbox.config.events).toEqual(["push", "pull_request"]);
     expect(inbox.webhook_url).toBe(`${API}/webhooks/${inbox.id}`);
 
@@ -187,7 +205,16 @@ describe("inboxes", () => {
 
   it("creates a vercel inbox without a secret and sets it with update", async () => {
     await configured();
-    const inbox = await runJson("inbox", "create", "--name", "vc", "--source", "vercel", "--events", "deployment.error");
+    const inbox = await runJson(
+      "inbox",
+      "create",
+      "--name",
+      "vc",
+      "--source",
+      "vercel",
+      "--events",
+      "deployment.error",
+    );
     expect(inbox.config).toEqual({ secret: null, events: ["deployment.error"] });
     await expect(run("inbox", "update", "vc")).rejects.toThrow(/Pass --name, --events or --secret/);
     const updated = await runJson("inbox", "update", "vc", "--secret", "from-vercel");
@@ -282,7 +309,12 @@ describe("threads", () => {
   const repository = { full_name: "a/b", url: "https://api.github.com/repos/a/b" };
   const issue = (action: string, n: number) => ({ action, issue: { number: n }, repository });
   const comment = (n: number) => ({ action: "created", issue: { number: n }, comment: { body: "hi" }, repository });
-  const pull = (action: string, n: number, body = "") => ({ action, number: n, pull_request: { number: n, body }, repository });
+  const pull = (action: string, n: number, body = "") => ({
+    action,
+    number: n,
+    pull_request: { number: n, body },
+    repository,
+  });
   const sessions = async () => JSON.parse(await readFile(join(configDir, "threads.json"), "utf8"));
   const closers: (() => Promise<void>)[] = [];
   afterEach(async () => void (await Promise.all(closers.splice(0).map((c) => c()))));
@@ -438,7 +470,9 @@ describe("threads", () => {
     expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\//);
     expect((await mcp(url, "initialize", { protocolVersion: "2025-06-18" })).serverInfo.name).toBe("loopway");
     expect((await mcp(url, "tools/list")).tools.map((t: any) => t.name)).toEqual(["link", "end"]);
-    expect((await mcp(url, "tools/call", { name: "link", arguments: { number: 9 } })).content[0].text).toMatch(/Linked a\/b#9/);
+    expect((await mcp(url, "tools/call", { name: "link", arguments: { number: 9 } })).content[0].text).toMatch(
+      /Linked a\/b#9/,
+    );
     await mcp(url, "tools/call", { name: "link", arguments: { number: 3, repo: "c/d" } });
     expect((await mcp(url, "tools/call", { name: "link", arguments: { number: "x" } })).isError).toBe(true);
     await finish();
@@ -461,7 +495,15 @@ describe("threads", () => {
     await Promise.all(
       Array.from({ length: 20 }, (_, i) =>
         withSessions(configDir, (s) => {
-          s[`s${i}`] = { inbox_id: "x", keys: [], events: [], status: "active", started: false, created_at: "", updated_at: "" };
+          s[`s${i}`] = {
+            inbox_id: "x",
+            keys: [],
+            events: [],
+            status: "active",
+            started: false,
+            created_at: "",
+            updated_at: "",
+          };
         }),
       ),
     );

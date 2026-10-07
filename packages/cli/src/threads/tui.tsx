@@ -47,7 +47,8 @@ export function ThreadsTui({ inbox, load, readLog, refreshMs = 1000 }: TuiProps)
   useEffect(() => poll(load, setSnap, refreshMs), [load, refreshMs]);
 
   if (!snap) return <Text dimColor>Loading…</Text>;
-  if (open) return <LogView id={open} snap={snap} readLog={readLog} refreshMs={refreshMs} onBack={() => setOpen(undefined)} />;
+  if (open)
+    return <LogView id={open} snap={snap} readLog={readLog} refreshMs={refreshMs} onBack={() => setOpen(undefined)} />;
   return <ListView inbox={inbox} snap={snap} selected={selected} onSelect={setSelected} onOpen={setOpen} />;
 }
 
@@ -136,7 +137,11 @@ function ListView({ inbox, snap, selected, onSelect, onOpen }: ListViewProps) {
 function listRows(snap: Snapshot, lists: Record<Section, string[]>, rawMax: number): Row[] {
   const rows: Row[] = [{ key: "h-raw", header: `Raw events (${snap.raw.length})` }];
   for (const e of snap.raw.slice(0, rawMax)) {
-    rows.push({ key: e.id, label: e.event.type, meta: `${threadKeys(e).key ?? e.event.subject ?? ""}  ${ago(e.received_at)}` });
+    rows.push({
+      key: e.id,
+      label: e.event.type,
+      meta: `${threadKeys(e).key ?? e.event.subject ?? ""}  ${ago(e.received_at)}`,
+    });
   }
   if (snap.raw.length > rawMax) rows.push({ key: "more-raw", meta: `… ${snap.raw.length - rawMax} more` });
   if (!snap.raw.length) rows.push({ key: "none-raw", meta: "none" });
@@ -145,7 +150,12 @@ function listRows(snap: Snapshot, lists: Record<Section, string[]>, rawMax: numb
     rows.push({ key: `gap-${sec}` }, { key: `h-${sec}`, header: `${TITLES[sec]} (${lists[sec].length})` });
     for (const id of lists[sec]) {
       const s = snap.sessions[id]!;
-      rows.push({ key: id, id, label: s.keys.join(", ") || "new thread", meta: `${id.slice(0, 8)}  ${ago(s.updated_at)}` });
+      rows.push({
+        key: id,
+        id,
+        label: s.keys.join(", ") || "new thread",
+        meta: `${id.slice(0, 8)}  ${ago(s.updated_at)}`,
+      });
     }
     if (!lists[sec].length) rows.push({ key: `none-${sec}`, meta: "none" });
   }
@@ -157,7 +167,7 @@ function ListRow({ row, selected }: { row: Row; selected: boolean }) {
   return (
     <Text wrap="truncate-end" color={selected ? "cyan" : undefined}>
       {selected ? "❯ " : "  "}
-      {row.label && <Text bold={selected}>{row.label}  </Text>}
+      {row.label && <Text bold={selected}>{row.label} </Text>}
       <Text dimColor={!selected}>{row.meta ?? ""}</Text>
     </Text>
   );
@@ -205,7 +215,10 @@ function LogView({ id, snap, readLog, refreshMs, onBack }: LogViewProps) {
   return (
     <Box flexDirection="column" height={height}>
       <Text bold wrap="truncate-end">
-        {session?.keys.join(", ") || "new thread"} <Text dimColor>· {id.slice(0, 8)} · {sectionOf(snap, id)}</Text>
+        {session?.keys.join(", ") || "new thread"}{" "}
+        <Text dimColor>
+          · {id.slice(0, 8)} · {sectionOf(snap, id)}
+        </Text>
       </Text>
       <Box flexDirection="column" height={body} overflow="hidden">
         {lines.length ? (
@@ -219,7 +232,8 @@ function LogView({ id, snap, readLog, refreshMs, onBack }: LogViewProps) {
         )}
       </Box>
       <Text dimColor wrap="truncate-end">
-        {lines.length ? `${start + 1}–${Math.min(start + body, lines.length)} of ${lines.length} · ` : ""}↑↓ PgUp/PgDn scroll · ← back · q quit
+        {lines.length ? `${start + 1}–${Math.min(start + body, lines.length)} of ${lines.length} · ` : ""}↑↓ PgUp/PgDn
+        scroll · ← back · q quit
       </Text>
     </Box>
   );
@@ -229,7 +243,11 @@ function LogView({ id, snap, readLog, refreshMs, onBack }: LogViewProps) {
 function poll<T>(fn: () => Promise<T>, set: (v: T) => void, ms: number): () => void {
   let live = true;
   // A failed read keeps showing the last one; the next tick tries again.
-  const run = () => fn().then((v) => live && set(v), () => {});
+  const run = () =>
+    fn().then(
+      (v) => live && set(v),
+      () => {},
+    );
   void run();
   const timer = setInterval(run, ms);
   return () => {

@@ -40,7 +40,8 @@ export function transcriptLines(log: string): TranscriptLine[] {
     }
     if (r.parent_tool_use_id) continue;
     if (r.type === "system" && r.subtype === "init") lines.push({ text: "── run started ──", kind: "meta" });
-    else if (r.type === "result") lines.push({ text: `── run ${r.subtype === "success" ? "finished" : r.subtype} ${runStats(r)}──`, kind: "meta" });
+    else if (r.type === "result")
+      lines.push({ text: `── run ${r.subtype === "success" ? "finished" : r.subtype} ${runStats(r)}──`, kind: "meta" });
     else if (r.type === "assistant" || r.type === "user") {
       for (const b of blocks(r.message?.content)) lines.push(...blockLines(r.type, b));
     }
@@ -50,11 +51,17 @@ export function transcriptLines(log: string): TranscriptLine[] {
 
 function blockLines(role: string, b: Block): TranscriptLine[] {
   if (b.type === "text" && b.text?.trim()) {
-    return role === "assistant" ? [{ text: b.text.trim(), kind: "text" }] : [{ text: `› ${clip(b.text, 3)}`, kind: "meta" }];
+    return role === "assistant"
+      ? [{ text: b.text.trim(), kind: "text" }]
+      : [{ text: `› ${clip(b.text, 3)}`, kind: "meta" }];
   }
   if (b.type === "tool_use") return [{ text: `● ${b.name}(${oneLine(toolSummary(b.input ?? {}))})`, kind: "tool" }];
   if (b.type === "tool_result") {
-    const text = blocks(b.content).map((c) => c.text ?? "").join("\n").trim() || "(no output)";
+    const text =
+      blocks(b.content)
+        .map((c) => c.text ?? "")
+        .join("\n")
+        .trim() || "(no output)";
     return [{ text: `  ⎿ ${clip(text, 2).replaceAll("\n", "\n    ")}`, kind: b.is_error ? "error" : "result" }];
   }
   return [];
@@ -67,7 +74,8 @@ function toolSummary(input: Record<string, unknown>): string {
   return JSON.stringify(input);
 }
 
-const blocks = (c: string | Block[] | undefined): Block[] => (typeof c === "string" ? [{ type: "text", text: c }] : (c ?? []));
+const blocks = (c: string | Block[] | undefined): Block[] =>
+  typeof c === "string" ? [{ type: "text", text: c }] : (c ?? []);
 
 const oneLine = (s: string, max = 120) => {
   const flat = s.replace(/\s+/g, " ").trim();
@@ -81,7 +89,10 @@ function clip(s: string, n: number): string {
 }
 
 function runStats(r: LogRecord): string {
-  const parts = [r.duration_ms != null && `${Math.round(r.duration_ms / 1000)}s`, r.total_cost_usd != null && `$${r.total_cost_usd.toFixed(2)}`];
+  const parts = [
+    r.duration_ms != null && `${Math.round(r.duration_ms / 1000)}s`,
+    r.total_cost_usd != null && `$${r.total_cost_usd.toFixed(2)}`,
+  ];
   const s = parts.filter(Boolean).join(", ");
   return s ? `(${s}) ` : "";
 }

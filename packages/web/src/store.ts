@@ -112,11 +112,7 @@ export async function getInbox(db: Db, id: string, userId?: string): Promise<Inb
   return row;
 }
 
-export async function updateInbox(
-  db: Db,
-  id: string,
-  patch: { name?: string; config?: unknown },
-): Promise<Inbox> {
+export async function updateInbox(db: Db, id: string, patch: { name?: string; config?: unknown }): Promise<Inbox> {
   const [row] = await db.query<Inbox>(
     `UPDATE loopway.inboxes SET
        name   = COALESCE($2, name),
@@ -223,10 +219,10 @@ export async function listEvents(
 }
 
 export async function getEvent(db: Db, inboxId: string, eventId: string): Promise<EventRow | undefined> {
-  const [row] = await db.query<EventRow>(
-    `SELECT ${EVENT_COLS} FROM loopway.events WHERE id = $1 AND inbox_id = $2`,
-    [eventId, inboxId],
-  );
+  const [row] = await db.query<EventRow>(`SELECT ${EVENT_COLS} FROM loopway.events WHERE id = $1 AND inbox_id = $2`, [
+    eventId,
+    inboxId,
+  ]);
   return row;
 }
 

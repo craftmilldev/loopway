@@ -100,7 +100,15 @@ export function Inbox({ id }: { id: string }) {
 }
 
 // Some senders make the signing secret when the webhook is added there, so it's pasted in here afterwards.
-function SenderSecret({ inbox, source, onSaved }: { inbox: InboxInfo; source: lw.Source; onSaved: (inbox: InboxInfo) => void }) {
+function SenderSecret({
+  inbox,
+  source,
+  onSaved,
+}: {
+  inbox: InboxInfo;
+  source: lw.Source;
+  onSaved: (inbox: InboxInfo) => void;
+}) {
   const [secret, setSecret] = useState("");
   const [error, setError] = useState<string | null>(null);
   const isSet = !!inbox.config?.secret;
@@ -108,7 +116,10 @@ function SenderSecret({ inbox, source, onSaved }: { inbox: InboxInfo; source: lw
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const r = await lw.api("/inboxes/" + encodeURIComponent(inbox.id), { method: "PATCH", body: { config: { secret } } });
+    const r = await lw.api("/inboxes/" + encodeURIComponent(inbox.id), {
+      method: "PATCH",
+      body: { config: { secret } },
+    });
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) return setError(await lw.message(r));
     setSecret("");

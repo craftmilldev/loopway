@@ -26,7 +26,8 @@ export class SourceRegistry {
       label: s.label,
       description: s.description,
       events: s.events,
-      secret: s.secret.from === "loopway" ? { from: s.secret.from, min_length: s.secret.minLength } : { from: s.secret.from },
+      secret:
+        s.secret.from === "loopway" ? { from: s.secret.from, min_length: s.secret.minLength } : { from: s.secret.from },
       webhook_settings: s.webhookSettings,
     }));
   }

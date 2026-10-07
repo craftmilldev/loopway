@@ -136,17 +136,27 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
           </label>
           {source?.events.map((ev) => (
             <label key={ev} className="check">
-              <input type="checkbox" disabled={all} checked={checked.has(ev)} onChange={(e) => toggle(ev, e.target.checked)} /> {ev}
+              <input
+                type="checkbox"
+                disabled={all}
+                checked={checked.has(ev)}
+                onChange={(e) => toggle(ev, e.target.checked)}
+              />{" "}
+              {ev}
             </label>
           ))}
         </div>
-        <p className="hint">Which events the inbox keeps. Anything else the webhook sends is rejected and shows as a failed delivery in the sender.</p>
+        <p className="hint">
+          Which events the inbox keeps. Anything else the webhook sends is rejected and shows as a failed delivery in
+          the sender.
+        </p>
       </div>
       {source?.secret.from === "sender" ? (
         <div className="field">
           <label>Secret</label>
           <p className="hint">
-            {source.label} shows the secret once you add the webhook there. Paste it in on the inbox page; until then deliveries are rejected.
+            {source.label} shows the secret once you add the webhook there. Paste it in on the inbox page; until then
+            deliveries are rejected.
           </p>
         </div>
       ) : (

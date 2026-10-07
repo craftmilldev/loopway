@@ -46,7 +46,12 @@ export class Dispatcher {
   private queued = 0;
   private raw: Event[] = [];
 
-  static async start(ctx: Context, client: LoopwayClient, inboxId: string, opts: ThreadsOptions = {}): Promise<Dispatcher> {
+  static async start(
+    ctx: Context,
+    client: LoopwayClient,
+    inboxId: string,
+    opts: ThreadsOptions = {},
+  ): Promise<Dispatcher> {
     const prompt = await threadPrompt(inboxId);
     const mcp = await startMcpServer("loopway", sessionTools(ctx.configDir));
     return new Dispatcher(ctx, client, inboxId, opts, prompt, mcp);
@@ -159,7 +164,10 @@ export class Dispatcher {
       for (const eventId of s.events) {
         try {
           const token = await heldToken(this.dir, this.inboxId, eventId);
-          await rememberLock(this.dir, await this.client.lock(this.inboxId, eventId, { ttl_seconds: this.ttl, lock_token: token }));
+          await rememberLock(
+            this.dir,
+            await this.client.lock(this.inboxId, eventId, { ttl_seconds: this.ttl, lock_token: token }),
+          );
         } catch (err) {
           // 409: processed, or someone else took it after a lapse; 404: gone. Either way it isn't ours.
           if (!(err instanceof ApiError && (err.status === 409 || err.status === 404))) throw err;
@@ -211,6 +219,8 @@ export class Dispatcher {
 }
 
 function describeEvents(events: Event[]): string {
-  const lines = events.map((e) => `- ${e.id}  ${e.event.type}  ${threadKeys(e).key ?? e.event.subject ?? ""}`.trimEnd());
+  const lines = events.map((e) =>
+    `- ${e.id}  ${e.event.type}  ${threadKeys(e).key ?? e.event.subject ?? ""}`.trimEnd(),
+  );
   return `New events for this thread (already locked for you):\n${lines.join("\n")}`;
 }

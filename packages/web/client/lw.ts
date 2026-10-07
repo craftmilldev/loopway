@@ -29,7 +29,10 @@ export function clear() {
   } catch {}
 }
 
-export function api(path: string, { method = "GET", body, auth = true }: { method?: string; body?: unknown; auth?: boolean } = {}) {
+export function api(
+  path: string,
+  { method = "GET", body, auth = true }: { method?: string; body?: unknown; auth?: boolean } = {},
+) {
   const headers: Record<string, string> = {};
   if (body !== undefined) headers["content-type"] = "application/json";
   const t = token();

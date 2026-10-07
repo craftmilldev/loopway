@@ -109,7 +109,10 @@ export class LoopwayClient {
 
   /** Trades the emailed code for a session token. */
   verifyLoginCode(email: string, code: string) {
-    return this.request<{ token: string; expires_at: string; user: User; created: boolean }>("POST", "/auth/verify", { email, code });
+    return this.request<{ token: string; expires_at: string; user: User; created: boolean }>("POST", "/auth/verify", {
+      email,
+      code,
+    });
   }
 
   me() {
@@ -193,7 +196,11 @@ export class LoopwayClient {
       try {
         json = JSON.parse(text);
       } catch {
-        throw new ApiError(res.status, "bad_response", `Expected JSON from ${method} ${path}, got: ${text.slice(0, 200)}`);
+        throw new ApiError(
+          res.status,
+          "bad_response",
+          `Expected JSON from ${method} ${path}, got: ${text.slice(0, 200)}`,
+        );
       }
     }
     if (!res.ok) {
