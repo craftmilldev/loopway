@@ -51,7 +51,7 @@ const SUBJECTS: Record<string, string[]> = {
   "marketplace.member.": ["memberId"],
   "project.": ["project.id"],
   "project.domain.": ["domain.name"],
-  "project.domain.updated": ["next.domain", "previous.domain"],
+  "project.domain.updated": ["previous.domain", "next.domain"],
   "project.env-variable.": ["envVarId"],
   "project.rolling-release.": ["rollingRelease.default.targetDeploymentId"],
 };
