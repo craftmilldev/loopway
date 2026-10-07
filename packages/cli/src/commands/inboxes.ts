@@ -81,7 +81,14 @@ const VERCEL_EVENTS = [
   "project.env-variable.updated",
   "project.env-variable.deleted",
 ];
+const GRANOLA_EVENTS = ["note.generated", "note.edited", "note.access_granted"];
 const OTHER = "__other__";
+
+/** Senders that make the webhook secret themselves, so it's set with `inbox update` after the inbox exists. */
+const SECRET_LATER: Record<string, { sender: string; where: string }> = {
+  vercel: { sender: "Vercel", where: "Vercel → Team Settings → Webhooks" },
+  granola: { sender: "Granola", where: "Granola → Settings → Connectors → Webhooks" },
+};
 
 /**
  * Interactive: walks through name → source → source config → confirm, skipping any step whose
@@ -132,7 +139,13 @@ async function createInteractive(client: LoopwayClient, opts: CreateOptions): Pr
   }
 
   const config =
-    source === "github" ? await githubConfig(opts) : source === "vercel" ? await vercelConfig(opts) : await genericConfig(opts);
+    source === "github"
+      ? await githubConfig(opts)
+      : source === "vercel"
+        ? await vercelConfig(opts)
+        : source === "granola"
+          ? await granolaConfig(opts)
+          : await genericConfig(opts);
 
   p.note(
     fields([
@@ -158,9 +171,10 @@ async function createInteractive(client: LoopwayClient, opts: CreateOptions): Pr
   }
   spin.stop(`Created ${bold(inbox.name)} ${dim(inbox.id)}`);
 
-  if (source === "vercel" && !config?.secret) {
-    p.note(setupText(inbox), "Add this webhook in Vercel → Team Settings → Webhooks");
-    p.outro(`Then paste the secret Vercel shows with ${bold(`loopway inbox update ${inbox.id}`)}`);
+  const later = SECRET_LATER[source];
+  if (later && !config?.secret) {
+    p.note(setupText(inbox), `Add this webhook in ${later.where}`);
+    p.outro(`Then paste the secret ${later.sender} shows with ${bold(`loopway inbox update ${inbox.id}`)}`);
     return inbox;
   }
   p.note(setupText(inbox), source === "github" ? "Add this webhook in GitHub → Settings → Webhooks" : "Setup");
@@ -198,6 +212,11 @@ async function githubConfig(opts: CreateOptions) {
 /** Vercel creates the secret when the webhook is added, so it's usually set afterwards with `inbox update`. */
 async function vercelConfig(opts: CreateOptions) {
   const events = opts.events ?? (await pickEvents("Vercel", VERCEL_EVENTS, "e.g. domain.created, flag.updated"));
+  return { events, ...(opts.secret ? { secret: opts.secret } : {}) };
+}
+
+async function granolaConfig(opts: CreateOptions) {
+  const events = opts.events ?? (await pickEvents("Granola", GRANOLA_EVENTS, "e.g. note.deleted"));
   return { events, ...(opts.secret ? { secret: opts.secret } : {}) };
 }
 

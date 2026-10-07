@@ -58,9 +58,9 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .command("create")
     .description("create an inbox (interactive; pass flags to skip prompts)")
     .option("--name <name>", "inbox name")
-    .option("--source <type>", "source type: github or vercel")
+    .option("--source <type>", "source type: github, granola or vercel")
     .option("--events <list>", "comma-separated event names to accept (default all)", splitList)
-    .option("--secret <secret>", "webhook secret (github: 16+ chars, generated if omitted; vercel: the one Vercel shows)")
+    .option("--secret <secret>", "webhook secret (github: 16+ chars, generated if omitted; granola, vercel: the one they show)")
     .addOption(jsonOpt())
     .action((opts) => createInbox(ctx, opts));
 
@@ -70,7 +70,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .argument("<inbox>", "inbox id or name")
     .option("--name <name>", "new name")
     .option("--events <list>", "comma-separated event names to accept, or *", splitList)
-    .option("--secret <secret>", "webhook secret, e.g. the one Vercel shows when you add the webhook")
+    .option("--secret <secret>", "webhook secret, e.g. the one Vercel or Granola shows when you add the webhook")
     .addOption(jsonOpt())
     .action((ref, opts) => updateInbox(ctx, ref, opts));
 

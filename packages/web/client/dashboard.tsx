@@ -45,7 +45,14 @@ const VERCEL_EVENTS = [
   "project.env-variable.updated",
   "project.env-variable.deleted",
 ];
-const EVENTS: Record<string, string[]> = { github: GITHUB_EVENTS, vercel: VERCEL_EVENTS };
+const GRANOLA_EVENTS = ["note.generated", "note.edited", "note.access_granted"];
+const EVENTS: Record<string, string[]> = { github: GITHUB_EVENTS, granola: GRANOLA_EVENTS, vercel: VERCEL_EVENTS };
+
+// Senders that make the signing secret when the webhook is added there, so it's pasted in on the inbox page afterwards.
+export const SECRET_LATER: Record<string, { sender: string; where: string }> = {
+  vercel: { sender: "Vercel", where: "Vercel → Team Settings → Webhooks" },
+  granola: { sender: "Granola", where: "Granola → Settings → Connectors → Webhooks" },
+};
 
 export function Dashboard() {
   const me = lw.useMe();
@@ -129,8 +136,7 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
     setSecret(Array.from(b, (x) => x.toString(16).padStart(2, "0")).join(""));
   }
 
-  // Vercel makes the secret when the webhook is added, so it's pasted in on the inbox page afterwards.
-  const vercel = source === "vercel";
+  const later = SECRET_LATER[source];
   const known = EVENTS[source] ?? [];
 
   async function submit(e: FormEvent) {
@@ -138,7 +144,7 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
     setError(null);
     const events = all ? ["*"] : known.filter((ev) => checked.has(ev));
     if (!events.length) return setError("Pick at least one event.");
-    const config = vercel ? { events } : { events, secret };
+    const config = later ? { events } : { events, secret };
     const r = await lw.api("/inboxes", { method: "POST", body: { name, source_type: source, config } });
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) return setError(await lw.message(r));
@@ -187,10 +193,12 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
         </div>
         <p className="hint">Which events the inbox keeps. Anything else the webhook sends is rejected and shows as a failed delivery in the sender.</p>
       </div>
-      {vercel ? (
+      {later ? (
         <div className="field">
           <label>Secret</label>
-          <p className="hint">Vercel shows the secret once you add the webhook there. Paste it in on the inbox page; until then deliveries are rejected.</p>
+          <p className="hint">
+            {later.sender} shows the secret once you add the webhook there. Paste it in on the inbox page; until then deliveries are rejected.
+          </p>
         </div>
       ) : (
         <div className="field">
