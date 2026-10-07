@@ -1,5 +1,6 @@
 import { useEffect, type MouseEvent, type ReactNode } from "react";
 import { logout, type Me } from "./lw.js";
+import wordmark from "./wordmark.svg";
 
 export function Layout({ title, nav, children }: { title: string; nav?: ReactNode; children: ReactNode }) {
   useEffect(() => {
@@ -8,9 +9,7 @@ export function Layout({ title, nav, children }: { title: string; nav?: ReactNod
   return (
     <>
       <nav className="post-nav">
-        <a className="wordmark" href="/">
-          loopway
-        </a>
+        <a className="wordmark" href="/" dangerouslySetInnerHTML={{ __html: wordmark }} />
         <span className="eyebrow">webhooks in, a queue out</span>
         <span className="nav-spacer" style={{ flex: 1 }}></span>
         {nav}
