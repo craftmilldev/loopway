@@ -9,7 +9,7 @@ export const clientBuild: BuildOptions = {
   format: "esm",
   target: "es2022",
   jsx: "automatic",
-  loader: { ".md": "text" },
+  loader: { ".md": "text", ".svg": "text" },
   define: { "process.env.NODE_ENV": '"production"' },
   minify: true,
   sourcemap: true,

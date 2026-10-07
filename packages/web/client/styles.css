@@ -176,6 +176,15 @@ img {
   }
 }
 
+/* Wordmark (client/wordmark.svg, inlined so these colors apply) */
+.loopway-wordmark {
+  --loopway-ink: #19110c;
+  --loopway-red: #e92f12;
+  --loopway-shadow: #821e0f;
+  --loopway-blue: #4a7991;
+  --loopway-cream: #f6e8e5;
+}
+
 /* Simple header bar */
 .post-nav {
   display: flex;
@@ -193,13 +202,12 @@ img {
   color: var(--ink-400);
 }
 .post-nav .wordmark {
-  color: var(--ink-900);
-  letter-spacing: 0.15em;
-  font-family: var(--font-text);
-  font-size: 1.25rem;
+  display: block;
+  line-height: 0;
 }
-.post-nav .wordmark:hover {
-  color: var(--ink-900);
+.post-nav .wordmark svg {
+  width: auto;
+  height: 40px;
 }
 .post-nav a {
   white-space: nowrap;
