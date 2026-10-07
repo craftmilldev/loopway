@@ -58,6 +58,27 @@ export function logout() {
   location.replace("/login");
 }
 
+/** A source type as `GET /sources` describes it. */
+export interface Source {
+  type: string;
+  label: string;
+  description: string;
+  events: string[];
+  secret: { from: "loopway"; min_length: number } | { from: "sender" };
+  webhook_settings: string;
+}
+
+/** The source types, or null while loading. */
+export function useSources() {
+  const [sources, setSources] = useState<Source[] | null>(null);
+  useEffect(() => {
+    api("/sources").then(async (r) => {
+      if (r.ok) setSources((await r.json()).data);
+    });
+  }, []);
+  return sources;
+}
+
 /** The signed-in user, or null while loading. Sends anyone without a working token to /login. */
 export function useMe() {
   const [me, setMe] = useState<Me | null>(null);

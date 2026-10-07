@@ -24,9 +24,11 @@ export interface GithubConfig {
   events: string[];
 }
 
+const MIN_SECRET = 16;
+
 const configInput = z
   .object({
-    secret: z.string().min(16, "secret must be at least 16 characters").optional(),
+    secret: z.string().min(MIN_SECRET, `secret must be at least ${MIN_SECRET} characters`).optional(),
     events: z.array(z.string().min(1)).min(1).optional(),
   })
   .strict();
@@ -129,7 +131,29 @@ const RULES: Record<string, Rule> = {
 
 export const github: SourceAdapter<GithubConfig> = {
   type: "github",
+  label: "GitHub",
   description: "GitHub repository/org/app webhooks, verified with X-Hub-Signature-256.",
+  events: [
+    "push",
+    "pull_request",
+    "pull_request_review",
+    "pull_request_review_comment",
+    "issues",
+    "issue_comment",
+    "release",
+    "workflow_run",
+    "workflow_job",
+    "check_run",
+    "check_suite",
+    "create",
+    "delete",
+    "deployment_status",
+    "discussion",
+    "star",
+    "fork",
+  ],
+  secret: { from: "loopway", minLength: MIN_SECRET },
+  webhookSettings: "GitHub → Settings → Webhooks",
 
   parseConfig(input, existing) {
     const parsed = configInput.parse(input ?? {});

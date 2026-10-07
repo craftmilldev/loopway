@@ -13,12 +13,28 @@ export type ReceiveResult =
   | { kind: "rejected"; status: 400 | 401 | 403 | 415 | 422; message: string };
 
 /**
+ * Who makes the webhook signing secret:
+ * - `loopway`: loopway generates one (or takes one of at least `minLength` characters) and you enter it in the sender.
+ * - `sender`: the sender shows one after the webhook is added there, and it's pasted into the inbox afterwards.
+ *   The inbox rejects deliveries until then.
+ */
+export type SecretOrigin = { from: "loopway"; minLength: number } | { from: "sender" };
+
+/**
  * A source type defines how an inbox is configured and how a raw webhook becomes a CloudEvent.
- * Add a new one by implementing this and registering it in ./index.ts.
+ * Add a new one by implementing this and registering it in ./index.ts. The API, the CLI and the
+ * dashboard only read what's here, so nothing else needs to change.
  */
 export interface SourceAdapter<Config = unknown> {
   type: string;
+  /** Display name, e.g. "GitHub". */
+  label: string;
   description: string;
+  /** Common event names, offered as choices when creating an inbox. Others can still be typed in. */
+  events: string[];
+  secret: SecretOrigin;
+  /** Where in the sender the webhook is added, e.g. "GitHub → Settings → Webhooks". */
+  webhookSettings: string;
   /** Validate user input on inbox create/update; fill defaults (e.g. generate a secret). Throws on invalid. */
   parseConfig(input: unknown, existing?: Config): Config;
   /** Shape of the config returned by the API. */

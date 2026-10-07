@@ -4,7 +4,7 @@ import { z, ZodError } from "zod";
 import type { Db } from "./db/index.js";
 import { consoleSender, type SendEmail } from "./email.js";
 import { isUuid, LOGIN_CODE_RE, normalizeLoginCode } from "./ids.js";
-import { getSource, sources } from "./sources/index.js";
+import { sources } from "./sources/index.js";
 import * as store from "./store.js";
 import type { EventRow, Inbox, User } from "./store.js";
 import { signSessionToken, verifyToken } from "./tokens.js";
@@ -59,7 +59,7 @@ export function createApi(opts: ApiOptions) {
     const inboxId = c.req.param("inboxId");
     const inbox = isUuid(inboxId) ? await store.getInbox(c.var.db, inboxId) : undefined;
     if (!inbox) throw new ApiError(404, "not_found", "Inbox not found");
-    const source = getSource(inbox.source_type);
+    const source = sources.get(inbox.source_type);
     if (!source) throw new ApiError(500, "internal", `Unknown source type ${inbox.source_type}`);
 
     const result = await source.receive(
@@ -117,9 +117,7 @@ export function createApi(opts: ApiOptions) {
 
   authed.get("/me", (c) => c.json(serializeUser(c.var.user)));
 
-  authed.get("/sources", (c) =>
-    c.json({ data: Object.values(sources).map((s) => ({ type: s.type, description: s.description })) }),
-  );
+  authed.get("/sources", (c) => c.json({ data: sources.describe() }));
 
   // Inboxes
 
@@ -132,9 +130,9 @@ export function createApi(opts: ApiOptions) {
     const input = z
       .object({ name: z.string().min(1).max(200), source_type: z.string(), config: z.unknown().optional() })
       .parse(await jsonBody(c));
-    const source = getSource(input.source_type);
+    const source = sources.get(input.source_type);
     if (!source) {
-      throw new ApiError(400, "invalid_request", `Unknown source_type. Available: ${Object.keys(sources).join(", ")}`);
+      throw new ApiError(400, "invalid_request", `Unknown source_type. Available: ${sources.types().join(", ")}`);
     }
     const inbox = await store.createInbox(c.var.db, {
       userId: c.var.user.id,
@@ -155,7 +153,7 @@ export function createApi(opts: ApiOptions) {
     const input = z
       .object({ name: z.string().min(1).max(200).optional(), config: z.unknown().optional() })
       .parse(await jsonBody(c));
-    const source = getSource(inbox.source_type)!;
+    const source = sources.get(inbox.source_type)!;
     const updated = await store.updateInbox(c.var.db, inbox.id, {
       name: input.name,
       config: input.config === undefined ? undefined : source.parseConfig(input.config, inbox.config),
@@ -258,7 +256,7 @@ export function createApi(opts: ApiOptions) {
   }
 
   function serializeInbox(c: Context<Env>, inbox: Inbox) {
-    const source = getSource(inbox.source_type);
+    const source = sources.get(inbox.source_type);
     const base = (opts.publicBaseUrl || new URL(c.req.url).origin).replace(/\/+$/, "");
     const webhookUrl = `${base}/webhooks/${inbox.id}`;
     return {

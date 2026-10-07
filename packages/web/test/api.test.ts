@@ -1,92 +1,41 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { build } from "esbuild";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { clientBuild } from "../scripts/client.js";
 import { createApi } from "../src/api.js";
-import { migrate, openDb, type Db } from "../src/db/index.js";
+import { sources, SourceRegistry } from "../src/sources/index.js";
 import { createUser } from "../src/store.js";
 import { signSessionToken, verifyToken } from "../src/tokens.js";
+import { app, call, db, newInbox, newUser, prPayload, SECRET, sendGithub } from "./helpers.js";
 
-const SECRET = "test-secret";
-
-let db: Db;
-let app: ReturnType<typeof createApi>;
-
-// Runs against in-memory PGlite by default. Set TEST_DATABASE_URL to run against a real Postgres
-// (the `loopway` schema in that database is dropped and recreated!).
-beforeAll(async () => {
-  const url = process.env.TEST_DATABASE_URL;
-  db = await openDb(url ? { databaseUrl: url } : { pgliteDir: "memory://" });
-  if (url) {
-    await db.query("DROP SCHEMA IF EXISTS loopway CASCADE");
-    await migrate(db);
-  }
-  app = createApi({ getDb: async () => db, publicBaseUrl: "https://loopway.test", tokenSecret: SECRET });
-});
-afterAll(() => db.close());
-
-// ---------- helpers ----------
-
-async function call(method: string, path: string, opts: { key?: string; body?: unknown } = {}) {
-  const res = await app.request(path, {
-    method,
-    headers: {
-      ...(opts.key ? { authorization: `Bearer ${opts.key}` } : {}),
-      ...(opts.body !== undefined ? { "content-type": "application/json" } : {}),
-    },
-    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-  });
-  const text = await res.text();
-  return { status: res.status, body: text ? JSON.parse(text) : null };
-}
-
-async function newUser(name = "Matthew") {
-  const { user } = await createUser(db, { name });
-  return signSessionToken(user.id, SECRET).token;
-}
-
-async function newInbox(key: string, config?: unknown) {
-  const r = await call("POST", "/inboxes", { key, body: { name: "gh", source_type: "github", config } });
-  expect(r.status).toBe(201);
-  return r.body as { id: string; config: { secret: string }; webhook_url: string };
-}
-
-function sendGithub(
-  inbox: { id: string; config: { secret: string } },
-  event: string,
-  payload: unknown,
-  o: { delivery?: string; secret?: string; form?: boolean } = {},
-) {
-  const raw = o.form
-    ? new URLSearchParams({ payload: JSON.stringify(payload) }).toString()
-    : JSON.stringify(payload);
-  const sig = "sha256=" + createHmac("sha256", o.secret ?? inbox.config.secret).update(raw).digest("hex");
-  return app.request(`/webhooks/${inbox.id}`, {
-    method: "POST",
-    headers: {
-      "content-type": o.form ? "application/x-www-form-urlencoded" : "application/json",
-      "x-github-event": event,
-      "x-github-delivery": o.delivery ?? randomUUID(),
-      "x-hub-signature-256": sig,
-    },
-    body: raw,
-  });
-}
-
-const prPayload = (n: number) => ({
-  action: "opened",
-  number: n,
-  pull_request: { updated_at: "2026-10-01T12:00:00Z" },
-  repository: { url: "https://api.github.com/repos/craftmill/loopway" },
-});
-
-// ---------- tests ----------
+// Source-specific webhook tests live in ./sources/<type>.test.ts.
 
 describe("auth", () => {
   it("rejects missing/invalid tokens", async () => {
     expect((await call("GET", "/me")).status).toBe(401);
     expect((await call("GET", "/me", { key: "nope" })).status).toBe(401);
+  });
+});
+
+describe("sources", () => {
+  it("describes every registered source", async () => {
+    const r = await call("GET", "/sources", { key: await newUser() });
+    expect(r.body.data.map((s: { type: string }) => s.type)).toEqual(sources.types());
+    expect(r.body.data.find((s: { type: string }) => s.type === "github")).toMatchObject({
+      label: "GitHub",
+      secret: { from: "loopway", min_length: 16 },
+      webhook_settings: "GitHub → Settings → Webhooks",
+    });
+    for (const s of r.body.data) {
+      expect(s.events.length).toBeGreaterThan(0);
+      expect(["loopway", "sender"]).toContain(s.secret.from);
+    }
+  });
+
+  it("refuses to register a type twice", () => {
+    const github = sources.get("github")!;
+    expect(() => new SourceRegistry([github, github])).toThrow(/registered twice/);
   });
 });
 
@@ -119,251 +68,6 @@ describe("inboxes", () => {
     const inbox = await newInbox(key);
     const r = await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { events: ["push"] } } });
     expect(r.body.config).toEqual({ secret: inbox.config.secret, events: ["push"] });
-  });
-});
-
-describe("github webhooks", () => {
-  it("stores a signed event as a CloudEvent", async () => {
-    const key = await newUser();
-    const inbox = await newInbox(key);
-    const res = await sendGithub(inbox, "pull_request", prPayload(7), { delivery: "d-1" });
-    expect(res.status).toBe(202);
-    const list = await call("GET", `/inboxes/${inbox.id}/events`, { key });
-    const e = list.body.data[0];
-    expect(e.status).toBe("pending");
-    expect(e.event).toMatchObject({
-      specversion: "1.0",
-      id: "d-1",
-      type: "com.github.pull_request.opened",
-      source: "https://api.github.com/repos/craftmill/loopway",
-      subject: "7",
-      time: "2026-10-01T12:00:00.000Z",
-      datacontenttype: "application/json",
-      data: prPayload(7),
-    });
-  });
-
-  it("accepts form-encoded payloads", async () => {
-    const key = await newUser();
-    const inbox = await newInbox(key);
-    const res = await sendGithub(inbox, "push", { ref: "refs/heads/main", repository: { url: "u" } }, { form: true });
-    expect(res.status).toBe(202);
-    const e = (await call("GET", `/inboxes/${inbox.id}/events`, { key })).body.data[0];
-    expect(e.event.type).toBe("com.github.push");
-    expect(e.event.subject).toBe("refs/heads/main");
-  });
-
-  it("rejects bad signatures and unknown inboxes", async () => {
-    const key = await newUser();
-    const inbox = await newInbox(key);
-    expect((await sendGithub(inbox, "push", {}, { secret: "x".repeat(32) })).status).toBe(401);
-    expect((await sendGithub({ ...inbox, id: randomUUID() }, "push", {})).status).toBe(404);
-  });
-
-  it("dedupes redeliveries, ignores ping, rejects filtered events", async () => {
-    const key = await newUser();
-    const inbox = await newInbox(key, { events: ["pull_request"] });
-    expect((await sendGithub(inbox, "pull_request", prPayload(1), { delivery: "same" })).status).toBe(202);
-    const dup = await sendGithub(inbox, "pull_request", prPayload(1), { delivery: "same" });
-    expect(dup.status).toBe(200);
-    expect((await dup.json()).duplicate).toBe(true);
-    expect(await (await sendGithub(inbox, "ping", { zen: "hi" })).json()).toMatchObject({ ignored: true });
-    const filtered = await sendGithub(inbox, "push", { ref: "x" });
-    expect(filtered.status).toBe(422);
-    expect((await filtered.json()).error.message).toBe('event "push" not enabled for this inbox');
-    expect((await call("GET", `/inboxes/${inbox.id}/events`, { key })).body.data).toHaveLength(1);
-  });
-});
-
-describe("vercel webhooks", () => {
-  const VERCEL_SECRET = "vercel-made-this-secret";
-
-  async function vercelInbox(key: string, config?: unknown) {
-    const r = await call("POST", "/inboxes", { key, body: { name: "vc", source_type: "vercel", config } });
-    expect(r.status).toBe(201);
-    return r.body as { id: string; config: { secret: string | null; events: string[] }; setup: Record<string, unknown> };
-  }
-
-  function sendVercel(inboxId: string, body: unknown, secret = VERCEL_SECRET) {
-    const raw = JSON.stringify(body);
-    return app.request(`/webhooks/${inboxId}`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-vercel-signature": createHmac("sha1", secret).update(raw).digest("hex"),
-      },
-      body: raw,
-    });
-  }
-
-  const deployment = (type: string, id: string = randomUUID()) => ({
-    id,
-    type,
-    createdAt: 1790000000000,
-    region: "iad1",
-    payload: {
-      team: { id: "team_1" },
-      user: { id: "user_1" },
-      deployment: { id: "dpl_1", meta: { githubPrId: "12" } },
-      project: { id: "prj_1" },
-    },
-  });
-
-  it("creates without a secret and rejects deliveries until one is set", async () => {
-    const key = await newUser();
-    const inbox = await vercelInbox(key);
-    expect(inbox.config).toEqual({ secret: null, events: ["*"] });
-    expect(inbox.setup.secret).toMatch(/not set yet/);
-    const early = await sendVercel(inbox.id, deployment("deployment.created"));
-    expect(early.status).toBe(401);
-
-    const r = await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { secret: VERCEL_SECRET } } });
-    expect(r.body.config).toEqual({ secret: VERCEL_SECRET, events: ["*"] });
-    expect(r.body.setup.secret).toBe("set");
-    expect((await sendVercel(inbox.id, deployment("deployment.created"))).status).toBe(202);
-  });
-
-  it("stores a signed event as a CloudEvent with the deployment as subject", async () => {
-    const key = await newUser();
-    const inbox = await vercelInbox(key, { secret: VERCEL_SECRET });
-    const body = deployment("deployment.error", "evt_1");
-    expect((await sendVercel(inbox.id, body)).status).toBe(202);
-    const e = (await call("GET", `/inboxes/${inbox.id}/events`, { key })).body.data[0];
-    expect(e.event).toMatchObject({
-      specversion: "1.0",
-      id: "evt_1",
-      type: "com.vercel.deployment.error",
-      source: "https://api.vercel.com/v9/projects/prj_1",
-      subject: "dpl_1",
-      time: new Date(1790000000000).toISOString(),
-      datacontenttype: "application/json",
-      data: body,
-    });
-  });
-
-  it("gives every event a subject", async () => {
-    const key = await newUser();
-    const inbox = await vercelInbox(key, { secret: VERCEL_SECRET });
-    const cases: [type: string, payload: unknown, source: string, subject: string][] = [
-      ["deployment.rollback", { project: { id: "prj_1" }, toDeploymentId: "dpl_2" }, "https://api.vercel.com/v9/projects/prj_1", "dpl_2"],
-      ["project.renamed", { team: { id: "team_1" }, project: { id: "prj_1" } }, "https://api.vercel.com/v9/projects/prj_1", "prj_1"],
-      ["project.domain.updated", { project: { id: "prj_1" }, previous: { domain: "a.dev" }, next: { domain: "b.dev" } }, "https://api.vercel.com/v9/projects/prj_1", "a.dev"],
-      ["project.env-variable.created", { projectId: "prj_1", envVarId: "env_1" }, "https://api.vercel.com/v9/projects/prj_1", "env_1"],
-      ["domain.created", { team: { id: "team_1" }, domain: { name: "a.dev" } }, "https://api.vercel.com/v2/teams/team_1", "a.dev"],
-      ["flag.updated", { flag: { id: "flag_1", projectId: "prj_1" } }, "https://api.vercel.com/v9/projects/prj_1", "flag_1"],
-      ["something.new", {}, "https://vercel.com", "evt_new"],
-    ];
-    for (const [type, payload, source, subject] of cases) {
-      const id = type === "something.new" ? "evt_new" : randomUUID();
-      expect((await sendVercel(inbox.id, { id, type, createdAt: Date.now(), payload })).status).toBe(202);
-      const e = (await call("GET", `/inboxes/${inbox.id}/events?type=com.vercel.${type}`, { key })).body.data[0];
-      expect(e.event).toMatchObject({ source, subject });
-    }
-  });
-
-  it("rejects bad signatures, dedupes redeliveries, and rejects filtered events", async () => {
-    const key = await newUser();
-    const inbox = await vercelInbox(key, { secret: VERCEL_SECRET, events: ["deployment.error"] });
-    expect((await sendVercel(inbox.id, deployment("deployment.error"), "wrong")).status).toBe(401);
-    expect((await sendVercel(inbox.id, deployment("deployment.error", "same"))).status).toBe(202);
-    const dup = await sendVercel(inbox.id, deployment("deployment.error", "same"));
-    expect(dup.status).toBe(200);
-    expect((await dup.json()).duplicate).toBe(true);
-    const filtered = await sendVercel(inbox.id, deployment("deployment.created"));
-    expect(filtered.status).toBe(422);
-    expect((await filtered.json()).error.message).toBe('event "deployment.created" not enabled for this inbox');
-    expect((await call("GET", `/inboxes/${inbox.id}/events`, { key })).body.data).toHaveLength(1);
-  });
-});
-
-describe("granola webhooks", () => {
-  const GRANOLA_SECRET = "whsec_" + Buffer.from("granola-test-signing-key").toString("base64");
-
-  async function granolaInbox(key: string, config: unknown = { secret: GRANOLA_SECRET }) {
-    const r = await call("POST", "/inboxes", { key, body: { name: "granola", source_type: "granola", config } });
-    expect(r.status).toBe(201);
-    return r.body as { id: string; config: { secret: string | null; events: string[] }; setup: Record<string, unknown> };
-  }
-
-  function sendGranola(
-    inboxId: string,
-    payload: unknown,
-    o: { id?: string; secret?: string; timestamp?: number } = {},
-  ) {
-    const raw = JSON.stringify(payload);
-    const id = o.id ?? randomUUID();
-    const ts = String(o.timestamp ?? Math.floor(Date.now() / 1000));
-    const key = Buffer.from((o.secret ?? GRANOLA_SECRET).slice("whsec_".length), "base64");
-    const sig = createHmac("sha256", key).update(`${id}.${ts}.${raw}`).digest("base64");
-    return app.request(`/webhooks/${inboxId}`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "webhook-id": id,
-        "webhook-timestamp": ts,
-        "webhook-signature": `v1,${sig}`,
-      },
-      body: raw,
-    });
-  }
-
-  const note = (eventType = "note.generated") => ({
-    event_id: "evt-1",
-    event_type: eventType,
-    note_id: "not_1d3tmYTlCICgjy",
-    occurred_at: "2026-01-27T15:30:00Z",
-  });
-
-  it("stores a signed event as a CloudEvent", async () => {
-    const key = await newUser();
-    const inbox = await granolaInbox(key);
-    expect((await sendGranola(inbox.id, note(), { id: "evt-1" })).status).toBe(202);
-    const e = (await call("GET", `/inboxes/${inbox.id}/events`, { key })).body.data[0];
-    expect(e.event).toMatchObject({
-      specversion: "1.0",
-      id: "evt-1",
-      type: "ai.granola.note.generated",
-      source: "https://public-api.granola.ai/v1/notes/not_1d3tmYTlCICgjy",
-      subject: "not_1d3tmYTlCICgjy",
-      time: "2026-01-27T15:30:00.000Z",
-      datacontenttype: "application/json",
-      data: note(),
-    });
-  });
-
-  it("starts without a secret and rejects deliveries until one is set", async () => {
-    const key = await newUser();
-    const inbox = await granolaInbox(key, {});
-    expect(inbox.config).toEqual({ secret: null, events: ["*"] });
-    expect(inbox.setup.secret).toMatch(/not set yet/);
-    expect((await sendGranola(inbox.id, note())).status).toBe(401);
-    const bad = await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { secret: "not-a-whsec" } } });
-    expect(bad.status).toBe(400);
-    const r = await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { secret: GRANOLA_SECRET } } });
-    expect(r.body.config).toEqual({ secret: GRANOLA_SECRET, events: ["*"] });
-    expect((await sendGranola(inbox.id, note())).status).toBe(202);
-  });
-
-  it("rejects bad signatures, stale timestamps and filtered events", async () => {
-    const key = await newUser();
-    const inbox = await granolaInbox(key, { secret: GRANOLA_SECRET, events: ["note.generated"] });
-    const other = "whsec_" + Buffer.from("some-other-key").toString("base64");
-    expect((await sendGranola(inbox.id, note(), { secret: other })).status).toBe(401);
-    const stale = Math.floor(Date.now() / 1000) - 10 * 60;
-    expect((await sendGranola(inbox.id, note(), { timestamp: stale })).status).toBe(401);
-    const filtered = await sendGranola(inbox.id, note("note.edited"));
-    expect(filtered.status).toBe(422);
-    expect((await filtered.json()).error.message).toBe('event "note.edited" not enabled for this inbox');
-    expect((await call("GET", `/inboxes/${inbox.id}/events`, { key })).body.data).toHaveLength(0);
-  });
-
-  it("dedupes redeliveries", async () => {
-    const key = await newUser();
-    const inbox = await granolaInbox(key);
-    expect((await sendGranola(inbox.id, note(), { id: "same" })).status).toBe(202);
-    const dup = await sendGranola(inbox.id, note(), { id: "same" });
-    expect(dup.status).toBe(200);
-    expect((await dup.json()).duplicate).toBe(true);
   });
 });
 

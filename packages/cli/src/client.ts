@@ -9,7 +9,14 @@ export interface User {
 
 export interface Source {
   type: string;
+  label: string;
   description: string;
+  /** Common event names, offered as choices. */
+  events: string[];
+  /** `loopway`: generated or entered at create time. `sender`: the sender makes it; set it afterwards. */
+  secret: { from: "loopway"; min_length: number } | { from: "sender" };
+  /** Where in the sender the webhook is added. */
+  webhook_settings: string;
 }
 
 export interface Inbox {

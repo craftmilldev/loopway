@@ -1,16 +1,14 @@
 import { github } from "./github.js";
 import { granola } from "./granola.js";
-import type { SourceAdapter } from "./types.js";
+import { SourceRegistry } from "./registry.js";
 import { vercel } from "./vercel.js";
 
-export const sources: Record<string, SourceAdapter<any>> = {
-  [github.type]: github,
-  [granola.type]: granola,
-  [vercel.type]: vercel,
-};
+// Every source, one per line. A new source is a new file in this folder plus a line here.
+export const sources = new SourceRegistry([
+  github,
+  granola,
+  vercel,
+]);
 
-export function getSource(type: string): SourceAdapter<unknown> | undefined {
-  return sources[type];
-}
-
-export type { SourceAdapter, IncomingWebhook, ReceiveResult } from "./types.js";
+export { SourceRegistry } from "./registry.js";
+export type { SourceAdapter, IncomingWebhook, ReceiveResult, SecretOrigin } from "./types.js";

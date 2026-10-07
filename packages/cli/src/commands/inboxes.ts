@@ -1,5 +1,5 @@
 import * as p from "@clack/prompts";
-import type { Inbox, LoopwayClient } from "../client.js";
+import type { Inbox, LoopwayClient, Source } from "../client.js";
 import { authedClient, CancelledError, UsageError, type Context } from "../context.js";
 import { ago, bold, dim, fields, humanize, json, table } from "../format.js";
 
@@ -47,52 +47,12 @@ export interface CreateOptions {
   json?: boolean;
 }
 
-const GITHUB_EVENTS = [
-  "push",
-  "pull_request",
-  "pull_request_review",
-  "pull_request_review_comment",
-  "issues",
-  "issue_comment",
-  "release",
-  "workflow_run",
-  "workflow_job",
-  "check_run",
-  "check_suite",
-  "create",
-  "delete",
-  "deployment_status",
-  "discussion",
-  "star",
-  "fork",
-];
-const VERCEL_EVENTS = [
-  "deployment.created",
-  "deployment.succeeded",
-  "deployment.ready",
-  "deployment.promoted",
-  "deployment.rollback",
-  "deployment.error",
-  "deployment.canceled",
-  "project.created",
-  "project.removed",
-  "project.renamed",
-  "project.env-variable.created",
-  "project.env-variable.updated",
-  "project.env-variable.deleted",
-];
-const GRANOLA_EVENTS = ["note.generated", "note.edited", "note.access_granted"];
 const OTHER = "__other__";
 
-/** Senders that make the webhook secret themselves, so it's set with `inbox update` after the inbox exists. */
-const SECRET_LATER: Record<string, { sender: string; where: string }> = {
-  vercel: { sender: "Vercel", where: "Vercel → Team Settings → Webhooks" },
-  granola: { sender: "Granola", where: "Granola → Settings → Connectors → Webhooks" },
-};
-
 /**
- * Interactive: walks through name → source → source config → confirm, skipping any step whose
- * value came in as a flag. Non-interactive (no TTY): flags only, so it can be scripted.
+ * Interactive: walks through name → source → events → secret → confirm, skipping any step whose
+ * value came in as a flag. The steps come from the source's description (`GET /sources`), so no
+ * source needs its own flow. Non-interactive (no TTY): flags only, so it can be scripted.
  */
 export async function createInbox(ctx: Context, opts: CreateOptions) {
   const client = await authedClient(ctx);
@@ -121,37 +81,31 @@ async function createInteractive(client: LoopwayClient, opts: CreateOptions): Pr
       }),
     ).trim();
 
-  let source = opts.source;
-  if (!source) {
-    const spin = p.spinner();
-    spin.start("Loading sources");
-    const sources = await client.sources().catch((err: unknown) => {
-      spin.error("Could not load sources");
-      throw err;
-    });
-    spin.clear();
-    source = ask(
+  const loading = p.spinner();
+  loading.start("Loading sources");
+  const sources = await client.sources().catch((err: unknown) => {
+    loading.error("Could not load sources");
+    throw err;
+  });
+  loading.clear();
+  const type =
+    opts.source ??
+    ask(
       await p.select({
         message: "Where will events come from?",
-        options: sources.map((s) => ({ value: s.type, label: s.type, hint: s.description })),
+        options: sources.map((s) => ({ value: s.type, label: s.label, hint: s.description })),
       }),
     );
-  }
+  const source = sources.find((s) => s.type === type);
+  if (!source) throw new UsageError(`Unknown source "${type}". Available: ${sources.map((s) => s.type).join(", ")}`);
 
-  const config =
-    source === "github"
-      ? await githubConfig(opts)
-      : source === "vercel"
-        ? await vercelConfig(opts)
-        : source === "granola"
-          ? await granolaConfig(opts)
-          : await genericConfig(opts);
+  const config = await sourceConfig(source, opts);
 
   p.note(
     fields([
       ["name", name],
-      ["source", source],
-      ...Object.entries(config ?? {}).map(([k, v]): [string, string] => [
+      ["source", source.type],
+      ...Object.entries(config).map(([k, v]): [string, string] => [
         k,
         k === "secret" ? "(provided)" : Array.isArray(v) ? v.join(", ") : String(v),
       ]),
@@ -164,29 +118,29 @@ async function createInteractive(client: LoopwayClient, opts: CreateOptions): Pr
   spin.start("Creating inbox");
   let inbox: Inbox;
   try {
-    inbox = await client.createInbox({ name, source_type: source, config });
+    inbox = await client.createInbox({ name, source_type: source.type, config });
   } catch (err) {
     spin.error("Could not create inbox");
     throw err;
   }
   spin.stop(`Created ${bold(inbox.name)} ${dim(inbox.id)}`);
 
-  const later = SECRET_LATER[source];
-  if (later && !config?.secret) {
-    p.note(setupText(inbox), `Add this webhook in ${later.where}`);
-    p.outro(`Then paste the secret ${later.sender} shows with ${bold(`loopway inbox update ${inbox.id}`)}`);
-    return inbox;
+  p.note(setupText(inbox), `Add this webhook in ${source.webhook_settings}`);
+  if (source.secret.from === "sender" && !config.secret) {
+    p.outro(`Then paste the secret ${source.label} shows with ${bold(`loopway inbox update ${inbox.id}`)}`);
+  } else {
+    p.outro(`Read events with ${bold(`loopway events list ${inbox.id}`)}`);
   }
-  p.note(setupText(inbox), source === "github" ? "Add this webhook in GitHub → Settings → Webhooks" : "Setup");
-  p.outro(`Read events with ${bold(`loopway events list ${inbox.id}`)}`);
   return inbox;
 }
 
-async function githubConfig(opts: CreateOptions) {
-  const events = opts.events ?? (await pickEvents("GitHub", GITHUB_EVENTS, "e.g. merge_group, package"));
+async function sourceConfig(source: Source, opts: CreateOptions): Promise<{ events: string[]; secret?: string }> {
+  const events = opts.events ?? (await pickEvents(source));
 
+  // A sender-made secret is usually set afterwards with `inbox update`, so it's only taken from the flag.
   let secret = opts.secret;
-  if (!secret) {
+  if (!secret && source.secret.from === "loopway") {
+    const min = source.secret.min_length;
     const how = ask(
       await p.select({
         message: "Webhook secret",
@@ -199,8 +153,8 @@ async function githubConfig(opts: CreateOptions) {
     if (how === "custom") {
       secret = ask(
         await p.password({
-          message: "Secret (at least 16 characters)",
-          validate: (v) => ((v ?? "").length < 16 ? "Must be at least 16 characters" : undefined),
+          message: `Secret (at least ${min} characters)`,
+          validate: (v) => ((v ?? "").length < min ? `Must be at least ${min} characters` : undefined),
         }),
       );
     }
@@ -209,21 +163,10 @@ async function githubConfig(opts: CreateOptions) {
   return { events, ...(secret ? { secret } : {}) };
 }
 
-/** Vercel creates the secret when the webhook is added, so it's usually set afterwards with `inbox update`. */
-async function vercelConfig(opts: CreateOptions) {
-  const events = opts.events ?? (await pickEvents("Vercel", VERCEL_EVENTS, "e.g. domain.created, flag.updated"));
-  return { events, ...(opts.secret ? { secret: opts.secret } : {}) };
-}
-
-async function granolaConfig(opts: CreateOptions) {
-  const events = opts.events ?? (await pickEvents("Granola", GRANOLA_EVENTS, "e.g. note.deleted"));
-  return { events, ...(opts.secret ? { secret: opts.secret } : {}) };
-}
-
-async function pickEvents(sender: string, known: string[], placeholder: string): Promise<string[]> {
+async function pickEvents(source: Source): Promise<string[]> {
   const which = ask(
     await p.select({
-      message: `Which ${sender} events should this inbox accept?`,
+      message: `Which ${source.label} events should this inbox accept?`,
       options: [
         { value: "all", label: "Everything", hint: "whatever the webhook sends" },
         { value: "pick", label: "Let me choose" },
@@ -234,7 +177,7 @@ async function pickEvents(sender: string, known: string[], placeholder: string):
   const picked = ask(
     await p.multiselect({
       message: "Pick events (space to toggle, enter to confirm)",
-      options: [...known.map((e) => ({ value: e })), { value: OTHER, label: "Other…" }],
+      options: [...source.events.map((e) => ({ value: e })), { value: OTHER, label: "Other…" }],
       required: true,
     }),
   );
@@ -243,35 +186,12 @@ async function pickEvents(sender: string, known: string[], placeholder: string):
     const extra = ask(
       await p.text({
         message: "Other event names (comma-separated)",
-        placeholder,
         validate: (v) => (!splitList(v ?? "").length && !events.length ? "Enter at least one event" : undefined),
       }),
     );
     events.push(...splitList(extra));
   }
   return events;
-}
-
-/** Sources without a dedicated flow take their config as JSON. */
-async function genericConfig(opts: CreateOptions): Promise<Record<string, unknown> | undefined> {
-  const fromFlags = flagConfig(opts);
-  if (fromFlags) return fromFlags;
-  const raw = ask(
-    await p.text({
-      message: "Source config as JSON (leave empty for defaults)",
-      placeholder: "{}",
-      validate: (v) => {
-        if (!v?.trim()) return undefined;
-        try {
-          const parsed: unknown = JSON.parse(v);
-          return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? undefined : "Must be a JSON object";
-        } catch {
-          return "Not valid JSON";
-        }
-      },
-    }),
-  );
-  return raw?.trim() ? (JSON.parse(raw) as Record<string, unknown>) : undefined;
 }
 
 function flagConfig(opts: CreateOptions): Record<string, unknown> | undefined {

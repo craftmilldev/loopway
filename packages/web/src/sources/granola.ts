@@ -43,7 +43,11 @@ const configInput = z
 
 export const granola: SourceAdapter<GranolaConfig> = {
   type: "granola",
+  label: "Granola",
   description: "Granola note webhooks (Business/Enterprise plans), verified with the webhook-signature header.",
+  events: GRANOLA_EVENTS,
+  secret: { from: "sender" },
+  webhookSettings: "Granola → Settings → Connectors → Webhooks",
 
   parseConfig(input, existing) {
     const parsed = configInput.parse(input ?? {});
