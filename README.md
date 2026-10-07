@@ -5,7 +5,7 @@ Accepts webhooks from defined sources, stores them as [CloudEvents](https://gith
 - **Stack:** TypeScript + [Hono](https://hono.dev), zero-config on Vercel.
 - **DB:** Postgres everywhere. Locally [PGlite](https://pglite.dev) (embedded, no server); on Vercel, [Neon](https://neon.tech) via `DATABASE_URL`. Same SQL on both.
 - **Data types:** `User` → owns `Inbox`es → which receive `Event`s.
-- **Sources:** `github`, `vercel` (more can be added in `packages/web/src/sources/`).
+- **Sources:** `github`, `granola`, `vercel` (more can be added in `packages/web/src/sources/`).
 - **Packages:** npm workspaces — [`packages/web`](packages/web) (the server) and [`packages/cli`](packages/cli) (the `loopway` command, a client of the API).
 
 ## Run locally
@@ -35,7 +35,7 @@ Tables live in a `loopway` schema (not `public`) with RLS enabled and no policie
 
 ## Web UI
 
-The same Hono app serves a small web UI: `/` (how to use loopway), `/login` (same email-code flow as the CLI; the session token is kept in `localStorage`), `/dashboard` (your inboxes and a create form) and `/dashboard/<inbox>` (events, newest first, expandable JSON, hide-processed toggle, and, for sources like Vercel whose sender makes the secret, a form to paste it). `GET /api` is a bare health check.
+The same Hono app serves a small web UI: `/` (how to use loopway), `/login` (same email-code flow as the CLI; the session token is kept in `localStorage`), `/dashboard` (your inboxes and a create form) and `/dashboard/<inbox>` (events, newest first, expandable JSON, hide-processed toggle, and, for sources whose sender makes the secret, like Vercel and Granola, a form to paste it). `GET /api` is a bare health check.
 
 The pages are a React app in `packages/web/client/`. The homepage copy is markdown in [`packages/web/content/home.md`](packages/web/content/home.md). `npm run build -w @loopway/web` bundles the app with esbuild into `packages/web/public/` (git-ignored); `npm run dev` rebuilds it on change and serves it.
 
@@ -69,7 +69,7 @@ loopway events done <inbox> <event>
 
 - `<inbox>` is an inbox id or its exact name.
 - Every read command takes `--json` for the raw API response. `events next --json` prints nothing when the inbox is empty.
-- `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`); without a terminal it runs from flags alone. For sources whose sender makes the secret (like `vercel`) it doesn't ask for one: add the webhook in the sender, then paste the secret it shows with `loopway inbox update <inbox>` (or on the inbox's dashboard page).
+- `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`); without a terminal it runs from flags alone. For sources whose sender makes the secret (`vercel`, `granola`) it doesn't ask for one: add the webhook in the sender, then paste the secret it shows with `loopway inbox update <inbox>` (or on the inbox's dashboard page).
 - Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `https://loopway.craftmill.dev`.
 - Lock tokens from `next`/`lock` are kept in `~/.loopway/locks.json` until they expire, so `lock` (renew), `unlock` and `done` on the same machine don't need `--token`.
 
@@ -128,18 +128,31 @@ In GitHub → Settings → Webhooks: Payload URL = `webhook_url`, Content type =
 
 In Vercel → Team Settings → Webhooks: Endpoint URL = `webhook_url`. Vercel shows a secret once the webhook is created; `PATCH` it into `config.secret`. Until then deliveries get `401`.
 
+**`granola` config:** `{ "secret"?: "whsec_…", "events"?: ["note.generated", "note.edited", "note.access_granted"] (default ["*"]) }`. `config.secret` is `null` until set.
+
+Granola webhooks need a Business or Enterprise plan. Granola generates the signing secret after it has the URL, so:
+
+1. `loopway inbox create --name notes --source granola` and copy its `webhook_url`.
+2. In the Granola desktop app: Settings → Connectors → Webhooks → Set up a webhook (or a folder → Integrations → Webhooks for one folder). Paste the URL.
+3. Copy the `whsec_…` secret Granola shows (only once) and run `loopway inbox update notes --secret whsec_…`, or paste it on the inbox's dashboard page. Until then the inbox answers `401`, and Granola drops those deliveries without retrying.
+4. Record a meeting, or edit a note's summary, and check `loopway events list notes`.
+
+Each event only carries `note_id`; fetch the note itself with a Granola API key (Settings → Connectors → API keys): `curl -H "Authorization: Bearer grn_…" <event source>`.
+
 ### Webhook ingestion
 
-`POST /webhooks/:inboxId` — no API key; authenticated by the source (GitHub: `X-Hub-Signature-256` HMAC-SHA256; Vercel: `X-Vercel-Signature` HMAC-SHA1).
+`POST /webhooks/:inboxId` — no API key; authenticated by the source (GitHub: `X-Hub-Signature-256` HMAC-SHA256; Vercel: `X-Vercel-Signature` HMAC-SHA1; Granola: Standard Webhooks `webhook-signature`, timestamp within 5 minutes).
 
 - `202 {id, duplicate:false}` stored
 - `200 {id, duplicate:true}` redelivery of an event already stored (same CloudEvent `source`+`id`)
 - `200 {ignored:true, reason}` `ping`
-- `401` bad/missing signature (or, for Vercel, no secret set yet) · `404` unknown inbox · `422` event type not in `config.events` (GitHub shows it as a failed delivery and doesn't retry it; Vercel retries any non-2xx for up to 24 hours)
+- `401` bad/missing signature (or, for Vercel and Granola, no secret set yet) · `404` unknown inbox · `422` event type not in `config.events` (GitHub shows it as a failed delivery and doesn't retry it; Vercel retries any non-2xx for up to 24 hours; Granola retries only 408, 429 and 5xx)
 
 GitHub → CloudEvent mapping follows the [CloudEvents GitHub adapter spec](https://github.com/cloudevents/spec/blob/main/cloudevents/adapters/github.md): `id` = `X-GitHub-Delivery`, `type` = `com.github.<event>.<action>`, `source`/`subject`/`time` per event, `data` = payload.
 
 Vercel → CloudEvent: `id` = body `id`, `type` = `com.vercel.<type>` (e.g. `com.vercel.deployment.error`), `source` = the project's API URL (`https://api.vercel.com/v9/projects/<id>`, else the team's), `subject` = what the event is about (the deployment id for `deployment.*`, the project id for `project.*`, the domain name for `domain.*`, …, else the event id, so every event has one), `time` = `createdAt`, `data` = the whole body.
+
+Granola → CloudEvent: `id` = `webhook-id`, `type` = `ai.granola.<event_type>` (e.g. `ai.granola.note.generated`), `source` = `https://public-api.granola.ai/v1/notes/<note_id>`, `subject` = `note_id`, `time` = `occurred_at`, `data` = payload.
 
 ### Events
 
@@ -204,7 +217,7 @@ packages/web/
   src/ui.ts             web UI: home, /login, /dashboard (HTML + vanilla JS + styles)
   src/store.ts          all SQL
   src/db/               driver adapter (PGlite | postgres.js) + migrations
-  src/sources/          one file per source adapter (github.ts, vercel.ts); index.ts registers them in a SourceRegistry
+  src/sources/          one file per source adapter (github.ts, granola.ts, vercel.ts); index.ts registers them in a SourceRegistry
   src/cloudevents.ts    CloudEvent type + validation
   scripts/              dev server, migrate
   test/api.test.ts      end-to-end tests (TEST_DATABASE_URL=... to run against real Postgres)

@@ -135,7 +135,7 @@ function SenderSecret({ inbox, source, onSaved }: { inbox: InboxInfo; source: lw
         <p className="hint">
           {isSet
             ? "Deliveries are checked against this secret."
-            : `Not set yet. Add the webhook in ${source.webhook_settings} with the URL above, then paste the secret it shows. Until then deliveries are rejected.`}
+            : `Not set yet. Add the webhook in ${source.webhook_settings} with the URL above, then paste the secret ${source.label} shows. Until then deliveries are rejected.`}
         </p>
       </div>
       {error && <p className="error">{error}</p>}
