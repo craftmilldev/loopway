@@ -14,7 +14,7 @@ export async function runThreads(ctx: Context, inboxRef: string, opts: RunThread
   const client = await authedClient(ctx);
   const inboxId = await resolveInbox(client, inboxRef);
   const interval = opts.interval ?? DEFAULTS.interval;
-  const watching = `Watching ${inboxRef} every ${interval}s (at most ${opts.max ?? DEFAULTS.max} sessions).`;
+  const watching = `Watching ${inboxRef} every ${interval}s (at most ${opts.max ?? DEFAULTS.max} sessions running at once).`;
 
   if (opts.tui === false || !ctx.interactive) {
     const dispatcher = await Dispatcher.start(ctx, client, inboxId, opts);
@@ -45,6 +45,12 @@ async function pollForever(ctx: Context, dispatcher: Dispatcher, interval: numbe
       // A flaky network shouldn't take down running sessions; try again next tick.
       ctx.out(`error: ${err instanceof Error ? err.message : String(err)}`);
     }
-    await sleep(interval * 1000);
+    // Poll again after the interval, or as soon as a run exits so its slot goes to a waiting event.
+    const timer = new AbortController();
+    await Promise.race([
+      sleep(interval * 1000, undefined, { signal: timer.signal }).catch(() => {}),
+      dispatcher.slotFreed(),
+    ]);
+    timer.abort();
   }
 }

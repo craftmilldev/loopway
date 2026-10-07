@@ -167,7 +167,11 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
       "run a Claude Code session per issue/PR thread: poll an inbox and hand each pending event to its thread's session, starting one if none matches",
     )
     .argument("<inbox>", "inbox id or name")
-    .option("--max <n>", "most sessions running or waiting on a thread at once (default 3)", positiveInt)
+    .option(
+      "--max <n>",
+      "most sessions running at once; sessions waiting on their thread don't count (default 3)",
+      positiveInt,
+    )
     .option("--interval <seconds>", "seconds between polls (default 30)", positiveInt)
     .addOption(
       new Option(

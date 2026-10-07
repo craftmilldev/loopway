@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Event } from "../client.js";
-import { editSession, findSession, type Session, type Sessions } from "./store.js";
+import { editSession, findSession, type Sessions } from "./store.js";
 
 interface GithubPayload {
   number?: number;
@@ -35,7 +35,7 @@ export interface RouteOptions {
 export interface Routes {
   /** Session id → the pending events to hand it now. */
   deliveries: Map<string, Event[]>;
-  /** Events left pending because every --max slot is taken. */
+  /** Events left pending because --max runs are already in flight. */
   waiting: number;
 }
 
@@ -46,15 +46,12 @@ export interface Routes {
  * 2. It's a PR that closes a known issue ("Closes #N") → that issue's session, and the PR joins it.
  * 3. Otherwise → a new session.
  *
- * A session needs a --max slot unless it already holds one (it's active, or still running). A
- * running session's events wait for its run to exit. New sessions and links are added to
- * `sessions` in place, for the caller to save.
+ * --max caps runs in flight, not sessions: a session waiting for its next event doesn't hold a
+ * slot, so starting or resuming one takes a free slot, oldest event first. A running session's
+ * events wait for its run to exit. New sessions and links are added to `sessions` in place, for the
+ * caller to save.
  */
 export function route(sessions: Sessions, pending: Event[], { inboxId, max, running }: RouteOptions): Routes {
-  const holdsSlot = (id: string, s: Session) => s.status === "active" || running.has(id);
-  const slots = new Set(
-    Object.keys(sessions).filter((id) => sessions[id]!.inbox_id === inboxId && holdsSlot(id, sessions[id]!)),
-  );
   const deliveries = new Map<string, Event[]>();
   let waiting = 0;
 
@@ -66,16 +63,14 @@ export function route(sessions: Sessions, pending: Event[], { inboxId, max, runn
       if (id) editSession(sessions, id).keys.push(key);
     }
 
-    if (!id || !slots.has(id)) {
-      if (slots.size >= max) {
+    if (id && running.has(id)) continue;
+    if (!id || !deliveries.has(id)) {
+      if (running.size + deliveries.size >= max) {
         waiting++;
         continue;
       }
       id ??= newSession(sessions, inboxId, key);
-      slots.add(id);
     }
-
-    if (running.has(id)) continue;
     deliveries.set(id, [...(deliveries.get(id) ?? []), e]);
   }
   return { deliveries, waiting };

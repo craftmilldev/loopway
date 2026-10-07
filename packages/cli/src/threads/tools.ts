@@ -33,12 +33,12 @@ export function sessionTools(dir: string): McpTool[] {
     {
       name: "end",
       description:
-        "Tell the dispatcher this thread's work is finished (the PR is merged or closed for good, or the user asked you to stop). It frees this session's slot once your turn ends. A later event for the thread resumes you and makes it active again.",
+        "Tell the dispatcher this thread's work is finished (the PR is merged or closed for good, or the user asked you to stop). It moves the thread to done. A later event for the thread resumes you and makes it active again.",
       inputSchema: { type: "object", properties: {} },
       call: (sessionId) =>
         withSessions(dir, (sessions) => {
           editSession(sessions, sessionId).status = "ended";
-          return "Ended. Your slot frees up when this turn finishes.";
+          return "Ended. A later event for this thread resumes you.";
         }),
     },
   ];

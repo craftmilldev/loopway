@@ -428,7 +428,7 @@ describe("threads", () => {
     expect((await sessions())[id].events).toEqual([]);
   });
 
-  it("never runs more than --max sessions, counting ended ones resumed by late events", async () => {
+  it("never runs more than --max sessions at once, but sessions waiting on their thread don't count", async () => {
     const { inbox, runs, out, d, finish, list, done } = await setup(2);
     await sendGithub(inbox, "issues", issue("opened", 1));
     await sendGithub(inbox, "issues", issue("opened", 2));
@@ -437,29 +437,39 @@ describe("threads", () => {
     expect(runs).toHaveLength(2);
     expect(new Set(runs.map((r) => r.sessionId)).size).toBe(2);
     expect(await list("pending")).toHaveLength(1);
-    expect(out.join("\n")).toMatch(/1 event\(s\) waiting: all 2 sessions are busy/);
+    expect(out.join("\n")).toMatch(/1 event\(s\) waiting: 2 sessions are already running/);
     // The TUI's view: the queued event is raw, and both sessions are working.
     const state = await d.state();
     expect(state.raw.map((e) => e.id)).toEqual((await list("pending")).map((e: any) => e.id));
     expect([...state.running].sort()).toEqual(Object.keys(state.sessions).sort());
-    await finish();
-    await done();
 
-    // #1's session ending frees its slot, and #3 takes it. (Events from the same millisecond can
-    // arrive in either order, so find #1's run by its thread rather than assuming it went first.)
-    const [one] = Object.entries(await sessions()).find(([, s]: [string, any]) => s.keys.includes("a/b#1"))!;
-    await mcp(runs.find((r) => r.sessionId === one)!.mcpUrl, "tools/call", { name: "end", arguments: {} });
+    // Once their runs exit, both sessions wait on their threads (still active, events still
+    // locked) without holding a slot, so the queued issue starts right away.
+    const freed = d.slotFreed();
+    await finish();
+    await freed;
     await d.tick();
-    await finish();
-    await done();
-    expect(Object.values(await sessions()).map((s: any) => s.keys)).toContainEqual(["a/b#3"]);
+    expect(runs).toHaveLength(3);
+    expect(await list("pending")).toHaveLength(0);
+    expect(Object.values(await sessions()).map((s: any) => s.status)).toEqual(["active", "active", "active"]);
 
-    // A late event for ended #1 has to wait for a slot too.
+    // With one slot left, new events for the two waiting threads go oldest first; the other waits.
     await sendGithub(inbox, "issue_comment", comment(1));
-    const before = runs.length;
+    await sendGithub(inbox, "issue_comment", comment(2));
+    const [oldest] = await list("pending");
     await d.tick();
-    expect(runs).toHaveLength(before);
+    expect(runs).toHaveLength(4);
+    expect(runs[3]!.resume).toBe(true);
+    expect(runs[3]!.message).toContain(oldest.id);
     expect(await list("pending")).toHaveLength(1);
+
+    // A run exiting frees its slot for the event still waiting.
+    await finish();
+    await d.tick();
+    expect(runs).toHaveLength(5);
+    expect(await list("pending")).toHaveLength(0);
+    await finish();
+    await done();
   });
 
   it("serves a link tool that routes a PR's events to the session", async () => {
