@@ -247,6 +247,7 @@ describe("vercel webhooks", () => {
     const cases: [type: string, payload: unknown, source: string, subject: string][] = [
       ["deployment.rollback", { project: { id: "prj_1" }, toDeploymentId: "dpl_2" }, "https://api.vercel.com/v9/projects/prj_1", "dpl_2"],
       ["project.renamed", { team: { id: "team_1" }, project: { id: "prj_1" } }, "https://api.vercel.com/v9/projects/prj_1", "prj_1"],
+      ["project.domain.updated", { project: { id: "prj_1" }, next: { domain: "b.dev" } }, "https://api.vercel.com/v9/projects/prj_1", "b.dev"],
       ["project.env-variable.created", { projectId: "prj_1", envVarId: "env_1" }, "https://api.vercel.com/v9/projects/prj_1", "env_1"],
       ["domain.created", { team: { id: "team_1" }, domain: { name: "a.dev" } }, "https://api.vercel.com/v2/teams/team_1", "a.dev"],
       ["flag.updated", { flag: { id: "flag_1", projectId: "prj_1" } }, "https://api.vercel.com/v9/projects/prj_1", "flag_1"],

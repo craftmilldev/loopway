@@ -32,27 +32,38 @@ const configInput = z
   })
   .strict();
 
-/** Payload paths tried in order for `subject`, by event type prefix. First matching prefix wins. */
-const SUBJECTS: [prefix: string, paths: string[]][] = [
-  ["deployment.rollback", ["toDeploymentId"]],
-  ["deployment.", ["deployment.id"]],
-  ["project.domain.updated", ["next.domain", "previous.domain"]],
-  ["project.domain.", ["domain.name"]],
-  ["project.env-variable.", ["envVarId"]],
-  ["project.rolling-release.", ["rollingRelease.default.targetDeploymentId"]],
-  ["project.", ["project.id"]],
-  ["domain.certificate-", ["cert.id", "dnsNames.0"]],
-  ["domain.dns-records-changed", ["zone"]],
-  ["domain.", ["domain.name"]],
-  ["integration-configuration.", ["configuration.id"]],
-  ["integration-resource.", ["resourceId"]],
-  ["marketplace.invoice.", ["invoiceId"]],
-  ["marketplace.member.", ["memberId"]],
-  ["alerts.", ["groupId"]],
-  ["flag.segment.", ["segment.id"]],
-  ["flag.", ["flag.id"]],
-  ["", ["deployment.id", "project.id", "projectId"]],
-];
+/**
+ * Payload paths tried in order for `subject`, keyed by event type or type prefix. The longest key
+ * the type starts with wins, so `deployment.rollback` beats `deployment.`.
+ */
+const SUBJECTS: Record<string, string[]> = {
+  "alerts.": ["groupId"],
+  "deployment.": ["deployment.id"],
+  "deployment.rollback": ["toDeploymentId"],
+  "domain.": ["domain.name"],
+  "domain.certificate-": ["cert.id", "dnsNames.0"],
+  "domain.dns-records-changed": ["zone"],
+  "flag.": ["flag.id"],
+  "flag.segment.": ["segment.id"],
+  "integration-configuration.": ["configuration.id"],
+  "integration-resource.": ["resourceId"],
+  "marketplace.invoice.": ["invoiceId"],
+  "marketplace.member.": ["memberId"],
+  "project.": ["project.id"],
+  "project.domain.": ["domain.name"],
+  "project.domain.updated": ["next.domain", "previous.domain"],
+  "project.env-variable.": ["envVarId"],
+  "project.rolling-release.": ["rollingRelease.default.targetDeploymentId"],
+};
+/** For types not in SUBJECTS. */
+const FALLBACK_SUBJECT = ["deployment.id", "project.id", "projectId"];
+
+function subjectPaths(type: string): string[] {
+  const key = Object.keys(SUBJECTS)
+    .filter((k) => type.startsWith(k))
+    .reduce((a, b) => (b.length > a.length ? b : a), "");
+  return SUBJECTS[key] ?? FALLBACK_SUBJECT;
+}
 
 const PROJECT_PATHS = [
   "project.id",
@@ -121,7 +132,7 @@ export const vercel: SourceAdapter<VercelConfig> = {
     const project = first(PROJECT_PATHS);
     const team = first(TEAM_PATHS);
     const source = project ? `${API}/v9/projects/${project}` : team ? `${API}/v2/teams/${team}` : "https://vercel.com";
-    const subject = first(SUBJECTS.find(([prefix]) => type.startsWith(prefix))![1]) ?? id;
+    const subject = first(subjectPaths(type)) ?? id;
     const time = toIso(body.createdAt) ?? receivedAt.toISOString();
 
     return {
