@@ -25,6 +25,8 @@ local.route("/", app);
 const port = Number(process.env.PORT ?? 3000);
 serve({ fetch: local.fetch, port }, () => {
   const remote = process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL;
-  const where = remote ? `Postgres (${new URL(remote).host})` : `PGlite (${process.env.PGLITE_DIR ?? "./.data/pglite"})`;
+  const where = remote
+    ? `Postgres (${new URL(remote).host})`
+    : `PGlite (${process.env.PGLITE_DIR ?? "./.data/pglite"})`;
   console.log(`loopway listening on http://localhost:${port} — db: ${where}`);
 });

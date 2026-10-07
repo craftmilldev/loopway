@@ -181,7 +181,8 @@ describe("session tokens", () => {
 
 describe("login", () => {
   const sent: { to: string; subject: string; text: string }[] = [];
-  const loginApp = () => createApi({ getDb: async () => db, tokenSecret: SECRET, sendEmail: async (e) => void sent.push(e) });
+  const loginApp = () =>
+    createApi({ getDb: async () => db, tokenSecret: SECRET, sendEmail: async (e) => void sent.push(e) });
   const post = (a: ReturnType<typeof createApi>, path: string, body: unknown) =>
     a.request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const lastCode = () => sent.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
@@ -225,10 +226,10 @@ describe("login", () => {
     const a = loginApp();
     expect((await post(a, "/auth/login", { email: "New.Person@example.com" })).status).toBe(202);
     expect(sent.at(-1)!.to).toBe("new.person@example.com");
-    expect((await db.query(`SELECT 1 FROM loopway.users WHERE email = 'new.person@example.com'`))).toHaveLength(0);
+    expect(await db.query(`SELECT 1 FROM loopway.users WHERE email = 'new.person@example.com'`)).toHaveLength(0);
 
     expect((await post(a, "/auth/verify", { email: "new.person@example.com", code: "ABCD2345" })).status).toBe(401);
-    expect((await db.query(`SELECT 1 FROM loopway.users WHERE email = 'new.person@example.com'`))).toHaveLength(0);
+    expect(await db.query(`SELECT 1 FROM loopway.users WHERE email = 'new.person@example.com'`)).toHaveLength(0);
 
     const res = await post(a, "/auth/verify", { email: "new.person@example.com", code: lastCode() });
     expect(res.status).toBe(201);
@@ -283,7 +284,10 @@ describe("web ui", () => {
 
   it("serves the built bundle without auth", async () => {
     await build({ ...clientBuild, logLevel: "silent" });
-    for (const [path, type] of [["/app.js", "text/javascript"], ["/app.css", "text/css"]] as const) {
+    for (const [path, type] of [
+      ["/app.js", "text/javascript"],
+      ["/app.css", "text/css"],
+    ] as const) {
       const r = await get(path);
       expect(r.status, path).toBe(200);
       expect(r.type).toContain(type);

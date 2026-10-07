@@ -19,7 +19,9 @@ export function threadKeys(e: Event): { key?: string; refs: string[] } {
   const n = d.pull_request?.number ?? d.issue?.number ?? d.number;
   if (!repo || typeof n !== "number") return { refs: [] };
   const body = d.pull_request?.body ?? "";
-  const refs = [...body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi)].map((m) => `${repo}#${m[1]}`);
+  const refs = [...body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi)].map(
+    (m) => `${repo}#${m[1]}`,
+  );
   return { key: `${repo}#${n}`, refs };
 }
 
@@ -77,6 +79,14 @@ export function route(sessions: Sessions, pending: Event[], { inboxId, max, runn
 function newSession(sessions: Sessions, inboxId: string, key: string | undefined): string {
   const id = randomUUID();
   const now = new Date().toISOString();
-  sessions[id] = { inbox_id: inboxId, keys: key ? [key] : [], events: [], status: "active", started: false, created_at: now, updated_at: now };
+  sessions[id] = {
+    inbox_id: inboxId,
+    keys: key ? [key] : [],
+    events: [],
+    status: "active",
+    started: false,
+    created_at: now,
+    updated_at: now,
+  };
   return id;
 }

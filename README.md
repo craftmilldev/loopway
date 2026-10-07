@@ -15,9 +15,11 @@ npm install                   # installs every workspace
 cp packages/web/.env.example packages/web/.env
 npm run dev                   # http://localhost:3000, data in packages/web/.data/pglite
 npm test                      # every workspace, in-memory PGlite
+npm run lint                  # ESLint, with type-aware rules
+npm run format                # Prettier; CI runs format:check
 ```
 
-Root scripts forward to the workspaces; `npm run <script> -w @loopway/web` (or `@loopway/cli`) runs one directly.
+Root scripts forward to the workspaces (`lint` and `format` run once over the whole repo); `npm run <script> -w @loopway/web` (or `@loopway/cli`) runs one directly.
 
 Create a user with `loopway login` (the CLI creates the user if the email is new).
 

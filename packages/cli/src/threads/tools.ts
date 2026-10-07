@@ -18,7 +18,8 @@ export function sessionTools(dir: string): McpTool[] {
       },
       call: async (sessionId, args) => {
         const n = args.number;
-        if (!Number.isInteger(n) || (n as number) < 1) throw new Error("number must be a positive integer.");
+        if (typeof n !== "number" || !Number.isInteger(n) || n < 1)
+          throw new Error("number must be a positive integer.");
         return withSessions(dir, (sessions) => {
           const s = editSession(sessions, sessionId);
           const repo = typeof args.repo === "string" ? args.repo : s.keys[0]?.split("#")[0];
