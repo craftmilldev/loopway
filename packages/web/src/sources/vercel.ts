@@ -79,7 +79,26 @@ const API = "https://api.vercel.com";
 
 export const vercel: SourceAdapter<VercelConfig> = {
   type: "vercel",
+  label: "Vercel",
   description: "Vercel account/integration webhooks, verified with X-Vercel-Signature.",
+  events: [
+    "deployment.created",
+    "deployment.succeeded",
+    "deployment.ready",
+    "deployment.promoted",
+    "deployment.rollback",
+    "deployment.error",
+    "deployment.canceled",
+    "project.created",
+    "project.removed",
+    "project.renamed",
+    "project.env-variable.created",
+    "project.env-variable.updated",
+    "project.env-variable.deleted",
+  ],
+  // Vercel makes the secret when the webhook is added, so it's set afterwards.
+  secret: { from: "sender" },
+  webhookSettings: "Vercel → Team Settings → Webhooks",
 
   parseConfig(input, existing) {
     const parsed = configInput.parse(input ?? {});

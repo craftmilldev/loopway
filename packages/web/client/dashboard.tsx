@@ -10,43 +10,6 @@ export interface Inbox {
   config?: { secret?: string | null };
 }
 
-// The events offered as checkboxes per source (same lists as `loopway inbox create`).
-const GITHUB_EVENTS = [
-  "push",
-  "pull_request",
-  "pull_request_review",
-  "pull_request_review_comment",
-  "issues",
-  "issue_comment",
-  "release",
-  "workflow_run",
-  "workflow_job",
-  "check_run",
-  "check_suite",
-  "create",
-  "delete",
-  "deployment_status",
-  "discussion",
-  "star",
-  "fork",
-];
-const VERCEL_EVENTS = [
-  "deployment.created",
-  "deployment.succeeded",
-  "deployment.ready",
-  "deployment.promoted",
-  "deployment.rollback",
-  "deployment.error",
-  "deployment.canceled",
-  "project.created",
-  "project.removed",
-  "project.renamed",
-  "project.env-variable.created",
-  "project.env-variable.updated",
-  "project.env-variable.deleted",
-];
-const EVENTS: Record<string, string[]> = { github: GITHUB_EVENTS, vercel: VERCEL_EVENTS };
-
 export function Dashboard() {
   const me = lw.useMe();
   const [inboxes, setInboxes] = useState<Inbox[] | null>(null);
@@ -100,22 +63,16 @@ export function Dashboard() {
 }
 
 function CreateInbox({ onCreated }: { onCreated: () => void }) {
-  const [sources, setSources] = useState<string[]>([]);
+  const sources = lw.useSources() ?? [];
   const [name, setName] = useState("");
-  const [source, setSource] = useState("");
+  const [type, setType] = useState("");
   const [all, setAll] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [secret, setSecret] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    lw.api("/sources").then(async (r) => {
-      if (!r.ok) return;
-      const types = ((await r.json()).data as { type: string }[]).map((s) => s.type);
-      setSources(types);
-      setSource((s) => s || types[0] || "");
-    });
-  }, []);
+  // The first source is picked until the user picks another.
+  const source = sources.find((s) => s.type === type) ?? sources[0];
 
   function toggle(event: string, on: boolean) {
     const next = new Set(checked);
@@ -129,17 +86,15 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
     setSecret(Array.from(b, (x) => x.toString(16).padStart(2, "0")).join(""));
   }
 
-  // Vercel makes the secret when the webhook is added, so it's pasted in on the inbox page afterwards.
-  const vercel = source === "vercel";
-  const known = EVENTS[source] ?? [];
-
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (!source) return;
     setError(null);
-    const events = all ? ["*"] : known.filter((ev) => checked.has(ev));
+    const events = all ? ["*"] : source.events.filter((ev) => checked.has(ev));
     if (!events.length) return setError("Pick at least one event.");
-    const config = vercel ? { events } : { events, secret };
-    const r = await lw.api("/inboxes", { method: "POST", body: { name, source_type: source, config } });
+    // A sender-made secret is pasted in on the inbox page afterwards.
+    const config = source.secret.from === "sender" ? { events } : { events, secret };
+    const r = await lw.api("/inboxes", { method: "POST", body: { name, source_type: source.type, config } });
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) return setError(await lw.message(r));
     onCreated();
@@ -159,15 +114,15 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
           <select
             id="source"
             required
-            value={source}
+            value={source?.type ?? ""}
             onChange={(e) => {
-              setSource(e.target.value);
+              setType(e.target.value);
               setChecked(new Set());
             }}
           >
             {sources.map((s) => (
-              <option key={s} value={s}>
-                {s}
+              <option key={s.type} value={s.type}>
+                {s.label}
               </option>
             ))}
           </select>
@@ -179,7 +134,7 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
           <label className="check all">
             <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Everything
           </label>
-          {known.map((ev) => (
+          {source?.events.map((ev) => (
             <label key={ev} className="check">
               <input type="checkbox" disabled={all} checked={checked.has(ev)} onChange={(e) => toggle(ev, e.target.checked)} /> {ev}
             </label>
@@ -187,21 +142,32 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
         </div>
         <p className="hint">Which events the inbox keeps. Anything else the webhook sends is rejected and shows as a failed delivery in the sender.</p>
       </div>
-      {vercel ? (
+      {source?.secret.from === "sender" ? (
         <div className="field">
           <label>Secret</label>
-          <p className="hint">Vercel shows the secret once you add the webhook there. Paste it in on the inbox page; until then deliveries are rejected.</p>
+          <p className="hint">
+            {source.label} shows the secret once you add the webhook there. Paste it in on the inbox page; until then deliveries are rejected.
+          </p>
         </div>
       ) : (
         <div className="field">
           <label htmlFor="secret">Secret</label>
           <div className="input-wrap">
-            <input id="secret" required minLength={16} autoComplete="off" value={secret} onChange={(e) => setSecret(e.target.value)} />
+            <input
+              id="secret"
+              required
+              minLength={source?.secret.min_length}
+              autoComplete="off"
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+            />
             <button className="btn btn-sm btn-quiet" type="button" onClick={generate}>
               Generate
             </button>
           </div>
-          <p className="hint">At least 16 characters. You enter the same secret in the sender's webhook settings.</p>
+          <p className="hint">
+            At least {source?.secret.min_length} characters. You enter the same secret in the sender's webhook settings.
+          </p>
         </div>
       )}
       <div className="form-actions">

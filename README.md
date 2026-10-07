@@ -35,7 +35,7 @@ Tables live in a `loopway` schema (not `public`) with RLS enabled and no policie
 
 ## Web UI
 
-The same Hono app serves a small web UI: `/` (how to use loopway), `/login` (same email-code flow as the CLI; the session token is kept in `localStorage`), `/dashboard` (your inboxes and a create form) and `/dashboard/<inbox>` (events, newest first, expandable JSON, hide-processed toggle, and for Vercel inboxes a form to paste the webhook secret). `GET /api` is a bare health check.
+The same Hono app serves a small web UI: `/` (how to use loopway), `/login` (same email-code flow as the CLI; the session token is kept in `localStorage`), `/dashboard` (your inboxes and a create form) and `/dashboard/<inbox>` (events, newest first, expandable JSON, hide-processed toggle, and, for sources like Vercel whose sender makes the secret, a form to paste it). `GET /api` is a bare health check.
 
 The pages are a React app in `packages/web/client/`. The homepage copy is markdown in [`packages/web/content/home.md`](packages/web/content/home.md). `npm run build -w @loopway/web` bundles the app with esbuild into `packages/web/public/` (git-ignored); `npm run dev` rebuilds it on change and serves it.
 
@@ -69,7 +69,7 @@ loopway events done <inbox> <event>
 
 - `<inbox>` is an inbox id or its exact name.
 - Every read command takes `--json` for the raw API response. `events next --json` prints nothing when the inbox is empty.
-- `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`); without a terminal it runs from flags alone. For `vercel` it doesn't ask for a secret: add the webhook in Vercel, then paste the secret Vercel shows with `loopway inbox update <inbox>` (or on the inbox's dashboard page).
+- `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`); without a terminal it runs from flags alone. For sources whose sender makes the secret (like `vercel`) it doesn't ask for one: add the webhook in the sender, then paste the secret it shows with `loopway inbox update <inbox>` (or on the inbox's dashboard page).
 - Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `https://loopway.craftmill.dev`.
 - Lock tokens from `next`/`lock` are kept in `~/.loopway/locks.json` until they expire, so `lock` (renew), `unlock` and `done` on the same machine don't need `--token`.
 
@@ -113,7 +113,7 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 
 | | |
 |---|---|
-| `GET /sources` | Available source types. |
+| `GET /sources` | Available source types: `type`, `label`, `description`, common `events`, who makes the `secret` (`{from: "loopway", min_length}` or `{from: "sender"}`), and `webhook_settings` (where the webhook is added in the sender). |
 | `POST /inboxes` `{name, source_type, config?}` | Create. Response includes `webhook_url` and `setup` instructions. |
 | `GET /inboxes` | List yours. |
 | `GET /inboxes/:id` | One inbox + `stats` (`pending`/`locked`/`processed` counts). |
@@ -204,10 +204,11 @@ packages/web/
   src/ui.ts             web UI: home, /login, /dashboard (HTML + vanilla JS + styles)
   src/store.ts          all SQL
   src/db/               driver adapter (PGlite | postgres.js) + migrations
-  src/sources/          source adapters: github.ts, vercel.ts
+  src/sources/          one file per source adapter (github.ts, vercel.ts); index.ts registers them in a SourceRegistry
   src/cloudevents.ts    CloudEvent type + validation
   scripts/              dev server, migrate
   test/api.test.ts      end-to-end tests (TEST_DATABASE_URL=... to run against real Postgres)
+  test/sources/         one webhook test file per source
 packages/cli/
   src/index.ts          `loopway` entry: error handling + exit codes
   src/program.ts        commands and flags (commander)
@@ -226,4 +227,10 @@ packages/cli/
 
 ### Adding a source
 
-Implement `SourceAdapter` (`packages/web/src/sources/types.ts`): `parseConfig` (validate + defaults), `publicConfig`, optional `setup`, and `receive(headers, rawBody) → event | ignored | rejected`. Register it in `packages/web/src/sources/index.ts`. `loopway inbox create` lists it automatically and asks for its config as JSON; add a dedicated prompt flow in `packages/cli/src/commands/inboxes.ts` if it deserves one.
+1. Add `packages/web/src/sources/<type>.ts` implementing `SourceAdapter` (`types.ts`):
+   - what clients show: `label`, `description`, common `events`, `secret` (`{from: "loopway", minLength}` if loopway makes it, `{from: "sender"}` if the sender shows one after the webhook is added) and `webhookSettings`
+   - `parseConfig` (validate + defaults), `publicConfig`, optional `setup`, and `receive(headers, rawBody) → event | ignored | rejected`
+2. Add it to the list in `packages/web/src/sources/index.ts`.
+3. Add `packages/web/test/sources/<type>.test.ts` (`test/helpers.ts` gives it an app and database) and its config and CloudEvent mapping to this README.
+
+Nothing else names a source: the API, `loopway inbox create` and the dashboard build their forms from `GET /sources`, and the inbox page offers a secret form for any `sender` source.

@@ -17,6 +17,7 @@ export function Inbox({ id }: { id: string }) {
   const [hide, setHide] = useState(false);
   const [events, setEvents] = useState<InboxEvent[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
+  const source = lw.useSources()?.find((s) => s.type === inbox?.source_type);
 
   useEffect(() => {
     if (!me) return;
@@ -63,7 +64,7 @@ export function Inbox({ id }: { id: string }) {
           </div>
         </div>
       </div>
-      {inbox?.source_type === "vercel" && <VercelSecret inbox={inbox} onSaved={setInbox} />}
+      {inbox && source?.secret.from === "sender" && <SenderSecret inbox={inbox} source={source} onSaved={setInbox} />}
       <div className="toolbar">
         <label>
           <input type="checkbox" checked={hide} onChange={(e) => setHide(e.target.checked)} /> Hide processed
@@ -98,8 +99,8 @@ export function Inbox({ id }: { id: string }) {
   );
 }
 
-// Vercel makes the signing secret when the webhook is added there, so it's pasted in here afterwards.
-function VercelSecret({ inbox, onSaved }: { inbox: InboxInfo; onSaved: (inbox: InboxInfo) => void }) {
+// Some senders make the signing secret when the webhook is added there, so it's pasted in here afterwards.
+function SenderSecret({ inbox, source, onSaved }: { inbox: InboxInfo; source: lw.Source; onSaved: (inbox: InboxInfo) => void }) {
   const [secret, setSecret] = useState("");
   const [error, setError] = useState<string | null>(null);
   const isSet = !!inbox.config?.secret;
@@ -134,7 +135,7 @@ function VercelSecret({ inbox, onSaved }: { inbox: InboxInfo; onSaved: (inbox: I
         <p className="hint">
           {isSet
             ? "Deliveries are checked against this secret."
-            : "Not set yet. Add the webhook in Vercel → Team Settings → Webhooks with the URL above, then paste the secret it shows. Until then deliveries are rejected."}
+            : `Not set yet. Add the webhook in ${source.webhook_settings} with the URL above, then paste the secret it shows. Until then deliveries are rejected.`}
         </p>
       </div>
       {error && <p className="error">{error}</p>}
