@@ -63,7 +63,7 @@ stop):
 1. Mark every remaining event you were given done.
 2. Remove the worktree with ExitWorktree (`action: "remove"`), and delete the remote branch if
    it still exists.
-3. Call the `end` tool so the dispatcher frees your slot.
+3. Call the `end` tool so the dispatcher marks the thread done.
 4. Report what was done, what is still pending, and any deploy steps the user still has to do.
 
 If you're resumed after calling `end`, the thread is active again; call `end` once more when
