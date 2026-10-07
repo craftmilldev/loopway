@@ -331,6 +331,18 @@ describe("granola webhooks", () => {
     });
   });
 
+  it("stores events that aren't about a note", async () => {
+    const key = await newUser();
+    const inbox = await granolaInbox(key);
+    const folder = { event_id: "evt-2", event_type: "folder.created", folder_id: "fol_abc", occurred_at: "2026-01-27T15:30:00Z" };
+    expect((await sendGranola(inbox.id, folder, { id: "evt-2" })).status).toBe(202);
+    expect((await sendGranola(inbox.id, { event_type: "workspace.updated" }, { id: "evt-3" })).status).toBe(202);
+    const [b, a] = (await call("GET", `/inboxes/${inbox.id}/events?order=desc`, { key })).body.data;
+    expect(a.event).toMatchObject({ type: "ai.granola.folder.created", source: "https://public-api.granola.ai", subject: "fol_abc" });
+    expect(b.event).toMatchObject({ type: "ai.granola.workspace.updated", source: "https://public-api.granola.ai", subject: "evt-3" });
+    expect((await sendGranola(inbox.id, { note_id: "not_x" })).status).toBe(400);
+  });
+
   it("starts without a secret and rejects deliveries until one is set", async () => {
     const key = await newUser();
     const inbox = await granolaInbox(key, {});

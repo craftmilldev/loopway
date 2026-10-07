@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { z } from "zod";
 import { makeCloudEvent } from "../cloudevents.js";
 import { safeEqual } from "../ids.js";
+import { str } from "./payload.js";
 import type { SourceAdapter } from "./types.js";
 
 /**
@@ -10,8 +11,9 @@ import type { SourceAdapter } from "./types.js";
  *
  *   id      = webhook-id (= event_id)
  *   type    = ai.granola.<event_type>, e.g. ai.granola.note.generated
- *   source  = https://public-api.granola.ai/v1/notes/<note_id> (GET it for the note's content)
- *   subject = note_id
+ *   source  = https://public-api.granola.ai/v1/notes/<note_id> (GET it for the note's content);
+ *             https://public-api.granola.ai for events that aren't about a note
+ *   subject = note_id (or <kind>_id for other kinds of event), falling back to the event id
  *   time    = occurred_at, falling back to receive time
  *   data    = the webhook payload
  *
@@ -27,6 +29,8 @@ export interface GranolaConfig {
 }
 
 export const GRANOLA_EVENTS = ["note.generated", "note.edited", "note.access_granted"];
+
+const API = "https://public-api.granola.ai";
 
 /** How far webhook-timestamp may be from now, either way. */
 const TOLERANCE_SECONDS = 5 * 60;
@@ -98,11 +102,8 @@ export const granola: SourceAdapter<GranolaConfig> = {
       return { kind: "rejected", status: 400, message: "Payload must be a JSON object" };
     }
 
-    const eventType = payload.event_type;
-    const noteId = payload.note_id;
-    if (typeof eventType !== "string" || !eventType || typeof noteId !== "string" || !noteId) {
-      return { kind: "rejected", status: 400, message: "Payload is missing event_type or note_id" };
-    }
+    const eventType = str(payload.event_type);
+    if (!eventType) return { kind: "rejected", status: 400, message: "Payload is missing event_type" };
     if (!config.events.includes("*") && !config.events.includes(eventType)) {
       return { kind: "rejected", status: 422, message: `event "${eventType}" not enabled for this inbox` };
     }
@@ -110,14 +111,19 @@ export const granola: SourceAdapter<GranolaConfig> = {
     const occurred = typeof payload.occurred_at === "string" ? new Date(payload.occurred_at) : undefined;
     const time = occurred && !Number.isNaN(occurred.getTime()) ? occurred : receivedAt;
 
+    // Every event Granola sends today is about a note (note.*, with note_id). Anything else gets its
+    // `<kind>_id` as the subject, if the payload has one, and the API itself as the source.
+    const kind = eventType.split(".")[0]!;
+    const noteId = kind === "note" ? str(payload.note_id) : undefined;
+
     return {
       kind: "event",
       event: makeCloudEvent({
         specversion: "1.0",
         id,
-        source: `https://public-api.granola.ai/v1/notes/${encodeURIComponent(noteId)}`,
+        source: noteId ? `${API}/v1/notes/${encodeURIComponent(noteId)}` : API,
         type: `ai.granola.${eventType}`,
-        subject: noteId,
+        subject: str(payload[`${kind}_id`]) ?? id,
         time: time.toISOString(),
         datacontenttype: "application/json",
         data: payload,
