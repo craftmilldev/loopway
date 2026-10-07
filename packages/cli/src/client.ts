@@ -127,6 +127,10 @@ export class LoopwayClient {
     return this.request<Inbox & { stats: InboxStats }>("GET", `/inboxes/${enc(inboxId)}`);
   }
 
+  updateInbox(inboxId: string, input: { name?: string; config?: unknown }) {
+    return this.request<Inbox>("PATCH", `/inboxes/${enc(inboxId)}`, input);
+  }
+
   // ---------- events ----------
 
   listEvents(inboxId: string, q: ListEventsQuery = {}) {

@@ -7,9 +7,10 @@ export interface Inbox {
   name: string;
   source_type: string;
   webhook_url: string;
+  config?: { secret?: string | null };
 }
 
-// The GitHub events offered as checkboxes (same list as `loopway inbox create`).
+// The events offered as checkboxes per source (same lists as `loopway inbox create`).
 const GITHUB_EVENTS = [
   "push",
   "pull_request",
@@ -29,6 +30,22 @@ const GITHUB_EVENTS = [
   "star",
   "fork",
 ];
+const VERCEL_EVENTS = [
+  "deployment.created",
+  "deployment.succeeded",
+  "deployment.ready",
+  "deployment.promoted",
+  "deployment.rollback",
+  "deployment.error",
+  "deployment.canceled",
+  "project.created",
+  "project.removed",
+  "project.renamed",
+  "project.env-variable.created",
+  "project.env-variable.updated",
+  "project.env-variable.deleted",
+];
+const EVENTS: Record<string, string[]> = { github: GITHUB_EVENTS, vercel: VERCEL_EVENTS };
 
 export function Dashboard() {
   const me = lw.useMe();
@@ -112,12 +129,17 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
     setSecret(Array.from(b, (x) => x.toString(16).padStart(2, "0")).join(""));
   }
 
+  // Vercel makes the secret when the webhook is added, so it's pasted in on the inbox page afterwards.
+  const vercel = source === "vercel";
+  const known = EVENTS[source] ?? [];
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const events = all ? ["*"] : GITHUB_EVENTS.filter((ev) => checked.has(ev));
+    const events = all ? ["*"] : known.filter((ev) => checked.has(ev));
     if (!events.length) return setError("Pick at least one event.");
-    const r = await lw.api("/inboxes", { method: "POST", body: { name, source_type: source, config: { events, secret } } });
+    const config = vercel ? { events } : { events, secret };
+    const r = await lw.api("/inboxes", { method: "POST", body: { name, source_type: source, config } });
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) return setError(await lw.message(r));
     onCreated();
@@ -134,7 +156,15 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
       <div className="field">
         <label htmlFor="source">Source</label>
         <div className="input-wrap">
-          <select id="source" required value={source} onChange={(e) => setSource(e.target.value)}>
+          <select
+            id="source"
+            required
+            value={source}
+            onChange={(e) => {
+              setSource(e.target.value);
+              setChecked(new Set());
+            }}
+          >
             {sources.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -149,24 +179,31 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
           <label className="check all">
             <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Everything
           </label>
-          {GITHUB_EVENTS.map((ev) => (
+          {known.map((ev) => (
             <label key={ev} className="check">
               <input type="checkbox" disabled={all} checked={checked.has(ev)} onChange={(e) => toggle(ev, e.target.checked)} /> {ev}
             </label>
           ))}
         </div>
-        <p className="hint">Which events the inbox keeps. Anything else the webhook sends is rejected and shows as a failed delivery in GitHub.</p>
+        <p className="hint">Which events the inbox keeps. Anything else the webhook sends is rejected and shows as a failed delivery in the sender.</p>
       </div>
-      <div className="field">
-        <label htmlFor="secret">Secret</label>
-        <div className="input-wrap">
-          <input id="secret" required minLength={16} autoComplete="off" value={secret} onChange={(e) => setSecret(e.target.value)} />
-          <button className="btn btn-sm btn-quiet" type="button" onClick={generate}>
-            Generate
-          </button>
+      {vercel ? (
+        <div className="field">
+          <label>Secret</label>
+          <p className="hint">Vercel shows the secret once you add the webhook there. Paste it in on the inbox page; until then deliveries are rejected.</p>
         </div>
-        <p className="hint">At least 16 characters. You enter the same secret in the sender's webhook settings.</p>
-      </div>
+      ) : (
+        <div className="field">
+          <label htmlFor="secret">Secret</label>
+          <div className="input-wrap">
+            <input id="secret" required minLength={16} autoComplete="off" value={secret} onChange={(e) => setSecret(e.target.value)} />
+            <button className="btn btn-sm btn-quiet" type="button" onClick={generate}>
+              Generate
+            </button>
+          </div>
+          <p className="hint">At least 16 characters. You enter the same secret in the sender's webhook settings.</p>
+        </div>
+      )}
       <div className="form-actions">
         <button className="btn" type="submit">
           Create inbox

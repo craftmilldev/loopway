@@ -4,7 +4,7 @@ loopway catches webhooks and keeps them in an inbox as [CloudEvents](https://git
 
 1. [Log in](/login) with your email. New emails get an account.
 2. Create an inbox from the [dashboard](/dashboard). It gives you a webhook URL.
-3. Paste that URL and your secret into the webhook settings of the service that sends events (GitHub is the first source).
+3. Paste that URL and your secret into the webhook settings of the service that sends events (GitHub and Vercel so far; for Vercel you paste the secret it gives you back into loopway).
 4. Pull work from the inbox with the CLI or the API.
 
 ## The CLI
