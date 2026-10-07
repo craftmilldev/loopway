@@ -29,7 +29,7 @@
   --control-sm:28px;
   --control-lg:44px;
 
-  --measure-page:1100px;
+  --measure-page:640px;
 }
 
 *,*::before,*::after{box-sizing:border-box}
@@ -69,13 +69,11 @@ img{max-width:100%}
 }
 
 /* Simple header bar */
-.post-nav{display:flex;align-items:center;gap:20px;max-width:var(--measure-page);margin:0 auto;padding:16px 24px 8px;border-bottom:3px double var(--ink-900);font-family:var(--font-type);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-400)}
+.post-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px 20px;max-width:var(--measure-page);margin:0 auto;padding:16px 24px 8px;border-bottom:3px double var(--ink-900);font-family:var(--font-type);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-400)}
 .post-nav .wordmark{color:var(--ink-900);letter-spacing:.15em;font-family:var(--font-text);font-size:1.25rem}
 .post-nav .wordmark:hover{color:var(--ink-900)}
-@media (max-width:640px){
-  .post-nav{flex-wrap:wrap;row-gap:4px}
-  .post-nav .eyebrow{order:1;flex-basis:100%}
-}
+.post-nav a{white-space:nowrap}
+.post-nav .eyebrow{order:1;flex-basis:100%}
 
 /* Buttons */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:var(--control-lg);padding:0 24px;font-family:var(--font-type);font-size:13px;font-weight:400;text-transform:uppercase;letter-spacing:.12em;border:0;border-radius:0;cursor:pointer;text-decoration:none;white-space:nowrap;background:var(--ink-900);color:var(--paper-100);transition:background .15s ease}
@@ -101,7 +99,6 @@ img{max-width:100%}
 
 /* Pages */
 main{max-width:var(--measure-page);margin:0 auto;padding:32px 24px 64px}
-.prose{max-width:66ch;margin:0 auto}
 .prose h1{font-size:clamp(1.75rem,4vw,2.75rem)}
 .prose h2{margin-top:36px;font-size:1.5rem}
 .prose p,.prose ol,.prose ul{margin:14px 0 0;line-height:1.6}
