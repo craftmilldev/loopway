@@ -176,7 +176,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .addOption(
       new Option(
         "--ttl <seconds>",
-        "lock duration for delivered events, renewed every poll (default 3600, max 43200)",
+        "lock duration while claiming an event, before it is marked processed (default 3600, max 43200)",
       ).argParser(positiveInt),
     )
     .option("--no-tui", "print a plain log instead of the full-screen view of threads and their transcripts")

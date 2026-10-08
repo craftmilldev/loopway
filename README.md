@@ -85,7 +85,7 @@ In a terminal, `loopway threads` takes over the screen with four lists: raw even
 
 `loopway threads` runs one headless Claude Code session (`claude -p --permission-mode auto`) per thread, in the current directory. A thread is an issue and the PRs linked to it, keyed by `owner/repo#number`. Every `--interval` seconds it lists the inbox's pending events:
 
-- An event for a known issue/PR is locked and handed to that thread's session (`claude --resume`). Sessions run in parallel; one that is still running gets its new events together once its current run exits.
+- An event for a known issue/PR is marked processed and handed to that thread's session (`claude --resume`). Sessions run in parallel; one that is still running gets its new events together once its current run exits.
 - Any other event starts a new session with the prompt in [`packages/cli/prompts/thread.md`](packages/cli/prompts/thread.md) (`{{inbox}}` is filled in).
 - `--max` is a hard cap on sessions running at once. A session waiting for its next event doesn't count, so any number can wait. Events that would start or resume another session stay pending, oldest first, and go as soon as a run exits.
 
@@ -94,7 +94,7 @@ Sessions talk back to the dispatcher over MCP: it serves a `loopway` server on 1
 - `link` adds a PR to the session's thread. Sessions call it right after opening a PR; a PR whose body says `Closes #N` also joins issue N's thread on its own.
 - `end` marks the thread finished. The session decides when that is (a close event usually means it, but not always). A later event for the thread resumes it and makes it active again.
 
-Every event delivered to a session stays locked, renewed each poll for `--ttl` seconds, until the session marks it done. Sessions are tracked in `~/.loopway/threads.json` (including the events they own, so a restarted dispatcher keeps renewing them; writes take `threads.json.lock`, so dispatchers for several inboxes can share it) and each one's transcript (stream-json) is appended to `~/.loopway/threads/<session>.log`.
+The dispatcher claims an event (a lock held for at most `--ttl` seconds) and marks it processed as it hands it over, so a session never marks events done: they're context for the thread, and `end` is what finishes it. A delivery lists event ids and types, and the session reads payloads with `loopway events get <inbox> <event> --data`. Sessions are tracked in `~/.loopway/threads.json` (including the events delivered to each; writes take `threads.json.lock`, so dispatchers for several inboxes can share it) and each one's transcript (stream-json) is appended to `~/.loopway/threads/<session>.log`.
 
 The inbox's GitHub webhook needs `pull_request`, `pull_request_review` and `pull_request_review_comment` (as well as `issues` and `issue_comment`) for reviews to reach sessions.
 
