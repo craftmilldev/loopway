@@ -32,17 +32,24 @@ export async function login(ctx: Context, opts: { url?: string; email?: string; 
 
   if (!opts.code) {
     await client.requestLoginCode(email);
-    ctx.out(`A login code is on its way to ${bold(email)} (one is sent per 10 minutes; check your spam folder before asking again).`);
+    ctx.out(
+      `A login code is on its way to ${bold(email)} (one is sent per 10 minutes; check your spam folder before asking again).`,
+    );
   }
   const code = opts.code ?? (ctx.interactive ? await promptCode() : undefined);
-  if (!code) throw new UsageError("--code is required when not running in a terminal; request one by running `loopway login --email <email>` first and then re-run with it");
+  if (!code)
+    throw new UsageError(
+      "--code is required when not running in a terminal; request one by running `loopway login --email <email>` first and then re-run with it",
+    );
 
   const { token, user, created } = await client.verifyLoginCode(email, code).catch((err: unknown) => {
     if (err instanceof ApiError && err.code === "invalid_code") throw new UsageError(err.message);
     throw err;
   });
   await writeConfig(ctx.configDir, { api_url: url, api_key: token });
-  ctx.out(`${created ? "Created your account and logged in to" : "Logged in to"} ${url} as ${bold(user.name)}${user.email ? ` <${user.email}>` : ""}`);
+  ctx.out(
+    `${created ? "Created your account and logged in to" : "Logged in to"} ${url} as ${bold(user.name)}${user.email ? ` <${user.email}>` : ""}`,
+  );
   ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
 }
 

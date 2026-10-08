@@ -43,11 +43,14 @@ async function pollForever(ctx: Context, dispatcher: Dispatcher, interval: numbe
       await dispatcher.tick();
     } catch (err) {
       // A flaky network shouldn't take down running sessions; try again next tick.
-      ctx.out(`error: ${err instanceof Error ? err.message : err}`);
+      ctx.out(`error: ${err instanceof Error ? err.message : String(err)}`);
     }
     // Poll again after the interval, or as soon as a run exits so its slot goes to a waiting event.
     const timer = new AbortController();
-    await Promise.race([sleep(interval * 1000, undefined, { signal: timer.signal }).catch(() => {}), dispatcher.slotFreed()]);
+    await Promise.race([
+      sleep(interval * 1000, undefined, { signal: timer.signal }).catch(() => {}),
+      dispatcher.slotFreed(),
+    ]);
     timer.abort();
   }
 }

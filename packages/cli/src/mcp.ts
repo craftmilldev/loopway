@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { createServer, type IncomingMessage } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
 /**
@@ -57,7 +57,8 @@ export async function startMcpServer(name: string, tools: McpTool[]): Promise<Mc
     }
   };
 
-  const server = createServer(async (req, res) => {
+  // Answers its own errors (bad JSON, failed tool calls), so createServer doesn't need the promise.
+  const serve = async (req: IncomingMessage, res: ServerResponse) => {
     const [, key, sessionId] = (req.url ?? "").split("/");
     if (key !== secret || !sessionId) return void res.writeHead(404).end();
     // No server-initiated messages, so there's no SSE stream to open.
@@ -65,7 +66,7 @@ export async function startMcpServer(name: string, tools: McpTool[]): Promise<Mc
 
     let msg: RpcRequest;
     try {
-      msg = JSON.parse(await readBody(req));
+      msg = JSON.parse(await readBody(req)) as RpcRequest;
     } catch {
       return void res.writeHead(400).end();
     }
@@ -79,7 +80,8 @@ export async function startMcpServer(name: string, tools: McpTool[]): Promise<Mc
       reply = { jsonrpc: "2.0", id: msg.id, error: { code, message } };
     }
     res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(reply));
-  });
+  };
+  const server = createServer((req, res) => void serve(req, res));
 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;

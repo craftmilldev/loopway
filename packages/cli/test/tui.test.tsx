@@ -19,7 +19,13 @@ const session = (keys: string[], status: Session["status"], updated_at: string):
 });
 
 const rawEvent = (id: string, type: string): Event =>
-  ({ id, inbox_id: "in", status: "pending", received_at: new Date().toISOString(), event: { type, data: {} } }) as unknown as Event;
+  ({
+    id,
+    inbox_id: "in",
+    status: "pending",
+    received_at: new Date().toISOString(),
+    event: { type, data: {} },
+  }) as unknown as Event;
 
 const snapshot: Snapshot = {
   raw: [rawEvent("e1", "com.github.push")],
@@ -37,10 +43,20 @@ const log = [
   { type: "system", subtype: "init", session_id: "x" },
   { type: "assistant", message: { content: [{ type: "thinking", thinking: "" }] } },
   { type: "assistant", message: { content: [{ type: "text", text: "Reading the issue." }] } },
-  { type: "assistant", message: { content: [{ type: "tool_use", name: "Bash", input: { command: "gh issue view 2", description: "Read issue #2" } }] } },
+  {
+    type: "assistant",
+    message: {
+      content: [
+        { type: "tool_use", name: "Bash", input: { command: "gh issue view 2", description: "Read issue #2" } },
+      ],
+    },
+  },
   { type: "user", message: { content: [{ type: "tool_result", content: "line 1\nline 2\nline 3\nline 4" }] } },
   { type: "user", parent_tool_use_id: "toolu_1", message: { content: [{ type: "text", text: "subagent prompt" }] } },
-  { type: "user", message: { content: [{ type: "tool_result", is_error: true, content: [{ type: "text", text: "Exit code 1" }] }] } },
+  {
+    type: "user",
+    message: { content: [{ type: "tool_result", is_error: true, content: [{ type: "text", text: "Exit code 1" }] }] },
+  },
   { type: "result", subtype: "success", duration_ms: 75_562, total_cost_usd: 0.686 },
 ]
   .map((r) => JSON.stringify(r))
@@ -66,7 +82,9 @@ describe("ThreadsTui", () => {
   afterEach(() => unmount?.());
 
   async function show(snap = snapshot) {
-    const app = render(<ThreadsTui inbox="gh" load={async () => snap} readLog={async (id) => (id === "bbbbbbbb-2" ? log : "")} />);
+    const app = render(
+      <ThreadsTui inbox="gh" load={async () => snap} readLog={async (id) => (id === "bbbbbbbb-2" ? log : "")} />,
+    );
     unmount = app.unmount;
     const press = async (key: string) => (app.stdin.write(key), await sleep(30));
     await sleep(30);
@@ -76,7 +94,8 @@ describe("ThreadsTui", () => {
   it("lists raw events and working, waiting and done sessions", async () => {
     const { frame } = await show();
     const f = frame();
-    for (const s of ["Raw events (1)", "com.github.push", "Working (1)", "Waiting (1)", "Done (2)", "started aaaaaaaa"]) expect(f).toContain(s);
+    for (const s of ["Raw events (1)", "com.github.push", "Working (1)", "Waiting (1)", "Done (2)", "started aaaaaaaa"])
+      expect(f).toContain(s);
     // Each section in order, done sessions newest first, and the first session selected.
     const at = (s: string) => f.indexOf(s);
     expect(at("Raw events")).toBeLessThan(at("Working"));
@@ -114,7 +133,10 @@ describe("ThreadsTui", () => {
 
   it("scrolls long lists inside the screen", async () => {
     const sessions = Object.fromEntries(
-      Array.from({ length: 200 }, (_, i) => [`s${String(i).padStart(3, "0")}`, session([`a/b#${i}`], "ended", `2026-01-01T00:${String(i % 60).padStart(2, "0")}:00Z`)]),
+      Array.from({ length: 200 }, (_, i) => [
+        `s${String(i).padStart(3, "0")}`,
+        session([`a/b#${i}`], "ended", `2026-01-01T00:${String(i % 60).padStart(2, "0")}:00Z`),
+      ]),
     );
     const { frame, press } = await show({ raw: [], sessions, running: new Set() });
     const rows = frame().split("\n").length;

@@ -48,7 +48,12 @@ export class Dispatcher {
   private freed = false;
   private onFreed?: () => void;
 
-  static async start(ctx: Context, client: LoopwayClient, inboxId: string, opts: ThreadsOptions = {}): Promise<Dispatcher> {
+  static async start(
+    ctx: Context,
+    client: LoopwayClient,
+    inboxId: string,
+    opts: ThreadsOptions = {},
+  ): Promise<Dispatcher> {
     const prompt = await threadPrompt(inboxId);
     const mcp = await startMcpServer("loopway", sessionTools(ctx.configDir));
     return new Dispatcher(ctx, client, inboxId, opts, prompt, mcp);
@@ -146,7 +151,7 @@ export class Dispatcher {
       });
     } catch (err) {
       code = -1;
-      this.ctx.out(`error: ${short} failed to start: ${err instanceof Error ? err.message : err}`);
+      this.ctx.out(`error: ${short} failed to start: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     const ended = await withSessions(this.dir, (sessions) => {
@@ -195,6 +200,8 @@ export class Dispatcher {
 }
 
 function describeEvents(events: Event[]): string {
-  const lines = events.map((e) => `- ${e.id}  ${e.event.type}  ${threadKeys(e).key ?? e.event.subject ?? ""}`.trimEnd());
+  const lines = events.map((e) =>
+    `- ${e.id}  ${e.event.type}  ${threadKeys(e).key ?? e.event.subject ?? ""}`.trimEnd(),
+  );
   return `New events for this thread:\n${lines.join("\n")}`;
 }

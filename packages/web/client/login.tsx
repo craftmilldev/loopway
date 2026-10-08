@@ -13,7 +13,8 @@ export function Login() {
   // A stored token that still works skips the form; a stale one is dropped quietly.
   useEffect(() => {
     if (!lw.token()) return;
-    lw.api("/me")
+    void lw
+      .api("/me")
       .catch(() => null)
       .then((r) => {
         if (r && r.ok) location.replace("/dashboard");
@@ -37,7 +38,7 @@ export function Login() {
       } else {
         const r = await lw.api("/auth/verify", { method: "POST", body: { email, code }, auth: false });
         if (!r.ok) return setError(await lw.message(r));
-        lw.save((await r.json()).token);
+        lw.save(((await r.json()) as { token: string }).token);
         location.replace("/dashboard");
       }
     } catch {
@@ -57,7 +58,7 @@ export function Login() {
             If that address can receive mail, a code is on its way.
           </p>
         )}
-        <form onSubmit={submit} style={{ marginTop: 24 }}>
+        <form onSubmit={(e) => void submit(e)} style={{ marginTop: 24 }}>
           <div className="field">
             <label htmlFor="email">Email</label>
             <div className="input-wrap">

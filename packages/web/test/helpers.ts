@@ -57,10 +57,12 @@ export function sendGithub(
   payload: unknown,
   o: { delivery?: string; secret?: string; form?: boolean } = {},
 ) {
-  const raw = o.form
-    ? new URLSearchParams({ payload: JSON.stringify(payload) }).toString()
-    : JSON.stringify(payload);
-  const sig = "sha256=" + createHmac("sha256", o.secret ?? inbox.config.secret).update(raw).digest("hex");
+  const raw = o.form ? new URLSearchParams({ payload: JSON.stringify(payload) }).toString() : JSON.stringify(payload);
+  const sig =
+    "sha256=" +
+    createHmac("sha256", o.secret ?? inbox.config.secret)
+      .update(raw)
+      .digest("hex");
   return app.request(`/webhooks/${inbox.id}`, {
     method: "POST",
     headers: {

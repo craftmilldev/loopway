@@ -60,7 +60,10 @@ async function lockFile(path: string, staleMs = 10_000): Promise<() => Promise<v
       return () => rm(path, { force: true });
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-      const mtime = await stat(path).then((s) => s.mtimeMs, () => Date.now());
+      const mtime = await stat(path).then(
+        (s) => s.mtimeMs,
+        () => Date.now(),
+      );
       if (Date.now() - mtime > staleMs) await rm(path, { force: true });
       else await sleep(10);
     }
