@@ -5,23 +5,21 @@ thread (an issue, its PR, and their comments and reviews) and resumes it wheneve
 that thread arrive. Do the work, then end your turn; you'll be resumed with the next events.
 Don't poll the inbox, don't run `loopway events next`, and don't touch events you weren't given.
 
-Each delivery lists event ids that are already locked for you. Read one with
-`loopway events get {{inbox}} <event> --data` and mark it done with
-`loopway events done {{inbox}} <event>` once you've handled it. The dispatcher keeps the lock on
-every event you haven't marked done, so leave an event open for as long as you're still working
-on it.
+Each delivery lists event ids and types. Read one with
+`loopway events get {{inbox}} <event> --data`. The events are context for the thread, not tasks to
+check off: you don't mark them done. The thread is finished when you call `end`.
 
 The `loopway` MCP server is how you talk to the dispatcher: `link` adds a PR (or issue) to your
 thread, and `end` tells it this thread's work is finished.
 
 ## 1. Triage
 - Read the payload. If it is not an actionable issue or request (for example a bot comment edit),
-  mark it done and end your turn.
+  end your turn.
 
 ## 2. Open questions
 - Review the issue or comment and think about what open questions you have. If you have any,
-  comment them on GitHub and end your turn. The replies come back to you as new events; mark
-  those done as you read them. Once you're sure the questions are resolved, move on.
+  comment them on GitHub and end your turn. The replies come back to you as new events. Once
+  you're sure the questions are resolved, move on.
 
 ## 3. Work in a worktree
 - Create a Claude-managed worktree with the EnterWorktree tool, named `issue-<N>-<slug>`. Never
@@ -38,7 +36,6 @@ thread, and `end` tells it this thread's work is finished.
 - Commit, push, and open the PR with `gh pr create`. The body should say what changed and any
   deploy steps, such as env vars or migrations. Add `Closes #<N>`.
 - Right away, call the `link` tool with the PR number so the PR's events come to you.
-- Mark the issue's event done once the PR is open.
 
 ## 5. Follow-up events
 Handle each delivered event by type:
@@ -47,11 +44,11 @@ Handle each delivered event by type:
   is feedback. Fix it in the worktree, commit (a new commit, never amend or force-push), and
   push. The payload gives you the comment id, `path`, `line`, and `body`. Reply on the thread
   with `gh api repos/<org>/<repo>/pulls/<n>/comments/<comment_id>/replies -f body=...`.
-  Then mark the event done. If the body has a ```suggestion block, review it and then apply it if it makes sense.
+  If the body has a ```suggestion block, review it and then apply it if it makes sense.
 - `com.github.pull_request_review.*`: a review with an empty body just wraps its inline comments,
-  so mark it done. If the body has content, treat it as feedback.
-- `com.github.issue_comment.*` on the PR: if the author is a bot (vercel[bot] etc.), mark done
-  with no action. Otherwise treat it as feedback and reply on the PR.
+  so skip it. If the body has content, treat it as feedback.
+- `com.github.issue_comment.*` on the PR: if the author is a bot (vercel[bot] etc.), take no
+  action. Otherwise treat it as feedback and reply on the PR.
 - `com.github.pull_request.closed` or `com.github.issues.closed`: decide whether the work is
   finished. Usually it is (merged, or closed on purpose), so go to step 6. If the user's comments
   say otherwise (for example "closing to reopen as a new PR"), keep going.
@@ -60,11 +57,10 @@ Handle each delivered event by type:
 ## 6. Wrap up
 When the thread's work is finished (the PR is merged or closed for good, or the user asks you to
 stop):
-1. Mark every remaining event you were given done.
-2. Remove the worktree with ExitWorktree (`action: "remove"`), and delete the remote branch if
+1. Remove the worktree with ExitWorktree (`action: "remove"`), and delete the remote branch if
    it still exists.
-3. Call the `end` tool so the dispatcher marks the thread done.
-4. Report what was done, what is still pending, and any deploy steps the user still has to do.
+2. Call the `end` tool so the dispatcher marks the thread done.
+3. Report what was done, what is still pending, and any deploy steps the user still has to do.
 
 If you're resumed after calling `end`, the thread is active again; call `end` once more when
 you're done with whatever came in.
