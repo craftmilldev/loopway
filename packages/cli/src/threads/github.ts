@@ -6,7 +6,8 @@ const CREDENTIAL_HELPER = `!f() { test "$1" = get && echo username=x-access-toke
 /**
  * The environment for sessions that act as a GitHub bot instead of the user running `loopway threads`:
  *
- * - `gh` uses GH_TOKEN over its stored login, so comments and PRs come from the bot.
+ * - `gh` uses GH_TOKEN over its stored login, so comments and PRs come from the bot. GITHUB_TOKEN is
+ *   set too, so other tools that read it don't pick up a token the user exported.
  * - git gets the bot's token for github.com, with the user's own helpers (keychain, `gh auth`) reset
  *   so they can't answer first, and SSH remotes go over HTTPS so the push uses that token.
  * - Commits are authored and committed by the bot.
@@ -23,6 +24,7 @@ export function botEnv(env: NodeJS.ProcessEnv, bot: GithubBot): NodeJS.ProcessEn
   const out: NodeJS.ProcessEnv = {
     ...env,
     GH_TOKEN: bot.token,
+    GITHUB_TOKEN: bot.token,
     GIT_AUTHOR_NAME: bot.name,
     GIT_AUTHOR_EMAIL: bot.email,
     GIT_COMMITTER_NAME: bot.name,

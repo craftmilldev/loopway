@@ -166,7 +166,7 @@ describe("auth", () => {
       { token: "ghp_bot", name: "loopway-bot", email: "2+loopway-bot@users.noreply.github.com" },
     );
     const git = (args: string[], input?: string) => execFileSync("git", args, { env, input, encoding: "utf8" });
-    expect(env.GH_TOKEN).toBe("ghp_bot");
+    expect(env).toMatchObject({ GH_TOKEN: "ghp_bot", GITHUB_TOKEN: "ghp_bot" });
     expect(git(["var", "GIT_AUTHOR_IDENT"])).toMatch(/^loopway-bot <2\+loopway-bot@users\.noreply\.github\.com>/);
     expect(git(["var", "GIT_COMMITTER_IDENT"])).toMatch(/^loopway-bot </);
     // The helper the environment already had is reset for github.com, so the user's token never answers.

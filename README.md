@@ -110,7 +110,7 @@ By default sessions use your own `gh` login and git credentials, so their commen
 
 `LOOPWAY_GITHUB_TOKEN`, `LOOPWAY_GITHUB_NAME` and `LOOPWAY_GITHUB_EMAIL` override it. Set all three or none. `loopway config` and `loopway login` keep the `github` block. Each session then gets:
 
-- `GH_TOKEN`, so `gh` comments and opens PRs as the bot;
+- `GH_TOKEN` and `GITHUB_TOKEN`, so `gh` comments and opens PRs as the bot, and other tools that read `GITHUB_TOKEN` don't get a token you exported;
 - a git credential helper for `https://github.com` that answers with the bot's token, replacing your own helpers there, with `git@github.com:` remotes rewritten to HTTPS so pushes use it too;
 - `GIT_AUTHOR_*` and `GIT_COMMITTER_*` set to the bot.
 
