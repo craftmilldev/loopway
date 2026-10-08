@@ -1,9 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { ApiError, type Event, type LoopwayClient } from "../client.js";
+import { loadGithubBot } from "../config.js";
 import type { Context } from "../context.js";
 import { dim } from "../format.js";
 import { startMcpServer, type McpServer } from "../mcp.js";
 import { spawnClaude, threadPrompt, type RunAgent } from "./agent.js";
+import { botEnv } from "./github.js";
 import { route, threadKeys } from "./routing.js";
 import { editSession, loadSessions, sessionLogPath, withSessions, type Session, type Sessions } from "./store.js";
 import { sessionTools } from "./tools.js";
@@ -55,8 +57,11 @@ export class Dispatcher {
     opts: ThreadsOptions = {},
   ): Promise<Dispatcher> {
     const prompt = await threadPrompt(inboxId);
+    // With a GitHub bot configured, sessions comment, push and commit as it; otherwise as the user.
+    const bot = await loadGithubBot(ctx.configDir, ctx.env);
+    const env = bot ? botEnv(ctx.env, bot) : ctx.env;
     const mcp = await startMcpServer("loopway", sessionTools(ctx.configDir));
-    return new Dispatcher(ctx, client, inboxId, opts, prompt, mcp);
+    return new Dispatcher(ctx, client, inboxId, opts, prompt, mcp, env);
   }
 
   private constructor(
@@ -66,6 +71,8 @@ export class Dispatcher {
     opts: ThreadsOptions,
     private readonly prompt: string,
     private readonly mcp: McpServer,
+    /** The environment each session runs with. */
+    private readonly env: NodeJS.ProcessEnv,
   ) {
     this.max = opts.max ?? DEFAULTS.max;
     this.ttl = opts.ttl ?? DEFAULTS.ttl;
@@ -147,7 +154,7 @@ export class Dispatcher {
         message,
         logPath: sessionLogPath(this.dir, id),
         mcpUrl: this.mcp.urlFor(id),
-        env: this.ctx.env,
+        env: this.env,
       });
     } catch (err) {
       code = -1;

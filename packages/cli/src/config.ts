@@ -9,6 +9,16 @@ export const defaultConfigDir = () => join(homedir(), ".loopway");
 export interface Config {
   api_url: string;
   api_key: string;
+  /** The GitHub bot `loopway threads` sessions act as. Set by hand; `loopway config` and `login` keep it. */
+  github?: GithubBot;
+}
+
+/** A GitHub user account, and its token, for sessions to comment, push and commit as. */
+export interface GithubBot {
+  token: string;
+  /** Author and committer of the bot's commits. */
+  name: string;
+  email: string;
 }
 
 /** Used for anything neither the environment nor config.json sets. */
@@ -38,6 +48,27 @@ export async function resolveAuth(dir: string, env: NodeJS.ProcessEnv = process.
   return { api_url, api_key };
 }
 
+/**
+ * The GitHub bot for `loopway threads`: LOOPWAY_GITHUB_TOKEN / LOOPWAY_GITHUB_NAME / LOOPWAY_GITHUB_EMAIL,
+ * then config.json's `github`. Undefined when none of the three is set; an error when only some are.
+ */
+export async function loadGithubBot(dir: string, env: NodeJS.ProcessEnv = process.env): Promise<GithubBot | undefined> {
+  const raw = await readJson(configPath(dir));
+  const file =
+    (raw && typeof raw === "object" ? (raw as Partial<Config>).github : undefined) ?? ({} as Partial<GithubBot>);
+  const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+  const token = env.LOOPWAY_GITHUB_TOKEN || str(file.token);
+  const name = env.LOOPWAY_GITHUB_NAME || str(file.name);
+  const email = env.LOOPWAY_GITHUB_EMAIL || str(file.email);
+  if (!token && !name && !email) return undefined;
+  if (!token || !name || !email) {
+    throw new Error(
+      "The GitHub bot needs a token, name and email: set `github` in config.json, or LOOPWAY_GITHUB_TOKEN/NAME/EMAIL.",
+    );
+  }
+  return { token, name, email };
+}
+
 /** Just config.json, without env or defaults; everything else should go through loadConfig. */
 async function readConfig(dir: string): Promise<Config | undefined> {
   const raw = await readJson(configPath(dir));
@@ -46,8 +77,11 @@ async function readConfig(dir: string): Promise<Config | undefined> {
   return typeof api_url === "string" && typeof api_key === "string" ? { api_url, api_key } : undefined;
 }
 
+/** Saves the API settings, keeping anything else config.json already has (like `github`). */
 export async function writeConfig(dir: string, config: Config): Promise<void> {
-  await writeJson(configPath(dir), { ...config, api_url: config.api_url.replace(/\/+$/, "") });
+  const existing = await readJson(configPath(dir));
+  const rest = existing && typeof existing === "object" ? existing : {};
+  await writeJson(configPath(dir), { ...rest, ...config, api_url: config.api_url.replace(/\/+$/, "") });
 }
 
 export async function clearConfig(dir: string): Promise<boolean> {

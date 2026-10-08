@@ -72,7 +72,7 @@ loopway events done <inbox> <event>
 - `<inbox>` is an inbox id or its exact name.
 - Every read command takes `--json` for the raw API response. `events next --json` prints nothing when the inbox is empty.
 - `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`); without a terminal it runs from flags alone. For sources whose sender makes the secret (`vercel`, `granola`) it doesn't ask for one: add the webhook in the sender, then paste the secret it shows with `loopway inbox update <inbox>` (or on the inbox's dashboard page).
-- Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `https://loopway.craftmill.dev`.
+- Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, plus an optional `github` bot for [threads](#acting-as-a-github-bot), mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `https://loopway.craftmill.dev`.
 - Lock tokens from `next`/`lock` are kept in `~/.loopway/locks.json` until they expire, so `lock` (renew), `unlock` and `done` on the same machine don't need `--token`.
 
 ### Threads
@@ -97,6 +97,26 @@ Sessions talk back to the dispatcher over MCP: it serves a `loopway` server on 1
 The dispatcher claims an event (a lock held for at most `--ttl` seconds) and marks it processed as it hands it over, so a session never marks events done: they're context for the thread, and `end` is what finishes it. A delivery lists event ids and types, and the session reads payloads with `loopway events get <inbox> <event> --data`. Sessions are tracked in `~/.loopway/threads.json` (including the events delivered to each; writes take `threads.json.lock`, so dispatchers for several inboxes can share it) and each one's transcript (stream-json) is appended to `~/.loopway/threads/<session>.log`.
 
 The inbox's GitHub webhook needs `pull_request`, `pull_request_review` and `pull_request_review_comment` (as well as `issues` and `issue_comment`) for reviews to reach sessions.
+
+#### Acting as a GitHub bot
+
+By default sessions use your own `gh` login and git credentials, so their comments, PRs and commits look like yours. To have them act as a bot user instead, add the bot's token and git identity. The token can be a fine-grained PAT with contents, issues and pull requests read/write on an org that allows them, or a classic PAT with `repo` scope (needed for repos where the bot is only a collaborator). Add both to `~/.loopway/config.json`:
+
+```json
+{
+  "api_url": "...",
+  "api_key": "...",
+  "github": { "token": "github_pat_...", "name": "loopway-bot", "email": "12345+loopway-bot@users.noreply.github.com" }
+}
+```
+
+`LOOPWAY_GITHUB_TOKEN`, `LOOPWAY_GITHUB_NAME` and `LOOPWAY_GITHUB_EMAIL` override it. Set all three or none. `loopway config` and `loopway login` keep the `github` block. Each session then gets:
+
+- `GH_TOKEN` and `GITHUB_TOKEN`, so `gh` comments and opens PRs as the bot, and other tools that read `GITHUB_TOKEN` don't get a token you exported;
+- a git credential helper for `https://github.com` that answers with the bot's token, replacing your own helpers there, with `git@github.com:` remotes rewritten to HTTPS so pushes use it too;
+- `GIT_AUTHOR_*` and `GIT_COMMITTER_*` set to the bot.
+
+The git settings are passed as `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n`, so nothing is written to your git config.
 
 ## API
 
