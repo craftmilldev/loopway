@@ -9,7 +9,7 @@ export const defaultConfigDir = () => join(homedir(), ".loopway");
 export interface Config {
   api_url: string;
   api_key: string;
-  /** The GitHub bot `loopway threads` sessions act as. Set by hand; `loopway config` and `login` keep it. */
+  /** The GitHub bot `loopway threads` sessions act as. Set by `loopway config`; `login` keeps it. */
   github?: GithubBot;
 }
 
@@ -53,20 +53,25 @@ export async function resolveAuth(dir: string, env: NodeJS.ProcessEnv = process.
  * then config.json's `github`. Undefined when none of the three is set; an error when only some are.
  */
 export async function loadGithubBot(dir: string, env: NodeJS.ProcessEnv = process.env): Promise<GithubBot | undefined> {
-  const raw = await readJson(configPath(dir));
-  const file =
-    (raw && typeof raw === "object" ? (raw as Partial<Config>).github : undefined) ?? ({} as Partial<GithubBot>);
-  const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
-  const token = env.LOOPWAY_GITHUB_TOKEN || str(file.token);
-  const name = env.LOOPWAY_GITHUB_NAME || str(file.name);
-  const email = env.LOOPWAY_GITHUB_EMAIL || str(file.email);
+  const file = await readGithubBot(dir);
+  const token = env.LOOPWAY_GITHUB_TOKEN || file.token;
+  const name = env.LOOPWAY_GITHUB_NAME || file.name;
+  const email = env.LOOPWAY_GITHUB_EMAIL || file.email;
   if (!token && !name && !email) return undefined;
   if (!token || !name || !email) {
     throw new Error(
-      "The GitHub bot needs a token, name and email: set `github` in config.json, or LOOPWAY_GITHUB_TOKEN/NAME/EMAIL.",
+      "The GitHub bot needs a token, name and email: run `loopway config`, or set LOOPWAY_GITHUB_TOKEN/NAME/EMAIL.",
     );
   }
   return { token, name, email };
+}
+
+/** Just config.json's `github`, without env; any of the three may be missing. */
+export async function readGithubBot(dir: string): Promise<Partial<GithubBot>> {
+  const raw = await readJson(configPath(dir));
+  const file = raw && typeof raw === "object" ? (raw as Partial<Config>).github : undefined;
+  const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+  return { token: str(file?.token), name: str(file?.name), email: str(file?.email) };
 }
 
 /** Just config.json, without env or defaults; everything else should go through loadConfig. */
@@ -77,7 +82,7 @@ async function readConfig(dir: string): Promise<Config | undefined> {
   return typeof api_url === "string" && typeof api_key === "string" ? { api_url, api_key } : undefined;
 }
 
-/** Saves the API settings, keeping anything else config.json already has (like `github`). */
+/** Saves the settings it's given, keeping anything else config.json already has (like `github`). */
 export async function writeConfig(dir: string, config: Config): Promise<void> {
   const existing = await readJson(configPath(dir));
   const rest = existing && typeof existing === "object" ? existing : {};

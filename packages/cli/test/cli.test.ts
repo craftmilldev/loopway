@@ -174,6 +174,29 @@ describe("auth", () => {
     ).resolves.toMatchObject({ name: "b" });
   });
 
+  it("config sets the GitHub bot: all three or none; a flag left out keeps the saved value", async () => {
+    const key = await configured();
+    await expect(run("config", "--github-token", "ghp_1")).rejects.toThrow(/needs a token, name and email/);
+    expect(await savedConfig()).toEqual({ api_url: API, api_key: key });
+
+    const github = { token: "ghp_1", name: "bot", email: "1+bot@users.noreply.github.com" };
+    const out = await run(
+      "config",
+      "--github-token",
+      github.token,
+      "--github-name",
+      github.name,
+      "--github-email",
+      github.email,
+    );
+    expect(out).toMatch(/GitHub bot: bot <1\+bot@users\.noreply\.github\.com>/);
+    expect(await savedConfig()).toEqual({ api_url: API, api_key: key, github });
+
+    await run("config", "--github-token", "ghp_2");
+    expect(await savedConfig()).toEqual({ api_url: API, api_key: key, github: { ...github, token: "ghp_2" } });
+    expect(await loadGithubBot(configDir, {})).toEqual({ ...github, token: "ghp_2" });
+  });
+
   it("botEnv: git commits as the bot and gets its token for github.com, SSH remotes included", () => {
     const env = botEnv(
       {
