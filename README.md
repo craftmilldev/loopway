@@ -5,7 +5,7 @@ Accepts webhooks from defined sources, stores them as [CloudEvents](https://gith
 - **Stack:** TypeScript + [Hono](https://hono.dev), zero-config on Vercel.
 - **DB:** Postgres everywhere. Locally [PGlite](https://pglite.dev) (embedded, no server); on Vercel, [Neon](https://neon.tech) via `DATABASE_URL`. Same SQL on both.
 - **Data types:** `User` → owns `Inbox`es → which receive `Event`s.
-- **Sources:** `github`, `granola`, `vercel` (more can be added in `packages/web/src/sources/`).
+- **Sources:** `github`, `granola`, `loopway`, `vercel` (more can be added in `packages/web/src/sources/`).
 - **Packages:** npm workspaces — [`packages/web`](packages/web) (the server) and [`packages/cli`](packages/cli) (the `loopway` command, a client of the API).
 
 ## Run locally
@@ -59,7 +59,7 @@ loopway clear-config                   # deletes ~/.loopway/config.json
 loopway inbox create                   # interactive: name → source → events → secret → confirm
 loopway inbox list
 loopway inbox show <inbox>             # webhook setup + pending/locked/processed counts
-loopway inbox update <inbox> [--name n] [--events a,b] [--secret s]   # with no flags in a terminal, asks for the secret
+loopway inbox update <inbox> [--name n] [--events a,b] [--secret s] [--schema file.json]   # with no flags in a terminal, asks for the secret
 
 loopway events list <inbox> [--status pending] [--type 'com.github.pull_request.*'] [--limit 20] [--all]
 loopway events get  <inbox> <event> [--data]
@@ -71,7 +71,7 @@ loopway events done <inbox> <event>
 
 - `<inbox>` is an inbox id or its exact name.
 - Every read command takes `--json` for the raw API response. `events next --json` prints nothing when the inbox is empty.
-- `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`); without a terminal it runs from flags alone. For sources whose sender makes the secret (`vercel`, `granola`) it doesn't ask for one: add the webhook in the sender, then paste the secret it shows with `loopway inbox update <inbox>` (or on the inbox's dashboard page).
+- `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`, `--schema file.json` for `loopway` inboxes); without a terminal it runs from flags alone. For sources whose sender makes the secret (`vercel`, `granola`) it doesn't ask for one: add the webhook in the sender, then paste the secret it shows with `loopway inbox update <inbox>` (or on the inbox's dashboard page).
 - Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, plus an optional `github` bot for [threads](#acting-as-a-github-bot), mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `https://loopway.craftmill.dev`.
 - Lock tokens from `next`/`lock` are kept in `~/.loopway/locks.json` until they expire, so `lock` (renew), `unlock` and `done` on the same machine don't need `--token`.
 
@@ -167,20 +167,31 @@ Granola webhooks need a Business or Enterprise plan. Granola generates the signi
 
 Each event only carries `note_id`; fetch the note itself with a Granola API key (Settings → Connectors → API keys): `curl -H "Authorization: Bearer grn_…" <event source>`.
 
+**`loopway` config:** `{ "secret"?: string (≥16 chars, generated if omitted), "events"?: ["build.finished", ...] (default ["*"]), "schema"?: JSON Schema }`. Bots and backends use these inboxes to send each other messages. The secret is the inbox token they send as a bearer token. `schema` is a JSON Schema (2020-12) every message must match; its `required` must include `type`, `id` and `data`, and the default, `{"type": "object", "required": ["type", "id", "data"]}`, accepts any values for them. Set it with `loopway inbox create --schema schema.json` or `loopway inbox update <inbox> --schema schema.json`.
+
+```sh
+curl -X POST <webhook_url> \
+  -H "Authorization: Bearer <inbox token>" \
+  -H "Content-Type: application/json" \
+  -d '{"type": "build.finished", "id": "build-42", "data": {"ok": true}}'
+```
+
 ### Webhook ingestion
 
-`POST /webhooks/:inboxId` — no API key; authenticated by the source (GitHub: `X-Hub-Signature-256` HMAC-SHA256; Vercel: `X-Vercel-Signature` HMAC-SHA1; Granola: Standard Webhooks `webhook-signature`, timestamp within 5 minutes).
+`POST /webhooks/:inboxId` — no API key; authenticated by the source (GitHub: `X-Hub-Signature-256` HMAC-SHA256; Vercel: `X-Vercel-Signature` HMAC-SHA1; Granola: Standard Webhooks `webhook-signature`, timestamp within 5 minutes; Loopway: `Authorization: Bearer <inbox token>`).
 
 - `202 {id, duplicate:false}` stored
 - `200 {id, duplicate:true}` redelivery of an event already stored (same CloudEvent `source`+`id`)
 - `200 {ignored:true, reason}` `ping`
-- `401` bad/missing signature (or, for Vercel and Granola, no secret set yet) · `404` unknown inbox · `422` event type not in `config.events` (GitHub shows it as a failed delivery and doesn't retry it; Vercel retries any non-2xx for up to 24 hours; Granola retries only 408, 429 and 5xx)
+- `400` malformed body (for Loopway, one that doesn't match the inbox schema) · `401` bad/missing signature or token (or, for Vercel and Granola, no secret set yet) · `404` unknown inbox · `415` unsupported content type · `422` event type not in `config.events` (GitHub shows it as a failed delivery and doesn't retry it; Vercel retries any non-2xx for up to 24 hours; Granola retries only 408, 429 and 5xx)
 
 GitHub → CloudEvent mapping follows the [CloudEvents GitHub adapter spec](https://github.com/cloudevents/spec/blob/main/cloudevents/adapters/github.md): `id` = `X-GitHub-Delivery`, `type` = `com.github.<event>.<action>`, `source`/`subject`/`time` per event, `data` = payload.
 
 Vercel → CloudEvent: `id` = body `id`, `type` = `com.vercel.<type>` (e.g. `com.vercel.deployment.error`), `source` = the project's API URL (`https://api.vercel.com/v9/projects/<id>`, else the team's), `subject` = what the event is about (the deployment id for `deployment.*`, the project id for `project.*`, the domain name for `domain.*`, …, else the event id, so every event has one), `time` = `createdAt`, `data` = the whole body.
 
 Granola → CloudEvent: `id` = `webhook-id`, `type` = `ai.granola.<event_type>` (e.g. `ai.granola.note.generated`), `source` = `https://public-api.granola.ai/v1/notes/<note_id>`, `subject` = `note_id`, `time` = `occurred_at`, `data` = payload.
+
+Loopway → CloudEvent: `id` = a new UUID per message (so nothing is deduped), `type` = body `type` (a non-empty string), `source` = the inbox's webhook URL, `subject` = `<type>/<id>` with body `id` (a string or number naming what the message is about, so every message about it shares a subject), `time` = receive time, `data` = body `data`.
 
 ### Events
 

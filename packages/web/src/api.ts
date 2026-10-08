@@ -64,7 +64,12 @@ export function createApi(opts: ApiOptions) {
     if (!source) throw new ApiError(500, "internal", `Unknown source type ${inbox.source_type}`);
 
     const result = await source.receive(
-      { headers: c.req.raw.headers, rawBody: await c.req.text(), receivedAt: new Date() },
+      {
+        headers: c.req.raw.headers,
+        rawBody: await c.req.text(),
+        receivedAt: new Date(),
+        webhookUrl: webhookUrl(c, inbox.id),
+      },
       inbox.config,
     );
     if (result.kind === "rejected") throw new ApiError(result.status, "rejected", result.message);
@@ -262,17 +267,21 @@ export function createApi(opts: ApiOptions) {
     return inbox;
   }
 
+  function webhookUrl(c: Context<Env>, inboxId: string) {
+    const base = (opts.publicBaseUrl || new URL(c.req.url).origin).replace(/\/+$/, "");
+    return `${base}/webhooks/${inboxId}`;
+  }
+
   function serializeInbox(c: Context<Env>, inbox: Inbox) {
     const source = sources.get(inbox.source_type);
-    const base = (opts.publicBaseUrl || new URL(c.req.url).origin).replace(/\/+$/, "");
-    const webhookUrl = `${base}/webhooks/${inbox.id}`;
+    const url = webhookUrl(c, inbox.id);
     return {
       id: inbox.id,
       name: inbox.name,
       source_type: inbox.source_type,
       config: source ? source.publicConfig(inbox.config) : inbox.config,
-      webhook_url: webhookUrl,
-      setup: source?.setup?.(inbox.config, webhookUrl),
+      webhook_url: url,
+      setup: source?.setup?.(inbox.config, url),
       created_at: iso(inbox.created_at),
     };
   }

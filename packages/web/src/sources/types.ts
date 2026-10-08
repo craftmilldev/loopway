@@ -5,6 +5,8 @@ export interface IncomingWebhook {
   /** Exact bytes as received (as a UTF-8 string) — signatures are computed over this. */
   rawBody: string;
   receivedAt: Date;
+  /** The inbox's webhook URL, the one this request was sent to. */
+  webhookUrl: string;
 }
 
 export type ReceiveResult =
