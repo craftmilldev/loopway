@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -11,7 +12,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { LoopwayClient } from "../src/client.js";
 import { threadPrompt, type AgentRun } from "../src/threads/agent.js";
 import { Dispatcher } from "../src/threads/dispatcher.js";
-import { loadConfig, writeConfig } from "../src/config.js";
+import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
+import { botEnv } from "../src/threads/github.js";
 import type { Context } from "../src/context.js";
 import { createProgram } from "../src/program.js";
 import { withSessions } from "../src/threads/store.js";
@@ -67,7 +69,7 @@ const savedConfig = (dir = configDir) => readFile(join(dir, "config.json"), "utf
 async function configured(name = "Matthew") {
   const { user } = await createUser(db, { name });
   const key = signSessionToken(user.id, SECRET).token;
-  await run("config", "--url", API, "--key", key);
+  await writeConfig(configDir, { api_url: API, api_key: key });
   return key;
 }
 
@@ -97,10 +99,16 @@ async function inboxWithEvents(n: number, name = "gh") {
 // ---------- tests ----------
 
 describe("auth", () => {
-  it("config verifies the key and writes ~/.loopway/config.json owner-only", async () => {
-    const key = await configured();
-    expect(await savedConfig()).toEqual({ api_url: API, api_key: key });
+  it("config writes the URL to ~/.loopway/config.json owner-only, and login then uses it", async () => {
+    await expect(run("config", "--url", API, "--key", "lw_x")).rejects.toThrow(/unknown option '--key'/);
+    expect(await run("config", "--url", API)).toMatch(/Run `loopway login` next/);
+    expect(await savedConfig()).toEqual({ api_url: API });
     expect((await stat(join(configDir, "config.json"))).mode & 0o777).toBe(0o600);
+
+    await createUser(db, { name: "Matthew", email: "config@example.com" });
+    await expect(run("login", "--email", "config@example.com")).rejects.toThrow(/--code is required/);
+    const code = emails.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
+    await run("login", "--email", "config@example.com", "--code", code);
     expect(await runJson("whoami")).toMatchObject({ name: "Matthew", api_url: API });
   });
 
@@ -131,15 +139,10 @@ describe("auth", () => {
     expect(await savedConfig()).toBeUndefined();
   });
 
-  it("config rejects a bad key without saving it", async () => {
-    await expect(run("config", "--url", API, "--key", "nope")).rejects.toThrow(/rejected that token/);
-    expect(await savedConfig()).toBeUndefined();
-  });
-
-  it("commands fail clearly when not configured", async () => {
+  it("commands fail clearly when not logged in", async () => {
     await configured();
     expect(await run("clear-config")).toMatch(/Removed .*config\.json/);
-    await expect(run("inbox", "list")).rejects.toThrow(/No API key configured/);
+    await expect(run("inbox", "list")).rejects.toThrow(/Not logged in\. Run `loopway login`/);
   });
 
   it("loadConfig: env over config.json over defaults; trailing slashes dropped on save", async () => {
@@ -150,6 +153,70 @@ describe("auth", () => {
       api_url: "https://env.test",
       api_key: "lw_env",
     });
+  });
+
+  it("loadGithubBot: env over config.json; all three or none; config and login keep it", async () => {
+    expect(await loadGithubBot(configDir, {})).toBeUndefined();
+    const github = { token: "ghp_file", name: "file-bot", email: "1+file-bot@users.noreply.github.com" };
+    await writeFile(join(configDir, "config.json"), JSON.stringify({ github }));
+    expect(await loadGithubBot(configDir, {})).toEqual(github);
+    expect(await loadGithubBot(configDir, { LOOPWAY_GITHUB_TOKEN: "ghp_env" })).toEqual({
+      ...github,
+      token: "ghp_env",
+    });
+
+    await configured();
+    expect(await savedConfig()).toMatchObject({ api_url: API, github });
+
+    await writeFile(join(configDir, "config.json"), JSON.stringify({ github: { token: "ghp_file" } }));
+    await expect(loadGithubBot(configDir, {})).rejects.toThrow(/needs a token, name and email/);
+    await expect(
+      loadGithubBot(configDir, { LOOPWAY_GITHUB_NAME: "b", LOOPWAY_GITHUB_EMAIL: "b@x" }),
+    ).resolves.toMatchObject({ name: "b" });
+  });
+
+  it("config sets the GitHub bot: all three or none; a flag left out keeps the saved value", async () => {
+    const key = await configured();
+    await expect(run("config", "--github-token", "ghp_1")).rejects.toThrow(/needs a token, name and email/);
+    expect(await savedConfig()).toEqual({ api_url: API, api_key: key });
+
+    const github = { token: "ghp_1", name: "bot", email: "1+bot@users.noreply.github.com" };
+    const out = await run(
+      "config",
+      "--github-token",
+      github.token,
+      "--github-name",
+      github.name,
+      "--github-email",
+      github.email,
+    );
+    expect(out).toMatch(/GitHub bot: bot <1\+bot@users\.noreply\.github\.com>/);
+    expect(await savedConfig()).toEqual({ api_url: API, api_key: key, github });
+
+    await run("config", "--github-token", "ghp_2");
+    expect(await savedConfig()).toEqual({ api_url: API, api_key: key, github: { ...github, token: "ghp_2" } });
+    expect(await loadGithubBot(configDir, {})).toEqual({ ...github, token: "ghp_2" });
+  });
+
+  it("botEnv: git commits as the bot and gets its token for github.com, SSH remotes included", () => {
+    const env = botEnv(
+      {
+        PATH: process.env.PATH,
+        HOME: configDir,
+        GIT_CONFIG_NOSYSTEM: "1",
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "credential.helper",
+        GIT_CONFIG_VALUE_0: "!echo password=user-token #",
+      },
+      { token: "ghp_bot", name: "loopway-bot", email: "2+loopway-bot@users.noreply.github.com" },
+    );
+    const git = (args: string[], input?: string) => execFileSync("git", args, { env, input, encoding: "utf8" });
+    expect(env).toMatchObject({ GH_TOKEN: "ghp_bot", GITHUB_TOKEN: "ghp_bot" });
+    expect(git(["var", "GIT_AUTHOR_IDENT"])).toMatch(/^loopway-bot <2\+loopway-bot@users\.noreply\.github\.com>/);
+    expect(git(["var", "GIT_COMMITTER_IDENT"])).toMatch(/^loopway-bot </);
+    // The helper the environment already had is reset for github.com, so the user's token never answers.
+    expect(git(["credential", "fill"], "protocol=https\nhost=github.com\n\n")).toContain("password=ghp_bot");
+    expect(git(["ls-remote", "--get-url", "git@github.com:a/b.git"]).trim()).toBe("https://github.com/a/b.git");
   });
 
   it("env vars override the config file", async () => {
@@ -308,7 +375,7 @@ describe("events", () => {
     const key = (await savedConfig(first)).api_key;
     configDir = await mkdtemp(join(tmpdir(), "loopway-cli-"));
     try {
-      await run("config", "--url", API, "--key", key);
+      await writeConfig(configDir, { api_url: API, api_key: key });
       await expect(run("events", "lock", inbox.id, id)).rejects.toThrow(/locked until/);
       await expect(run("events", "done", inbox.id, id)).rejects.toThrow(/locked until/);
     } finally {
@@ -336,7 +403,7 @@ describe("threads", () => {
   const closers: (() => Promise<void>)[] = [];
   afterEach(async () => void (await Promise.all(closers.splice(0).map((c) => c()))));
 
-  async function setup(max: number) {
+  async function setup(max: number, env: NodeJS.ProcessEnv = {}) {
     const key = await configured();
     const inbox = await runJson("inbox", "create", "--name", "gh", "--source", "github");
     const runs: AgentRun[] = [];
@@ -344,7 +411,7 @@ describe("threads", () => {
     const out: string[] = [];
     const ctx: Context = {
       configDir,
-      env: {},
+      env,
       interactive: false,
       out: (t) => out.push(t),
       fetch: apiFetch,
@@ -496,6 +563,28 @@ describe("threads", () => {
     await sendGithub(inbox, "issue_comment", comment(9));
     await d.tick();
     expect(runs[1]).toMatchObject({ sessionId: runs[0]!.sessionId, resume: true });
+  });
+
+  it("runs sessions as the GitHub bot when one is configured", async () => {
+    const plain = await setup(3);
+    await sendGithub(plain.inbox, "issues", issue("opened", 1));
+    await plain.d.tick();
+    expect(plain.runs[0]!.env.GH_TOKEN).toBeUndefined();
+
+    const bot = {
+      LOOPWAY_GITHUB_TOKEN: "ghp_bot",
+      LOOPWAY_GITHUB_NAME: "loopway-bot",
+      LOOPWAY_GITHUB_EMAIL: "2+loopway-bot@users.noreply.github.com",
+    };
+    const { inbox, runs, d } = await setup(3, bot);
+    await sendGithub(inbox, "issues", issue("opened", 2));
+    await d.tick();
+    expect(runs[0]!.env).toMatchObject({
+      GH_TOKEN: "ghp_bot",
+      GIT_AUTHOR_NAME: "loopway-bot",
+      GIT_COMMITTER_NAME: "loopway-bot",
+      GIT_CONFIG_COUNT: "4",
+    });
   });
 
   it("loads the session prompt from prompts/thread.md", async () => {

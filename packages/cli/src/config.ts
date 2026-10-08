@@ -9,6 +9,16 @@ export const defaultConfigDir = () => join(homedir(), ".loopway");
 export interface Config {
   api_url: string;
   api_key: string;
+  /** The GitHub bot `loopway threads` sessions act as. Set by `loopway config`; `login` keeps it. */
+  github?: GithubBot;
+}
+
+/** A GitHub user account, and its token, for sessions to comment, push and commit as. */
+export interface GithubBot {
+  token: string;
+  /** Author and committer of the bot's commits. */
+  name: string;
+  email: string;
 }
 
 /** Used for anything neither the environment nor config.json sets. */
@@ -18,7 +28,7 @@ export const configPath = (dir: string) => join(dir, "config.json");
 
 /**
  * The settings commands should use: LOOPWAY_API_URL / LOOPWAY_API_KEY, then config.json, then DEFAULTS.
- * The env vars let CI and scripts run without `loopway config`. There's no default key.
+ * The env vars let CI and scripts run without `loopway login`. There's no default key.
  */
 export async function loadConfig(
   dir: string,
@@ -34,20 +44,58 @@ export async function loadConfig(
 /** loadConfig, for commands that can't run without a key. */
 export async function resolveAuth(dir: string, env: NodeJS.ProcessEnv = process.env): Promise<Config> {
   const { api_url, api_key } = await loadConfig(dir, env);
-  if (!api_key) throw new NotConfiguredError();
+  if (!api_key) throw new NotLoggedInError();
   return { api_url, api_key };
 }
 
+/**
+ * The GitHub bot for `loopway threads`: LOOPWAY_GITHUB_TOKEN / LOOPWAY_GITHUB_NAME / LOOPWAY_GITHUB_EMAIL,
+ * then config.json's `github`. Undefined when none of the three is set; an error when only some are.
+ */
+export async function loadGithubBot(dir: string, env: NodeJS.ProcessEnv = process.env): Promise<GithubBot | undefined> {
+  const file = await readGithubBot(dir);
+  const token = env.LOOPWAY_GITHUB_TOKEN || file.token;
+  const name = env.LOOPWAY_GITHUB_NAME || file.name;
+  const email = env.LOOPWAY_GITHUB_EMAIL || file.email;
+  if (!token && !name && !email) return undefined;
+  if (!token || !name || !email) {
+    throw new Error(
+      "The GitHub bot needs a token, name and email: run `loopway config`, or set LOOPWAY_GITHUB_TOKEN/NAME/EMAIL.",
+    );
+  }
+  return { token, name, email };
+}
+
+/** Just config.json's `github`, without env; any of the three may be missing. */
+export async function readGithubBot(dir: string): Promise<Partial<GithubBot>> {
+  const raw = await readJson(configPath(dir));
+  const file = raw && typeof raw === "object" ? (raw as Partial<Config>).github : undefined;
+  const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+  return { token: str(file?.token), name: str(file?.name), email: str(file?.email) };
+}
+
 /** Just config.json, without env or defaults; everything else should go through loadConfig. */
-async function readConfig(dir: string): Promise<Config | undefined> {
+async function readConfig(dir: string): Promise<Partial<Config> | undefined> {
   const raw = await readJson(configPath(dir));
   if (!raw || typeof raw !== "object") return undefined;
   const { api_url, api_key } = raw as Partial<Config>;
-  return typeof api_url === "string" && typeof api_key === "string" ? { api_url, api_key } : undefined;
+  return {
+    api_url: typeof api_url === "string" ? api_url : undefined,
+    api_key: typeof api_key === "string" ? api_key : undefined,
+  };
 }
 
-export async function writeConfig(dir: string, config: Config): Promise<void> {
-  await writeJson(configPath(dir), { ...config, api_url: config.api_url.replace(/\/+$/, "") });
+/**
+ * Saves the settings it's given, keeping anything else config.json already has (like `github`).
+ * The key is optional so `loopway config` can set the URL before `loopway login`.
+ */
+export async function writeConfig(
+  dir: string,
+  config: { api_url: string; api_key?: string; github?: GithubBot },
+): Promise<void> {
+  const existing = await readJson(configPath(dir));
+  const rest = existing && typeof existing === "object" ? existing : {};
+  await writeJson(configPath(dir), { ...rest, ...config, api_url: config.api_url.replace(/\/+$/, "") });
 }
 
 export async function clearConfig(dir: string): Promise<boolean> {
@@ -56,9 +104,9 @@ export async function clearConfig(dir: string): Promise<boolean> {
   return existed;
 }
 
-export class NotConfiguredError extends Error {
+export class NotLoggedInError extends Error {
   constructor() {
-    super("No API key configured. Run `loopway config` (or set LOOPWAY_API_KEY).");
+    super("Not logged in. Run `loopway login` (or set LOOPWAY_API_KEY).");
   }
 }
 
