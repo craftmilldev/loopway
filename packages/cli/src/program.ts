@@ -36,9 +36,8 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
 
   program
     .command("config")
-    .description("set the API URL in ~/.loopway/config.json, keeping the token from `loopway login`")
+    .description("set the API URL in ~/.loopway/config.json; run `loopway login` after")
     .option("--url <url>", "API base URL, e.g. https://loopway.example.com (prompted for if omitted)")
-    .option("--key <api_key>", "save this token instead of the one from `loopway login`")
     .action((opts) => configure(ctx, opts));
 
   program

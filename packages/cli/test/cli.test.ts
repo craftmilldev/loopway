@@ -69,7 +69,7 @@ const savedConfig = (dir = configDir) => readFile(join(dir, "config.json"), "utf
 async function configured(name = "Matthew") {
   const { user } = await createUser(db, { name });
   const key = signSessionToken(user.id, SECRET).token;
-  await run("config", "--url", API, "--key", key);
+  await writeConfig(configDir, { api_url: API, api_key: key });
   return key;
 }
 
@@ -99,10 +99,16 @@ async function inboxWithEvents(n: number, name = "gh") {
 // ---------- tests ----------
 
 describe("auth", () => {
-  it("config verifies the key and writes ~/.loopway/config.json owner-only", async () => {
-    const key = await configured();
-    expect(await savedConfig()).toEqual({ api_url: API, api_key: key });
+  it("config writes the URL to ~/.loopway/config.json owner-only, and login then uses it", async () => {
+    await expect(run("config", "--url", API, "--key", "lw_x")).rejects.toThrow(/unknown option '--key'/);
+    expect(await run("config", "--url", API)).toMatch(/Run `loopway login` next/);
+    expect(await savedConfig()).toEqual({ api_url: API });
     expect((await stat(join(configDir, "config.json"))).mode & 0o777).toBe(0o600);
+
+    await createUser(db, { name: "Matthew", email: "config@example.com" });
+    await expect(run("login", "--email", "config@example.com")).rejects.toThrow(/--code is required/);
+    const code = emails.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
+    await run("login", "--email", "config@example.com", "--code", code);
     expect(await runJson("whoami")).toMatchObject({ name: "Matthew", api_url: API });
   });
 
@@ -131,29 +137,6 @@ describe("auth", () => {
       /invalid or has expired/,
     );
     expect(await savedConfig()).toBeUndefined();
-  });
-
-  it("config rejects a bad key without saving it", async () => {
-    await expect(run("config", "--url", API, "--key", "nope")).rejects.toThrow(/rejected that token/);
-    expect(await savedConfig()).toBeUndefined();
-  });
-
-  it("config changes the URL and keeps the saved token", async () => {
-    const key = await configured();
-    expect(await run("config", "--url", "https://other.test")).toMatch(/Configured https:\/\/other\.test as/);
-    expect(await savedConfig()).toEqual({ api_url: "https://other.test", api_key: key });
-  });
-
-  it("config without a token saves just the URL for login to use", async () => {
-    expect(await run("config", "--url", API)).toMatch(/Run `loopway login`/);
-    expect(await savedConfig()).toEqual({ api_url: API });
-    expect(await loadConfig(configDir, {})).toEqual({ api_url: API, api_key: undefined });
-  });
-
-  it("config points at login when the saved token is rejected", async () => {
-    await writeConfig(configDir, { api_url: API, api_key: "stale" });
-    await expect(run("config", "--url", API)).rejects.toThrow(/rejected your saved token\. Run `loopway login/);
-    expect(await savedConfig()).toEqual({ api_url: API, api_key: "stale" });
   });
 
   it("commands fail clearly when not configured", async () => {
@@ -352,7 +335,7 @@ describe("events", () => {
     const key = (await savedConfig(first)).api_key;
     configDir = await mkdtemp(join(tmpdir(), "loopway-cli-"));
     try {
-      await run("config", "--url", API, "--key", key);
+      await writeConfig(configDir, { api_url: API, api_key: key });
       await expect(run("events", "lock", inbox.id, id)).rejects.toThrow(/locked until/);
       await expect(run("events", "done", inbox.id, id)).rejects.toThrow(/locked until/);
     } finally {

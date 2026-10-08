@@ -5,31 +5,14 @@ import { authedClient, CancelledError, UsageError, type Context } from "../conte
 import { bold, dim, fields, json } from "../format.js";
 
 /**
- * Sets the API URL: the flag, else a prompt (starting from the current URL), else what's set. The token is the one
- * `loopway login` saved unless `--key` gives another; when there is one, it's checked against the URL before saving.
+ * Sets the API URL: the flag, else a prompt (starting from the current URL), else what's set. Tokens are
+ * `loopway login`'s job, so it's the next step.
  */
-export async function configure(ctx: Context, opts: { url?: string; key?: string }) {
+export async function configure(ctx: Context, opts: { url?: string }) {
   const current = await loadConfig(ctx.configDir, ctx.env);
   const url = opts.url ?? (ctx.interactive ? await promptUrl(current.api_url) : current.api_url);
-  const key = opts.key ?? current.api_key;
-  if (!key) {
-    await writeConfig(ctx.configDir, { api_url: url });
-    ctx.out(`Configured ${url}. Run \`loopway login\` to log in.`);
-    ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
-    return;
-  }
-
-  const client = new LoopwayClient({ baseUrl: url, apiKey: key, fetch: ctx.fetch });
-  const user = await client.me().catch((err: unknown) => {
-    if (err instanceof ApiError && err.status === 401) {
-      throw new UsageError(
-        `${url} rejected ${opts.key ? "that token" : "your saved token"}. Run \`loopway login --url ${url}\`.`,
-      );
-    }
-    throw err;
-  });
-  await writeConfig(ctx.configDir, { api_url: url, api_key: key });
-  ctx.out(`Configured ${url} as ${bold(user.name)}${user.email ? ` <${user.email}>` : ""}`);
+  await writeConfig(ctx.configDir, { api_url: url });
+  ctx.out(`Configured ${url}. Run \`loopway login\` next.`);
   ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
 }
 
