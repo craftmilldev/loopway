@@ -4,16 +4,28 @@ import { clearConfig as removeConfig, configPath, loadConfig, resolveAuth, write
 import { authedClient, CancelledError, UsageError, type Context } from "../context.js";
 import { bold, dim, fields, json } from "../format.js";
 
-/** Flags win; otherwise prompt (starting from the current URL) or, without a terminal, keep what's set. */
+/**
+ * Sets the API URL: the flag, else a prompt (starting from the current URL), else what's set. The token is the one
+ * `loopway login` saved unless `--key` gives another; when there is one, it's checked against the URL before saving.
+ */
 export async function configure(ctx: Context, opts: { url?: string; key?: string }) {
   const current = await loadConfig(ctx.configDir, ctx.env);
   const url = opts.url ?? (ctx.interactive ? await promptUrl(current.api_url) : current.api_url);
-  const key = opts.key ?? (ctx.interactive ? await promptKey() : current.api_key);
-  if (!key) throw new UsageError("--key (or LOOPWAY_API_KEY) is required when not running in a terminal");
+  const key = opts.key ?? current.api_key;
+  if (!key) {
+    await writeConfig(ctx.configDir, { api_url: url });
+    ctx.out(`Configured ${url}. Run \`loopway login\` to log in.`);
+    ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
+    return;
+  }
 
   const client = new LoopwayClient({ baseUrl: url, apiKey: key, fetch: ctx.fetch });
   const user = await client.me().catch((err: unknown) => {
-    if (err instanceof ApiError && err.status === 401) throw new UsageError(`${url} rejected that token.`);
+    if (err instanceof ApiError && err.status === 401) {
+      throw new UsageError(
+        `${url} rejected ${opts.key ? "that token" : "your saved token"}. Run \`loopway login --url ${url}\`.`,
+      );
+    }
     throw err;
   });
   await writeConfig(ctx.configDir, { api_url: url, api_key: key });
@@ -87,15 +99,6 @@ async function promptUrl(current: string) {
   });
   if (p.isCancel(v)) throw new CancelledError();
   return v;
-}
-
-async function promptKey() {
-  const v = await p.password({
-    message: "Token",
-    validate: (v) => (v?.trim() ? undefined : "Required"),
-  });
-  if (p.isCancel(v)) throw new CancelledError();
-  return v.trim();
 }
 
 async function promptEmail() {

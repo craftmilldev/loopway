@@ -138,6 +138,24 @@ describe("auth", () => {
     expect(await savedConfig()).toBeUndefined();
   });
 
+  it("config changes the URL and keeps the saved token", async () => {
+    const key = await configured();
+    expect(await run("config", "--url", "https://other.test")).toMatch(/Configured https:\/\/other\.test as/);
+    expect(await savedConfig()).toEqual({ api_url: "https://other.test", api_key: key });
+  });
+
+  it("config without a token saves just the URL for login to use", async () => {
+    expect(await run("config", "--url", API)).toMatch(/Run `loopway login`/);
+    expect(await savedConfig()).toEqual({ api_url: API });
+    expect(await loadConfig(configDir, {})).toEqual({ api_url: API, api_key: undefined });
+  });
+
+  it("config points at login when the saved token is rejected", async () => {
+    await writeConfig(configDir, { api_url: API, api_key: "stale" });
+    await expect(run("config", "--url", API)).rejects.toThrow(/rejected your saved token\. Run `loopway login/);
+    expect(await savedConfig()).toEqual({ api_url: API, api_key: "stale" });
+  });
+
   it("commands fail clearly when not configured", async () => {
     await configured();
     expect(await run("clear-config")).toMatch(/Removed .*config\.json/);
