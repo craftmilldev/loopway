@@ -139,10 +139,10 @@ describe("auth", () => {
     expect(await savedConfig()).toBeUndefined();
   });
 
-  it("commands fail clearly when not configured", async () => {
+  it("commands fail clearly when not logged in", async () => {
     await configured();
     expect(await run("clear-config")).toMatch(/Removed .*config\.json/);
-    await expect(run("inbox", "list")).rejects.toThrow(/No API key configured/);
+    await expect(run("inbox", "list")).rejects.toThrow(/Not logged in\. Run `loopway login`/);
   });
 
   it("loadConfig: env over config.json over defaults; trailing slashes dropped on save", async () => {

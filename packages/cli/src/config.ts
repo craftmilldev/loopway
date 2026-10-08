@@ -44,7 +44,7 @@ export async function loadConfig(
 /** loadConfig, for commands that can't run without a key. */
 export async function resolveAuth(dir: string, env: NodeJS.ProcessEnv = process.env): Promise<Config> {
   const { api_url, api_key } = await loadConfig(dir, env);
-  if (!api_key) throw new NotConfiguredError();
+  if (!api_key) throw new NotLoggedInError();
   return { api_url, api_key };
 }
 
@@ -96,9 +96,9 @@ export async function clearConfig(dir: string): Promise<boolean> {
   return existed;
 }
 
-export class NotConfiguredError extends Error {
+export class NotLoggedInError extends Error {
   constructor() {
-    super("No API key configured. Run `loopway login` (or set LOOPWAY_API_KEY).");
+    super("Not logged in. Run `loopway login` (or set LOOPWAY_API_KEY).");
   }
 }
 
