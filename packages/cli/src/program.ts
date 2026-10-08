@@ -36,8 +36,13 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
 
   program
     .command("config")
-    .description("set the API URL in ~/.loopway/config.json; run `loopway login` after")
+    .description(
+      "set the API URL, and the GitHub bot for `loopway threads`, in ~/.loopway/config.json; run `loopway login` after",
+    )
     .option("--url <url>", "API base URL, e.g. https://loopway.example.com (prompted for if omitted)")
+    .option("--github-token <token>", "token for the GitHub bot that threads sessions act as")
+    .option("--github-name <name>", "the bot's git author name")
+    .option("--github-email <email>", "the bot's git author email")
     .action((opts) => configure(ctx, opts));
 
   program

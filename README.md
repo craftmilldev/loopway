@@ -51,7 +51,7 @@ npm run build -w @loopway/cli && npm link -w @loopway/cli      # or put `loopway
 ```
 
 ```bash
-loopway config                         # sets the API URL (default https://loopway.craftmill.dev); skip it for the default
+loopway config                         # sets the API URL (default https://loopway.craftmill.dev) and, optionally, a GitHub bot; skip it for the defaults
 loopway login                          # emails you a one-time code, trades it for a 30-day session token, saves it (new emails get an account)
 loopway whoami
 loopway clear-config                   # deletes ~/.loopway/config.json
@@ -100,7 +100,13 @@ The inbox's GitHub webhook needs `pull_request`, `pull_request_review` and `pull
 
 #### Acting as a GitHub bot
 
-By default sessions use your own `gh` login and git credentials, so their comments, PRs and commits look like yours. To have them act as a bot user instead, add the bot's token and git identity. The token can be a fine-grained PAT with contents, issues and pull requests read/write on an org that allows them, or a classic PAT with `repo` scope (needed for repos where the bot is only a collaborator). Add both to `~/.loopway/config.json`:
+By default sessions use your own `gh` login and git credentials, so their comments, PRs and commits look like yours. To have them act as a bot user instead, add the bot's token and git identity. The token can be a fine-grained PAT with contents, issues and pull requests read/write on an org that allows them, or a classic PAT with `repo` scope (needed for repos where the bot is only a collaborator). Set them with `loopway config`, which prompts for each one in a terminal (an empty answer keeps the saved value), or pass flags:
+
+```sh
+loopway config --github-token github_pat_... --github-name loopway-bot --github-email 12345+loopway-bot@users.noreply.github.com
+```
+
+They're saved as the `github` block in `~/.loopway/config.json`:
 
 ```json
 {
@@ -110,7 +116,7 @@ By default sessions use your own `gh` login and git credentials, so their commen
 }
 ```
 
-`LOOPWAY_GITHUB_TOKEN`, `LOOPWAY_GITHUB_NAME` and `LOOPWAY_GITHUB_EMAIL` override it. Set all three or none. `loopway config` and `loopway login` keep the `github` block. Each session then gets:
+`LOOPWAY_GITHUB_TOKEN`, `LOOPWAY_GITHUB_NAME` and `LOOPWAY_GITHUB_EMAIL` override it. Set all three or none; `loopway config` won't save only some. `loopway login` keeps the `github` block. Each session then gets:
 
 - `GH_TOKEN` and `GITHUB_TOKEN`, so `gh` comments and opens PRs as the bot, and other tools that read `GITHUB_TOKEN` don't get a token you exported;
 - a git credential helper for `https://github.com` that answers with the bot's token, replacing your own helpers there, with `git@github.com:` remotes rewritten to HTTPS so pushes use it too;
@@ -125,22 +131,22 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 
 ### Users
 
-| | |
-|---|---|
-| `POST /auth/login` `{email}` | Email an 8-character code (valid 10 min) via Resend. Always `202`. At most one email per address per 10 minutes; asking again sooner sends nothing. |
+|                                     |                                                                                                                                                                                        |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /auth/login` `{email}`        | Email an 8-character code (valid 10 min) via Resend. Always `202`. At most one email per address per 10 minutes; asking again sooner sends nothing.                                    |
 | `POST /auth/verify` `{email, code}` | Trade the code for a session token (`201 {token, expires_at, user, created}`). Single use, 5 guesses. If the email has no user yet, creates one (named after the part before the `@`). |
-| `GET /me` | Current user. |
+| `GET /me`                           | Current user.                                                                                                                                                                          |
 
 ### Inboxes
 
-| | |
-|---|---|
-| `GET /sources` | Available source types: `type`, `label`, `description`, common `events`, who makes the `secret` (`{from: "loopway", min_length}` or `{from: "sender"}`), and `webhook_settings` (where the webhook is added in the sender). |
-| `POST /inboxes` `{name, source_type, config?}` | Create. Response includes `webhook_url` and `setup` instructions. |
-| `GET /inboxes` | List yours. |
-| `GET /inboxes/:id` | One inbox + `stats` (`pending`/`locked`/`processed` counts). |
-| `PATCH /inboxes/:id` `{name?, config?}` | Update. Config merges onto existing (secret kept unless given). |
-| `DELETE /inboxes/:id` | Deletes the inbox and its events. |
+|                                                |                                                                                                                                                                                                                             |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /sources`                                 | Available source types: `type`, `label`, `description`, common `events`, who makes the `secret` (`{from: "loopway", min_length}` or `{from: "sender"}`), and `webhook_settings` (where the webhook is added in the sender). |
+| `POST /inboxes` `{name, source_type, config?}` | Create. Response includes `webhook_url` and `setup` instructions.                                                                                                                                                           |
+| `GET /inboxes`                                 | List yours.                                                                                                                                                                                                                 |
+| `GET /inboxes/:id`                             | One inbox + `stats` (`pending`/`locked`/`processed` counts).                                                                                                                                                                |
+| `PATCH /inboxes/:id` `{name?, config?}`        | Update. Config merges onto existing (secret kept unless given).                                                                                                                                                             |
+| `DELETE /inboxes/:id`                          | Deletes the inbox and its events.                                                                                                                                                                                           |
 
 **`github` config:** `{ "secret"?: string (≥16 chars, generated if omitted), "events"?: ["push", "pull_request", ...] (default ["*"]) }`
 
@@ -180,14 +186,14 @@ Granola → CloudEvent: `id` = `webhook-id`, `type` = `ai.granola.<event_type>` 
 
 All under `/inboxes/:inboxId/events`.
 
-| | |
-|---|---|
-| `GET /` | List. Query: `status` = `all` (default) \| `pending` \| `locked` \| `processed` \| `unprocessed`; `type` (exact, or prefix with trailing `*`, e.g. `com.github.pull_request.*`); `limit` (≤100, default 50); `order` = `asc` \| `desc`; `cursor` = `next_cursor` from the previous page. |
-| `GET /:eventId` | One event. |
-| `POST /next` `{ttl_seconds?}` | Claim the oldest pending event with a lock. `200` with event + `lock`, or `204` if nothing's available. Safe with concurrent consumers. |
-| `POST /:eventId/lock` `{ttl_seconds?, lock_token?}` | Lock a specific event. Pass your current `lock_token` to extend it. `409 locked` if someone else holds it. |
-| `POST /:eventId/unlock` `{lock_token}` | Release the lock; event goes back to `pending`. |
-| `POST /:eventId/processed` `{lock_token?}` | Mark done. Token required only if a live lock exists. Idempotent. |
+|                                                     |                                                                                                                                                                                                                                                                                          |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /`                                             | List. Query: `status` = `all` (default) \| `pending` \| `locked` \| `processed` \| `unprocessed`; `type` (exact, or prefix with trailing `*`, e.g. `com.github.pull_request.*`); `limit` (≤100, default 50); `order` = `asc` \| `desc`; `cursor` = `next_cursor` from the previous page. |
+| `GET /:eventId`                                     | One event.                                                                                                                                                                                                                                                                               |
+| `POST /next` `{ttl_seconds?}`                       | Claim the oldest pending event with a lock. `200` with event + `lock`, or `204` if nothing's available. Safe with concurrent consumers.                                                                                                                                                  |
+| `POST /:eventId/lock` `{ttl_seconds?, lock_token?}` | Lock a specific event. Pass your current `lock_token` to extend it. `409 locked` if someone else holds it.                                                                                                                                                                               |
+| `POST /:eventId/unlock` `{lock_token}`              | Release the lock; event goes back to `pending`.                                                                                                                                                                                                                                          |
+| `POST /:eventId/processed` `{lock_token?}`          | Mark done. Token required only if a live lock exists. Idempotent.                                                                                                                                                                                                                        |
 
 `ttl_seconds` defaults to 300, max 43200. Locks expire on their own, so a crashed consumer's event becomes claimable again.
 
@@ -195,15 +201,16 @@ Event shape:
 
 ```json
 {
-  "id": "0192…",                       // loopway id (UUIDv7, time-ordered)
+  "id": "0192…", // loopway id (UUIDv7, time-ordered)
   "inbox_id": "0192…",
-  "status": "locked",                  // pending | locked | processed
+  "status": "locked", // pending | locked | processed
   "received_at": "2026-10-04T23:40:00.000Z",
   "locked_until": "2026-10-04T23:45:00.000Z",
   "processed_at": null,
-  "lock_count": 1,                     // times it has been claimed
-  "lock": { "token": "lk_…", "expires_at": "…" },   // only on next/lock responses
-  "event": {                           // the CloudEvent, structured mode
+  "lock_count": 1, // times it has been claimed
+  "lock": { "token": "lk_…", "expires_at": "…" }, // only on next/lock responses
+  "event": {
+    // the CloudEvent, structured mode
     "specversion": "1.0",
     "id": "72d3162e-cc78-11e3-81ab-4c9367dc0958",
     "source": "https://api.github.com/repos/craftmill/loopway",

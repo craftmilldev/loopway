@@ -1,19 +1,55 @@
 import * as p from "@clack/prompts";
 import { ApiError, LoopwayClient } from "../client.js";
-import { clearConfig as removeConfig, configPath, loadConfig, resolveAuth, writeConfig } from "../config.js";
+import {
+  clearConfig as removeConfig,
+  configPath,
+  loadConfig,
+  readGithubBot,
+  resolveAuth,
+  writeConfig,
+  type GithubBot,
+} from "../config.js";
 import { authedClient, CancelledError, UsageError, type Context } from "../context.js";
 import { bold, dim, fields, json } from "../format.js";
 
 /**
- * Sets the API URL: the flag, else a prompt (starting from the current URL), else what's set. Tokens are
- * `loopway login`'s job, so it's the next step.
+ * Sets the API URL and the GitHub bot: flags, else prompts (starting from what's saved), else what's set.
+ * Tokens are `loopway login`'s job, so it's the next step.
  */
-export async function configure(ctx: Context, opts: { url?: string }) {
+export async function configure(
+  ctx: Context,
+  opts: { url?: string; githubToken?: string; githubName?: string; githubEmail?: string },
+) {
   const current = await loadConfig(ctx.configDir, ctx.env);
   const url = opts.url ?? (ctx.interactive ? await promptUrl(current.api_url) : current.api_url);
-  await writeConfig(ctx.configDir, { api_url: url });
+  const github = await configureGithubBot(ctx, opts);
+  await writeConfig(ctx.configDir, { api_url: url, ...(github && { github }) });
   ctx.out(`Configured ${url}. Run \`loopway login\` next.`);
+  if (github) ctx.out(`GitHub bot: ${bold(github.name)} <${github.email}>`);
   ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
+}
+
+/**
+ * The bot from flags, else prompts (an empty answer keeps the saved value), else what config.json has.
+ * Undefined when none of the three is set; a usage error when only some are, so nothing is saved.
+ */
+async function configureGithubBot(
+  ctx: Context,
+  opts: { githubToken?: string; githubName?: string; githubEmail?: string },
+): Promise<GithubBot | undefined> {
+  const saved = await readGithubBot(ctx.configDir);
+  const token = opts.githubToken || (ctx.interactive ? await promptGithubToken(saved.token) : "") || saved.token;
+  // Without a token there's no bot, so there's no point asking for its name and email.
+  const ask = ctx.interactive && !!token;
+  const name = opts.githubName || (ask ? await promptGithub("name", saved.name) : "") || saved.name;
+  const email = opts.githubEmail || (ask ? await promptGithub("email", saved.email) : "") || saved.email;
+  if (!token && !name && !email) return undefined;
+  if (!token || !name || !email) {
+    throw new UsageError(
+      "The GitHub bot needs a token, name and email (--github-token, --github-name, --github-email).",
+    );
+  }
+  return { token, name, email };
 }
 
 /** Emails a one-time code, trades it for a 30-day session token, and saves it (as `api_key` in the config). Creates the account if the email is new. */
@@ -82,6 +118,20 @@ async function promptUrl(current: string) {
   });
   if (p.isCancel(v)) throw new CancelledError();
   return v;
+}
+
+async function promptGithubToken(saved?: string) {
+  const v = await p.password({
+    message: saved ? "GitHub bot token (Enter keeps the saved one)" : "GitHub bot token (Enter for none)",
+  });
+  if (p.isCancel(v)) throw new CancelledError();
+  return v.trim();
+}
+
+async function promptGithub(field: "name" | "email", saved?: string) {
+  const v = await p.text({ message: `GitHub bot ${field}`, initialValue: saved });
+  if (p.isCancel(v)) throw new CancelledError();
+  return v.trim();
 }
 
 async function promptEmail() {
