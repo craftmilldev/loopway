@@ -5,7 +5,7 @@ Accepts webhooks from defined sources, stores them as [CloudEvents](https://gith
 - **Stack:** TypeScript + [Hono](https://hono.dev), zero-config on Vercel.
 - **DB:** Postgres everywhere. Locally [PGlite](https://pglite.dev) (embedded, no server); on Vercel, [Neon](https://neon.tech) via `DATABASE_URL`. Same SQL on both.
 - **Data types:** `User` → owns `Inbox`es → which receive `Event`s.
-- **Sources:** `github`, `granola`, `vercel` (more can be added in `packages/web/src/sources/`).
+- **Sources:** `github`, `granola`, `loopway`, `vercel` (more can be added in `packages/web/src/sources/`).
 - **Packages:** npm workspaces — [`packages/web`](packages/web) (the server) and [`packages/cli`](packages/cli) (the `loopway` command, a client of the API).
 
 ## Run locally
@@ -115,7 +115,7 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 
 | | |
 |---|---|
-| `GET /sources` | Available source types: `type`, `label`, `description`, common `events`, who makes the `secret` (`{from: "loopway", min_length}` or `{from: "sender"}`), and `webhook_settings` (where the webhook is added in the sender). |
+| `GET /sources` | Available source types: `type`, `label`, `description`, common `events`, who makes the `secret` (`{from: "loopway", min_length}`, `{from: "sender"}`, or `{from: "none"}` when the sender uses a loopway API token), and `webhook_settings` (where the webhook is added in the sender). |
 | `POST /inboxes` `{name, source_type, config?}` | Create. Response includes `webhook_url` and `setup` instructions. |
 | `GET /inboxes` | List yours. |
 | `GET /inboxes/:id` | One inbox + `stats` (`pending`/`locked`/`processed` counts). |
@@ -141,20 +141,31 @@ Granola webhooks need a Business or Enterprise plan. Granola generates the signi
 
 Each event only carries `note_id`; fetch the note itself with a Granola API key (Settings → Connectors → API keys): `curl -H "Authorization: Bearer grn_…" <event source>`.
 
+**`loopway` config:** `{ "events"?: ["com.example.build.finished", ...] (default ["*"]) }`. No secret: bots post with their own loopway API token (any user's), so they can send each other work through inboxes.
+
+```sh
+curl -X POST <webhook_url> \
+  -H "Authorization: Bearer $LOOPWAY_API_KEY" \
+  -H "Content-Type: application/cloudevents+json" \
+  -d '{"specversion": "1.0", "id": "build-42-done", "source": "https://ci.example.com", "type": "com.example.build.finished", "data": {"ok": true}}'
+```
+
 ### Webhook ingestion
 
-`POST /webhooks/:inboxId` — no API key; authenticated by the source (GitHub: `X-Hub-Signature-256` HMAC-SHA256; Vercel: `X-Vercel-Signature` HMAC-SHA1; Granola: Standard Webhooks `webhook-signature`, timestamp within 5 minutes).
+`POST /webhooks/:inboxId` — no API key; authenticated by the source (GitHub: `X-Hub-Signature-256` HMAC-SHA256; Vercel: `X-Vercel-Signature` HMAC-SHA1; Granola: Standard Webhooks `webhook-signature`, timestamp within 5 minutes; Loopway: `Authorization: Bearer <loopway API token>`).
 
 - `202 {id, duplicate:false}` stored
 - `200 {id, duplicate:true}` redelivery of an event already stored (same CloudEvent `source`+`id`)
 - `200 {ignored:true, reason}` `ping`
-- `401` bad/missing signature (or, for Vercel and Granola, no secret set yet) · `404` unknown inbox · `422` event type not in `config.events` (GitHub shows it as a failed delivery and doesn't retry it; Vercel retries any non-2xx for up to 24 hours; Granola retries only 408, 429 and 5xx)
+- `400` malformed body (for Loopway, not a CloudEvent) · `401` bad/missing signature or token (or, for Vercel and Granola, no secret set yet) · `404` unknown inbox · `415` unsupported content type · `422` event type not in `config.events` (GitHub shows it as a failed delivery and doesn't retry it; Vercel retries any non-2xx for up to 24 hours; Granola retries only 408, 429 and 5xx)
 
 GitHub → CloudEvent mapping follows the [CloudEvents GitHub adapter spec](https://github.com/cloudevents/spec/blob/main/cloudevents/adapters/github.md): `id` = `X-GitHub-Delivery`, `type` = `com.github.<event>.<action>`, `source`/`subject`/`time` per event, `data` = payload.
 
 Vercel → CloudEvent: `id` = body `id`, `type` = `com.vercel.<type>` (e.g. `com.vercel.deployment.error`), `source` = the project's API URL (`https://api.vercel.com/v9/projects/<id>`, else the team's), `subject` = what the event is about (the deployment id for `deployment.*`, the project id for `project.*`, the domain name for `domain.*`, …, else the event id, so every event has one), `time` = `createdAt`, `data` = the whole body.
 
 Granola → CloudEvent: `id` = `webhook-id`, `type` = `ai.granola.<event_type>` (e.g. `ai.granola.note.generated`), `source` = `https://public-api.granola.ai/v1/notes/<note_id>`, `subject` = `note_id`, `time` = `occurred_at`, `data` = payload.
+
+Loopway → CloudEvent: the body is a structured-mode CloudEvent (`application/cloudevents+json` or `application/json`) and is stored as sent, extension attributes included. `id`, `source` and `type` are required; `specversion` defaults to `1.0` and `time` to the receive time.
 
 ### Events
 
@@ -243,7 +254,7 @@ packages/cli/
 ### Adding a source
 
 1. Add `packages/web/src/sources/<type>.ts` implementing `SourceAdapter` (`types.ts`):
-   - what clients show: `label`, `description`, common `events`, `secret` (`{from: "loopway", minLength}` if loopway makes it, `{from: "sender"}` if the sender shows one after the webhook is added) and `webhookSettings`
+   - what clients show: `label`, `description`, common `events`, `secret` (`{from: "loopway", minLength}` if loopway makes it, `{from: "sender"}` if the sender shows one after the webhook is added, `{from: "none"}` if the sender authenticates with a loopway API token, checked with `req.user()`) and `webhookSettings`
    - `parseConfig` (validate + defaults), `publicConfig`, optional `setup`, and `receive(headers, rawBody) → event | ignored | rejected`
 2. Add it to the list in `packages/web/src/sources/index.ts`.
 3. Add `packages/web/test/sources/<type>.test.ts` (`test/helpers.ts` gives it an app and database) and its config and CloudEvent mapping to this README.

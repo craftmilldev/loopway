@@ -5,6 +5,8 @@ export interface IncomingWebhook {
   /** Exact bytes as received (as a UTF-8 string) — signatures are computed over this. */
   rawBody: string;
   receivedAt: Date;
+  /** The loopway user whose API token is in the `Authorization: Bearer` header, if any. Looked up on call. */
+  user(): Promise<{ id: string } | undefined>;
 }
 
 export type ReceiveResult =
@@ -17,8 +19,9 @@ export type ReceiveResult =
  * - `loopway`: loopway generates one (or takes one of at least `minLength` characters) and you enter it in the sender.
  * - `sender`: the sender shows one after the webhook is added there, and it's pasted into the inbox afterwards.
  *   The inbox rejects deliveries until then.
+ * - `none`: there is no webhook secret; the sender authenticates with a loopway API token instead.
  */
-export type SecretOrigin = { from: "loopway"; minLength: number } | { from: "sender" };
+export type SecretOrigin = { from: "loopway"; minLength: number } | { from: "sender" } | { from: "none" };
 
 /**
  * A source type defines how an inbox is configured and how a raw webhook becomes a CloudEvent.

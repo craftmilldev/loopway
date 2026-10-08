@@ -64,7 +64,15 @@ export function createApi(opts: ApiOptions) {
     if (!source) throw new ApiError(500, "internal", `Unknown source type ${inbox.source_type}`);
 
     const result = await source.receive(
-      { headers: c.req.raw.headers, rawBody: await c.req.text(), receivedAt: new Date() },
+      {
+        headers: c.req.raw.headers,
+        rawBody: await c.req.text(),
+        receivedAt: new Date(),
+        user: async () => {
+          const token = bearer(c);
+          return token ? userForToken(c.var.db, token) : undefined;
+        },
+      },
       inbox.config,
     );
     if (result.kind === "rejected") throw new ApiError(result.status, "rejected", result.message);
