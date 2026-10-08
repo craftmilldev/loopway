@@ -92,8 +92,8 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
     setError(null);
     const events = all ? ["*"] : source.events.filter((ev) => checked.has(ev));
     if (!events.length) return setError("Pick at least one event.");
-    // A sender-made secret is pasted in on the inbox page afterwards; some sources have none.
-    const config = source.secret.from === "loopway" ? { events, secret } : { events };
+    // A sender-made secret is pasted in on the inbox page afterwards.
+    const config = source.secret.from === "sender" ? { events } : { events, secret };
     const r = await lw.api("/inboxes", { method: "POST", body: { name, source_type: source.type, config } });
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) return setError(await lw.message(r));
@@ -158,11 +158,6 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
             {source.label} shows the secret once you add the webhook there. Paste it in on the inbox page; until then
             deliveries are rejected.
           </p>
-        </div>
-      ) : source?.secret.from === "none" ? (
-        <div className="field">
-          <label>Secret</label>
-          <p className="hint">None. The sender authenticates with its loopway API token instead.</p>
         </div>
       ) : (
         <div className="field">

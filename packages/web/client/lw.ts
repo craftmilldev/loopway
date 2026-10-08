@@ -71,7 +71,7 @@ export interface Source {
   label: string;
   description: string;
   events: string[];
-  secret: { from: "loopway"; min_length: number } | { from: "sender" } | { from: "none" };
+  secret: { from: "loopway"; min_length: number } | { from: "sender" };
   webhook_settings: string;
 }
 

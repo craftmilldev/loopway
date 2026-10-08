@@ -30,7 +30,7 @@ describe("sources", () => {
     for (const s of r.body.data) {
       // The loopway source has no common events: bots name their own types.
       expect(s.events.length > 0 || s.type === "loopway").toBe(true);
-      expect(["loopway", "sender", "none"]).toContain(s.secret.from);
+      expect(["loopway", "sender"]).toContain(s.secret.from);
     }
   });
 

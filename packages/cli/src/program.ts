@@ -2,7 +2,7 @@ import { Command, InvalidArgumentError, Option } from "commander";
 import { LIST_STATUSES } from "./client.js";
 import { clearConfig, configure, login, whoami } from "./commands/auth.js";
 import { getEvent, listEvents, lockEvent, markProcessed, nextEvent, unlockEvent } from "./commands/events.js";
-import { createInbox, listInboxes, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
+import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
 import { runThreads } from "./commands/threads.js";
 import type { Context } from "./context.js";
 
@@ -66,16 +66,18 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
       "--secret <secret>",
       "webhook secret (generated if omitted, or for senders that make their own, the one they show)",
     )
+    .option("--schema <file>", "JSON Schema file messages must match (loopway source)", readSchema)
     .addOption(jsonOpt())
     .action((opts) => createInbox(ctx, opts));
 
   inbox
     .command("update")
-    .description("change an inbox's name, events or secret (asks for the secret if no flags are given)")
+    .description("change an inbox's name, events, secret or schema (asks for the secret if no flags are given)")
     .argument("<inbox>", "inbox id or name")
     .option("--name <name>", "new name")
     .option("--events <list>", "comma-separated event names to accept, or *", splitList)
     .option("--secret <secret>", "webhook secret, e.g. the one the sender shows when you add the webhook")
+    .option("--schema <file>", "JSON Schema file messages must match (loopway source)", readSchema)
     .addOption(jsonOpt())
     .action((ref, opts) => updateInbox(ctx, ref, opts));
 

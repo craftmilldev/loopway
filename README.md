@@ -59,7 +59,7 @@ loopway clear-config                   # deletes ~/.loopway/config.json
 loopway inbox create                   # interactive: name → source → events → secret → confirm
 loopway inbox list
 loopway inbox show <inbox>             # webhook setup + pending/locked/processed counts
-loopway inbox update <inbox> [--name n] [--events a,b] [--secret s]   # with no flags in a terminal, asks for the secret
+loopway inbox update <inbox> [--name n] [--events a,b] [--secret s] [--schema file.json]   # with no flags in a terminal, asks for the secret
 
 loopway events list <inbox> [--status pending] [--type 'com.github.pull_request.*'] [--limit 20] [--all]
 loopway events get  <inbox> <event> [--data]
@@ -71,7 +71,7 @@ loopway events done <inbox> <event>
 
 - `<inbox>` is an inbox id or its exact name.
 - Every read command takes `--json` for the raw API response. `events next --json` prints nothing when the inbox is empty.
-- `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`); without a terminal it runs from flags alone. For sources whose sender makes the secret (`vercel`, `granola`) it doesn't ask for one: add the webhook in the sender, then paste the secret it shows with `loopway inbox update <inbox>` (or on the inbox's dashboard page).
+- `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`, `--schema file.json` for `loopway` inboxes); without a terminal it runs from flags alone. For sources whose sender makes the secret (`vercel`, `granola`) it doesn't ask for one: add the webhook in the sender, then paste the secret it shows with `loopway inbox update <inbox>` (or on the inbox's dashboard page).
 - Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `https://loopway.craftmill.dev`.
 - Lock tokens from `next`/`lock` are kept in `~/.loopway/locks.json` until they expire, so `lock` (renew), `unlock` and `done` on the same machine don't need `--token`.
 
@@ -115,7 +115,7 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 
 | | |
 |---|---|
-| `GET /sources` | Available source types: `type`, `label`, `description`, common `events`, who makes the `secret` (`{from: "loopway", min_length}`, `{from: "sender"}`, or `{from: "none"}` when the sender uses a loopway API token), and `webhook_settings` (where the webhook is added in the sender). |
+| `GET /sources` | Available source types: `type`, `label`, `description`, common `events`, who makes the `secret` (`{from: "loopway", min_length}` or `{from: "sender"}`), and `webhook_settings` (where the webhook is added in the sender). |
 | `POST /inboxes` `{name, source_type, config?}` | Create. Response includes `webhook_url` and `setup` instructions. |
 | `GET /inboxes` | List yours. |
 | `GET /inboxes/:id` | One inbox + `stats` (`pending`/`locked`/`processed` counts). |
@@ -141,23 +141,23 @@ Granola webhooks need a Business or Enterprise plan. Granola generates the signi
 
 Each event only carries `note_id`; fetch the note itself with a Granola API key (Settings → Connectors → API keys): `curl -H "Authorization: Bearer grn_…" <event source>`.
 
-**`loopway` config:** `{ "events"?: ["com.example.build.finished", ...] (default ["*"]) }`. No secret: bots post with their own loopway API token (any user's), so they can send each other work through inboxes.
+**`loopway` config:** `{ "secret"?: string (≥16 chars, generated if omitted), "events"?: ["build.finished", ...] (default ["*"]), "schema"?: JSON Schema }`. Bots and backends use these inboxes to send each other messages. The secret is the inbox token they send as a bearer token. `schema` is a JSON Schema (2020-12) every message must match; its `required` must include `type`, `id` and `data`, and the default, `{"type": "object", "required": ["type", "id", "data"]}`, accepts any values for them. Set it with `loopway inbox create --schema schema.json` or `loopway inbox update <inbox> --schema schema.json`.
 
 ```sh
 curl -X POST <webhook_url> \
-  -H "Authorization: Bearer $LOOPWAY_API_KEY" \
-  -H "Content-Type: application/cloudevents+json" \
-  -d '{"specversion": "1.0", "id": "build-42-done", "source": "https://ci.example.com", "type": "com.example.build.finished", "data": {"ok": true}}'
+  -H "Authorization: Bearer <inbox token>" \
+  -H "Content-Type: application/json" \
+  -d '{"type": "build.finished", "id": "build-42", "data": {"ok": true}}'
 ```
 
 ### Webhook ingestion
 
-`POST /webhooks/:inboxId` — no API key; authenticated by the source (GitHub: `X-Hub-Signature-256` HMAC-SHA256; Vercel: `X-Vercel-Signature` HMAC-SHA1; Granola: Standard Webhooks `webhook-signature`, timestamp within 5 minutes; Loopway: `Authorization: Bearer <loopway API token>`).
+`POST /webhooks/:inboxId` — no API key; authenticated by the source (GitHub: `X-Hub-Signature-256` HMAC-SHA256; Vercel: `X-Vercel-Signature` HMAC-SHA1; Granola: Standard Webhooks `webhook-signature`, timestamp within 5 minutes; Loopway: `Authorization: Bearer <inbox token>`).
 
 - `202 {id, duplicate:false}` stored
 - `200 {id, duplicate:true}` redelivery of an event already stored (same CloudEvent `source`+`id`)
 - `200 {ignored:true, reason}` `ping`
-- `400` malformed body (for Loopway, not a CloudEvent) · `401` bad/missing signature or token (or, for Vercel and Granola, no secret set yet) · `404` unknown inbox · `415` unsupported content type · `422` event type not in `config.events` (GitHub shows it as a failed delivery and doesn't retry it; Vercel retries any non-2xx for up to 24 hours; Granola retries only 408, 429 and 5xx)
+- `400` malformed body (for Loopway, one that doesn't match the inbox schema) · `401` bad/missing signature or token (or, for Vercel and Granola, no secret set yet) · `404` unknown inbox · `415` unsupported content type · `422` event type not in `config.events` (GitHub shows it as a failed delivery and doesn't retry it; Vercel retries any non-2xx for up to 24 hours; Granola retries only 408, 429 and 5xx)
 
 GitHub → CloudEvent mapping follows the [CloudEvents GitHub adapter spec](https://github.com/cloudevents/spec/blob/main/cloudevents/adapters/github.md): `id` = `X-GitHub-Delivery`, `type` = `com.github.<event>.<action>`, `source`/`subject`/`time` per event, `data` = payload.
 
@@ -165,7 +165,7 @@ Vercel → CloudEvent: `id` = body `id`, `type` = `com.vercel.<type>` (e.g. `com
 
 Granola → CloudEvent: `id` = `webhook-id`, `type` = `ai.granola.<event_type>` (e.g. `ai.granola.note.generated`), `source` = `https://public-api.granola.ai/v1/notes/<note_id>`, `subject` = `note_id`, `time` = `occurred_at`, `data` = payload.
 
-Loopway → CloudEvent: the body is a structured-mode CloudEvent (`application/cloudevents+json` or `application/json`) and is stored as sent, extension attributes included. `id`, `source` and `type` are required; `specversion` defaults to `1.0` and `time` to the receive time.
+Loopway → CloudEvent: `id` = a new UUID per message (so nothing is deduped), `type` = body `type` (a non-empty string), `source` = the inbox's webhook URL, `subject` = `<type>/<id>` with body `id` (a string or number naming what the message is about, so every message about it shares a subject), `time` = receive time, `data` = body `data`.
 
 ### Events
 
@@ -254,7 +254,7 @@ packages/cli/
 ### Adding a source
 
 1. Add `packages/web/src/sources/<type>.ts` implementing `SourceAdapter` (`types.ts`):
-   - what clients show: `label`, `description`, common `events`, `secret` (`{from: "loopway", minLength}` if loopway makes it, `{from: "sender"}` if the sender shows one after the webhook is added, `{from: "none"}` if the sender authenticates with a loopway API token, checked with `req.user()`) and `webhookSettings`
+   - what clients show: `label`, `description`, common `events`, `secret` (`{from: "loopway", minLength}` if loopway makes it, `{from: "sender"}` if the sender shows one after the webhook is added) and `webhookSettings`
    - `parseConfig` (validate + defaults), `publicConfig`, optional `setup`, and `receive(headers, rawBody) → event | ignored | rejected`
 2. Add it to the list in `packages/web/src/sources/index.ts`.
 3. Add `packages/web/test/sources/<type>.test.ts` (`test/helpers.ts` gives it an app and database) and its config and CloudEvent mapping to this README.

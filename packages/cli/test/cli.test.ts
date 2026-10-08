@@ -1,5 +1,5 @@
 import { createHmac, randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApi } from "@loopway/web/api";
@@ -216,10 +216,27 @@ describe("inboxes", () => {
       "deployment.error",
     );
     expect(inbox.config).toEqual({ secret: null, events: ["deployment.error"] });
-    await expect(run("inbox", "update", "vc")).rejects.toThrow(/Pass --name, --events or --secret/);
+    await expect(run("inbox", "update", "vc")).rejects.toThrow(/Pass --name, --events, --secret or --schema/);
     const updated = await runJson("inbox", "update", "vc", "--secret", "from-vercel");
     expect(updated.config).toEqual({ secret: "from-vercel", events: ["deployment.error"] });
     expect(await run("inbox", "update", inbox.id, "--name", "vercel")).toMatch(/Updated inbox .*vercel/);
+  });
+
+  it("creates a loopway inbox with a schema from a file and replaces it with update", async () => {
+    await configured();
+    const inbox = await runJson("inbox", "create", "--name", "bots", "--source", "loopway");
+    expect(inbox.config.schema).toEqual({ type: "object", required: ["type", "id", "data"] });
+
+    const schema = { type: "object", required: ["type", "id", "data"], properties: { type: { const: "ping" } } };
+    const file = join(configDir, "schema.json");
+    await writeFile(file, JSON.stringify(schema));
+    expect((await runJson("inbox", "update", "bots", "--schema", file)).config.schema).toEqual(schema);
+
+    await writeFile(file, JSON.stringify({ type: "object" }));
+    await expect(run("inbox", "update", "bots", "--schema", file)).rejects.toThrow(/Invalid request/);
+    await expect(run("inbox", "update", "bots", "--schema", join(configDir, "missing.json"))).rejects.toThrow(
+      /Could not read a JSON schema/,
+    );
   });
 
   it("creates a granola inbox without a secret and sets it with update", async () => {

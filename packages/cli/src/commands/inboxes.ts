@@ -1,4 +1,5 @@
 import * as p from "@clack/prompts";
+import { readFileSync } from "node:fs";
 import type { Inbox, LoopwayClient, Source } from "../client.js";
 import { authedClient, CancelledError, UsageError, type Context } from "../context.js";
 import { ago, bold, dim, fields, humanize, json, table } from "../format.js";
@@ -44,6 +45,7 @@ export interface CreateOptions {
   source?: string;
   events?: string[];
   secret?: string;
+  schema?: Record<string, unknown>;
   json?: boolean;
 }
 
@@ -107,7 +109,13 @@ async function createInteractive(client: LoopwayClient, opts: CreateOptions): Pr
       ["source", source.type],
       ...Object.entries(config).map(([k, v]): [string, string] => [
         k,
-        k === "secret" ? "(provided)" : Array.isArray(v) ? v.join(", ") : String(v),
+        k === "secret"
+          ? "(provided)"
+          : Array.isArray(v)
+            ? v.join(", ")
+            : typeof v === "object"
+              ? JSON.stringify(v)
+              : String(v),
       ]),
     ]),
     "Review",
@@ -134,7 +142,10 @@ async function createInteractive(client: LoopwayClient, opts: CreateOptions): Pr
   return inbox;
 }
 
-async function sourceConfig(source: Source, opts: CreateOptions): Promise<{ events: string[]; secret?: string }> {
+async function sourceConfig(
+  source: Source,
+  opts: CreateOptions,
+): Promise<{ events: string[]; secret?: string; schema?: Record<string, unknown> }> {
   const events = opts.events ?? (await pickEvents(source));
 
   // A sender-made secret is usually set afterwards with `inbox update`, so it's only taken from the flag.
@@ -160,7 +171,7 @@ async function sourceConfig(source: Source, opts: CreateOptions): Promise<{ even
     }
   }
 
-  return { events, ...(secret ? { secret } : {}) };
+  return { events, ...(secret ? { secret } : {}), ...(opts.schema ? { schema: opts.schema } : {}) };
 }
 
 async function pickEvents(source: Source): Promise<string[]> {
@@ -195,7 +206,11 @@ async function pickEvents(source: Source): Promise<string[]> {
 }
 
 function flagConfig(opts: CreateOptions): Record<string, unknown> | undefined {
-  const config = { ...(opts.events ? { events: opts.events } : {}), ...(opts.secret ? { secret: opts.secret } : {}) };
+  const config = {
+    ...(opts.events ? { events: opts.events } : {}),
+    ...(opts.secret ? { secret: opts.secret } : {}),
+    ...(opts.schema ? { schema: opts.schema } : {}),
+  };
   return Object.keys(config).length ? config : undefined;
 }
 
@@ -205,21 +220,22 @@ export interface UpdateOptions {
   name?: string;
   events?: string[];
   secret?: string;
+  schema?: Record<string, unknown>;
   json?: boolean;
 }
 
-/** Changes the name, events or secret. In a terminal with no flags, asks for the secret. */
+/** Changes the name, events, secret or schema. In a terminal with no flags, asks for the secret. */
 export async function updateInbox(ctx: Context, ref: string, opts: UpdateOptions) {
   const client = await authedClient(ctx);
   const id = await resolveInbox(client, ref);
   let secret = opts.secret;
-  if (!opts.name && !opts.events && !secret) {
-    if (!ctx.interactive) throw new UsageError("Pass --name, --events or --secret");
+  if (!opts.name && !opts.events && !secret && !opts.schema) {
+    if (!ctx.interactive) throw new UsageError("Pass --name, --events, --secret or --schema");
     secret = ask(
       await p.password({ message: "Webhook secret", validate: (v) => (!v ? "Enter the secret" : undefined) }),
     );
   }
-  const config = flagConfig({ events: opts.events, secret });
+  const config = flagConfig({ events: opts.events, secret, schema: opts.schema });
   const inbox = await client.updateInbox(id, { name: opts.name, config });
   if (opts.json) return ctx.out(json(inbox));
   ctx.out(`Updated inbox ${bold(inbox.name)} (${inbox.id})\n\n${setupText(inbox)}`);
@@ -251,6 +267,22 @@ export function setupText(inbox: Inbox): string {
       Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : JSON.stringify(v),
     ]),
   );
+}
+
+/** Reads a `--schema` file: a JSON Schema object. */
+export function readSchema(path: string): Record<string, unknown> {
+  let value: unknown;
+  try {
+    value = JSON.parse(readFileSync(path, "utf8"));
+  } catch (err) {
+    throw new UsageError(
+      `Could not read a JSON schema from ${path}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new UsageError(`${path} must hold a JSON object`);
+  }
+  return value as Record<string, unknown>;
 }
 
 export const splitList = (s: string) =>
