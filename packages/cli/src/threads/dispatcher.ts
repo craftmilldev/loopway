@@ -3,7 +3,6 @@ import { ApiError, type Event, type LoopwayClient } from "../client.js";
 import { loadGithubBot } from "../config.js";
 import type { Context } from "../context.js";
 import { dim } from "../format.js";
-import { heldToken, rememberLock } from "../locks.js";
 import { startMcpServer, type McpServer } from "../mcp.js";
 import { spawnClaude, threadPrompt, type RunAgent } from "./agent.js";
 import { botEnv } from "./github.js";
@@ -32,11 +31,11 @@ export interface DispatcherState {
 /**
  * Hands one inbox's events to Claude Code sessions, one per thread. Each tick:
  *
- * 1. renews the locks on events that sessions still own,
- * 2. routes the pending events to sessions (see routing.ts), and
- * 3. locks each session's new events and starts or resumes it in the background.
+ * 1. routes the pending events to sessions (see routing.ts), and
+ * 2. marks each session's new events processed and starts or resumes it in the background.
  *
- * Sessions talk back through the MCP tools in tools.ts.
+ * Delivered events are context for the session, not tasks it has to mark done. Sessions talk back
+ * through the MCP tools in tools.ts, and `end` is what finishes a thread.
  */
 export class Dispatcher {
   /** Session id → its run in flight. */
@@ -51,7 +50,12 @@ export class Dispatcher {
   private freed = false;
   private onFreed?: () => void;
 
-  static async start(ctx: Context, client: LoopwayClient, inboxId: string, opts: ThreadsOptions = {}): Promise<Dispatcher> {
+  static async start(
+    ctx: Context,
+    client: LoopwayClient,
+    inboxId: string,
+    opts: ThreadsOptions = {},
+  ): Promise<Dispatcher> {
     const prompt = await threadPrompt(inboxId);
     // With a GitHub bot configured, sessions comment, push and commit as it; otherwise as the user.
     const bot = await loadGithubBot(ctx.configDir, ctx.env);
@@ -78,7 +82,6 @@ export class Dispatcher {
 
   async tick(): Promise<void> {
     this.freed = false;
-    await this.renewLocks();
     const pending = await this.listPending();
     const running = new Set(this.running.keys());
     const { deliveries, waiting } = await withSessions(this.dir, (sessions) =>
@@ -117,23 +120,23 @@ export class Dispatcher {
     return this.mcp.close();
   }
 
-  /** Locks a session's new events, records that it owns them, and starts its run. */
+  /** Marks a session's new events processed, records that they were delivered to it, and starts its run. */
   private async deliver(id: string, events: Event[]): Promise<void> {
-    const locked = await this.lockAll(events);
+    const claimed = await this.claimAll(events);
     const session = await withSessions(this.dir, (sessions) => {
-      if (!locked.length) {
+      if (!claimed.length) {
         // Everything was claimed elsewhere first; a brand-new session has nothing to do.
         if (!sessions[id]?.started) delete sessions[id];
         return undefined;
       }
       const s = editSession(sessions, id);
       s.status = "active";
-      s.events.push(...locked.map((e) => e.id).filter((e) => !s.events.includes(e)));
+      s.events.push(...claimed.map((e) => e.id).filter((e) => !s.events.includes(e)));
       return { ...s };
     });
     // Not awaited: each session runs in the background, so threads proceed in parallel and the
     // next tick isn't held up. `running` tracks them for --max and for batching.
-    if (session) this.running.set(id, this.run(id, session, locked));
+    if (session) this.running.set(id, this.run(id, session, claimed));
   }
 
   /** One agent run for a session: start it with the prompt, or resume it with just the new events. */
@@ -155,7 +158,7 @@ export class Dispatcher {
       });
     } catch (err) {
       code = -1;
-      this.ctx.out(`error: ${short} failed to start: ${err instanceof Error ? err.message : err}`);
+      this.ctx.out(`error: ${short} failed to start: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     const ended = await withSessions(this.dir, (sessions) => {
@@ -169,45 +172,19 @@ export class Dispatcher {
     this.onFreed?.();
   }
 
-  /** Keeps every event a live session owns locked until it's processed; forgets the ones that are. */
-  private async renewLocks(): Promise<void> {
-    const sessions = await loadSessions(this.dir);
-    const released: [string, string][] = [];
-    for (const [id, s] of Object.entries(sessions)) {
-      if (s.inbox_id !== this.inboxId || (s.status !== "active" && !this.running.has(id))) continue;
-      for (const eventId of s.events) {
-        try {
-          const token = await heldToken(this.dir, this.inboxId, eventId);
-          await rememberLock(this.dir, await this.client.lock(this.inboxId, eventId, { ttl_seconds: this.ttl, lock_token: token }));
-        } catch (err) {
-          // 409: processed, or someone else took it after a lapse; 404: gone. Either way it isn't ours.
-          if (!(err instanceof ApiError && (err.status === 409 || err.status === 404))) throw err;
-          released.push([id, eventId]);
-        }
-      }
-    }
-    if (!released.length) return;
-    await withSessions(this.dir, (sessions) => {
-      for (const [id, eventId] of released) {
-        if (sessions[id]) sessions[id]!.events = sessions[id]!.events.filter((e) => e !== eventId);
-      }
-    });
-  }
-
-  private async lockAll(events: Event[]): Promise<Event[]> {
-    const locked: Event[] = [];
+  /** Locks each event, so no other consumer gets it too, then marks it processed with that lock. */
+  private async claimAll(events: Event[]): Promise<Event[]> {
+    const claimed: Event[] = [];
     for (const e of events) {
       try {
         const l = await this.client.lock(this.inboxId, e.id, { ttl_seconds: this.ttl });
-        // Remembered so renewals and the agent's `loopway events done` work without --token.
-        await rememberLock(this.dir, l);
-        locked.push(l);
+        claimed.push(await this.client.processed(this.inboxId, e.id, { lock_token: l.lock.token }));
       } catch (err) {
         // Someone else claimed it between the list and the lock; it's theirs now.
         if (!(err instanceof ApiError && err.code === "locked")) throw err;
       }
     }
-    return locked;
+    return claimed;
   }
 
   private async listPending(): Promise<Event[]> {
@@ -230,6 +207,8 @@ export class Dispatcher {
 }
 
 function describeEvents(events: Event[]): string {
-  const lines = events.map((e) => `- ${e.id}  ${e.event.type}  ${threadKeys(e).key ?? e.event.subject ?? ""}`.trimEnd());
-  return `New events for this thread (already locked for you):\n${lines.join("\n")}`;
+  const lines = events.map((e) =>
+    `- ${e.id}  ${e.event.type}  ${threadKeys(e).key ?? e.event.subject ?? ""}`.trimEnd(),
+  );
+  return `New events for this thread:\n${lines.join("\n")}`;
 }

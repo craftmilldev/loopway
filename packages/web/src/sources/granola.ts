@@ -79,7 +79,11 @@ export const granola: SourceAdapter<GranolaConfig> = {
     const timestamp = headers.get("webhook-timestamp");
     const signatures = headers.get("webhook-signature");
     if (!id || !timestamp || !signatures) {
-      return { kind: "rejected", status: 400, message: "Missing webhook-id, webhook-timestamp or webhook-signature header" };
+      return {
+        kind: "rejected",
+        status: 400,
+        message: "Missing webhook-id, webhook-timestamp or webhook-signature header",
+      };
     }
 
     const sentAt = Number(timestamp);

@@ -8,7 +8,11 @@ describe("vercel webhooks", () => {
   async function vercelInbox(key: string, config?: unknown) {
     const r = await call("POST", "/inboxes", { key, body: { name: "vc", source_type: "vercel", config } });
     expect(r.status).toBe(201);
-    return r.body as { id: string; config: { secret: string | null; events: string[] }; setup: Record<string, unknown> };
+    return r.body as {
+      id: string;
+      config: { secret: string | null; events: string[] };
+      setup: Record<string, unknown>;
+    };
   }
 
   function sendVercel(inboxId: string, body: unknown, secret = VERCEL_SECRET) {
@@ -72,12 +76,42 @@ describe("vercel webhooks", () => {
     const key = await newUser();
     const inbox = await vercelInbox(key, { secret: VERCEL_SECRET });
     const cases: [type: string, payload: unknown, source: string, subject: string][] = [
-      ["deployment.rollback", { project: { id: "prj_1" }, toDeploymentId: "dpl_2" }, "https://api.vercel.com/v9/projects/prj_1", "dpl_2"],
-      ["project.renamed", { team: { id: "team_1" }, project: { id: "prj_1" } }, "https://api.vercel.com/v9/projects/prj_1", "prj_1"],
-      ["project.domain.updated", { project: { id: "prj_1" }, previous: { domain: "a.dev" }, next: { domain: "b.dev" } }, "https://api.vercel.com/v9/projects/prj_1", "a.dev"],
-      ["project.env-variable.created", { projectId: "prj_1", envVarId: "env_1" }, "https://api.vercel.com/v9/projects/prj_1", "env_1"],
-      ["domain.created", { team: { id: "team_1" }, domain: { name: "a.dev" } }, "https://api.vercel.com/v2/teams/team_1", "a.dev"],
-      ["flag.updated", { flag: { id: "flag_1", projectId: "prj_1" } }, "https://api.vercel.com/v9/projects/prj_1", "flag_1"],
+      [
+        "deployment.rollback",
+        { project: { id: "prj_1" }, toDeploymentId: "dpl_2" },
+        "https://api.vercel.com/v9/projects/prj_1",
+        "dpl_2",
+      ],
+      [
+        "project.renamed",
+        { team: { id: "team_1" }, project: { id: "prj_1" } },
+        "https://api.vercel.com/v9/projects/prj_1",
+        "prj_1",
+      ],
+      [
+        "project.domain.updated",
+        { project: { id: "prj_1" }, previous: { domain: "a.dev" }, next: { domain: "b.dev" } },
+        "https://api.vercel.com/v9/projects/prj_1",
+        "a.dev",
+      ],
+      [
+        "project.env-variable.created",
+        { projectId: "prj_1", envVarId: "env_1" },
+        "https://api.vercel.com/v9/projects/prj_1",
+        "env_1",
+      ],
+      [
+        "domain.created",
+        { team: { id: "team_1" }, domain: { name: "a.dev" } },
+        "https://api.vercel.com/v2/teams/team_1",
+        "a.dev",
+      ],
+      [
+        "flag.updated",
+        { flag: { id: "flag_1", projectId: "prj_1" } },
+        "https://api.vercel.com/v9/projects/prj_1",
+        "flag_1",
+      ],
       ["something.new", {}, "https://vercel.com", "evt_new"],
     ];
     for (const [type, payload, source, subject] of cases) {

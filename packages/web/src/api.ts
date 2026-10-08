@@ -33,7 +33,8 @@ export function createApi(opts: ApiOptions) {
       return c.json({ error: { code: "invalid_request", message: "Invalid request", details: err.issues } }, 400);
     }
     if (err instanceof ApiError) return c.json({ error: { code: err.code, message: err.message } }, err.status);
-    if (err instanceof HTTPException) return c.json({ error: { code: "http_error", message: err.message } }, err.status);
+    if (err instanceof HTTPException)
+      return c.json({ error: { code: "http_error", message: err.message } }, err.status);
     console.error(err);
     return c.json({ error: { code: "internal", message: "Internal server error" } }, 500);
   });
@@ -91,12 +92,18 @@ export function createApi(opts: ApiOptions) {
 
   app.post("/auth/verify", async (c) => {
     const input = z
-      .object({ email: z.string().trim().email().max(320), code: z.string().transform(normalizeLoginCode).pipe(z.string().regex(LOGIN_CODE_RE)) })
+      .object({
+        email: z.string().trim().email().max(320),
+        code: z.string().transform(normalizeLoginCode).pipe(z.string().regex(LOGIN_CODE_RE)),
+      })
       .parse(await jsonBody(c));
     const result = await store.redeemLoginCode(c.var.db, input.email, input.code);
     if (!result) throw new ApiError(401, "invalid_code", "That code is invalid or has expired");
     const { token, expiresAt } = signSessionToken(result.user.id, opts.tokenSecret);
-    return c.json({ token, expires_at: expiresAt.toISOString(), user: serializeUser(result.user), created: result.created }, 201);
+    return c.json(
+      { token, expires_at: expiresAt.toISOString(), user: serializeUser(result.user), created: result.created },
+      201,
+    );
   });
 
   // ---------- Authenticated ----------

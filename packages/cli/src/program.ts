@@ -26,7 +26,9 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
 
   program
     .command("login")
-    .description("log in with an emailed one-time code and save a 30-day session token (creates an account for a new email)")
+    .description(
+      "log in with an emailed one-time code and save a 30-day session token (creates an account for a new email)",
+    )
     .option("--url <url>", "API base URL (default https://loopway.craftmill.dev)")
     .option("--email <email>", "your email (prompted for if omitted)")
     .option("--code <code>", "the 8-character code from the email (prompted for if omitted)")
@@ -60,7 +62,10 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .option("--name <name>", "inbox name")
     .option("--source <type>", "source type (run without it to pick from the list)")
     .option("--events <list>", "comma-separated event names to accept (default all)", splitList)
-    .option("--secret <secret>", "webhook secret (generated if omitted, or for senders that make their own, the one they show)")
+    .option(
+      "--secret <secret>",
+      "webhook secret (generated if omitted, or for senders that make their own, the one they show)",
+    )
     .addOption(jsonOpt())
     .action((opts) => createInbox(ctx, opts));
 
@@ -158,11 +163,22 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
   program
     .command("threads")
     .alias("thread")
-    .description("run a Claude Code session per issue/PR thread: poll an inbox and hand each pending event to its thread's session, starting one if none matches")
+    .description(
+      "run a Claude Code session per issue/PR thread: poll an inbox and hand each pending event to its thread's session, starting one if none matches",
+    )
     .argument("<inbox>", "inbox id or name")
-    .option("--max <n>", "most sessions running at once; sessions waiting on their thread don't count (default 3)", positiveInt)
+    .option(
+      "--max <n>",
+      "most sessions running at once; sessions waiting on their thread don't count (default 3)",
+      positiveInt,
+    )
     .option("--interval <seconds>", "seconds between polls (default 30)", positiveInt)
-    .addOption(new Option("--ttl <seconds>", "lock duration for delivered events, renewed every poll (default 3600, max 43200)").argParser(positiveInt))
+    .addOption(
+      new Option(
+        "--ttl <seconds>",
+        "lock duration while claiming an event, before it is marked processed (default 3600, max 43200)",
+      ).argParser(positiveInt),
+    )
     .option("--no-tui", "print a plain log instead of the full-screen view of threads and their transcripts")
     .action((ref, opts) => runThreads(ctx, ref, opts));
 

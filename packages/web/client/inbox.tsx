@@ -21,11 +21,11 @@ export function Inbox({ id }: { id: string }) {
 
   useEffect(() => {
     if (!me) return;
-    (async () => {
+    void (async () => {
       const r = await lw.api("/inboxes/" + encodeURIComponent(id));
       if (r.status === 404) return setMissing(true);
       if (!r.ok) return lw.expired(r);
-      setInbox(await r.json());
+      setInbox((await r.json()) as InboxInfo);
     })();
   }, [me, id]);
 
@@ -34,9 +34,9 @@ export function Inbox({ id }: { id: string }) {
     async (after: string | null) => {
       const q = new URLSearchParams({ order: "desc", limit: "50", status: hide ? "unprocessed" : "all" });
       if (after) q.set("cursor", after);
-      const r = await lw.api("/inboxes/" + encodeURIComponent(id) + "/events?" + q);
+      const r = await lw.api("/inboxes/" + encodeURIComponent(id) + "/events?" + q.toString());
       if (!r.ok) return lw.expired(r);
-      const body = await r.json();
+      const body = (await r.json()) as { data: InboxEvent[]; next_cursor: string | null };
       setEvents((prev) => (after && prev ? [...prev, ...body.data] : body.data));
       setCursor(body.next_cursor);
     },
@@ -44,7 +44,7 @@ export function Inbox({ id }: { id: string }) {
   );
 
   useEffect(() => {
-    if (inbox) load(null);
+    if (inbox) void load(null);
   }, [inbox, load]);
 
   return (
@@ -90,7 +90,7 @@ export function Inbox({ id }: { id: string }) {
       )}
       <div className="form-actions">
         {cursor && (
-          <button className="btn btn-md btn-quiet" type="button" onClick={() => load(cursor)}>
+          <button className="btn btn-md btn-quiet" type="button" onClick={() => void load(cursor)}>
             Load older
           </button>
         )}
@@ -100,7 +100,15 @@ export function Inbox({ id }: { id: string }) {
 }
 
 // Some senders make the signing secret when the webhook is added there, so it's pasted in here afterwards.
-function SenderSecret({ inbox, source, onSaved }: { inbox: InboxInfo; source: lw.Source; onSaved: (inbox: InboxInfo) => void }) {
+function SenderSecret({
+  inbox,
+  source,
+  onSaved,
+}: {
+  inbox: InboxInfo;
+  source: lw.Source;
+  onSaved: (inbox: InboxInfo) => void;
+}) {
   const [secret, setSecret] = useState("");
   const [error, setError] = useState<string | null>(null);
   const isSet = !!inbox.config?.secret;
@@ -108,15 +116,18 @@ function SenderSecret({ inbox, source, onSaved }: { inbox: InboxInfo; source: lw
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const r = await lw.api("/inboxes/" + encodeURIComponent(inbox.id), { method: "PATCH", body: { config: { secret } } });
+    const r = await lw.api("/inboxes/" + encodeURIComponent(inbox.id), {
+      method: "PATCH",
+      body: { config: { secret } },
+    });
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) return setError(await lw.message(r));
     setSecret("");
-    onSaved({ ...inbox, ...(await r.json()) });
+    onSaved({ ...inbox, ...((await r.json()) as InboxInfo) });
   }
 
   return (
-    <form className="panel" onSubmit={submit}>
+    <form className="panel" onSubmit={(e) => void submit(e)}>
       <div className="field">
         <label htmlFor="secret">Webhook secret</label>
         <div className="input-wrap">

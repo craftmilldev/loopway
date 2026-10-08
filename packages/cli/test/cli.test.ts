@@ -31,7 +31,12 @@ const apiFetch = ((input: string | URL | Request, init?: RequestInit) => app.req
 
 beforeAll(async () => {
   db = await openDb({ pgliteDir: "memory://" });
-  app = createApi({ getDb: async () => db, publicBaseUrl: API, tokenSecret: SECRET, sendEmail: async (e) => void emails.push(e) });
+  app = createApi({
+    getDb: async () => db,
+    publicBaseUrl: API,
+    tokenSecret: SECRET,
+    sendEmail: async (e) => void emails.push(e),
+  });
 });
 afterAll(() => db.close());
 
@@ -113,14 +118,18 @@ describe("auth", () => {
   it("login creates an account for an unknown email once the code is entered", async () => {
     await expect(run("login", "--url", API, "--email", "fresh@example.com")).rejects.toThrow(/--code is required/);
     const code = emails.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
-    expect(await run("login", "--url", API, "--email", "fresh@example.com", "--code", code)).toMatch(/Created your account/);
+    expect(await run("login", "--url", API, "--email", "fresh@example.com", "--code", code)).toMatch(
+      /Created your account/,
+    );
     expect(await runJson("whoami")).toMatchObject({ name: "fresh", email: "fresh@example.com" });
   });
 
   it("login rejects a wrong code without saving anything", async () => {
     await createUser(db, { name: "Other", email: "o@example.com" });
     await expect(run("login", "--url", API, "--email", "o@example.com")).rejects.toThrow();
-    await expect(run("login", "--url", API, "--email", "o@example.com", "--code", "00000000")).rejects.toThrow(/invalid or has expired/);
+    await expect(run("login", "--url", API, "--email", "o@example.com", "--code", "00000000")).rejects.toThrow(
+      /invalid or has expired/,
+    );
     expect(await savedConfig()).toBeUndefined();
   });
 
@@ -193,7 +202,16 @@ describe("auth", () => {
 describe("inboxes", () => {
   it("creates from flags and lists", async () => {
     await configured();
-    const inbox = await runJson("inbox", "create", "--name", "prs", "--source", "github", "--events", "push, pull_request");
+    const inbox = await runJson(
+      "inbox",
+      "create",
+      "--name",
+      "prs",
+      "--source",
+      "github",
+      "--events",
+      "push, pull_request",
+    );
     expect(inbox.config.events).toEqual(["push", "pull_request"]);
     expect(inbox.webhook_url).toBe(`${API}/webhooks/${inbox.id}`);
 
@@ -218,7 +236,16 @@ describe("inboxes", () => {
 
   it("creates a vercel inbox without a secret and sets it with update", async () => {
     await configured();
-    const inbox = await runJson("inbox", "create", "--name", "vc", "--source", "vercel", "--events", "deployment.error");
+    const inbox = await runJson(
+      "inbox",
+      "create",
+      "--name",
+      "vc",
+      "--source",
+      "vercel",
+      "--events",
+      "deployment.error",
+    );
     expect(inbox.config).toEqual({ secret: null, events: ["deployment.error"] });
     await expect(run("inbox", "update", "vc")).rejects.toThrow(/Pass --name, --events or --secret/);
     const updated = await runJson("inbox", "update", "vc", "--secret", "from-vercel");
@@ -313,7 +340,12 @@ describe("threads", () => {
   const repository = { full_name: "a/b", url: "https://api.github.com/repos/a/b" };
   const issue = (action: string, n: number) => ({ action, issue: { number: n }, repository });
   const comment = (n: number) => ({ action: "created", issue: { number: n }, comment: { body: "hi" }, repository });
-  const pull = (action: string, n: number, body = "") => ({ action, number: n, pull_request: { number: n, body }, repository });
+  const pull = (action: string, n: number, body = "") => ({
+    action,
+    number: n,
+    pull_request: { number: n, body },
+    repository,
+  });
   const sessions = async () => JSON.parse(await readFile(join(configDir, "threads.json"), "utf8"));
   const closers: (() => Promise<void>)[] = [];
   afterEach(async () => void (await Promise.all(closers.splice(0).map((c) => c()))));
@@ -339,10 +371,7 @@ describe("threads", () => {
     // Let runs still in flight write threads.json before the config dir is removed.
     closers.push(async () => (await finish(), await d.close()));
     const list = async (status: string) => (await runJson("events", "list", inbox.id, "--status", status)).data;
-    const done = async () => {
-      for (const e of await list("locked")) await runJson("events", "done", inbox.id, e.id);
-    };
-    return { inbox, runs, out, d, finish, list, done };
+    return { inbox, runs, out, d, finish, list };
   }
 
   /** Calls one of the dispatcher's MCP methods the way Claude Code would. */
@@ -356,7 +385,7 @@ describe("threads", () => {
   }
 
   it("routes events by issue/PR, batches while busy, follows Closes #N, and ends when the session says so", async () => {
-    const { inbox, runs, out, d, finish, list, done } = await setup(3);
+    const { inbox, runs, out, d, finish, list } = await setup(3);
     await sendGithub(inbox, "issues", issue("opened", 1));
     await sendGithub(inbox, "issue_comment", comment(1));
     await d.tick();
@@ -364,7 +393,7 @@ describe("threads", () => {
     const [first] = runs;
     expect(first!.resume).toBe(false);
     expect(first!.message).toContain("You are a loopway thread session");
-    expect(first!.message.split("already locked for you):\n")[1]!.split("\n")).toHaveLength(2);
+    expect(first!.message.split("New events for this thread:\n")[1]!.split("\n")).toHaveLength(2);
     expect(await list("pending")).toHaveLength(0);
 
     // While the run is busy, its new events wait; others' don't.
@@ -374,20 +403,16 @@ describe("threads", () => {
     await finish();
     expect((await sessions())[first!.sessionId]).toMatchObject({ keys: ["a/b#1"], status: "active", started: true });
 
-    // The agent can finish events with the dispatcher's remembered lock tokens.
-    await done();
     await d.tick(); // the comment that arrived while busy
     expect(runs[1]).toMatchObject({ sessionId: first!.sessionId, resume: true });
     expect(runs[1]!.message).not.toContain("## 1. Triage");
     await finish();
-    await done();
 
     // A PR that closes #1 joins that thread.
     await sendGithub(inbox, "pull_request", pull("opened", 2, "Adds it.\n\nCloses #1"));
     await d.tick();
     expect(runs[2]!.sessionId).toBe(first!.sessionId);
     await finish();
-    await done();
     expect((await sessions())[first!.sessionId].keys).toEqual(["a/b#1", "a/b#2"]);
 
     // A close event alone doesn't end the thread; the session decides, through its end tool.
@@ -395,7 +420,6 @@ describe("threads", () => {
     await d.tick();
     expect((await mcp(first!.mcpUrl, "tools/call", { name: "end", arguments: {} })).content[0].text).toMatch(/Ended/);
     await finish();
-    await done();
     expect((await sessions())[first!.sessionId].status).toBe("ended");
     expect(out.at(-1)).toMatch(/ended \(exit 0\)/);
 
@@ -406,29 +430,25 @@ describe("threads", () => {
     expect((await sessions())[first!.sessionId].status).toBe("active");
   });
 
-  it("keeps a session's events locked until they're processed", async () => {
+  it("marks events processed as it delivers them, and records them on the session", async () => {
     const { inbox, runs, d, finish, list } = await setup(3);
     await sendGithub(inbox, "issues", issue("opened", 1));
     await d.tick();
-    await finish();
-    const [held] = await list("locked");
+    expect(await list("locked")).toHaveLength(0);
+    const [delivered] = await list("processed");
     const id = runs[0]!.sessionId;
-    expect((await sessions())[id].events).toEqual([held.id]);
+    expect(runs[0]!.message).toContain(delivered.id);
+    await finish();
 
-    // The run is over but the session still owns the event, so each tick renews the same lock.
+    // The session never marks it done; later ticks leave it processed and still recorded.
     await d.tick();
-    const [renewed] = await list("locked");
-    expect(renewed.lock_count).toBe(1);
-    expect(Date.parse(renewed.locked_until)).toBeGreaterThanOrEqual(Date.parse(held.locked_until));
     expect(runs).toHaveLength(1);
-
-    await runJson("events", "done", inbox.id, held.id);
-    await d.tick();
-    expect((await sessions())[id].events).toEqual([]);
+    expect(await list("processed")).toHaveLength(1);
+    expect((await sessions())[id].events).toEqual([delivered.id]);
   });
 
   it("never runs more than --max sessions at once, but sessions waiting on their thread don't count", async () => {
-    const { inbox, runs, out, d, finish, list, done } = await setup(2);
+    const { inbox, runs, out, d, finish, list } = await setup(2);
     await sendGithub(inbox, "issues", issue("opened", 1));
     await sendGithub(inbox, "issues", issue("opened", 2));
     await sendGithub(inbox, "issues", issue("opened", 3));
@@ -442,8 +462,8 @@ describe("threads", () => {
     expect(state.raw.map((e) => e.id)).toEqual((await list("pending")).map((e: any) => e.id));
     expect([...state.running].sort()).toEqual(Object.keys(state.sessions).sort());
 
-    // Once their runs exit, both sessions wait on their threads (still active, events still
-    // locked) without holding a slot, so the queued issue starts right away.
+    // Once their runs exit, both sessions wait on their threads (still active) without holding a
+    // slot, so the queued issue starts right away.
     const freed = d.slotFreed();
     await finish();
     await freed;
@@ -468,22 +488,22 @@ describe("threads", () => {
     expect(runs).toHaveLength(5);
     expect(await list("pending")).toHaveLength(0);
     await finish();
-    await done();
   });
 
   it("serves a link tool that routes a PR's events to the session", async () => {
-    const { inbox, runs, d, finish, done } = await setup(3);
+    const { inbox, runs, d, finish } = await setup(3);
     await sendGithub(inbox, "issues", issue("opened", 5));
     await d.tick();
     const url = runs[0]!.mcpUrl;
     expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\//);
     expect((await mcp(url, "initialize", { protocolVersion: "2025-06-18" })).serverInfo.name).toBe("loopway");
     expect((await mcp(url, "tools/list")).tools.map((t: any) => t.name)).toEqual(["link", "end"]);
-    expect((await mcp(url, "tools/call", { name: "link", arguments: { number: 9 } })).content[0].text).toMatch(/Linked a\/b#9/);
+    expect((await mcp(url, "tools/call", { name: "link", arguments: { number: 9 } })).content[0].text).toMatch(
+      /Linked a\/b#9/,
+    );
     await mcp(url, "tools/call", { name: "link", arguments: { number: 3, repo: "c/d" } });
     expect((await mcp(url, "tools/call", { name: "link", arguments: { number: "x" } })).isError).toBe(true);
     await finish();
-    await done();
     expect((await sessions())[runs[0]!.sessionId].keys).toEqual(["a/b#5", "a/b#9", "c/d#3"]);
 
     // A comment on the linked PR now resumes the session instead of starting a new one.
@@ -515,7 +535,15 @@ describe("threads", () => {
     await Promise.all(
       Array.from({ length: 20 }, (_, i) =>
         withSessions(configDir, (s) => {
-          s[`s${i}`] = { inbox_id: "x", keys: [], events: [], status: "active", started: false, created_at: "", updated_at: "" };
+          s[`s${i}`] = {
+            inbox_id: "x",
+            keys: [],
+            events: [],
+            status: "active",
+            started: false,
+            created_at: "",
+            updated_at: "",
+          };
         }),
       ),
     );

@@ -10,7 +10,7 @@ import { readJson, writeJson } from "../config.js";
 export interface Session {
   inbox_id: string;
   keys: string[];
-  /** Events delivered to the session and not yet processed; the dispatcher keeps their locks alive. */
+  /** Events delivered to the session. The dispatcher marks them processed on delivery. */
   events: string[];
   /** `ended` once the session calls its `end` tool; a new event for the thread makes it active again. */
   status: "active" | "ended";
@@ -60,7 +60,10 @@ async function lockFile(path: string, staleMs = 10_000): Promise<() => Promise<v
       return () => rm(path, { force: true });
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-      const mtime = await stat(path).then((s) => s.mtimeMs, () => Date.now());
+      const mtime = await stat(path).then(
+        (s) => s.mtimeMs,
+        () => Date.now(),
+      );
       if (Date.now() - mtime > staleMs) await rm(path, { force: true });
       else await sleep(10);
     }

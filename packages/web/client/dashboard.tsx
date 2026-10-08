@@ -18,11 +18,11 @@ export function Dashboard() {
   const load = useCallback(async () => {
     const r = await lw.api("/inboxes");
     if (!r.ok) return lw.expired(r);
-    setInboxes((await r.json()).data);
+    setInboxes(((await r.json()) as { data: Inbox[] }).data);
   }, []);
 
   useEffect(() => {
-    if (me) load();
+    if (me) void load();
   }, [me, load]);
 
   return (
@@ -37,7 +37,7 @@ export function Dashboard() {
         <CreateInbox
           onCreated={() => {
             setCreating(false);
-            load();
+            void load();
           }}
         />
       )}
@@ -101,7 +101,7 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
   }
 
   return (
-    <form className="panel" onSubmit={submit}>
+    <form className="panel" onSubmit={(e) => void submit(e)}>
       <div className="field">
         <label htmlFor="name">Name</label>
         <div className="input-wrap">
@@ -136,17 +136,27 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
           </label>
           {source?.events.map((ev) => (
             <label key={ev} className="check">
-              <input type="checkbox" disabled={all} checked={checked.has(ev)} onChange={(e) => toggle(ev, e.target.checked)} /> {ev}
+              <input
+                type="checkbox"
+                disabled={all}
+                checked={checked.has(ev)}
+                onChange={(e) => toggle(ev, e.target.checked)}
+              />{" "}
+              {ev}
             </label>
           ))}
         </div>
-        <p className="hint">Which events the inbox keeps. Anything else the webhook sends is rejected and shows as a failed delivery in the sender.</p>
+        <p className="hint">
+          Which events the inbox keeps. Anything else the webhook sends is rejected and shows as a failed delivery in
+          the sender.
+        </p>
       </div>
       {source?.secret.from === "sender" ? (
         <div className="field">
           <label>Secret</label>
           <p className="hint">
-            {source.label} shows the secret once you add the webhook there. Paste it in on the inbox page; until then deliveries are rejected.
+            {source.label} shows the secret once you add the webhook there. Paste it in on the inbox page; until then
+            deliveries are rejected.
           </p>
         </div>
       ) : (

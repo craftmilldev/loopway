@@ -109,7 +109,10 @@ export class LoopwayClient {
 
   /** Trades the emailed code for a session token. */
   verifyLoginCode(email: string, code: string) {
-    return this.request<{ token: string; expires_at: string; user: User; created: boolean }>("POST", "/auth/verify", { email, code });
+    return this.request<{ token: string; expires_at: string; user: User; created: boolean }>("POST", "/auth/verify", {
+      email,
+      code,
+    });
   }
 
   me() {
@@ -183,7 +186,8 @@ export class LoopwayClient {
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });
     } catch (err) {
-      const reason = err instanceof Error ? (err.cause instanceof Error ? err.cause.message : err.message) : err;
+      const reason =
+        err instanceof Error ? (err.cause instanceof Error ? err.cause.message : err.message) : String(err);
       throw new ApiError(0, "network_error", `Could not reach ${this.baseUrl}: ${reason}`);
     }
 
@@ -193,7 +197,11 @@ export class LoopwayClient {
       try {
         json = JSON.parse(text);
       } catch {
-        throw new ApiError(res.status, "bad_response", `Expected JSON from ${method} ${path}, got: ${text.slice(0, 200)}`);
+        throw new ApiError(
+          res.status,
+          "bad_response",
+          `Expected JSON from ${method} ${path}, got: ${text.slice(0, 200)}`,
+        );
       }
     }
     if (!res.ok) {

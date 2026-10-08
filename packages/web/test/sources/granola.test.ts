@@ -8,7 +8,11 @@ describe("granola webhooks", () => {
   async function granolaInbox(key: string, config: unknown = { secret: GRANOLA_SECRET }) {
     const r = await call("POST", "/inboxes", { key, body: { name: "granola", source_type: "granola", config } });
     expect(r.status).toBe(201);
-    return r.body as { id: string; config: { secret: string | null; events: string[] }; setup: Record<string, unknown> };
+    return r.body as {
+      id: string;
+      config: { secret: string | null; events: string[] };
+      setup: Record<string, unknown>;
+    };
   }
 
   function sendGranola(
@@ -92,4 +96,3 @@ describe("granola webhooks", () => {
     expect((await dup.json()).duplicate).toBe(true);
   });
 });
-

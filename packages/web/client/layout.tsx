@@ -10,7 +10,7 @@ export function Layout({ title, nav, children }: { title: string; nav?: ReactNod
     <>
       <nav className="post-nav">
         <a className="wordmark" href="/" dangerouslySetInnerHTML={{ __html: wordmark }} />
-        <span className="eyebrow">webhooks in, a queue out</span>
+        <span className="eyebrow">build bots, work with them</span>
         <span className="nav-spacer" style={{ flex: 1 }}></span>
         {nav}
       </nav>
