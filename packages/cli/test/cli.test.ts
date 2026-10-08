@@ -159,19 +159,31 @@ describe("auth", () => {
     const github = { token: "ghp_file", name: "file-bot", email: "1+file-bot@users.noreply.github.com" };
     await writeFile(join(configDir, "config.json"), JSON.stringify({ github }));
     expect(await loadGithubBot(configDir, {})).toEqual(github);
-    expect(await loadGithubBot(configDir, { LOOPWAY_GITHUB_TOKEN: "ghp_env" })).toEqual({ ...github, token: "ghp_env" });
+    expect(await loadGithubBot(configDir, { LOOPWAY_GITHUB_TOKEN: "ghp_env" })).toEqual({
+      ...github,
+      token: "ghp_env",
+    });
 
     await configured();
     expect(await savedConfig()).toMatchObject({ api_url: API, github });
 
     await writeFile(join(configDir, "config.json"), JSON.stringify({ github: { token: "ghp_file" } }));
     await expect(loadGithubBot(configDir, {})).rejects.toThrow(/needs a token, name and email/);
-    await expect(loadGithubBot(configDir, { LOOPWAY_GITHUB_NAME: "b", LOOPWAY_GITHUB_EMAIL: "b@x" })).resolves.toMatchObject({ name: "b" });
+    await expect(
+      loadGithubBot(configDir, { LOOPWAY_GITHUB_NAME: "b", LOOPWAY_GITHUB_EMAIL: "b@x" }),
+    ).resolves.toMatchObject({ name: "b" });
   });
 
   it("botEnv: git commits as the bot and gets its token for github.com, SSH remotes included", () => {
     const env = botEnv(
-      { PATH: process.env.PATH, HOME: configDir, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "credential.helper", GIT_CONFIG_VALUE_0: "!echo password=user-token #" },
+      {
+        PATH: process.env.PATH,
+        HOME: configDir,
+        GIT_CONFIG_NOSYSTEM: "1",
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "credential.helper",
+        GIT_CONFIG_VALUE_0: "!echo password=user-token #",
+      },
       { token: "ghp_bot", name: "loopway-bot", email: "2+loopway-bot@users.noreply.github.com" },
     );
     const git = (args: string[], input?: string) => execFileSync("git", args, { env, input, encoding: "utf8" });
@@ -518,11 +530,20 @@ describe("threads", () => {
     await plain.d.tick();
     expect(plain.runs[0]!.env.GH_TOKEN).toBeUndefined();
 
-    const bot = { LOOPWAY_GITHUB_TOKEN: "ghp_bot", LOOPWAY_GITHUB_NAME: "loopway-bot", LOOPWAY_GITHUB_EMAIL: "2+loopway-bot@users.noreply.github.com" };
+    const bot = {
+      LOOPWAY_GITHUB_TOKEN: "ghp_bot",
+      LOOPWAY_GITHUB_NAME: "loopway-bot",
+      LOOPWAY_GITHUB_EMAIL: "2+loopway-bot@users.noreply.github.com",
+    };
     const { inbox, runs, d } = await setup(3, bot);
     await sendGithub(inbox, "issues", issue("opened", 2));
     await d.tick();
-    expect(runs[0]!.env).toMatchObject({ GH_TOKEN: "ghp_bot", GIT_AUTHOR_NAME: "loopway-bot", GIT_COMMITTER_NAME: "loopway-bot", GIT_CONFIG_COUNT: "4" });
+    expect(runs[0]!.env).toMatchObject({
+      GH_TOKEN: "ghp_bot",
+      GIT_AUTHOR_NAME: "loopway-bot",
+      GIT_COMMITTER_NAME: "loopway-bot",
+      GIT_CONFIG_COUNT: "4",
+    });
   });
 
   it("loads the session prompt from prompts/thread.md", async () => {

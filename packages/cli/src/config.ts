@@ -54,14 +54,17 @@ export async function resolveAuth(dir: string, env: NodeJS.ProcessEnv = process.
  */
 export async function loadGithubBot(dir: string, env: NodeJS.ProcessEnv = process.env): Promise<GithubBot | undefined> {
   const raw = await readJson(configPath(dir));
-  const file = (raw && typeof raw === "object" ? (raw as Partial<Config>).github : undefined) ?? ({} as Partial<GithubBot>);
+  const file =
+    (raw && typeof raw === "object" ? (raw as Partial<Config>).github : undefined) ?? ({} as Partial<GithubBot>);
   const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
   const token = env.LOOPWAY_GITHUB_TOKEN || str(file.token);
   const name = env.LOOPWAY_GITHUB_NAME || str(file.name);
   const email = env.LOOPWAY_GITHUB_EMAIL || str(file.email);
   if (!token && !name && !email) return undefined;
   if (!token || !name || !email) {
-    throw new Error("The GitHub bot needs a token, name and email: set `github` in config.json, or LOOPWAY_GITHUB_TOKEN/NAME/EMAIL.");
+    throw new Error(
+      "The GitHub bot needs a token, name and email: set `github` in config.json, or LOOPWAY_GITHUB_TOKEN/NAME/EMAIL.",
+    );
   }
   return { token, name, email };
 }
