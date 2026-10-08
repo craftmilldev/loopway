@@ -51,8 +51,8 @@ npm run build -w @loopway/cli && npm link -w @loopway/cli      # or put `loopway
 ```
 
 ```bash
+loopway config                         # sets the API URL (default https://loopway.craftmill.dev); skip it for the default
 loopway login                          # emails you a one-time code, trades it for a 30-day session token, saves it (new emails get an account)
-loopway config                         # or paste an existing API URL + key; verifies with GET /me
 loopway whoami
 loopway clear-config                   # deletes ~/.loopway/config.json
 

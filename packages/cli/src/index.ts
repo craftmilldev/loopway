@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { ApiError } from "./client.js";
-import { defaultConfigDir, NotConfiguredError } from "./config.js";
+import { defaultConfigDir, NotLoggedInError } from "./config.js";
 import { CancelledError, UsageError } from "./context.js";
 import { red } from "./format.js";
 import { createProgram } from "./program.js";
@@ -18,10 +18,10 @@ try {
   if (err instanceof CancelledError) process.exit(130);
   if (err instanceof ApiError) {
     console.error(
-      red(`error: ${err.message}`) + (err.code === "unauthorized" ? "\nRun `loopway config` to set a new key." : ""),
+      red(`error: ${err.message}`) + (err.code === "unauthorized" ? "\nRun `loopway login` to log in again." : ""),
     );
     if (err.details) console.error(JSON.stringify(err.details, null, 2));
-  } else if (err instanceof UsageError || err instanceof NotConfiguredError) {
+  } else if (err instanceof UsageError || err instanceof NotLoggedInError) {
     console.error(red(`error: ${err.message}`));
   } else {
     console.error(err);

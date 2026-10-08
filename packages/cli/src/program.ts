@@ -14,7 +14,7 @@ export function createProgram(ctx: Context): Command {
     .addHelpText(
       "after",
       `
-Credentials are stored in ~/.loopway/config.json by \`loopway config\`.
+Credentials are stored in ~/.loopway/config.json by \`loopway login\`.
 LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     );
 
@@ -36,9 +36,8 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
 
   program
     .command("config")
-    .description("set the API URL and key in ~/.loopway/config.json")
-    .option("--url <url>", "API base URL, e.g. https://loopway.example.com")
-    .option("--key <api_key>", "token (prompted for if omitted; LOOPWAY_API_KEY also works)")
+    .description("set the API URL in ~/.loopway/config.json; run `loopway login` after")
+    .option("--url <url>", "API base URL, e.g. https://loopway.example.com (prompted for if omitted)")
     .action((opts) => configure(ctx, opts));
 
   program
