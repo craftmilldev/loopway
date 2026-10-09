@@ -365,7 +365,7 @@ export function createApi(opts: ApiOptions) {
       .parse(await jsonBody(c));
     requireLease(bot, input.lease_token);
 
-    const { assignments } = input;
+    const assignments = input.assignments as store.Assignment[];
     const threadIds = [...new Set(assignments.map((a) => a.thread_id))];
     const bots = await store.threadBots(c.var.db, threadIds);
     const foreign = threadIds.filter((id) => bots.has(id) && bots.get(id) !== bot.id);
@@ -463,7 +463,7 @@ export function createApi(opts: ApiOptions) {
       input.keys.map((key) => ({ key, threadId: input.id })),
     );
     const { messages } = await store.importThread(c.var.db, bot, {
-      ...input,
+      ...(input as store.ImportedThread),
       interrupted: input.interrupted ?? false,
       limited: input.limited ?? false,
     });
