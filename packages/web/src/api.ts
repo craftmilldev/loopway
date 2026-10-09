@@ -4,6 +4,7 @@ import { z, ZodError } from "zod";
 import type { Db } from "./db/index.js";
 import { consoleSender, type SendEmail } from "./email.js";
 import { isUuid, LOGIN_CODE_RE, normalizeLoginCode, uuidv7 } from "./ids.js";
+import { BOT_MODELS } from "./models.js";
 import { sources } from "./sources/index.js";
 import * as store from "./store.js";
 import type { EventRow, Inbox, User } from "./store.js";
@@ -243,7 +244,7 @@ export function createApi(opts: ApiOptions) {
 
   const inboxIdsBody = z.array(z.string().refine(isUuid, "must be an inbox id")).min(1).max(100);
 
-  const modelBody = z.string().min(1).max(100);
+  const modelBody = z.enum(BOT_MODELS);
 
   authed.get("/bots", async (c) => {
     const rows = await store.listBots(c.var.db, c.var.user.id);

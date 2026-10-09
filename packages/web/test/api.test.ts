@@ -197,6 +197,11 @@ describe("bots", () => {
       body: { name: "dev", kind: "github-threads", model: "sonnet", inbox_ids: [a.id] },
     });
     expect(created.status).toBe(201);
+    const unknown = await call("POST", "/bots", {
+      key,
+      body: { name: "y", kind: "github-threads", model: "sonet", inbox_ids: [a.id] },
+    });
+    expect(unknown.status).toBe(400);
     expect(created.body).toMatchObject({
       name: "dev",
       kind: "github-threads",
