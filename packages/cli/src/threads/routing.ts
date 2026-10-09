@@ -7,6 +7,9 @@ interface GithubPayload {
   issue?: { number?: number };
   pull_request?: { number?: number; body?: string | null };
   repository?: { full_name?: string };
+  check_run?: { pull_requests?: { number?: number }[] };
+  check_suite?: { pull_requests?: { number?: number }[] };
+  workflow_run?: { pull_requests?: { number?: number }[] };
 }
 
 /**
@@ -16,7 +19,8 @@ interface GithubPayload {
 export function threadKeys(e: Event): { key?: string; refs: string[] } {
   const d = (e.event.data ?? {}) as GithubPayload;
   const repo = d.repository?.full_name;
-  const n = d.pull_request?.number ?? d.issue?.number ?? d.number;
+  const ci = d.check_run ?? d.check_suite ?? d.workflow_run;
+  const n = d.pull_request?.number ?? d.issue?.number ?? d.number ?? ci?.pull_requests?.[0]?.number;
   if (!repo || typeof n !== "number") return { refs: [] };
   const body = d.pull_request?.body ?? "";
   const refs = [...body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi)].map(
