@@ -1,8 +1,7 @@
 import { Command, InvalidArgumentError, Option } from "commander";
-import { LIST_STATUSES } from "./client.js";
 import { clearConfig, configure, login, whoami } from "./commands/auth.js";
 import { botMessages, createBot, deleteBot, listBots, showBot, updateBot } from "./commands/bots.js";
-import { getEvent, listEvents, lockEvent, markProcessed, nextEvent, unlockEvent } from "./commands/events.js";
+import { getEvent, listEvents } from "./commands/events.js";
 import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
 import { runBots } from "./commands/threads.js";
 import type { Context } from "./context.js";
@@ -21,8 +20,6 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     );
 
   const jsonOpt = () => new Option("--json", "print raw JSON");
-  const ttlOpt = () => new Option("--ttl <seconds>", "lock duration (default 300, max 43200)").argParser(positiveInt);
-  const tokenOpt = () => new Option("--token <lock_token>", "lock token (defaults to the one this machine holds)");
 
   // ---------- auth ----------
 
@@ -103,14 +100,13 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
 
   // ---------- events ----------
 
-  const events = program.command("events").alias("event").description("read and process an inbox's events");
+  const events = program.command("events").alias("event").description("read an inbox's events");
 
   events
     .command("list")
     .alias("ls")
     .description("list events")
     .argument("<inbox>", "inbox id or name")
-    .addOption(new Option("--status <status>", "filter by status (default all)").choices(LIST_STATUSES))
     .option("--type <type>", "exact CloudEvent type, or a prefix ending in * (e.g. com.github.pull_request.*)")
     .option("--limit <n>", "page size (max 100)", positiveInt)
     .addOption(new Option("--order <order>", "sort by arrival").choices(["asc", "desc"]))
@@ -128,43 +124,6 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .option("--data", "print only the CloudEvent data (the webhook payload) as JSON")
     .addOption(jsonOpt())
     .action((ref, id, opts) => getEvent(ctx, ref, id, opts));
-
-  events
-    .command("next")
-    .description("claim the oldest pending event with a lock")
-    .argument("<inbox>", "inbox id or name")
-    .addOption(ttlOpt())
-    .addOption(jsonOpt())
-    .action((ref, opts) => nextEvent(ctx, ref, opts));
-
-  events
-    .command("lock")
-    .description("lock an event, or extend a lock you hold")
-    .argument("<inbox>", "inbox id or name")
-    .argument("<event>", "event id")
-    .addOption(ttlOpt())
-    .addOption(tokenOpt())
-    .addOption(jsonOpt())
-    .action((ref, id, opts) => lockEvent(ctx, ref, id, opts));
-
-  events
-    .command("unlock")
-    .description("release a lock; the event goes back to pending")
-    .argument("<inbox>", "inbox id or name")
-    .argument("<event>", "event id")
-    .addOption(tokenOpt())
-    .addOption(jsonOpt())
-    .action((ref, id, opts) => unlockEvent(ctx, ref, id, opts));
-
-  events
-    .command("done")
-    .alias("processed")
-    .description("mark an event processed")
-    .argument("<inbox>", "inbox id or name")
-    .argument("<event>", "event id")
-    .addOption(tokenOpt())
-    .addOption(jsonOpt())
-    .action((ref, id, opts) => markProcessed(ctx, ref, id, opts));
 
   // ---------- bots ----------
 

@@ -127,7 +127,7 @@ export async function readJson(path: string): Promise<unknown> {
   }
 }
 
-/** Writes owner-only (0600 file in a 0700 dir): these files hold the API key and lock tokens. */
+/** Writes owner-only (0600 file in a 0700 dir): these files hold the API key. */
 export async function writeJson(path: string, value: unknown): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   await writeFile(path, JSON.stringify(value, null, 2) + "\n", { mode: 0o600 });

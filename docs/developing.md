@@ -59,7 +59,6 @@ packages/cli/
   src/commands/         auth, inboxes (incl. the create TUI, @clack/prompts), events, bots, threads
   src/client.ts         typed API client
   src/config.ts         ~/.loopway/config.json
-  src/locks.ts          ~/.loopway/locks.json
   src/mcp.ts            minimal MCP server (HTTP, localhost) the bots dispatcher serves to its sessions
   src/threads/          `loopway bots run`: dispatcher.ts (lease, read, assign, deliver), kinds.ts (bot kind → route + prompt),
                         routing.ts (github-threads: message → session), store.ts (~/.loopway/threads.json + its lock),

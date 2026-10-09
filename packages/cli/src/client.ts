@@ -30,14 +30,8 @@ export interface Inbox {
 }
 
 export interface InboxStats {
-  pending: number;
-  locked: number;
-  processed: number;
+  events: number;
 }
-
-export type EventStatus = "pending" | "locked" | "processed";
-export const LIST_STATUSES = ["all", "pending", "locked", "processed", "unprocessed"] as const;
-export type ListStatus = (typeof LIST_STATUSES)[number];
 
 export interface CloudEvent {
   specversion: string;
@@ -56,11 +50,7 @@ export interface Event {
   inbox_id: string;
   /** Arrival order across all inboxes; bots read by it. */
   seq: number;
-  status: EventStatus;
   received_at: string;
-  locked_until: string | null;
-  processed_at: string | null;
-  lock_count: number;
   event: CloudEvent;
 }
 
@@ -79,12 +69,7 @@ export interface Lease {
   expires_at: string;
 }
 
-export interface LockedEvent extends Event {
-  lock: Lease;
-}
-
 export interface ListEventsQuery {
-  status?: ListStatus;
   type?: string;
   limit?: number;
   order?: "asc" | "desc";
@@ -169,23 +154,6 @@ export class LoopwayClient {
 
   getEvent(inboxId: string, eventId: string) {
     return this.request<Event>("GET", `${events(inboxId)}/${enc(eventId)}`);
-  }
-
-  /** Claims the oldest pending event. `null` when nothing is available. */
-  next(inboxId: string, opts: { ttl_seconds?: number } = {}) {
-    return this.request<LockedEvent | null>("POST", `${events(inboxId)}/next`, opts);
-  }
-
-  lock(inboxId: string, eventId: string, opts: { ttl_seconds?: number; lock_token?: string } = {}) {
-    return this.request<LockedEvent>("POST", `${events(inboxId)}/${enc(eventId)}/lock`, opts);
-  }
-
-  unlock(inboxId: string, eventId: string, lockToken: string) {
-    return this.request<Event>("POST", `${events(inboxId)}/${enc(eventId)}/unlock`, { lock_token: lockToken });
-  }
-
-  processed(inboxId: string, eventId: string, opts: { lock_token?: string } = {}) {
-    return this.request<Event>("POST", `${events(inboxId)}/${enc(eventId)}/processed`, opts);
   }
 
   // ---------- bots ----------

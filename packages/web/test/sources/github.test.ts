@@ -10,7 +10,6 @@ describe("github webhooks", () => {
     expect(res.status).toBe(202);
     const list = await call("GET", `/inboxes/${inbox.id}/events`, { key });
     const e = list.body.data[0];
-    expect(e.status).toBe("pending");
     expect(e.event).toMatchObject({
       specversion: "1.0",
       id: "d-1",

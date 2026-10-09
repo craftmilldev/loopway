@@ -3,8 +3,8 @@
 loopway is a place to build bots and work alongside them. It accepts webhooks from the services you already use (GitHub, Vercel and Granola so far, plus loopway itself so bots can message each other), stores each delivery as a [CloudEvent](https://github.com/cloudevents/spec) in an **inbox**, and lets a bot work through them one at a time. The bot can be a script, a cron job or a Claude agent.
 
 - An **inbox** belongs to a user and listens to one source. The source's webhook points at the inbox, which checks the signature and keeps the event.
-- An **event** is pending until a consumer claims it with a lock, then processed when the consumer says so. Locks expire, so a crashed consumer's event goes back in the queue.
-- A **bot** reads the events of one or more inboxes in arrival order and keeps a cursor. `loopway bots run` turns GitHub issues and PRs into Claude Code sessions that pick up comments and reviews as they come in.
+- An **event** is a stored message: the CloudEvent, when it arrived, and its place in arrival order. Nothing is marked done.
+- A **bot** reads the events of one or more inboxes in arrival order and keeps a cursor, so it knows where it left off. `loopway bots run` turns GitHub issues and PRs into Claude Code sessions that pick up comments and reviews as they come in.
 
 It runs on Vercel at [loopway.craftmill.dev](https://loopway.craftmill.dev), with a small web UI for logging in, creating inboxes and reading events.
 
@@ -39,15 +39,11 @@ loopway clear-config                   # deletes ~/.loopway/config.json
 
 loopway inbox create                   # interactive: name → source → events → secret → confirm
 loopway inbox list
-loopway inbox show <inbox>             # webhook setup + pending/locked/processed counts
+loopway inbox show <inbox>             # webhook setup + event count
 loopway inbox update <inbox> [--name n] [--events a,b] [--secret s] [--schema file.json]   # with no flags in a terminal, asks for the secret
 
-loopway events list <inbox> [--status pending] [--type 'com.github.pull_request.*'] [--limit 20] [--all]
+loopway events list <inbox> [--type 'com.github.pull_request.*'] [--limit 20] [--all]
 loopway events get  <inbox> <event> [--data]
-loopway events next <inbox> [--ttl 600]
-loopway events lock <inbox> <event> [--ttl 600]
-loopway events unlock <inbox> <event>
-loopway events done <inbox> <event>
 
 loopway bots create --name dev --kind github-threads --inbox <inbox>[,<inbox>]
 loopway bots list
@@ -59,10 +55,9 @@ loopway bots run [--max 3] [--interval 5] [--ttl 3600] [--no-tui]   # run your b
 ```
 
 - `<inbox>` is an inbox id or its exact name; `<bot>` is a bot id or its exact name.
-- Every read command takes `--json` for the raw API response. `events next --json` prints nothing when the inbox is empty.
+- Every read command takes `--json` for the raw API response.
 - `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`, `--schema file.json` for `loopway` inboxes); without a terminal it runs from flags alone. For sources whose sender makes the secret (`vercel`, `granola`) it doesn't ask for one: add the webhook in the sender, then paste the secret it shows with `loopway inbox update <inbox>` (or on the inbox's dashboard page).
 - Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, plus an optional `github` bot for [bot sessions](#acting-as-a-github-bot), mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `https://loopway.craftmill.dev`.
-- Lock tokens from `next`/`lock` are kept in `~/.loopway/locks.json` until they expire, so `lock` (renew), `unlock` and `done` on the same machine don't need `--token`.
 - A bot reads messages from one or more inboxes (see [Bots](docs/api.md#bots)). `--kind` must be one this CLI knows how to run: `github-threads`. `loopway bots run` runs them (see [Running bots](#running-bots)).
 
 ### Running bots

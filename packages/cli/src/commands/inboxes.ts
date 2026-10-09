@@ -30,7 +30,7 @@ export async function showInbox(ctx: Context, ref: string, opts: { json?: boolea
         ["id", inbox.id],
         ["source", inbox.source_type],
         ["created", `${inbox.created_at} ${dim(`(${ago(inbox.created_at)})`)}`],
-        ["events", `${stats.pending} pending · ${stats.locked} locked · ${stats.processed} processed`],
+        ["events", stats.events],
       ]),
       "",
       setupText(inbox),

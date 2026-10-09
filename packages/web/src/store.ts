@@ -128,12 +128,8 @@ export async function deleteInbox(db: Db, id: string): Promise<void> {
 }
 
 export async function inboxStats(db: Db, inboxId: string) {
-  const [row] = await db.query<{ pending: number; locked: number; processed: number }>(
-    `SELECT
-       count(*) FILTER (WHERE processed_at IS NULL AND (locked_until IS NULL OR locked_until <= now()))::int AS pending,
-       count(*) FILTER (WHERE processed_at IS NULL AND locked_until > now())::int AS locked,
-       count(*) FILTER (WHERE processed_at IS NOT NULL)::int AS processed
-     FROM loopway.events WHERE inbox_id = $1`,
+  const [row] = await db.query<{ events: number }>(
+    `SELECT count(*)::int AS events FROM loopway.events WHERE inbox_id = $1`,
     [inboxId],
   );
   return row!;
@@ -141,36 +137,16 @@ export async function inboxStats(db: Db, inboxId: string) {
 
 // ---------- Events ----------
 
-export type EventStatus = "pending" | "locked" | "processed";
-
 export interface EventRow {
   id: string;
   inbox_id: string;
   /** bigint; drivers return it as a string or BigInt. */
   seq: string | bigint;
-  status: EventStatus;
   cloudevent: CloudEvent;
   received_at: Date;
-  lock_token: string | null;
-  locked_until: Date | null;
-  lock_count: number;
-  processed_at: Date | null;
 }
 
-const EVENT_COLS = `
-  id, inbox_id, seq, cloudevent, received_at, lock_token, locked_until, lock_count, processed_at,
-  CASE WHEN processed_at IS NOT NULL THEN 'processed'
-       WHEN locked_until > now()     THEN 'locked'
-       ELSE 'pending' END AS status`;
-
-const STATUS_WHERE: Record<string, string> = {
-  pending: `processed_at IS NULL AND (locked_until IS NULL OR locked_until <= now())`,
-  locked: `processed_at IS NULL AND locked_until > now()`,
-  processed: `processed_at IS NOT NULL`,
-  unprocessed: `processed_at IS NULL`,
-  all: `TRUE`,
-};
-export const LIST_STATUSES = Object.keys(STATUS_WHERE) as [string, ...string[]];
+const EVENT_COLS = `id, inbox_id, seq, cloudevent, received_at`;
 
 /** Returns the stored event and whether it was a redelivery of one we already had (same CE source+id). */
 export async function insertEvent(db: Db, inboxId: string, ce: CloudEvent) {
@@ -192,10 +168,10 @@ export async function insertEvent(db: Db, inboxId: string, ce: CloudEvent) {
 export async function listEvents(
   db: Db,
   inboxId: string,
-  opts: { status: string; type?: string; after?: string; limit: number; order: "asc" | "desc" },
+  opts: { type?: string; after?: string; limit: number; order: "asc" | "desc" },
 ) {
   const params: unknown[] = [inboxId];
-  const where = [`inbox_id = $1`, STATUS_WHERE[opts.status] ?? "TRUE"];
+  const where = [`inbox_id = $1`];
   if (opts.type) {
     if (opts.type.endsWith("*")) {
       params.push(opts.type.slice(0, -1).replace(/[\\%_]/g, "\\$&") + "%");
@@ -228,82 +204,6 @@ export async function getEvent(db: Db, inboxId: string, eventId: string): Promis
   return row;
 }
 
-/**
- * Lock one event. Succeeds if it's unprocessed and either unlocked, expired, or already locked with
- * `currentToken` (in which case the lock is extended and the token kept).
- */
-export async function lockEvent(
-  db: Db,
-  inboxId: string,
-  eventId: string,
-  ttlSeconds: number,
-  currentToken: string | null,
-): Promise<EventRow | undefined> {
-  const [row] = await db.query<EventRow>(
-    `UPDATE loopway.events SET
-       lock_token   = CASE WHEN lock_token = $4 THEN lock_token ELSE $3 END,
-       lock_count   = CASE WHEN lock_token = $4 THEN lock_count ELSE lock_count + 1 END,
-       locked_until = now() + $5::int * interval '1 second'
-     WHERE id = $1 AND inbox_id = $2 AND processed_at IS NULL
-       AND (locked_until IS NULL OR locked_until <= now() OR lock_token = $4)
-     RETURNING ${EVENT_COLS}`,
-    [eventId, inboxId, newLockToken(), currentToken, ttlSeconds],
-  );
-  return row;
-}
-
-/** Atomically claim the oldest available event. SKIP LOCKED keeps concurrent consumers from colliding. */
-export async function claimNext(db: Db, inboxId: string, ttlSeconds: number): Promise<EventRow | undefined> {
-  const [row] = await db.query<EventRow>(
-    `UPDATE loopway.events SET
-       lock_token   = $2,
-       lock_count   = lock_count + 1,
-       locked_until = now() + $3::int * interval '1 second'
-     WHERE id = (
-       SELECT id FROM loopway.events
-       WHERE inbox_id = $1 AND processed_at IS NULL AND (locked_until IS NULL OR locked_until <= now())
-       ORDER BY id
-       LIMIT 1
-       FOR UPDATE SKIP LOCKED
-     )
-     RETURNING ${EVENT_COLS}`,
-    [inboxId, newLockToken(), ttlSeconds],
-  );
-  return row;
-}
-
-export async function unlockEvent(
-  db: Db,
-  inboxId: string,
-  eventId: string,
-  token: string,
-): Promise<EventRow | undefined> {
-  const [row] = await db.query<EventRow>(
-    `UPDATE loopway.events SET lock_token = NULL, locked_until = NULL
-     WHERE id = $1 AND inbox_id = $2 AND processed_at IS NULL AND lock_token = $3
-     RETURNING ${EVENT_COLS}`,
-    [eventId, inboxId, token],
-  );
-  return row;
-}
-
-/** Mark processed. Allowed when the caller holds the lock, or nobody holds a live lock. */
-export async function markProcessed(
-  db: Db,
-  inboxId: string,
-  eventId: string,
-  token: string | null,
-): Promise<EventRow | undefined> {
-  const [row] = await db.query<EventRow>(
-    `UPDATE loopway.events SET processed_at = now(), lock_token = NULL, locked_until = NULL
-     WHERE id = $1 AND inbox_id = $2 AND processed_at IS NULL
-       AND (locked_until IS NULL OR locked_until <= now() OR lock_token = $3)
-     RETURNING ${EVENT_COLS}`,
-    [eventId, inboxId, token],
-  );
-  return row;
-}
-
 // ---------- Bots ----------
 
 export interface Bot {
@@ -314,7 +214,7 @@ export interface Bot {
   /** bigint: the `seq` of the last message the bot has read past. */
   cursor: string | bigint;
   inbox_ids: string[];
-  /** The runner's lease, with the same TTL rules as event locks: see leaseBot(). */
+  /** The runner's lease: see leaseBot(). */
   lock_token: string | null;
   locked_until: Date | null;
   created_at: Date;
