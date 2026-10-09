@@ -352,14 +352,22 @@ export async function createBot(
   return (await getBot(db, id))!;
 }
 
+// Deleted bots keep their row (deleted_at is set), and nothing reads them.
+
 export async function listBots(db: Db, userId: string): Promise<Bot[]> {
-  return db.query<Bot>(`SELECT ${BOT_COLS} FROM loopway.bots b WHERE b.user_id = $1 ORDER BY b.id`, [userId]);
+  return db.query<Bot>(
+    `SELECT ${BOT_COLS} FROM loopway.bots b WHERE b.user_id = $1 AND b.deleted_at IS NULL ORDER BY b.id`,
+    [userId],
+  );
 }
 
 export async function getBot(db: Db, id: string, userId?: string): Promise<Bot | undefined> {
   const [row] = userId
-    ? await db.query<Bot>(`SELECT ${BOT_COLS} FROM loopway.bots b WHERE b.id = $1 AND b.user_id = $2`, [id, userId])
-    : await db.query<Bot>(`SELECT ${BOT_COLS} FROM loopway.bots b WHERE b.id = $1`, [id]);
+    ? await db.query<Bot>(
+        `SELECT ${BOT_COLS} FROM loopway.bots b WHERE b.id = $1 AND b.user_id = $2 AND b.deleted_at IS NULL`,
+        [id, userId],
+      )
+    : await db.query<Bot>(`SELECT ${BOT_COLS} FROM loopway.bots b WHERE b.id = $1 AND b.deleted_at IS NULL`, [id]);
   return row;
 }
 
@@ -380,7 +388,7 @@ export async function updateBot(db: Db, bot: Bot, patch: { name?: string; inboxI
 }
 
 export async function deleteBot(db: Db, id: string): Promise<void> {
-  await db.query(`DELETE FROM loopway.bots WHERE id = $1`, [id]);
+  await db.query(`UPDATE loopway.bots SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`, [id]);
 }
 
 /** Take the lease if it's free or expired, or renew it with the token that holds it. */
@@ -394,7 +402,7 @@ export async function leaseBot(
     `UPDATE loopway.bots SET
        lock_token   = CASE WHEN lock_token = $3 THEN lock_token ELSE $2 END,
        locked_until = now() + $4::int * interval '1 second'
-     WHERE id = $1 AND (locked_until IS NULL OR locked_until <= now() OR lock_token = $3)
+     WHERE id = $1 AND deleted_at IS NULL AND (locked_until IS NULL OR locked_until <= now() OR lock_token = $3)
      RETURNING id`,
     [id, newLockToken(), currentToken, ttlSeconds],
   );

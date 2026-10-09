@@ -129,6 +129,7 @@ CREATE TABLE loopway.bots (
   lock_token    text,
   locked_until  timestamptz,
   created_at    timestamptz NOT NULL DEFAULT now(),
+  deleted_at    timestamptz,
   CONSTRAINT bots_id_user_unique UNIQUE (id, user_id)
 );
 

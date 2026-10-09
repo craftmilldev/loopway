@@ -197,8 +197,16 @@ describe("bots", () => {
     await call("DELETE", `/inboxes/${b.id}`, { key });
     expect((await call("GET", `/bots/${id}`, { key })).body.inbox_ids).toEqual([]);
 
+    // Deleting is soft: the row stays, but the API no longer sees it.
     expect((await call("DELETE", `/bots/${id}`, { key })).status).toBe(204);
     expect((await call("GET", `/bots/${id}`, { key })).status).toBe(404);
+    expect((await call("GET", "/bots", { key })).body.data).toEqual([]);
+    expect((await call("POST", `/bots/${id}/lease`, { key })).status).toBe(404);
+    expect((await call("DELETE", `/bots/${id}`, { key })).status).toBe(404);
+    const [row] = await db.query<{ deleted_at: Date | null }>(`SELECT deleted_at FROM loopway.bots WHERE id = $1`, [
+      id,
+    ]);
+    expect(row?.deleted_at).toBeTruthy();
   });
 
   it("won't attach another user's inbox, or show a bot to another user", async () => {
@@ -232,11 +240,11 @@ describe("bots", () => {
     const key = await newUser();
     const inbox = await newInbox(key);
     for (let i = 1; i <= 2; i++) await sendGithub(inbox, "pull_request", prPayload(i));
-    const before = (await call("GET", `/inboxes/${inbox.id}/events`, { key })).body.data;
-    expect(before[1].seq).toBeGreaterThan(before[0].seq);
+    // Not before[1]: ids made in the same millisecond can sort either way, so the newest is the highest seq.
+    const newest = Math.max(...seqs(await call("GET", `/inboxes/${inbox.id}/events`, { key })));
 
     const bot = (await call("POST", "/bots", { key, body: { name: "b", kind: "k", inbox_ids: [inbox.id] } })).body;
-    expect(bot.cursor).toBe(before[1].seq);
+    expect(bot.cursor).toBe(newest);
 
     for (let i = 3; i <= 5; i++) await sendGithub(inbox, "pull_request", prPayload(i));
     // Just arrived: held back.
@@ -247,7 +255,7 @@ describe("bots", () => {
     expect(msgs.body.data.map((e: any) => e.event.data.number)).toEqual([3, 4, 5]);
     const after = seqs(msgs);
     expect(after).toEqual([...after].sort((x, y) => x - y));
-    expect(after[0]).toBeGreaterThan(before[1].seq);
+    expect(after[0]).toBeGreaterThan(newest);
     expect(seqs(await call("GET", `/bots/${bot.id}/messages?limit=2`, { key }))).toEqual(after.slice(0, 2));
 
     // A fresh message stops the read there, even if an older-looking one follows it.
