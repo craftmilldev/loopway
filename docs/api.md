@@ -40,7 +40,7 @@ Each source's `config`, how to connect it in the sender, and how its deliveries 
 
 ## Messages
 
-All under `/inboxes/:inboxId/messages` (the old `/events` paths still work as deprecated aliases). A message is a stored delivery: there's no per-message status, and nothing marks one done. Bots keep their place with a cursor (see [Bots](#bots)).
+All under `/inboxes/:inboxId/messages`. A message is a stored delivery: there's no per-message status, and nothing marks one done. Bots keep their place with a cursor (see [Bots](#bots)).
 
 |                |                                                                                                                                                                                                                    |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

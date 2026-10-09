@@ -165,8 +165,7 @@ ALTER TABLE loopway.events
 `,
   },
   {
-    // Stored events are now messages. The events view keeps still-deployed code working between this migration and
-    // the deploy; a later migration drops it.
+    // Stored events are now messages. Run this before deploying the code that reads loopway.messages.
     version: "007_events_to_messages",
     sql: `
 ALTER TABLE loopway.events RENAME TO messages;
@@ -180,8 +179,6 @@ ALTER INDEX loopway.events_inbox_idx RENAME TO messages_inbox_idx;
 ALTER INDEX loopway.events_seq_idx RENAME TO messages_seq_idx;
 
 ALTER SEQUENCE loopway.events_seq_seq RENAME TO messages_seq_seq;
-
-CREATE VIEW loopway.events AS SELECT * FROM loopway.messages;
 `,
   },
 ];

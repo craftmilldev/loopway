@@ -214,9 +214,9 @@ export function createApi(opts: ApiOptions) {
     return c.body(null, 204);
   });
 
-  // Messages (the /events paths are deprecated aliases)
+  // Messages
 
-  authed.on("GET", ["/inboxes/:inboxId/messages", "/inboxes/:inboxId/events"], async (c) => {
+  authed.get("/inboxes/:inboxId/messages", async (c) => {
     const inbox = await ownedInbox(c);
     const q = z
       .object({
@@ -237,7 +237,7 @@ export function createApi(opts: ApiOptions) {
 
   const ttlBody = z.object({ ttl_seconds: z.number().int().min(1).max(MAX_TTL).default(DEFAULT_TTL) });
 
-  authed.on("GET", ["/inboxes/:inboxId/messages/:messageId", "/inboxes/:inboxId/events/:messageId"], async (c) => {
+  authed.get("/inboxes/:inboxId/messages/:messageId", async (c) => {
     const inbox = await ownedInbox(c);
     return c.json(serializeMessage(await existingMessage(c, inbox)));
   });

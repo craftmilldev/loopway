@@ -167,13 +167,6 @@ describe("messages", () => {
     expect(Object.keys(p1.body.data[0]).sort()).toEqual(["event", "id", "inbox_id", "received_at", "seq"]);
   });
 
-  it("still answers on the deprecated /events paths", async () => {
-    const { key, base, ids } = await setup(2);
-    const old = await call("GET", base.replace("/messages", "/events"), { key });
-    expect(old.body.data.map((e: any) => e.id)).toEqual(ids);
-    expect((await call("GET", `${base.replace("/messages", "/events")}/${ids[0]}`, { key })).body.id).toBe(ids[0]);
-  });
-
   it("counts an inbox's messages", async () => {
     const { key, inbox } = await setup(2);
     expect((await call("GET", `/inboxes/${inbox.id}`, { key })).body.stats).toEqual({ messages: 2 });

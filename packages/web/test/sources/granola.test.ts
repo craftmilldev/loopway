@@ -48,7 +48,7 @@ describe("granola webhooks", () => {
     const key = await newUser();
     const inbox = await granolaInbox(key);
     expect((await sendGranola(inbox.id, note(), { id: "evt-1" })).status).toBe(202);
-    const e = (await call("GET", `/inboxes/${inbox.id}/events`, { key })).body.data[0];
+    const e = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data[0];
     expect(e.event).toMatchObject({
       specversion: "1.0",
       id: "evt-1",
@@ -84,7 +84,7 @@ describe("granola webhooks", () => {
     const filtered = await sendGranola(inbox.id, note("note.edited"));
     expect(filtered.status).toBe(422);
     expect((await filtered.json()).error.message).toBe('event "note.edited" not enabled for this inbox');
-    expect((await call("GET", `/inboxes/${inbox.id}/events`, { key })).body.data).toHaveLength(0);
+    expect((await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data).toHaveLength(0);
   });
 
   it("dedupes redeliveries", async () => {
