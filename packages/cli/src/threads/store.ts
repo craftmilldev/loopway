@@ -22,6 +22,8 @@ export interface Session {
   started: boolean;
   /** Set when the last run stopped at the usage limit after taking its messages: the next run resumes it. */
   limited?: true;
+  /** Set when the last run took its messages, then ended on an API error: the next run resumes it. */
+  interrupted?: true;
   created_at: string;
   updated_at: string;
 }

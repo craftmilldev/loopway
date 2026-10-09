@@ -8,10 +8,10 @@ import { openDb, type Db } from "@loopway/web/db";
 import { createUser } from "@loopway/web/store";
 import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { LoopwayClient, type Bot } from "../src/client.js";
 import { LIMIT_FALLBACK_MS, LimitWatch, threadPrompt, type AgentRun, type RunOutcome } from "../src/threads/agent.js";
-import { Dispatcher } from "../src/threads/dispatcher.js";
+import { API_ERROR_BACKOFF_MS, Dispatcher } from "../src/threads/dispatcher.js";
 import { defaultTtl } from "../src/commands/threads.js";
 import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
 import { botEnv } from "../src/threads/github.js";
@@ -714,6 +714,87 @@ describe("threads", () => {
     stale.line(JSON.stringify({ type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt: 1 } }));
     stale.line(limited);
     expect(stale.limitedUntil(now)).toBe(now + LIMIT_FALLBACK_MS);
+  });
+
+  it("retries a session whose run ended on an API error, with a backoff and a cap", async () => {
+    const { inbox, runs, out, d, finish } = await setup(3);
+    await send(inbox, "issues", issue("opened", 1));
+    await d.tick();
+    const [first] = runs;
+    const error = "API Error: Can't reach the API server (ENOTFOUND)";
+
+    // The first run took its messages, then the network dropped: nothing starts until the backoff passes.
+    await finish({ code: 0, delivered: true, apiError: error });
+    expect(out.join("\n")).toMatch(/hit an API error .*ENOTFOUND.*retry 1\/3/);
+    expect((await d.state()).sessions[first!.sessionId]!.interrupted).toBe(true);
+    await d.tick();
+    expect(runs).toHaveLength(1);
+
+    const real = Date.now;
+    let skew = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => real() + skew);
+    try {
+      skew = API_ERROR_BACKOFF_MS + 1000;
+      await d.tick();
+      expect(runs).toHaveLength(2);
+      expect(out.join("\n")).toMatch(/resumed \w+ for a\/b#1 \(after an API error, 0 messages\)/);
+      expect(runs[1]!.resume).toBe(true);
+      expect(runs[1]!.message).toMatch(/^Your last run stopped on an API error/);
+      expect((await d.state()).sessions[first!.sessionId]!.interrupted).toBeUndefined();
+
+      await finish({ code: 0, delivered: true, apiError: error });
+      expect(out.join("\n")).toMatch(/retry 2\/3/);
+      skew += 2 * API_ERROR_BACKOFF_MS + 1000;
+      await d.tick();
+      expect(runs).toHaveLength(3);
+      await finish({ code: 0, delivered: true, apiError: error });
+      expect(out.join("\n")).toMatch(/retry 3\/3/);
+      skew += 4 * API_ERROR_BACKOFF_MS + 1000;
+      await d.tick();
+      expect(runs).toHaveLength(4);
+
+      // The cap: the fourth failure in a row is not retried.
+      await finish({ code: 0, delivered: true, apiError: error });
+      expect(out.join("\n")).toMatch(/giving up after 3 retries/);
+      expect((await d.state()).sessions[first!.sessionId]!.interrupted).toBeUndefined();
+      skew += 100 * API_ERROR_BACKOFF_MS;
+      await d.tick();
+      expect(runs).toHaveLength(4);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("redelivers an API-errored run's messages when they never reached the session", async () => {
+    const { inbox, runs, d, finish } = await setup(3);
+    await send(inbox, "issues", issue("opened", 1));
+    await d.tick();
+    await finish({ code: 0, delivered: false, apiError: "API Error: offline" });
+    expect((await d.state()).waiting.map((m) => m.key)).toEqual(["a/b#1"]);
+    const real = Date.now;
+    vi.spyOn(Date, "now").mockImplementation(() => real() + API_ERROR_BACKOFF_MS + 1000);
+    try {
+      await d.tick();
+      expect(runs).toHaveLength(2);
+      expect((await d.state()).waiting).toEqual([]);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("LimitWatch: a result that is an API error is reported, unless it is the usage limit", () => {
+    const w = new LimitWatch();
+    expect(w.apiError()).toBeUndefined();
+    w.line(
+      JSON.stringify({ type: "result", subtype: "success", is_error: true, result: "API Error: Your computer went to sleep" }),
+    );
+    expect(w.apiError()).toBe("API Error: Your computer went to sleep");
+    const limited = new LimitWatch();
+    limited.line(JSON.stringify({ type: "result", is_error: true, api_error: "usage_limit_reached", result: "limit" }));
+    expect(limited.apiError()).toBeUndefined();
+    const fine = new LimitWatch();
+    fine.line(JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "done" }));
+    expect(fine.apiError()).toBeUndefined();
   });
 
   it("runs every bot, sharing --max across them", async () => {
