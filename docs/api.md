@@ -25,50 +25,17 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 | `PATCH /inboxes/:id` `{name?, config?}`        | Update. Config merges onto existing (secret kept unless given).                                                                                                                                                             |
 | `DELETE /inboxes/:id`                          | Deletes the inbox and its events.                                                                                                                                                                                           |
 
-**`github` config:** `{ "secret"?: string (≥16 chars, generated if omitted), "events"?: ["push", "pull_request", ...] (default ["*"]) }`
-
-In GitHub → Settings → Webhooks: Payload URL = `webhook_url`, Content type = `application/json`, Secret = `config.secret`.
-
-**`vercel` config:** `{ "secret"?: string, "events"?: ["deployment.error", ...] (default ["*"]) }`. `config.secret` is `null` until set.
-
-In Vercel → Team Settings → Webhooks: Endpoint URL = `webhook_url`. Vercel shows a secret once the webhook is created; `PATCH` it into `config.secret`. Until then deliveries get `401`.
-
-**`granola` config:** `{ "secret"?: "whsec_…", "events"?: ["note.generated", "note.edited", "note.access_granted"] (default ["*"]) }`. `config.secret` is `null` until set.
-
-Granola webhooks need a Business or Enterprise plan. Granola generates the signing secret after it has the URL, so:
-
-1. `loopway inbox create --name notes --source granola` and copy its `webhook_url`.
-2. In the Granola desktop app: Settings → Connectors → Webhooks → Set up a webhook (or a folder → Integrations → Webhooks for one folder). Paste the URL.
-3. Copy the `whsec_…` secret Granola shows (only once) and run `loopway inbox update notes --secret whsec_…`, or paste it on the inbox's dashboard page. Until then the inbox answers `401`, and Granola drops those deliveries without retrying.
-4. Record a meeting, or edit a note's summary, and check `loopway events list notes`.
-
-Each event only carries `note_id`; fetch the note itself with a Granola API key (Settings → Connectors → API keys): `curl -H "Authorization: Bearer grn_…" <event source>`.
-
-**`loopway` config:** `{ "secret"?: string (≥16 chars, generated if omitted), "events"?: ["build.finished", ...] (default ["*"]), "schema"?: JSON Schema }`. Bots and backends use these inboxes to send each other messages. The secret is the inbox token they send as a bearer token. `schema` is a JSON Schema (2020-12) every message must match; its `required` must include `type`, `id` and `data`, and the default, `{"type": "object", "required": ["type", "id", "data"]}`, accepts any values for them. Set it with `loopway inbox create --schema schema.json` or `loopway inbox update <inbox> --schema schema.json`.
-
-```sh
-curl -X POST <webhook_url> \
-  -H "Authorization: Bearer <inbox token>" \
-  -H "Content-Type: application/json" \
-  -d '{"type": "build.finished", "id": "build-42", "data": {"ok": true}}'
-```
+Each source's `config`, how to connect it in the sender, and how its deliveries map to CloudEvents are in `docs/sources/`: [github](sources/github.md), [vercel](sources/vercel.md), [granola](sources/granola.md) and [loopway](sources/loopway.md).
 
 ## Webhook ingestion
 
-`POST /webhooks/:inboxId` — no API key; authenticated by the source (GitHub: `X-Hub-Signature-256` HMAC-SHA256; Vercel: `X-Vercel-Signature` HMAC-SHA1; Granola: Standard Webhooks `webhook-signature`, timestamp within 5 minutes; Loopway: `Authorization: Bearer <inbox token>`).
+`POST /webhooks/:inboxId` — no API key; authenticated by the source: a signature header, or a bearer token for `loopway` inboxes (see each source's doc).
 
 - `202 {id, duplicate:false}` stored
 - `200 {id, duplicate:true}` redelivery of an event already stored (same CloudEvent `source`+`id`)
 - `200 {ignored:true, reason}` `ping`
 - `400` malformed body (for Loopway, one that doesn't match the inbox schema) · `401` bad/missing signature or token (or, for Vercel and Granola, no secret set yet) · `404` unknown inbox · `415` unsupported content type · `422` event type not in `config.events` (GitHub shows it as a failed delivery and doesn't retry it; Vercel retries any non-2xx for up to 24 hours; Granola retries only 408, 429 and 5xx)
 
-GitHub → CloudEvent mapping follows the [CloudEvents GitHub adapter spec](https://github.com/cloudevents/spec/blob/main/cloudevents/adapters/github.md): `id` = `X-GitHub-Delivery`, `type` = `com.github.<event>.<action>`, `source`/`subject`/`time` per event, `data` = payload.
-
-Vercel → CloudEvent: `id` = body `id`, `type` = `com.vercel.<type>` (e.g. `com.vercel.deployment.error`), `source` = the project's API URL (`https://api.vercel.com/v9/projects/<id>`, else the team's), `subject` = what the event is about (the deployment id for `deployment.*`, the project id for `project.*`, the domain name for `domain.*`, …, else the event id, so every event has one), `time` = `createdAt`, `data` = the whole body.
-
-Granola → CloudEvent: `id` = `webhook-id`, `type` = `ai.granola.<event_type>` (e.g. `ai.granola.note.generated`), `source` = `https://public-api.granola.ai/v1/notes/<note_id>`, `subject` = `note_id`, `time` = `occurred_at`, `data` = payload.
-
-Loopway → CloudEvent: `id` = a new UUID per message (so nothing is deduped), `type` = body `type` (a non-empty string), `source` = the inbox's webhook URL, `subject` = `<type>/<id>` with body `id` (a string or number naming what the message is about, so every message about it shares a subject), `time` = receive time, `data` = body `data`.
 
 ## Events
 

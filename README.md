@@ -8,7 +8,8 @@ loopway is a place to build bots and work alongside them. It accepts webhooks fr
 
 It runs on Vercel at [loopway.craftmill.dev](https://loopway.craftmill.dev), with a small web UI for logging in, creating inboxes and reading events.
 
-- [`docs/api.md`](docs/api.md): the HTTP API, the webhook ingestion rules, and how each source maps to a CloudEvent.
+- [`docs/sources/`](docs/sources/): one page per source ([github](docs/sources/github.md), [vercel](docs/sources/vercel.md), [granola](docs/sources/granola.md), [loopway](docs/sources/loopway.md)): its config, how to connect it, and how its deliveries map to CloudEvents.
+- [`docs/api.md`](docs/api.md): the HTTP API and the webhook ingestion rules.
 - [`docs/developing.md`](docs/developing.md): running the server locally, deploying it, the repo layout, and adding a source.
 
 ## Getting started
