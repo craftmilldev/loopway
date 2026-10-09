@@ -1,14 +1,10 @@
 import { stripVTControlCharacters, styleText } from "node:util";
-import type { EventStatus } from "./client.js";
 
 // styleText drops the colors itself when stdout isn't a TTY or NO_COLOR is set.
 export const bold = (s: string) => styleText("bold", s);
 export const dim = (s: string) => styleText("dim", s);
 export const red = (s: string) => styleText("red", s);
 export const cyan = (s: string) => styleText("cyan", s);
-
-const STATUS_COLOR = { pending: "yellow", locked: "cyan", processed: "green" } as const;
-export const status = (s: EventStatus) => styleText(STATUS_COLOR[s] ?? "reset", s);
 
 export function table(headers: string[], rows: string[][]): string {
   const all = [headers.map((h) => bold(h)), ...rows];

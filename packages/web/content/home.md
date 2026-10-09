@@ -20,18 +20,17 @@ loopway threads <inbox>
 ```
 loopway login
 loopway inbox list
-loopway events list <inbox> --status pending
-loopway events next <inbox> --json
-loopway events done <inbox> <event>
+loopway bots create --name dev --kind github-threads --inbox <inbox>
+loopway bots run
 ```
 
-`next` locks the oldest pending event for your bot. If it stops, the lock expires and the event goes back in the queue.
+A bot reads its inboxes in arrival order and keeps a cursor, so it picks up where it left off. `loopway bots run` runs yours; `loopway events list <inbox>` and `loopway events get <inbox> <event>` read what's in an inbox.
 
 ## The API
 
 ```
 curl -H "Authorization: Bearer $TOKEN" \
-  -X POST $URL/inboxes/$INBOX/events/next
+  $URL/bots/$BOT/messages
 ```
 
 Every endpoint takes the session token you get from logging in.

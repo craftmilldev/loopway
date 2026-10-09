@@ -217,7 +217,6 @@ export function createApi(opts: ApiOptions) {
     const inbox = await ownedInbox(c);
     const q = z
       .object({
-        status: z.enum(store.LIST_STATUSES).default("all"),
         type: z.string().min(1).optional(),
         cursor: z.string().refine(isUuid, "cursor must be an event id").optional(),
         limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -225,7 +224,6 @@ export function createApi(opts: ApiOptions) {
       })
       .parse(c.req.query());
     const { events, nextCursor } = await store.listEvents(c.var.db, inbox.id, {
-      status: q.status,
       type: q.type,
       after: q.cursor,
       limit: q.limit,
@@ -236,55 +234,9 @@ export function createApi(opts: ApiOptions) {
 
   const ttlBody = z.object({ ttl_seconds: z.number().int().min(1).max(MAX_TTL).default(DEFAULT_TTL) });
 
-  authed.post("/inboxes/:inboxId/events/next", async (c) => {
-    const inbox = await ownedInbox(c);
-    const { ttl_seconds } = ttlBody.parse(await jsonBody(c));
-    const row = await store.claimNext(c.var.db, inbox.id, ttl_seconds);
-    if (!row) return c.body(null, 204);
-    return c.json(serializeEvent(row, { withLock: true }));
-  });
-
   authed.get("/inboxes/:inboxId/events/:eventId", async (c) => {
     const inbox = await ownedInbox(c);
     return c.json(serializeEvent(await existingEvent(c, inbox)));
-  });
-
-  authed.post("/inboxes/:inboxId/events/:eventId/lock", async (c) => {
-    const inbox = await ownedInbox(c);
-    const input = ttlBody.extend({ lock_token: z.string().optional() }).parse(await jsonBody(c));
-    const eventId = c.req.param("eventId");
-    const row = isUuid(eventId)
-      ? await store.lockEvent(c.var.db, inbox.id, eventId, input.ttl_seconds, input.lock_token ?? null)
-      : undefined;
-    if (!row) throw conflictFor(await existingEvent(c, inbox));
-    return c.json(serializeEvent(row, { withLock: true }));
-  });
-
-  authed.post("/inboxes/:inboxId/events/:eventId/unlock", async (c) => {
-    const inbox = await ownedInbox(c);
-    const { lock_token } = z.object({ lock_token: z.string().min(1) }).parse(await jsonBody(c));
-    const eventId = c.req.param("eventId");
-    const row = isUuid(eventId) ? await store.unlockEvent(c.var.db, inbox.id, eventId, lock_token) : undefined;
-    if (!row) {
-      const current = await existingEvent(c, inbox);
-      if (current.status === "processed") throw new ApiError(409, "already_processed", "Event is already processed");
-      if (!current.lock_token) throw new ApiError(409, "not_locked", "Event is not locked");
-      throw new ApiError(409, "lock_mismatch", "lock_token does not match the current lock");
-    }
-    return c.json(serializeEvent(row));
-  });
-
-  authed.post("/inboxes/:inboxId/events/:eventId/processed", async (c) => {
-    const inbox = await ownedInbox(c);
-    const { lock_token } = z.object({ lock_token: z.string().optional() }).parse(await jsonBody(c));
-    const eventId = c.req.param("eventId");
-    const row = isUuid(eventId)
-      ? await store.markProcessed(c.var.db, inbox.id, eventId, lock_token ?? null)
-      : undefined;
-    if (row) return c.json(serializeEvent(row));
-    const current = await existingEvent(c, inbox);
-    if (current.status === "processed") return c.json(serializeEvent(current)); // idempotent
-    throw conflictFor(current);
   });
 
   // Bots
@@ -450,30 +402,16 @@ function leaseMismatch(b: store.Bot): ApiError {
   return new ApiError(409, "lease_mismatch", "lease_token is not the bot's live lease");
 }
 
-function conflictFor(e: EventRow): ApiError {
-  if (e.status === "processed") return new ApiError(409, "already_processed", "Event is already processed");
-  if (e.status === "locked") {
-    return new ApiError(409, "locked", `Event is locked until ${iso(e.locked_until)} by another consumer`);
-  }
-  return new ApiError(409, "conflict", "Event state changed; retry");
-}
-
 function serializeUser(u: User) {
   return { id: u.id, name: u.name, email: u.email, created_at: iso(u.created_at) };
 }
 
-function serializeEvent(e: EventRow, o: { withLock?: boolean } = {}) {
+function serializeEvent(e: EventRow) {
   return {
     id: e.id,
     inbox_id: e.inbox_id,
     seq: Number(e.seq),
-    status: e.status,
     received_at: iso(e.received_at),
-    locked_until: e.status === "locked" ? iso(e.locked_until) : null,
-    processed_at: iso(e.processed_at),
-    lock_count: e.lock_count,
-    // The token is only ever returned to whoever just took/renewed the lock.
-    ...(o.withLock ? { lock: { token: e.lock_token, expires_at: iso(e.locked_until) } } : {}),
     event: e.cloudevent,
   };
 }

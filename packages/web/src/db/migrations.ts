@@ -151,4 +151,17 @@ ALTER TABLE loopway.bots        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE loopway.bot_inboxes ENABLE ROW LEVEL SECURITY;
 `,
   },
+  {
+    // Bots read by cursor (005), so events are no longer locked or marked processed one at a time.
+    version: "006_drop_event_locks",
+    sql: `
+DROP INDEX loopway.events_unprocessed_idx;
+
+ALTER TABLE loopway.events
+  DROP COLUMN lock_token,
+  DROP COLUMN locked_until,
+  DROP COLUMN lock_count,
+  DROP COLUMN processed_at;
+`,
+  },
 ];

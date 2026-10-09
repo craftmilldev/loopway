@@ -266,7 +266,8 @@ describe("inboxes", () => {
     const inbox = await inboxWithEvents(2, "named");
     const shown = await runJson("inbox", "show", "named");
     expect(shown.id).toBe(inbox.id);
-    expect(shown.stats).toEqual({ pending: 2, locked: 0, processed: 0 });
+    expect(shown.stats).toEqual({ events: 2 });
+    expect(await run("inbox", "show", "named")).toMatch(/events\s+2/);
     await expect(run("inbox", "show", "nope")).rejects.toThrow(/No inbox with id or name/);
   });
 
@@ -335,57 +336,9 @@ describe("events", () => {
     expect(JSON.parse(await run("events", "get", inbox.id, id, "--data"))).toEqual(pr(1));
   });
 
-  it("next → done uses the remembered lock token", async () => {
-    await configured();
-    const inbox = await inboxWithEvents(1);
-    const claimed = await runJson("events", "next", inbox.name, "--ttl", "60");
-    expect(claimed.lock.token).toMatch(/^lk_/);
-    const locks = JSON.parse(await readFile(join(configDir, "locks.json"), "utf8"));
-    expect(locks[claimed.id].token).toBe(claimed.lock.token);
-
-    // nothing else to claim; --json prints nothing, like the API's 204
-    expect(await run("events", "next", inbox.id, "--json")).toBe("");
-    expect(await run("events", "next", inbox.id)).toMatch(/No events waiting/);
-
-    const done = await runJson("events", "done", inbox.id, claimed.id);
-    expect(done.status).toBe("processed");
-    expect(JSON.parse(await readFile(join(configDir, "locks.json"), "utf8"))).toEqual({});
-  });
-
-  it("lock renews with the held token, unlock releases it", async () => {
-    await configured();
-    const inbox = await inboxWithEvents(1);
-    const [{ id }] = (await runJson("events", "list", inbox.id)).data;
-    const first = await runJson("events", "lock", inbox.id, id, "--ttl", "30");
-    const renewed = await runJson("events", "lock", inbox.id, id, "--ttl", "120");
-    expect(renewed.lock.token).toBe(first.lock.token);
-    expect(renewed.lock_count).toBe(1);
-
-    expect((await runJson("events", "unlock", inbox.id, id)).status).toBe("pending");
-    await expect(run("events", "unlock", inbox.id, id)).rejects.toThrow(/doesn't hold a lock/);
-  });
-
-  it("surfaces API conflicts", async () => {
-    await configured();
-    const inbox = await inboxWithEvents(1);
-    const [{ id }] = (await runJson("events", "list", inbox.id)).data;
-    await runJson("events", "lock", inbox.id, id);
-    // another machine (its own config dir, same key) doesn't hold the token, so it can't take the event
-    const first = configDir;
-    const key = (await savedConfig(first)).api_key;
-    configDir = await mkdtemp(join(tmpdir(), "loopway-cli-"));
-    try {
-      await writeConfig(configDir, { api_url: API, api_key: key });
-      await expect(run("events", "lock", inbox.id, id)).rejects.toThrow(/locked until/);
-      await expect(run("events", "done", inbox.id, id)).rejects.toThrow(/locked until/);
-    } finally {
-      await rm(first, { recursive: true, force: true });
-    }
-  });
-
   it("rejects bad numbers before calling the API", async () => {
     await configured();
-    await expect(run("events", "next", "x", "--ttl", "0")).rejects.toThrow(/positive integer/);
+    await expect(run("events", "list", "x", "--limit", "0")).rejects.toThrow(/positive integer/);
   });
 });
 
@@ -496,10 +449,9 @@ describe("threads", () => {
     );
     // Let runs still in flight write threads.json before the config dir is removed.
     closers.push(async () => (await finish(), await d.close()));
-    const list = async (status: string) =>
-      (await runJson("events", "list", boxes[0]!.id, "--status", status, "--all")).data;
+    const list = async () => (await runJson("events", "list", boxes[0]!.id, "--all")).data;
     const cursor = async (bot = bots[0]!) => (await runJson("bots", "show", bot.id)).cursor;
-    const newest = async () => Math.max(...(await list("all")).map((e: any) => e.seq));
+    const newest = async () => Math.max(...(await list()).map((e: any) => e.seq));
     return { inbox: boxes[0]!, bots, bot: bots[0]!, client, runs, out, d, finish, list, cursor, newest };
   }
 
@@ -567,14 +519,11 @@ describe("threads", () => {
     expect((await sessions())[first!.sessionId].status).toBe("active");
   });
 
-  it("moves the cursor past what it assigned, leaves the inbox's events alone, and records them on the session", async () => {
+  it("moves the cursor past what it assigned and records the messages on the session", async () => {
     const { inbox, runs, d, finish, list, cursor, newest, bot } = await setup(3);
     await send(inbox, "issues", issue("opened", 1));
     await d.tick();
-    // Delivery doesn't lock or process events.
-    expect(await list("locked")).toHaveLength(0);
-    expect(await list("processed")).toHaveLength(0);
-    const [delivered] = await list("pending");
+    const [delivered] = await list();
     const id = runs[0]!.sessionId;
     expect(runs[0]!.message).toContain(delivered.id);
     expect(await cursor()).toBe(await newest());
@@ -606,7 +555,7 @@ describe("threads", () => {
     const state = await d.state();
     expect(state.bots.held.map((b) => b.name)).toEqual(["dev1"]);
     expect(state.waiting).toEqual([
-      { id: (await list("pending")).at(-1).id, inbox_id: inbox.id, type: "com.github.issues.opened", key: "a/b#3" },
+      { id: (await list()).at(-1).id, inbox_id: inbox.id, type: "com.github.issues.opened", key: "a/b#3" },
     ]);
     expect([...state.running].sort()).toEqual(
       Object.keys(state.sessions)
@@ -627,7 +576,7 @@ describe("threads", () => {
     // With one slot left, new messages for the two waiting threads go oldest first; the other waits.
     await send(inbox, "issue_comment", comment(1));
     await send(inbox, "issue_comment", comment(2));
-    const oldest = (await list("pending")).at(-2);
+    const oldest = (await list()).at(-2);
     await d.tick();
     expect(runs).toHaveLength(4);
     expect(runs[3]!.resume).toBe(true);

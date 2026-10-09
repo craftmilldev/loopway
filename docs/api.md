@@ -22,7 +22,7 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 | `POST /sources/requests` `{description}` | Ask for a source type loopway doesn't have. Posts a `source.requested` message (the description and the asker's user id) to the deployment's requests inbox. `202`; `404` where requests are off. |
 | `POST /inboxes` `{name, source_type, config?}` | Create. Response includes `webhook_url` and `setup` instructions.                                                                                                                                                           |
 | `GET /inboxes`                                 | List yours.                                                                                                                                                                                                                 |
-| `GET /inboxes/:id`                             | One inbox + `stats` (`pending`/`locked`/`processed` counts).                                                                                                                                                                |
+| `GET /inboxes/:id`                             | One inbox + `stats` (`{events}`: how many it holds).                                                                                                                                                                        |
 | `PATCH /inboxes/:id` `{name?, config?}`        | Update. Config merges onto existing (secret kept unless given).                                                                                                                                                             |
 | `DELETE /inboxes/:id`                          | Deletes the inbox and its events.                                                                                                                                                                                           |
 
@@ -40,18 +40,12 @@ Each source's `config`, how to connect it in the sender, and how its deliveries 
 
 ## Events
 
-All under `/inboxes/:inboxId/events`.
+All under `/inboxes/:inboxId/events`. An event is a stored message: there's no per-event status, and nothing marks one done. Bots keep their place with a cursor (see [Bots](#bots)).
 
-|                                                     |                                                                                                                                                                                                                                                                                          |
-| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /`                                             | List. Query: `status` = `all` (default) \| `pending` \| `locked` \| `processed` \| `unprocessed`; `type` (exact, or prefix with trailing `*`, e.g. `com.github.pull_request.*`); `limit` (≤100, default 50); `order` = `asc` \| `desc`; `cursor` = `next_cursor` from the previous page. |
-| `GET /:eventId`                                     | One event.                                                                                                                                                                                                                                                                               |
-| `POST /next` `{ttl_seconds?}`                       | Claim the oldest pending event with a lock. `200` with event + `lock`, or `204` if nothing's available. Safe with concurrent consumers.                                                                                                                                                  |
-| `POST /:eventId/lock` `{ttl_seconds?, lock_token?}` | Lock a specific event. Pass your current `lock_token` to extend it. `409 locked` if someone else holds it.                                                                                                                                                                               |
-| `POST /:eventId/unlock` `{lock_token}`              | Release the lock; event goes back to `pending`.                                                                                                                                                                                                                                          |
-| `POST /:eventId/processed` `{lock_token?}`          | Mark done. Token required only if a live lock exists. Idempotent.                                                                                                                                                                                                                        |
-
-`ttl_seconds` defaults to 300, max 43200. Locks expire on their own, so a crashed consumer's event becomes claimable again.
+|                |                                                                                                                                                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /`        | List. Query: `type` (exact, or prefix with trailing `*`, e.g. `com.github.pull_request.*`); `limit` (≤100, default 50); `order` = `asc` (default) \| `desc`; `cursor` = `next_cursor` from the previous page. |
+| `GET /:eventId` | One event.                                                                                                                                                                                                        |
 
 Event shape:
 
@@ -60,12 +54,7 @@ Event shape:
   "id": "0192…", // loopway id (UUIDv7, time-ordered)
   "inbox_id": "0192…",
   "seq": 1234, // arrival order across all inboxes, assigned by the database; bots read by it
-  "status": "locked", // pending | locked | processed
   "received_at": "2026-10-04T23:40:00.000Z",
-  "locked_until": "2026-10-04T23:45:00.000Z",
-  "processed_at": null,
-  "lock_count": 1, // times it has been claimed
-  "lock": { "token": "lk_…", "expires_at": "…" }, // only on next/lock responses
   "event": {
     // the CloudEvent, structured mode
     "specversion": "1.0",
@@ -92,7 +81,7 @@ A bot reads the messages (events) of one or more of your inboxes, in `seq` order
 | `PATCH /bots/:id` `{name?, inbox_ids?}`            | Update. `inbox_ids` replaces the bot's inboxes; the cursor stays where it is.                                                                                                                   |
 | `DELETE /bots/:id`                                 | Delete. The row is kept with `deleted_at` set, but the API no longer returns it. Deleting an inbox also removes it from its bots.                                                                                |
 | `GET /bots/:id/messages` `?limit=`                 | Messages in the bot's inboxes with `seq > cursor`, oldest first (`limit` ≤100, default 50). Messages received in the last 5 seconds, and anything after them, are held back (see below).       |
-| `POST /bots/:id/lease` `{ttl_seconds?, lease_token?}` | Take the bot's lease, or renew it by passing your current token. Returns `{lease: {token, expires_at}}`. `409 leased` while another runner holds a live lease. Same TTL rules as event locks. |
+| `POST /bots/:id/lease` `{ttl_seconds?, lease_token?}` | Take the bot's lease, or renew it by passing your current token. Returns `{lease: {token, expires_at}}`. `409 leased` while another runner holds a live lease. `ttl_seconds` defaults to 300, max 43200. |
 | `POST /bots/:id/release` `{lease_token}`           | Drop the lease, so the next runner needn't wait out the TTL. `409 lease_mismatch` if the token isn't the live lease, `409 not_leased` if there is none.                                        |
 | `POST /bots/:id/cursor` `{seq, lease_token}`       | Move the cursor forward to `seq`; it never moves backwards. Returns the bot. `409` if the token isn't the live lease.                                                                          |
 

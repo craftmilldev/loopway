@@ -143,7 +143,7 @@ describe("inboxes", () => {
   });
 });
 
-describe("event processing", () => {
+describe("events", () => {
   async function setup(n = 3) {
     const key = await newUser();
     const inbox = await newInbox(key);
@@ -152,69 +152,8 @@ describe("event processing", () => {
     return { key, inbox, ids: ids as string[], base: `/inboxes/${inbox.id}/events` };
   }
 
-  it("next claims oldest-first, never hands out the same event twice, 204 when empty", async () => {
-    const { key, base, ids } = await setup(3);
-    const claims = await Promise.all([1, 2, 3, 4].map(() => call("POST", `${base}/next`, { key })));
-    const got = claims.filter((c) => c.status === 200).map((c) => c.body.id);
-    expect(got.sort()).toEqual([...ids].sort());
-    expect(claims.filter((c) => c.status === 204)).toHaveLength(1);
-    expect(claims.find((c) => c.status === 200)!.body.lock.token).toMatch(/^lk_/);
-  });
-
-  it("lock / unlock / processed lifecycle", async () => {
-    const { key, base, ids } = await setup(1);
-    const id = ids[0]!;
-    const locked = await call("POST", `${base}/${id}/lock`, { key, body: { ttl_seconds: 60 } });
-    expect(locked.status).toBe(200);
-    expect(locked.body.status).toBe("locked");
-    const token = locked.body.lock.token;
-
-    // someone else can't lock, process, or unlock it
-    expect((await call("POST", `${base}/${id}/lock`, { key })).body.error.code).toBe("locked");
-    expect((await call("POST", `${base}/${id}/processed`, { key })).status).toBe(409);
-    expect((await call("POST", `${base}/${id}/unlock`, { key, body: { lock_token: "lk_x" } })).body.error.code).toBe(
-      "lock_mismatch",
-    );
-    expect((await call("POST", `${base}/next`, { key })).status).toBe(204);
-
-    // holder can renew (same token)
-    const renewed = await call("POST", `${base}/${id}/lock`, { key, body: { lock_token: token, ttl_seconds: 120 } });
-    expect(renewed.body.lock.token).toBe(token);
-    expect(renewed.body.lock_count).toBe(1);
-
-    // unlock → pending again → next picks it up
-    expect((await call("POST", `${base}/${id}/unlock`, { key, body: { lock_token: token } })).body.status).toBe(
-      "pending",
-    );
-    const next = await call("POST", `${base}/next`, { key });
-    expect(next.body.id).toBe(id);
-    expect(next.body.lock_count).toBe(2);
-
-    // process with lock, idempotent after
-    const done = await call("POST", `${base}/${id}/processed`, { key, body: { lock_token: next.body.lock.token } });
-    expect(done.body.status).toBe("processed");
-    expect(done.body.processed_at).toBeTruthy();
-    expect((await call("POST", `${base}/${id}/processed`, { key })).status).toBe(200);
-    expect((await call("POST", `${base}/${id}/lock`, { key })).body.error.code).toBe("already_processed");
-  });
-
-  it("expired locks become claimable", async () => {
-    const { key, base, ids } = await setup(1);
-    await call("POST", `${base}/${ids[0]}/lock`, { key, body: { ttl_seconds: 1 } });
-    await new Promise((r) => setTimeout(r, 1100));
-    const next = await call("POST", `${base}/next`, { key });
-    expect(next.body.id).toBe(ids[0]);
-  });
-
-  it("lists with status/type filters and cursor pagination", async () => {
+  it("lists with a type filter and cursor pagination", async () => {
     const { key, base, ids } = await setup(5);
-    await call("POST", `${base}/${ids[0]}/processed`, { key });
-    await call("POST", `${base}/${ids[1]}/lock`, { key });
-
-    const pending = await call("GET", `${base}?status=pending`, { key });
-    expect(pending.body.data.map((e: any) => e.id)).toEqual(ids.slice(2));
-    expect((await call("GET", `${base}?status=processed`, { key })).body.data).toHaveLength(1);
-    expect((await call("GET", `${base}?status=locked`, { key })).body.data[0].id).toBe(ids[1]);
     expect((await call("GET", `${base}?type=com.github.pull_request.*`, { key })).body.data).toHaveLength(5);
     expect((await call("GET", `${base}?type=com.github.push`, { key })).body.data).toHaveLength(0);
 
@@ -224,14 +163,19 @@ describe("event processing", () => {
     expect(p2.body.data.map((e: any) => e.id)).toEqual(ids.slice(2, 4));
     const p3 = await call("GET", `${base}?limit=2&cursor=${p2.body.next_cursor}`, { key });
     expect(p3.body.next_cursor).toBeNull();
-    // list responses never leak lock tokens
-    expect(JSON.stringify((await call("GET", base, { key })).body)).not.toContain("lk_");
+    // An event is just a stored message: no per-event status.
+    expect(Object.keys(p1.body.data[0]).sort()).toEqual(["event", "id", "inbox_id", "received_at", "seq"]);
+  });
+
+  it("counts an inbox's events", async () => {
+    const { key, inbox } = await setup(2);
+    expect((await call("GET", `/inboxes/${inbox.id}`, { key })).body.stats).toEqual({ events: 2 });
   });
 
   it("404s on bad ids", async () => {
     const { key, base } = await setup(0);
     expect((await call("GET", `${base}/not-a-uuid`, { key })).status).toBe(404);
-    expect((await call("POST", `${base}/${randomUUID()}/lock`, { key })).status).toBe(404);
+    expect((await call("GET", `${base}/${randomUUID()}`, { key })).status).toBe(404);
     expect((await call("GET", `${base}?cursor=nope`, { key })).status).toBe(400);
   });
 });
