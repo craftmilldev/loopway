@@ -14,6 +14,8 @@ export interface AgentRun {
   /** The dispatcher's MCP endpoint for this session (its `link` and `end` tools). */
   mcpUrl: string;
   env: NodeJS.ProcessEnv;
+  /** Called once Claude Code has created the session (its `system` `init` record), so later runs must resume it. */
+  onStarted?: () => void;
 }
 
 export interface RunOutcome {
@@ -21,6 +23,8 @@ export interface RunOutcome {
   code: number;
   /** Whether Claude Code echoed `message` back, which it does once the message is in the session. */
   delivered: boolean;
+  /** Whether the run ended with a `result` record rather than being cut off. */
+  finished?: boolean;
   /** Set when the run stopped because the account hit its usage limit: when the limit resets, in ms since the epoch. */
   limitedUntil?: number;
 }
@@ -37,12 +41,17 @@ export const LIMIT_FALLBACK_MS = 5 * 60_000;
  */
 export class LimitWatch {
   delivered = false;
+  /** Whether the run got as far as its `result` record. */
+  finished = false;
   private resetsAt?: number;
   private hit = false;
+
+  constructor(private readonly onInit?: () => void) {}
 
   line(raw: string): void {
     let r: {
       type?: string;
+      subtype?: string;
       api_error?: string;
       parent_tool_use_id?: string | null;
       message?: { content?: unknown };
@@ -53,11 +62,16 @@ export class LimitWatch {
     } catch {
       return;
     }
+    if (r.type === "system" && r.subtype === "init") this.onInit?.();
     // Tool results are user records too, but with content blocks; only our message is a plain string.
-    if (r.type === "user" && !r.parent_tool_use_id && typeof r.message?.content === "string") this.delivered = true;
+    else if (r.type === "user" && !r.parent_tool_use_id && typeof r.message?.content === "string")
+      this.delivered = true;
     else if (r.type === "rate_limit_event" && r.rate_limit_info?.status === "rejected" && r.rate_limit_info.resetsAt)
       this.resetsAt = r.rate_limit_info.resetsAt * 1000;
-    else if (r.type === "result" && r.api_error === "usage_limit_reached") this.hit = true;
+    else if (r.type === "result") {
+      this.finished = true;
+      if (r.api_error === "usage_limit_reached") this.hit = true;
+    }
   }
 
   /** When the limit resets, if the run stopped because of it. */
@@ -83,7 +97,7 @@ export const spawnClaude: RunAgent = async (run) => {
     const child = spawn("claude", args, { env: run.env, stdio: ["pipe", "pipe", errFd] });
     child.stdin!.end(JSON.stringify({ type: "user", message: { role: "user", content: run.message } }) + "\n");
     // stdout goes to the log as before, and through the watch on the way.
-    const watch = new LimitWatch();
+    const watch = new LimitWatch(run.onStarted);
     createInterface({ input: child.stdout! }).on("line", (l) => watch.line(l));
     const copied = pipeline(child.stdout!, createWriteStream(run.logPath, { flags: "a", mode: 0o600 }));
     const exited = new Promise<number>((resolve, reject) => {
@@ -92,7 +106,7 @@ export const spawnClaude: RunAgent = async (run) => {
     });
     // Awaited together, so whichever fails first is the error thrown and neither can go unhandled.
     const [code] = await Promise.all([exited, copied]);
-    return { code, delivered: watch.delivered, limitedUntil: watch.limitedUntil() };
+    return { code, delivered: watch.delivered, finished: watch.finished, limitedUntil: watch.limitedUntil() };
   } finally {
     closeSync(errFd);
   }
