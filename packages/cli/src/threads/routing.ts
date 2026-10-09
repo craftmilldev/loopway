@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Event } from "../client.js";
+import type { Message } from "../client.js";
 import { editSession, findSession, type Sessions } from "./store.js";
 
 interface GithubPayload {
@@ -13,10 +13,10 @@ interface GithubPayload {
 }
 
 /**
- * Which thread an event belongs to: `key` is its issue or PR (`owner/repo#number`), and `refs` are
- * the issues a PR body closes ("Closes #12"). Events with no issue or PR (e.g. push) have no key.
+ * Which thread a message belongs to: `key` is its issue or PR (`owner/repo#number`), and `refs` are
+ * the issues a PR body closes ("Closes #12"). Messages with no issue or PR (e.g. push) have no key.
  */
-export function threadKeys(e: Event): { key?: string; refs: string[] } {
+export function threadKeys(e: Message): { key?: string; refs: string[] } {
   const d = (e.event.data ?? {}) as GithubPayload;
   const repo = d.repository?.full_name;
   const ci = d.check_run ?? d.check_suite ?? d.workflow_run;
@@ -36,11 +36,11 @@ export function threadKeys(e: Event): { key?: string; refs: string[] } {
  * 2. It's a PR that closes a known issue ("Closes #N") → that issue's session, and the PR joins it.
  * 3. Otherwise → a new session.
  *
- * CI events with no PR (a run on main) belong to no thread and get no session.
+ * CI messages with no PR (a run on main) belong to no thread and get no session.
  *
  * New sessions and links are added to `sessions` in place, for the caller to save.
  */
-export function route(sessions: Sessions, botId: string, e: Event): { session?: string; key?: string } {
+export function route(sessions: Sessions, botId: string, e: Message): { session?: string; key?: string } {
   const { key, refs } = threadKeys(e);
   if (!key && /^com\.github\.(check_run|check_suite|workflow_run)\./.test(e.event.type)) return {};
   let id = key ? findSession(sessions, botId, key) : undefined;
@@ -57,7 +57,7 @@ function newSession(sessions: Sessions, botId: string, key: string | undefined):
   sessions[id] = {
     bot_id: botId,
     keys: key ? [key] : [],
-    events: [],
+    messages: [],
     waiting: [],
     status: "active",
     started: false,

@@ -164,4 +164,24 @@ ALTER TABLE loopway.events
   DROP COLUMN processed_at;
 `,
   },
+  {
+    // Stored events are now messages. The events view keeps still-deployed code working between this migration and
+    // the deploy; a later migration drops it.
+    version: "007_events_to_messages",
+    sql: `
+ALTER TABLE loopway.events RENAME TO messages;
+
+ALTER TABLE loopway.messages RENAME CONSTRAINT events_ce_unique TO messages_ce_unique;
+
+ALTER TABLE loopway.messages RENAME CONSTRAINT events_pkey TO messages_pkey;
+
+ALTER INDEX loopway.events_inbox_idx RENAME TO messages_inbox_idx;
+
+ALTER INDEX loopway.events_seq_idx RENAME TO messages_seq_idx;
+
+ALTER SEQUENCE loopway.events_seq_seq RENAME TO messages_seq_seq;
+
+CREATE VIEW loopway.events AS SELECT * FROM loopway.messages;
+`,
+  },
 ];

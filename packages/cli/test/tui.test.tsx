@@ -11,7 +11,7 @@ const KEYS = { up: "\u001B[A", down: "\u001B[B", right: "\u001B[C", left: "\u001
 const session = (keys: string[], status: Session["status"], updated_at: string): Session => ({
   bot_id: "bot",
   keys,
-  events: [],
+  messages: [],
   waiting: [],
   status,
   started: true,

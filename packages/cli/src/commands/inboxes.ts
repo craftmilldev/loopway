@@ -30,7 +30,7 @@ export async function showInbox(ctx: Context, ref: string, opts: { json?: boolea
         ["id", inbox.id],
         ["source", inbox.source_type],
         ["created", `${inbox.created_at} ${dim(`(${ago(inbox.created_at)})`)}`],
-        ["events", stats.events],
+        ["messages", stats.messages],
       ]),
       "",
       setupText(inbox),
@@ -94,7 +94,7 @@ async function createInteractive(client: LoopwayClient, opts: CreateOptions): Pr
     opts.source ??
     ask(
       await p.select({
-        message: "Where will events come from?",
+        message: "Where will messages come from?",
         options: sources.map((s) => ({ value: s.type, label: s.label, hint: s.description })),
       }),
     );
@@ -137,7 +137,7 @@ async function createInteractive(client: LoopwayClient, opts: CreateOptions): Pr
   if (source.secret.from === "sender" && !config.secret) {
     p.outro(`Then paste the secret ${source.label} shows with ${bold(`loopway inbox update ${inbox.id}`)}`);
   } else {
-    p.outro(`Read events with ${bold(`loopway events list ${inbox.id}`)}`);
+    p.outro(`Read messages with ${bold(`loopway messages list ${inbox.id}`)}`);
   }
   return inbox;
 }

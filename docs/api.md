@@ -22,9 +22,9 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 | `POST /sources/requests` `{description}` | Ask for a source type loopway doesn't have. Posts a `source.requested` message (the description and the asker's user id) to the deployment's requests inbox. `202`; `404` where requests are off. |
 | `POST /inboxes` `{name, source_type, config?}` | Create. Response includes `webhook_url` and `setup` instructions.                                                                                                                                                           |
 | `GET /inboxes`                                 | List yours.                                                                                                                                                                                                                 |
-| `GET /inboxes/:id`                             | One inbox + `stats` (`{events}`: how many it holds).                                                                                                                                                                        |
+| `GET /inboxes/:id`                             | One inbox + `stats` (`{messages}`: how many it holds).                                                                                                                                                                        |
 | `PATCH /inboxes/:id` `{name?, config?}`        | Update. Config merges onto existing (secret kept unless given).                                                                                                                                                             |
-| `DELETE /inboxes/:id`                          | Deletes the inbox and its events.                                                                                                                                                                                           |
+| `DELETE /inboxes/:id`                          | Deletes the inbox and its messages.                                                                                                                                                                                           |
 
 Each source's `config`, how to connect it in the sender, and how its deliveries map to CloudEvents are in `docs/sources/`: [github](sources/github.md), [vercel](sources/vercel.md), [granola](sources/granola.md) and [loopway](sources/loopway.md).
 
@@ -33,21 +33,21 @@ Each source's `config`, how to connect it in the sender, and how its deliveries 
 `POST /webhooks/:inboxId` — no API key; authenticated by the source: a signature header, or a bearer token for `loopway` inboxes (see each source's doc).
 
 - `202 {id, duplicate:false}` stored
-- `200 {id, duplicate:true}` redelivery of an event already stored (same CloudEvent `source`+`id`)
+- `200 {id, duplicate:true}` redelivery of a message already stored (same CloudEvent `source`+`id`)
 - `200 {ignored:true, reason}` `ping`
 - `400` malformed body (for Loopway, one that doesn't match the inbox schema) · `401` bad/missing signature or token (or, for Vercel and Granola, no secret set yet) · `404` unknown inbox · `415` unsupported content type · `422` event type not in `config.events` (GitHub shows it as a failed delivery and doesn't retry it; Vercel retries any non-2xx for up to 24 hours; Granola retries only 408, 429 and 5xx)
 
 
-## Events
+## Messages
 
-All under `/inboxes/:inboxId/events`. An event is a stored message: there's no per-event status, and nothing marks one done. Bots keep their place with a cursor (see [Bots](#bots)).
+All under `/inboxes/:inboxId/messages` (the old `/events` paths still work as deprecated aliases). A message is a stored delivery: there's no per-message status, and nothing marks one done. Bots keep their place with a cursor (see [Bots](#bots)).
 
 |                |                                                                                                                                                                                                                    |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `GET /`        | List. Query: `type` (exact, or prefix with trailing `*`, e.g. `com.github.pull_request.*`); `limit` (≤100, default 50); `order` = `asc` (default) \| `desc`; `cursor` = `next_cursor` from the previous page. |
-| `GET /:eventId` | One event.                                                                                                                                                                                                        |
+| `GET /:messageId` | One message.                                                                                                                                                                                                        |
 
-Event shape:
+Message shape:
 
 ```json
 {
@@ -71,7 +71,7 @@ Event shape:
 
 ## Bots
 
-A bot reads the messages (events) of one or more of your inboxes, in `seq` order, and keeps a `cursor`: the `seq` of the last message it has read past. A runner (`loopway bots run`) takes a lease on the bot while it reads, so only one runner at a time moves the cursor.
+A bot reads the messages of one or more of your inboxes, in `seq` order, and keeps a `cursor`: the `seq` of the last message it has read past. A runner (`loopway bots run`) takes a lease on the bot while it reads, so only one runner at a time moves the cursor.
 
 |                                                    |                                                                                                                                                                                                 |
 | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

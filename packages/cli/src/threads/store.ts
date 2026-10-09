@@ -12,11 +12,11 @@ export interface Session {
   /** Set instead of bot_id by versions that ran one inbox; a bot reading that inbox adopts the session. */
   inbox_id?: string;
   keys: string[];
-  /** Messages delivered to the session, as event ids. */
-  events: string[];
+  /** Messages delivered to the session, as message ids. */
+  messages: string[];
   /** Messages assigned to the session but not delivered yet: its run is in flight, or --max is reached. */
   waiting: WaitingMessage[];
-  /** `ended` once the session calls its `end` tool; a new event for the thread makes it active again. */
+  /** `ended` once the session calls its `end` tool; a new message for the thread makes it active again. */
   status: "active" | "ended";
   /** Whether a claude session with this id exists yet (first run uses --session-id, later ones --resume). */
   started: boolean;
@@ -46,7 +46,13 @@ const threadsPath = (dir: string) => join(dir, "threads.json");
 export const sessionLogPath = (dir: string, sessionId: string) => join(dir, "threads", `${sessionId}.log`);
 
 export async function loadSessions(dir: string): Promise<Sessions> {
-  return ((await readJson(threadsPath(dir))) as Sessions | undefined) ?? {};
+  const sessions = ((await readJson(threadsPath(dir))) as Sessions | undefined) ?? {};
+  // Sessions saved before events were renamed to messages keep their delivered ids in `events`.
+  for (const s of Object.values(sessions) as (Session & { events?: string[] })[]) {
+    s.messages ??= s.events ?? [];
+    delete s.events;
+  }
+  return sessions;
 }
 
 /**

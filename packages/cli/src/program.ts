@@ -1,7 +1,7 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import { clearConfig, configure, login, whoami } from "./commands/auth.js";
 import { botMessages, createBot, deleteBot, listBots, releaseBot, showBot, updateBot } from "./commands/bots.js";
-import { getEvent, listEvents } from "./commands/events.js";
+import { getMessage, listMessages } from "./commands/messages.js";
 import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
 import { runBots } from "./commands/threads.js";
 import type { Context } from "./context.js";
@@ -9,7 +9,7 @@ import { BOT_KINDS } from "./threads/kinds.js";
 
 export function createProgram(ctx: Context): Command {
   const program = new Command("loopway")
-    .description("Work with loopway inboxes and events from the terminal.")
+    .description("Work with loopway inboxes and messages from the terminal.")
     .version("0.1.0")
     .showHelpAfterError()
     .addHelpText(
@@ -93,37 +93,41 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
 
   inbox
     .command("show")
-    .description("show an inbox, its webhook setup, and event counts")
+    .description("show an inbox, its webhook setup, and message counts")
     .argument("<inbox>", "inbox id or name")
     .addOption(jsonOpt())
     .action((ref, opts) => showInbox(ctx, ref, opts));
 
-  // ---------- events ----------
+  // ---------- messages ----------
 
-  const events = program.command("events").alias("event").description("read an inbox's events");
+  const messages = program.command("messages").alias("message").description("read an inbox's messages");
+  // Deprecated: `events` was the old name for `messages`.
+  const events = program.command("events", { hidden: true }).alias("event").description("deprecated alias of messages");
 
-  events
-    .command("list")
-    .alias("ls")
-    .description("list events")
-    .argument("<inbox>", "inbox id or name")
-    .option("--type <type>", "exact CloudEvent type, or a prefix ending in * (e.g. com.github.pull_request.*)")
-    .option("--limit <n>", "page size (max 100)", positiveInt)
-    .addOption(new Option("--order <order>", "sort by arrival").choices(["asc", "desc"]))
-    .option("--cursor <cursor>", "next_cursor from a previous page")
-    .option("--all", "follow cursors and print every page")
-    .addOption(jsonOpt())
-    .action((ref, opts) => listEvents(ctx, ref, opts));
+  for (const group of [messages, events]) {
+    group
+      .command("list")
+      .alias("ls")
+      .description("list messages")
+      .argument("<inbox>", "inbox id or name")
+      .option("--type <type>", "exact CloudEvent type, or a prefix ending in * (e.g. com.github.pull_request.*)")
+      .option("--limit <n>", "page size (max 100)", positiveInt)
+      .addOption(new Option("--order <order>", "sort by arrival").choices(["asc", "desc"]))
+      .option("--cursor <cursor>", "next_cursor from a previous page")
+      .option("--all", "follow cursors and print every page")
+      .addOption(jsonOpt())
+      .action((ref, opts) => listMessages(ctx, ref, opts));
 
-  events
-    .command("get")
-    .alias("show")
-    .description("show one event and its payload")
-    .argument("<inbox>", "inbox id or name")
-    .argument("<event>", "event id")
-    .option("--data", "print only the CloudEvent data (the webhook payload) as JSON")
-    .addOption(jsonOpt())
-    .action((ref, id, opts) => getEvent(ctx, ref, id, opts));
+    group
+      .command("get")
+      .alias("show")
+      .description("show one message and its payload")
+      .argument("<inbox>", "inbox id or name")
+      .argument("<message>", "message id")
+      .option("--data", "print only the CloudEvent data (the webhook payload) as JSON")
+      .addOption(jsonOpt())
+      .action((ref, id, opts) => getMessage(ctx, ref, id, opts));
+  }
 
   // ---------- bots ----------
 
