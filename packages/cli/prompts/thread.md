@@ -50,6 +50,12 @@ Handle each delivered event by type:
   so skip it. If the body has content, treat it as feedback.
 - `com.github.issue_comment.*` on the PR: if the author is a bot (vercel[bot] etc.), take no
   action. Otherwise treat it as feedback and reply on the PR.
+- `com.github.check_suite.completed` / `com.github.workflow_run.completed` / `com.github.check_run.completed`:
+  CI results for the PR. If the conclusion is `success`, `neutral`, `skipped` or the run is for
+  another PR's branch, take no action. If it is `failure` (or `timed_out`), read the failing logs
+  (`gh run view <run_id> --log-failed`), fix it in the worktree, commit (a new commit), and push.
+  Rerun the failing check locally first; if it fails on unmodified main too, say it's flaky on the
+  PR instead of changing code. Several events can arrive for one push; act once per head SHA.
 - `com.github.pull_request.closed` or `com.github.issues.closed`: decide whether the work is
   finished. Usually it is (merged, or closed on purpose), so go to step 6. If the user's comments
   say otherwise (for example "closing to reopen as a new PR"), keep going.
