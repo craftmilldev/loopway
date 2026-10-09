@@ -17,7 +17,7 @@ export function Inbox({ id }: { id: string }) {
   const [hide, setHide] = useState(false);
   const [events, setEvents] = useState<InboxEvent[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
-  const source = lw.useSources()?.find((s) => s.type === inbox?.source_type);
+  const source = lw.useSources()?.data.find((s) => s.type === inbox?.source_type);
 
   useEffect(() => {
     if (!me) return;

@@ -29,7 +29,7 @@ To receive real GitHub webhooks locally, expose the port (e.g. `cloudflared tunn
 
 1. In Neon → Connect, copy both connection strings: the **direct** one and the **pooled** one (host contains `-pooler`).
 2. Run migrations once from your machine against the direct URL: `DATABASE_URL='postgresql://...' npm run db:migrate`
-3. In Vercel, import the repo, set **Root Directory** to `packages/web`, and set env vars: `DATABASE_URL_POOLED` (the pooled URL), `DATABASE_URL` (the direct URL), `TOKEN_SECRET` (signs session tokens; `openssl rand -hex 32`), and optionally `PUBLIC_BASE_URL`. The server uses `DATABASE_URL_POOLED` when it's set.
+3. In Vercel, import the repo, set **Root Directory** to `packages/web`, and set env vars: `DATABASE_URL_POOLED` (the pooled URL), `DATABASE_URL` (the direct URL), `TOKEN_SECRET` (signs session tokens; `openssl rand -hex 32`), and optionally `PUBLIC_BASE_URL`. The server uses `DATABASE_URL_POOLED` when it's set. Craftmill's own deployment also sets `SOURCE_REQUEST_URL` and `SOURCE_REQUEST_TOKEN` (the webhook URL and inbox token of its `source-requests` loopway inbox); without them the dashboard doesn't offer source requests.
 4. Deploy. Vercel picks up `packages/web/src/index.ts` as a Hono app automatically, and runs `npm run build` to bundle the web UI into `packages/web/public/`. The app serves `app.js` and `app.css` itself, since Vercel's CDN only serves the files in `public/` that are committed.
 5. Create users with `loopway login` pointed at your deployment.
 
@@ -37,7 +37,7 @@ Tables live in a `loopway` schema (not `public`) with RLS enabled and no policie
 
 ## Web UI
 
-The same Hono app serves a small web UI: `/` (how to use loopway), `/login` (same email-code flow as the CLI; the session token is kept in `localStorage`), `/dashboard` (your inboxes and a create form) and `/dashboard/<inbox>` (events, newest first, expandable JSON, hide-processed toggle, and, for sources whose sender makes the secret, like Vercel and Granola, a form to paste it). `GET /api` is a bare health check.
+The same Hono app serves a small web UI: `/` (how to use loopway), `/login` (same email-code flow as the CLI; the session token is kept in `localStorage`), `/dashboard` (your inboxes and a create form; where source requests are on, its Source list ends with "Something else…", which asks for a new source type instead) and `/dashboard/<inbox>` (events, newest first, expandable JSON, hide-processed toggle, and, for sources whose sender makes the secret, like Vercel and Granola, a form to paste it). `GET /api` is a bare health check.
 
 The pages are a React app in `packages/web/client/`. The homepage copy is markdown in [`packages/web/content/home.md`](packages/web/content/home.md). `npm run build -w @loopway/web` bundles the app with esbuild into `packages/web/public/` (git-ignored); `npm run dev` rebuilds it on change and serves it.
 
@@ -157,7 +157,8 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 
 |                                                |                                                                                                                                                                                                                             |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /sources`                                 | Available source types: `type`, `label`, `description`, common `events`, who makes the `secret` (`{from: "loopway", min_length}` or `{from: "sender"}`), and `webhook_settings` (where the webhook is added in the sender). |
+| `GET /sources`                                 | Available source types: `type`, `label`, `description`, common `events`, who makes the `secret` (`{from: "loopway", min_length}` or `{from: "sender"}`), and `webhook_settings` (where the webhook is added in the sender). `can_request` says whether this deployment takes source requests. |
+| `POST /sources/requests` `{description}` | Ask for a source type loopway doesn't have. Posts a `source.requested` message (the description and who asked) to the deployment's requests inbox. `202`; `404` where requests are off. |
 | `POST /inboxes` `{name, source_type, config?}` | Create. Response includes `webhook_url` and `setup` instructions.                                                                                                                                                           |
 | `GET /inboxes`                                 | List yours.                                                                                                                                                                                                                 |
 | `GET /inboxes/:id`                             | One inbox + `stats` (`pending`/`locked`/`processed` counts).                                                                                                                                                                |

@@ -62,17 +62,23 @@ export function Dashboard() {
   );
 }
 
+/** The Source option that asks for a new source type instead of creating an inbox. */
+const REQUEST = "request:";
+
 function CreateInbox({ onCreated }: { onCreated: () => void }) {
-  const sources = lw.useSources() ?? [];
+  const { data: sources = [], can_request } = lw.useSources() ?? {};
   const [name, setName] = useState("");
   const [type, setType] = useState("");
   const [all, setAll] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [secret, setSecret] = useState("");
+  const [wanted, setWanted] = useState("");
+  const [requested, setRequested] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const requesting = type === REQUEST;
   // The first source is picked until the user picks another.
-  const source = sources.find((s) => s.type === type) ?? sources[0];
+  const source = requesting ? undefined : (sources.find((s) => s.type === type) ?? sources[0]);
 
   function toggle(event: string, on: boolean) {
     const next = new Set(checked);
@@ -88,8 +94,9 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!source) return;
     setError(null);
+    if (requesting) return request();
+    if (!source) return;
     const events = all ? ["*"] : source.events.filter((ev) => checked.has(ev));
     if (!events.length) return setError("Pick at least one event.");
     // A sender-made secret is pasted in on the inbox page afterwards.
@@ -100,24 +107,36 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
     onCreated();
   }
 
+  async function request() {
+    setRequested(false);
+    const r = await lw.api("/sources/requests", { method: "POST", body: { description: wanted } });
+    if (r.status === 401) return lw.expired(r);
+    if (!r.ok) return setError(await lw.message(r));
+    setWanted("");
+    setRequested(true);
+  }
+
   return (
     <form className="panel" onSubmit={(e) => void submit(e)}>
-      <div className="field">
-        <label htmlFor="name">Name</label>
-        <div className="input-wrap">
-          <input id="name" required maxLength={200} value={name} onChange={(e) => setName(e.target.value)} />
+      {!requesting && (
+        <div className="field">
+          <label htmlFor="name">Name</label>
+          <div className="input-wrap">
+            <input id="name" required maxLength={200} value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
         </div>
-      </div>
+      )}
       <div className="field">
         <label htmlFor="source">Source</label>
         <div className="input-wrap">
           <select
             id="source"
             required
-            value={source?.type ?? ""}
+            value={requesting ? REQUEST : (source?.type ?? "")}
             onChange={(e) => {
               setType(e.target.value);
               setChecked(new Set());
+              setError(null);
             }}
           >
             {sources.map((s) => (
@@ -125,66 +144,101 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
                 {s.label}
               </option>
             ))}
+            {can_request && <option value={REQUEST}>Something else…</option>}
           </select>
         </div>
       </div>
-      <div className="field">
-        <label>Events</label>
-        <div className="checks">
-          <label className="check all">
-            <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Everything
-          </label>
-          {source?.events.map((ev) => (
-            <label key={ev} className="check">
+      {requesting ? (
+        <>
+          <div className="field">
+            <label htmlFor="wanted">Which webhook do you want?</label>
+            <div className="input-wrap">
               <input
-                type="checkbox"
-                disabled={all}
-                checked={checked.has(ev)}
-                onChange={(e) => toggle(ev, e.target.checked)}
-              />{" "}
-              {ev}
-            </label>
-          ))}
-        </div>
-        <p className="hint">
-          Which events the inbox keeps. Anything else the webhook sends is rejected and shows as a failed delivery in
-          the sender.
-        </p>
-      </div>
-      {source?.secret.from === "sender" ? (
-        <div className="field">
-          <label>Secret</label>
-          <p className="hint">
-            {source.label} shows the secret once you add the webhook there. Paste it in on the inbox page; until then
-            deliveries are rejected.
-          </p>
-        </div>
-      ) : (
-        <div className="field">
-          <label htmlFor="secret">Secret</label>
-          <div className="input-wrap">
-            <input
-              id="secret"
-              required
-              minLength={source?.secret.min_length}
-              autoComplete="off"
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-            />
-            <button className="btn btn-sm btn-quiet" type="button" onClick={generate}>
-              Generate
+                id="wanted"
+                required
+                maxLength={500}
+                placeholder="e.g. Linear, https://linear.app/developers/webhooks"
+                value={wanted}
+                onChange={(e) => {
+                  setWanted(e.target.value);
+                  setRequested(false);
+                }}
+              />
+            </div>
+            <p className="hint">
+              {requested
+                ? "Thanks, we've got it. We'll open an issue for it on loopway's GitHub."
+                : "Name the service, and link its webhook docs if you have them."}
+            </p>
+          </div>
+          <div className="form-actions">
+            <button className="btn" type="submit">
+              Request it
             </button>
           </div>
-          <p className="hint">
-            At least {source?.secret.min_length} characters. You enter the same secret in the sender's webhook settings.
-          </p>
-        </div>
+        </>
+      ) : (
+        <>
+          <div className="field">
+            <label>Events</label>
+            <div className="checks">
+              <label className="check all">
+                <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Everything
+              </label>
+              {source?.events.map((ev) => (
+                <label key={ev} className="check">
+                  <input
+                    type="checkbox"
+                    disabled={all}
+                    checked={checked.has(ev)}
+                    onChange={(e) => toggle(ev, e.target.checked)}
+                  />{" "}
+                  {ev}
+                </label>
+              ))}
+            </div>
+            <p className="hint">
+              Which events the inbox keeps. Anything else the webhook sends is rejected and shows as a failed delivery
+              in the sender.
+            </p>
+          </div>
+          {source?.secret.from === "sender" ? (
+            <div className="field">
+              <label>Secret</label>
+              <p className="hint">
+                {source.label} shows the secret once you add the webhook there. Paste it in on the inbox page; until
+                then deliveries are rejected.
+              </p>
+            </div>
+          ) : (
+            <div className="field">
+              <label htmlFor="secret">Secret</label>
+              <div className="input-wrap">
+                <input
+                  id="secret"
+                  required
+                  minLength={source?.secret.min_length}
+                  autoComplete="off"
+                  value={secret}
+                  onChange={(e) => setSecret(e.target.value)}
+                />
+                <button className="btn btn-sm btn-quiet" type="button" onClick={generate}>
+                  Generate
+                </button>
+              </div>
+              <p className="hint">
+                At least {source?.secret.min_length} characters. You enter the same secret in the sender's webhook
+                settings.
+              </p>
+            </div>
+          )}
+          <div className="form-actions">
+            <button className="btn" type="submit">
+              Create inbox
+            </button>
+          </div>
+        </>
       )}
-      <div className="form-actions">
-        <button className="btn" type="submit">
-          Create inbox
-        </button>
-      </div>
       {error && <p className="error">{error}</p>}
     </form>
   );

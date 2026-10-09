@@ -75,12 +75,18 @@ export interface Source {
   webhook_settings: string;
 }
 
+/** `GET /sources`: the source types, and whether this deployment takes requests for new ones. */
+export interface Sources {
+  data: Source[];
+  can_request: boolean;
+}
+
 /** The source types, or null while loading. */
 export function useSources() {
-  const [sources, setSources] = useState<Source[] | null>(null);
+  const [sources, setSources] = useState<Sources | null>(null);
   useEffect(() => {
     void api("/sources").then(async (r) => {
-      if (r.ok) setSources(((await r.json()) as { data: Source[] }).data);
+      if (r.ok) setSources((await r.json()) as Sources);
     });
   }, []);
   return sources;

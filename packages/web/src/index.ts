@@ -15,6 +15,10 @@ app.route(
     getDb,
     tokenSecret,
     publicBaseUrl: process.env.PUBLIC_BASE_URL || undefined,
+    sourceRequests:
+      process.env.SOURCE_REQUEST_URL && process.env.SOURCE_REQUEST_TOKEN
+        ? { url: process.env.SOURCE_REQUEST_URL, token: process.env.SOURCE_REQUEST_TOKEN }
+        : undefined,
     sendEmail: process.env.RESEND_API_KEY
       ? resendSender({
           apiKey: process.env.RESEND_API_KEY,
