@@ -95,7 +95,6 @@ function describe(bot: Bot, names: Map<string, string>): string {
       ["kind", bot.kind],
       ["inboxes", inboxList(bot, names)],
       ["cursor", bot.cursor],
-      ["leased until", bot.leased_until && `${bot.leased_until} ${dim(`(${ago(bot.leased_until)})`)}`],
       ["created", `${bot.created_at} ${dim(`(${ago(bot.created_at)})`)}`],
     ]),
   ].join("\n");

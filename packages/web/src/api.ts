@@ -261,7 +261,7 @@ export function createApi(opts: ApiOptions) {
 
   authed.get("/bots", async (c) => {
     const rows = await store.listBots(c.var.db, c.var.user.id);
-    return c.json({ data: rows.map((b) => serializeBot(b)) });
+    return c.json({ data: rows.map(serializeBot) });
   });
 
   authed.post("/bots", async (c) => {
@@ -295,16 +295,6 @@ export function createApi(opts: ApiOptions) {
     const bot = await ownedBot(c);
     await store.deleteBot(c.var.db, bot.id);
     return c.body(null, 204);
-  });
-
-  authed.post("/bots/:botId/lease", async (c) => {
-    const bot = await ownedBot(c);
-    const input = ttlBody.extend({ lease_token: z.string().optional() }).parse(await jsonBody(c));
-    const leased = await store.leaseBot(c.var.db, bot.id, input.ttl_seconds, input.lease_token ?? null);
-    if (!leased) {
-      throw new ApiError(409, "leased", `Bot is leased until ${iso(bot.locked_until)} by another runner`);
-    }
-    return c.json(serializeBot(leased, { withLease: true }));
   });
 
   authed.get("/bots/:botId/messages", async (c) => {
@@ -425,17 +415,13 @@ function serializeEvent(e: EventRow, o: { withLock?: boolean } = {}) {
   };
 }
 
-function serializeBot(b: store.Bot, o: { withLease?: boolean } = {}) {
-  const leased = b.locked_until != null && new Date(b.locked_until).getTime() > Date.now();
+function serializeBot(b: store.Bot) {
   return {
     id: b.id,
     name: b.name,
     kind: b.kind,
     inbox_ids: b.inbox_ids,
     cursor: Number(b.cursor),
-    leased_until: leased ? iso(b.locked_until) : null,
-    // The token is only ever returned to whoever just took/renewed the lease.
-    ...(o.withLease ? { lease: { token: b.lock_token, expires_at: iso(b.locked_until) } } : {}),
     created_at: iso(b.created_at),
   };
 }

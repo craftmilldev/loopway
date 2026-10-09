@@ -71,7 +71,6 @@ export interface Bot {
   inbox_ids: string[];
   /** The `seq` of the last message the bot has read past. */
   cursor: number;
-  leased_until: string | null;
   created_at: string;
 }
 

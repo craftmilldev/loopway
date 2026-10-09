@@ -314,13 +314,11 @@ export interface Bot {
   /** bigint: the `seq` of the last message the bot has read past. */
   cursor: string | bigint;
   inbox_ids: string[];
-  lock_token: string | null;
-  locked_until: Date | null;
   created_at: Date;
 }
 
 const BOT_COLS = `
-  b.id, b.user_id, b.name, b.kind, b.cursor, b.lock_token, b.locked_until, b.created_at,
+  b.id, b.user_id, b.name, b.kind, b.cursor, b.created_at,
   COALESCE((SELECT jsonb_agg(bi.inbox_id ORDER BY bi.inbox_id) FROM loopway.bot_inboxes bi WHERE bi.bot_id = b.id),
            '[]'::jsonb) AS inbox_ids`;
 
@@ -389,24 +387,6 @@ export async function updateBot(db: Db, bot: Bot, patch: { name?: string; inboxI
 
 export async function deleteBot(db: Db, id: string): Promise<void> {
   await db.query(`UPDATE loopway.bots SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`, [id]);
-}
-
-/** Take the lease if it's free or expired, or renew it with the token that holds it. */
-export async function leaseBot(
-  db: Db,
-  id: string,
-  ttlSeconds: number,
-  currentToken: string | null,
-): Promise<Bot | undefined> {
-  const [row] = await db.query<{ id: string }>(
-    `UPDATE loopway.bots SET
-       lock_token   = CASE WHEN lock_token = $3 THEN lock_token ELSE $2 END,
-       locked_until = now() + $4::int * interval '1 second'
-     WHERE id = $1 AND deleted_at IS NULL AND (locked_until IS NULL OR locked_until <= now() OR lock_token = $3)
-     RETURNING id`,
-    [id, newLockToken(), currentToken, ttlSeconds],
-  );
-  return row && getBot(db, row.id);
 }
 
 /** Messages in the bot's inboxes after its cursor, oldest first, stopping at the first one still held back. */

@@ -183,7 +183,6 @@ describe("bots", () => {
     });
     expect(created.status).toBe(201);
     expect(created.body).toMatchObject({ name: "dev", kind: "github-threads", inbox_ids: [a.id], cursor: 0 });
-    expect(created.body.leased_until).toBeNull();
     const id = created.body.id;
 
     expect((await call("GET", "/bots", { key })).body.data.map((x: any) => x.id)).toEqual([id]);
@@ -201,7 +200,7 @@ describe("bots", () => {
     expect((await call("DELETE", `/bots/${id}`, { key })).status).toBe(204);
     expect((await call("GET", `/bots/${id}`, { key })).status).toBe(404);
     expect((await call("GET", "/bots", { key })).body.data).toEqual([]);
-    expect((await call("POST", `/bots/${id}/lease`, { key })).status).toBe(404);
+    expect((await call("GET", `/bots/${id}/messages`, { key })).status).toBe(404);
     expect((await call("DELETE", `/bots/${id}`, { key })).status).toBe(404);
     const [row] = await db.query<{ deleted_at: Date | null }>(`SELECT deleted_at FROM loopway.bots WHERE id = $1`, [
       id,
@@ -267,34 +266,6 @@ describe("bots", () => {
       [inbox.id],
     );
     expect(seqs(await call("GET", `/bots/${bot.id}/messages`, { key }))).toEqual(after);
-  });
-
-  it("leases to one runner at a time", async () => {
-    const key = await newUser();
-    const inbox = await newInbox(key);
-    const bot = (await call("POST", "/bots", { key, body: { name: "b", kind: "k", inbox_ids: [inbox.id] } })).body;
-
-    const first = await call("POST", `/bots/${bot.id}/lease`, { key, body: { ttl_seconds: 60 } });
-    expect(first.status).toBe(200);
-    const token = first.body.lease.token;
-    expect(token).toMatch(/^lk_/);
-    const second = await call("POST", `/bots/${bot.id}/lease`, { key });
-    expect(second.status).toBe(409);
-    expect(second.body.error.code).toBe("leased");
-    expect((await call("GET", `/bots/${bot.id}`, { key })).body.leased_until).toBe(first.body.lease.expires_at);
-    expect(JSON.stringify((await call("GET", `/bots/${bot.id}`, { key })).body)).not.toContain("lk_");
-
-    const renewed = await call("POST", `/bots/${bot.id}/lease`, {
-      key,
-      body: { lease_token: token, ttl_seconds: 120 },
-    });
-    expect(renewed.body.lease.token).toBe(token);
-
-    // Once it expires, anyone can take it over.
-    await db.query(`UPDATE loopway.bots SET locked_until = now() - interval '1 second' WHERE id = $1`, [bot.id]);
-    const taken = await call("POST", `/bots/${bot.id}/lease`, { key });
-    expect(taken.status).toBe(200);
-    expect(taken.body.lease.token).not.toBe(token);
   });
 });
 
