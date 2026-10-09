@@ -786,7 +786,12 @@ describe("threads", () => {
     const w = new LimitWatch();
     expect(w.apiError()).toBeUndefined();
     w.line(
-      JSON.stringify({ type: "result", subtype: "success", is_error: true, result: "API Error: Your computer went to sleep" }),
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        result: "API Error: Your computer went to sleep",
+      }),
     );
     expect(w.apiError()).toBe("API Error: Your computer went to sleep");
     const limited = new LimitWatch();

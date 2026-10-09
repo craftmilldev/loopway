@@ -405,7 +405,8 @@ export class Dispatcher {
       );
     } else {
       this.errored.delete(id);
-      if (apiError) this.ctx.out(`${short} hit an API error (${apiError}); giving up after ${API_ERROR_RETRIES} retries`);
+      if (apiError)
+        this.ctx.out(`${short} hit an API error (${apiError}); giving up after ${API_ERROR_RETRIES} retries`);
       this.ctx.out(`${short} ${ended ? "ended" : "finished"} (exit ${code})`);
     }
     this.running.delete(id);
