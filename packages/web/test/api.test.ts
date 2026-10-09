@@ -76,11 +76,12 @@ describe("source requests", () => {
     expect(res.status).toBe(202);
     const events = await call("GET", `/inboxes/${inbox.id}/events`, { key: owner });
     expect(events.body.data).toHaveLength(1);
+    expect(events.body.data[0].event.data.user).toEqual({ id: user.id });
     expect(events.body.data[0].event).toMatchObject({
       type: "source.requested",
       data: {
         description: "Linear, https://linear.app/developers/webhooks",
-        user: { id: user.id, name: "Asker", email: "asker@example.com" },
+        user: { id: user.id },
       },
     });
 

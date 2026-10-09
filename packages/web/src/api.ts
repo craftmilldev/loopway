@@ -143,14 +143,14 @@ export function createApi(opts: ApiOptions) {
     const target = opts.sourceRequests;
     if (!target) throw new ApiError(404, "not_found", "This deployment doesn't take source requests");
     const { description } = z.object({ description: z.string().trim().min(1).max(500) }).parse(await jsonBody(c));
-    const user = c.var.user;
     const r = await (opts.fetch ?? fetch)(target.url, {
       method: "POST",
       headers: { authorization: `Bearer ${target.token}`, "content-type": "application/json" },
       body: JSON.stringify({
         type: "source.requested",
         id: uuidv7(),
-        data: { description, user: { id: user.id, name: user.name, email: user.email } },
+        // Only the user's id: it's enough to look them up, and keeps their name and email out of the message.
+        data: { description, user: { id: c.var.user.id } },
       }),
     }).catch((err: unknown) => {
       console.error("source request failed", err);
