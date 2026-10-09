@@ -67,13 +67,21 @@ loopway events next <inbox> [--ttl 600]
 loopway events lock <inbox> <event> [--ttl 600]
 loopway events unlock <inbox> <event>
 loopway events done <inbox> <event>
+
+loopway bots create --name dev --kind github-threads --inbox <inbox>[,<inbox>]
+loopway bots list
+loopway bots show <bot>
+loopway bots update <bot> [--name n] [--inbox a,b]   # --inbox replaces the bot's inboxes
+loopway bots delete <bot>
+loopway bots messages <bot> [--limit 20]            # what the bot would read next
 ```
 
-- `<inbox>` is an inbox id or its exact name.
+- `<inbox>` is an inbox id or its exact name; `<bot>` is a bot id or its exact name.
 - Every read command takes `--json` for the raw API response. `events next --json` prints nothing when the inbox is empty.
 - `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`, `--schema file.json` for `loopway` inboxes); without a terminal it runs from flags alone. For sources whose sender makes the secret (`vercel`, `granola`) it doesn't ask for one: add the webhook in the sender, then paste the secret it shows with `loopway inbox update <inbox>` (or on the inbox's dashboard page).
 - Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, plus an optional `github` bot for [threads](#acting-as-a-github-bot), mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `https://loopway.craftmill.dev`.
 - Lock tokens from `next`/`lock` are kept in `~/.loopway/locks.json` until they expire, so `lock` (renew), `unlock` and `done` on the same machine don't need `--token`.
+- A bot reads messages from one or more inboxes (see [Bots](#bots)). `--kind` must be one this CLI knows how to run: `github-threads`. Nothing runs bots yet; `loopway threads <inbox>` still reads its inbox directly.
 
 ### Threads
 
@@ -214,6 +222,7 @@ Event shape:
 {
   "id": "0192…", // loopway id (UUIDv7, time-ordered)
   "inbox_id": "0192…",
+  "seq": 1234, // arrival order across all inboxes, assigned by the database; bots read by it
   "status": "locked", // pending | locked | processed
   "received_at": "2026-10-04T23:40:00.000Z",
   "locked_until": "2026-10-04T23:45:00.000Z",
@@ -248,6 +257,25 @@ while :; do
 done
 ```
 
+### Bots
+
+A bot reads the messages (events) of one or more of your inboxes, in `seq` order, and keeps a `cursor`: the `seq` of the last message it has read past. A runner takes the bot's lease, so only one runner drives a bot at a time.
+
+|                                                    |                                                                                                                                                                                                 |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /bots` `{name, kind, inbox_ids}`             | Create. `kind` is any string; the CLI only accepts kinds it can run (`github-threads`). The `cursor` starts at the newest message in its inboxes, so a new bot doesn't replay history.         |
+| `GET /bots`                                        | List yours.                                                                                                                                                                                     |
+| `GET /bots/:id`                                    | One bot.                                                                                                                                                                                        |
+| `PATCH /bots/:id` `{name?, inbox_ids?}`            | Update. `inbox_ids` replaces the bot's inboxes; the cursor stays where it is.                                                                                                                   |
+| `DELETE /bots/:id`                                 | Delete. Deleting an inbox also removes it from its bots.                                                                                                                                        |
+| `POST /bots/:id/lease` `{ttl_seconds?, lease_token?}` | Take the lease, or pass your `lease_token` to renew it. `200` with the bot + `lease: {token, expires_at}`, or `409 leased` if another runner holds a live one. `ttl_seconds` as for events. |
+| `GET /bots/:id/messages` `?limit=`                 | Messages in the bot's inboxes with `seq > cursor`, oldest first (`limit` ≤100, default 50). Messages received in the last 5 seconds, and anything after them, are held back (see below).       |
+| `POST /bots/:id/cursor` `{seq, lease_token}`       | Move the cursor to `seq`. It never moves back. `409 lease_mismatch` unless `lease_token` holds a live lease.                                                                                    |
+
+`inbox_ids` must be your inboxes. Bot shape: `{id, name, kind, inbox_ids, cursor, leased_until, created_at}`; `leased_until` is `null` when nobody holds the lease.
+
+Two webhooks landing at once can commit out of `seq` order, and a cursor that had moved past the later one would skip the earlier. So `messages` stops at the first message received in the last few seconds, giving inserts still in flight time to land.
+
 ## Layout
 
 ```
@@ -265,7 +293,7 @@ packages/web/
 packages/cli/
   src/index.ts          `loopway` entry: error handling + exit codes
   src/program.ts        commands and flags (commander)
-  src/commands/         auth, inboxes (incl. the create TUI, @clack/prompts), events, threads
+  src/commands/         auth, inboxes (incl. the create TUI, @clack/prompts), events, bots, threads
   src/client.ts         typed API client
   src/config.ts         ~/.loopway/config.json
   src/locks.ts          ~/.loopway/locks.json

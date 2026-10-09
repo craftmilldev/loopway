@@ -54,12 +54,25 @@ export interface CloudEvent {
 export interface Event {
   id: string;
   inbox_id: string;
+  /** Arrival order across all inboxes; bots read by it. */
+  seq: number;
   status: EventStatus;
   received_at: string;
   locked_until: string | null;
   processed_at: string | null;
   lock_count: number;
   event: CloudEvent;
+}
+
+export interface Bot {
+  id: string;
+  name: string;
+  kind: string;
+  inbox_ids: string[];
+  /** The `seq` of the last message the bot has read past. */
+  cursor: number;
+  leased_until: string | null;
+  created_at: string;
 }
 
 export interface LockedEvent extends Event {
@@ -169,6 +182,34 @@ export class LoopwayClient {
 
   processed(inboxId: string, eventId: string, opts: { lock_token?: string } = {}) {
     return this.request<Event>("POST", `${events(inboxId)}/${enc(eventId)}/processed`, opts);
+  }
+
+  // ---------- bots ----------
+
+  async listBots() {
+    return (await this.request<{ data: Bot[] }>("GET", "/bots")).data;
+  }
+
+  createBot(input: { name: string; kind: string; inbox_ids: string[] }) {
+    return this.request<Bot>("POST", "/bots", input);
+  }
+
+  getBot(botId: string) {
+    return this.request<Bot>("GET", `/bots/${enc(botId)}`);
+  }
+
+  updateBot(botId: string, input: { name?: string; inbox_ids?: string[] }) {
+    return this.request<Bot>("PATCH", `/bots/${enc(botId)}`, input);
+  }
+
+  async deleteBot(botId: string) {
+    await this.request("DELETE", `/bots/${enc(botId)}`);
+  }
+
+  /** Messages in the bot's inboxes after its cursor, oldest first. */
+  async botMessages(botId: string, q: { limit?: number } = {}) {
+    const suffix = q.limit ? `?limit=${q.limit}` : "";
+    return (await this.request<{ data: Event[] }>("GET", `/bots/${enc(botId)}/messages${suffix}`)).data;
   }
 
   // ---------- transport ----------

@@ -255,10 +255,93 @@ export function createApi(opts: ApiOptions) {
     throw conflictFor(current);
   });
 
+  // Bots
+
+  const inboxIdsBody = z.array(z.string().refine(isUuid, "must be an inbox id")).min(1).max(100);
+
+  authed.get("/bots", async (c) => {
+    const rows = await store.listBots(c.var.db, c.var.user.id);
+    return c.json({ data: rows.map((b) => serializeBot(b)) });
+  });
+
+  authed.post("/bots", async (c) => {
+    const input = z
+      .object({ name: z.string().min(1).max(200), kind: z.string().min(1).max(100), inbox_ids: inboxIdsBody })
+      .parse(await jsonBody(c));
+    const bot = await store.createBot(c.var.db, {
+      userId: c.var.user.id,
+      name: input.name,
+      kind: input.kind,
+      inboxIds: await ownedInboxIds(c, input.inbox_ids),
+    });
+    return c.json(serializeBot(bot), 201);
+  });
+
+  authed.get("/bots/:botId", async (c) => c.json(serializeBot(await ownedBot(c))));
+
+  authed.patch("/bots/:botId", async (c) => {
+    const bot = await ownedBot(c);
+    const input = z
+      .object({ name: z.string().min(1).max(200).optional(), inbox_ids: inboxIdsBody.optional() })
+      .parse(await jsonBody(c));
+    const updated = await store.updateBot(c.var.db, bot, {
+      name: input.name,
+      inboxIds: input.inbox_ids && (await ownedInboxIds(c, input.inbox_ids)),
+    });
+    return c.json(serializeBot(updated));
+  });
+
+  authed.delete("/bots/:botId", async (c) => {
+    const bot = await ownedBot(c);
+    await store.deleteBot(c.var.db, bot.id);
+    return c.body(null, 204);
+  });
+
+  authed.post("/bots/:botId/lease", async (c) => {
+    const bot = await ownedBot(c);
+    const input = ttlBody.extend({ lease_token: z.string().optional() }).parse(await jsonBody(c));
+    const leased = await store.leaseBot(c.var.db, bot.id, input.ttl_seconds, input.lease_token ?? null);
+    if (!leased) {
+      throw new ApiError(409, "leased", `Bot is leased until ${iso(bot.locked_until)} by another runner`);
+    }
+    return c.json(serializeBot(leased, { withLease: true }));
+  });
+
+  authed.get("/bots/:botId/messages", async (c) => {
+    const bot = await ownedBot(c);
+    const q = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(c.req.query());
+    const rows = await store.botMessages(c.var.db, bot.id, q.limit);
+    return c.json({ data: rows.map((e) => serializeEvent(e)) });
+  });
+
+  authed.post("/bots/:botId/cursor", async (c) => {
+    const bot = await ownedBot(c);
+    const input = z.object({ seq: z.number().int().min(0), lease_token: z.string().min(1) }).parse(await jsonBody(c));
+    const moved = await store.advanceBotCursor(c.var.db, bot.id, input.seq, input.lease_token);
+    if (!moved) throw new ApiError(409, "lease_mismatch", "lease_token does not match a live lease on this bot");
+    return c.json(serializeBot(moved));
+  });
+
   app.route("/", authed);
   return app;
 
   // ---------- helpers (closures over opts) ----------
+
+  async function ownedBot(c: Context<Env>): Promise<store.Bot> {
+    const id = c.req.param("botId") ?? "";
+    const bot = isUuid(id) ? await store.getBot(c.var.db, id, c.var.user.id) : undefined;
+    if (!bot) throw new ApiError(404, "not_found", "Bot not found");
+    return bot;
+  }
+
+  /** The ids, deduped, once they're all the user's inboxes. */
+  async function ownedInboxIds(c: Context<Env>, ids: string[]): Promise<string[]> {
+    const mine = new Set((await store.listInboxes(c.var.db, c.var.user.id)).map((i) => i.id));
+    const wanted = [...new Set(ids.map((id) => id.toLowerCase()))];
+    const unknown = wanted.filter((id) => !mine.has(id));
+    if (unknown.length) throw new ApiError(400, "invalid_request", `Unknown inbox id(s): ${unknown.join(", ")}`);
+    return wanted;
+  }
 
   async function ownedInbox(c: Context<Env>): Promise<Inbox> {
     const id = c.req.param("inboxId") ?? "";
@@ -338,6 +421,7 @@ function serializeEvent(e: EventRow, o: { withLock?: boolean } = {}) {
   return {
     id: e.id,
     inbox_id: e.inbox_id,
+    seq: Number(e.seq),
     status: e.status,
     received_at: iso(e.received_at),
     locked_until: e.status === "locked" ? iso(e.locked_until) : null,
@@ -346,6 +430,21 @@ function serializeEvent(e: EventRow, o: { withLock?: boolean } = {}) {
     // The token is only ever returned to whoever just took/renewed the lock.
     ...(o.withLock ? { lock: { token: e.lock_token, expires_at: iso(e.locked_until) } } : {}),
     event: e.cloudevent,
+  };
+}
+
+function serializeBot(b: store.Bot, o: { withLease?: boolean } = {}) {
+  const leased = b.locked_until != null && new Date(b.locked_until).getTime() > Date.now();
+  return {
+    id: b.id,
+    name: b.name,
+    kind: b.kind,
+    inbox_ids: b.inbox_ids,
+    cursor: Number(b.cursor),
+    leased_until: leased ? iso(b.locked_until) : null,
+    // The token is only ever returned to whoever just took/renewed the lease.
+    ...(o.withLease ? { lease: { token: b.lock_token, expires_at: iso(b.locked_until) } } : {}),
+    created_at: iso(b.created_at),
   };
 }
 

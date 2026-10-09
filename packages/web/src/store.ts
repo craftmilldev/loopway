@@ -146,6 +146,8 @@ export type EventStatus = "pending" | "locked" | "processed";
 export interface EventRow {
   id: string;
   inbox_id: string;
+  /** bigint; drivers return it as a string or BigInt. */
+  seq: string | bigint;
   status: EventStatus;
   cloudevent: CloudEvent;
   received_at: Date;
@@ -156,7 +158,7 @@ export interface EventRow {
 }
 
 const EVENT_COLS = `
-  id, inbox_id, cloudevent, received_at, lock_token, locked_until, lock_count, processed_at,
+  id, inbox_id, seq, cloudevent, received_at, lock_token, locked_until, lock_count, processed_at,
   CASE WHEN processed_at IS NOT NULL THEN 'processed'
        WHEN locked_until > now()     THEN 'locked'
        ELSE 'pending' END AS status`;
@@ -300,4 +302,129 @@ export async function markProcessed(
     [eventId, inboxId, token],
   );
   return row;
+}
+
+// ---------- Bots ----------
+
+export interface Bot {
+  id: string;
+  user_id: string;
+  name: string;
+  kind: string;
+  /** bigint: the `seq` of the last message the bot has read past. */
+  cursor: string | bigint;
+  inbox_ids: string[];
+  lock_token: string | null;
+  locked_until: Date | null;
+  created_at: Date;
+}
+
+const BOT_COLS = `
+  b.id, b.user_id, b.name, b.kind, b.cursor, b.lock_token, b.locked_until, b.created_at,
+  COALESCE((SELECT jsonb_agg(bi.inbox_id ORDER BY bi.inbox_id) FROM loopway.bot_inboxes bi WHERE bi.bot_id = b.id),
+           '[]'::jsonb) AS inbox_ids`;
+
+/**
+ * Messages that commit out of seq order (two webhooks landing at once) would be skipped by a cursor that had
+ * passed them, so bots don't read anything received this recently, nor anything after it.
+ */
+export const MESSAGE_HOLDBACK_SECONDS = 5;
+
+// Inbox ids go in as a jsonb array, which both drivers serialize the same way.
+const inboxIds = (param: string) => `(SELECT value::uuid FROM jsonb_array_elements_text(${param}::jsonb))`;
+
+/** The inboxes must belong to the user (bot_inboxes' keys enforce it). The cursor starts at their newest message. */
+export async function createBot(
+  db: Db,
+  input: { userId: string; name: string; kind: string; inboxIds: string[] },
+): Promise<Bot> {
+  const id = uuidv7();
+  await db.query(
+    `WITH b AS (
+       INSERT INTO loopway.bots (id, user_id, name, kind, cursor)
+       VALUES ($1, $2, $3, $4, COALESCE((SELECT max(seq) FROM loopway.events WHERE inbox_id IN ${inboxIds("$5")}), 0))
+       RETURNING id, user_id
+     )
+     INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id)
+     SELECT b.id, ids.value, b.user_id FROM b, ${inboxIds("$5")} AS ids(value)`,
+    [id, input.userId, input.name, input.kind, input.inboxIds],
+  );
+  return (await getBot(db, id))!;
+}
+
+export async function listBots(db: Db, userId: string): Promise<Bot[]> {
+  return db.query<Bot>(`SELECT ${BOT_COLS} FROM loopway.bots b WHERE b.user_id = $1 ORDER BY b.id`, [userId]);
+}
+
+export async function getBot(db: Db, id: string, userId?: string): Promise<Bot | undefined> {
+  const [row] = userId
+    ? await db.query<Bot>(`SELECT ${BOT_COLS} FROM loopway.bots b WHERE b.id = $1 AND b.user_id = $2`, [id, userId])
+    : await db.query<Bot>(`SELECT ${BOT_COLS} FROM loopway.bots b WHERE b.id = $1`, [id]);
+  return row;
+}
+
+/** `inboxIds`, when given, replaces the bot's inboxes. The cursor stays where it is. */
+export async function updateBot(db: Db, bot: Bot, patch: { name?: string; inboxIds?: string[] }): Promise<Bot> {
+  await db.query(
+    `WITH b AS (UPDATE loopway.bots SET name = COALESCE($2, name) WHERE id = $1 RETURNING id),
+     gone AS (
+       DELETE FROM loopway.bot_inboxes
+       WHERE bot_id = $1 AND $4::jsonb IS NOT NULL AND inbox_id NOT IN ${inboxIds("$4")}
+     )
+     INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id)
+     SELECT $1, ids.value, $3 FROM ${inboxIds("$4")} AS ids(value)
+     ON CONFLICT DO NOTHING`,
+    [bot.id, patch.name ?? null, bot.user_id, patch.inboxIds ?? null],
+  );
+  return (await getBot(db, bot.id))!;
+}
+
+export async function deleteBot(db: Db, id: string): Promise<void> {
+  await db.query(`DELETE FROM loopway.bots WHERE id = $1`, [id]);
+}
+
+/** Take the lease if it's free or expired, or renew it with the token that holds it. */
+export async function leaseBot(
+  db: Db,
+  id: string,
+  ttlSeconds: number,
+  currentToken: string | null,
+): Promise<Bot | undefined> {
+  const [row] = await db.query<{ id: string }>(
+    `UPDATE loopway.bots SET
+       lock_token   = CASE WHEN lock_token = $3 THEN lock_token ELSE $2 END,
+       locked_until = now() + $4::int * interval '1 second'
+     WHERE id = $1 AND (locked_until IS NULL OR locked_until <= now() OR lock_token = $3)
+     RETURNING id`,
+    [id, newLockToken(), currentToken, ttlSeconds],
+  );
+  return row && getBot(db, row.id);
+}
+
+/** Moves the cursor forward, never back, for whoever holds a live lease. */
+export async function advanceBotCursor(db: Db, id: string, seq: number, token: string): Promise<Bot | undefined> {
+  const [row] = await db.query<{ id: string }>(
+    `UPDATE loopway.bots SET cursor = GREATEST(cursor, $2::bigint)
+     WHERE id = $1 AND lock_token = $3 AND locked_until > now()
+     RETURNING id`,
+    [id, seq, token],
+  );
+  return row && getBot(db, row.id);
+}
+
+/** Messages in the bot's inboxes after its cursor, oldest first, stopping at the first one still held back. */
+export async function botMessages(db: Db, botId: string, limit: number): Promise<EventRow[]> {
+  return db.query<EventRow>(
+    `WITH mine AS (
+       SELECT e.* FROM loopway.events e
+       JOIN loopway.bot_inboxes bi ON bi.inbox_id = e.inbox_id
+       JOIN loopway.bots b ON b.id = bi.bot_id
+       WHERE b.id = $1 AND e.seq > b.cursor
+     ),
+     fresh AS (SELECT min(seq) AS seq FROM mine WHERE received_at > now() - $2::int * interval '1 second')
+     SELECT ${EVENT_COLS} FROM mine
+     WHERE (SELECT seq FROM fresh) IS NULL OR seq < (SELECT seq FROM fresh)
+     ORDER BY seq LIMIT $3`,
+    [botId, MESSAGE_HOLDBACK_SECONDS, limit],
+  );
 }
