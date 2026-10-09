@@ -86,12 +86,12 @@ export const spawnClaude: RunAgent = async (run) => {
     const watch = new LimitWatch();
     createInterface({ input: child.stdout! }).on("line", (l) => watch.line(l));
     const copied = pipeline(child.stdout!, createWriteStream(run.logPath, { flags: "a", mode: 0o600 }));
-    copied.catch(() => {}); // surfaced by the await below; this just keeps an early failure from being unhandled
-    const code = await new Promise<number>((resolve, reject) => {
+    const exited = new Promise<number>((resolve, reject) => {
       child.once("error", reject);
       child.once("exit", (code) => resolve(code ?? -1));
     });
-    await copied;
+    // Awaited together, so whichever fails first is the error thrown and neither can go unhandled.
+    const [code] = await Promise.all([exited, copied]);
     return { code, delivered: watch.delivered, limitedUntil: watch.limitedUntil() };
   } finally {
     closeSync(errFd);
