@@ -1,4 +1,4 @@
-// Typed client for the loopway HTTP API (see the API section of the README for the contract).
+// Typed client for the loopway HTTP API (see docs/api.md for the contract).
 
 export interface User {
   id: string;
