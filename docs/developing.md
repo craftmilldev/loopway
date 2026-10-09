@@ -15,6 +15,7 @@ npm run dev                   # http://localhost:3000, data in packages/web/.dat
 npm test                      # every workspace, in-memory PGlite
 npm run lint                  # ESLint, with type-aware rules
 npm run format                # Prettier; CI runs format:check
+npm run update                # git pull, npm install, npm run build
 ```
 
 Root scripts forward to the workspaces (`lint` and `format` run once over the whole repo); `npm run <script> -w @loopway/web` (or `@loopway/cli`) runs one directly.

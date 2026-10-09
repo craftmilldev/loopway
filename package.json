@@ -17,6 +17,7 @@
     "db:migrate": "npm run db:migrate -w @loopway/web",
     "cli": "npm run start -w @loopway/cli --",
     "build": "npm run build --workspaces --if-present",
+    "update": "git pull && npm install && npm run build",
     "test": "npm test --workspaces",
     "typecheck": "npm run typecheck --workspaces",
     "lint": "eslint .",
