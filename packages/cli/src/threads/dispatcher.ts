@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { ApiError, type Bot, type Event, type Lease, type LoopwayClient } from "../client.js";
+import { ApiError, type Bot, type Message, type Lease, type LoopwayClient } from "../client.js";
 import { loadGithubBot } from "../config.js";
 import type { Context } from "../context.js";
 import { clock, dim } from "../format.js";
@@ -65,7 +65,7 @@ export interface DispatcherState {
  * then starts or resumes, in the background, every session that has waiting messages and no run in
  * flight, as far as --max allows.
  *
- * Delivered messages are context for the session, not tasks it has to mark done; the inbox's events
+ * Delivered messages are context for the session, not tasks it has to mark done; the inbox's messages
  * are left alone. Sessions talk back through the MCP tools in tools.ts, and `end` is what finishes
  * a thread.
  */
@@ -250,7 +250,7 @@ export class Dispatcher {
         if (started) s.started = true;
         if (inflight) {
           const ids = new Set(inflight.map((m) => m.id));
-          s.events = s.events.filter((e) => !ids.has(e));
+          s.messages = s.messages.filter((e) => !ids.has(e));
           s.waiting.unshift(...inflight);
           delete s.inflight;
         } else if (cutOff && !s.waiting.length) s.interrupted = true;
@@ -275,10 +275,10 @@ export class Dispatcher {
    * Gives each message to a session, as a waiting message. Messages already assigned (the last run
    * died between saving and moving the cursor) are skipped.
    */
-  private assign(bot: Bot, messages: Event[]): Promise<void> {
+  private assign(bot: Bot, messages: Message[]): Promise<void> {
     const kind = this.kinds.get(bot.id)!;
     return withSessions(this.dir, (sessions) => {
-      const known = new Set(Object.values(sessions).flatMap((s) => [...s.events, ...s.waiting.map((m) => m.id)]));
+      const known = new Set(Object.values(sessions).flatMap((s) => [...s.messages, ...s.waiting.map((m) => m.id)]));
       for (const e of messages) {
         if (known.has(e.id)) continue;
         const { session, key } = kind.route(sessions, bot.id, e);
@@ -315,7 +315,7 @@ export class Dispatcher {
         if (running.size + deliveries.size >= this.max) break;
         const s = editSession(sessions, id);
         const messages = s.waiting.splice(0);
-        s.events.push(...messages.map((m) => m.id));
+        s.messages.push(...messages.map((m) => m.id));
         s.status = "active";
         s.inflight = messages;
         deliveries.set(id, { session: { ...s }, messages });
@@ -390,7 +390,7 @@ export class Dispatcher {
       } else if (requeue) {
         // They didn't: deliver them again once the wait is over.
         const ids = new Set(messages.map((m) => m.id));
-        s.events = s.events.filter((e) => !ids.has(e));
+        s.messages = s.messages.filter((e) => !ids.has(e));
         s.waiting.unshift(...messages);
       }
       return s.status === "ended";
@@ -437,7 +437,7 @@ const RESUME_AFTER_LIMIT =
 
 function describeMessages(messages: WaitingMessage[]): string {
   const lines = messages.map(
-    (m) => `- ${m.id}  ${m.type}  ${m.key ?? ""}  (read: loopway events get ${m.inbox_id} ${m.id} --data)`,
+    (m) => `- ${m.id}  ${m.type}  ${m.key ?? ""}  (read: loopway messages get ${m.inbox_id} ${m.id} --data)`,
   );
   return `New messages for this thread:\n${lines.join("\n")}`;
 }

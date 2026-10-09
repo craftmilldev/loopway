@@ -1,4 +1,4 @@
-loopway is a place to build bots and work alongside them. A bot watches the services you already use (GitHub, Vercel and Granola so far), gets each thing that happens there as an event in its inbox, and works through them one at a time. The bot can be a script, a cron job or a Claude agent.
+loopway is a place to build bots and work alongside them. A bot watches the services you already use (GitHub, Vercel and Granola so far), gets each thing that happens there as a message in its inbox, and works through them one at a time. The bot can be a script, a cron job or a Claude agent.
 
 ## Make a bot
 
@@ -24,7 +24,7 @@ loopway bots create --name dev --kind github-threads --inbox <inbox>
 loopway bots run
 ```
 
-A bot reads its inboxes in arrival order and keeps a cursor, so it picks up where it left off. `loopway bots run` runs yours; `loopway events list <inbox>` and `loopway events get <inbox> <event>` read what's in an inbox.
+A bot reads its inboxes in arrival order and keeps a cursor, so it picks up where it left off. `loopway bots run` runs yours; `loopway messages list <inbox>` and `loopway messages get <inbox> <message>` read what's in an inbox.
 
 ## The API
 

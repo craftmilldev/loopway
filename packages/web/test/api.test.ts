@@ -74,10 +74,10 @@ describe("source requests", () => {
 
     const res = await post(key, { description: "  Linear, https://linear.app/developers/webhooks " });
     expect(res.status).toBe(202);
-    const events = await call("GET", `/inboxes/${inbox.id}/events`, { key: owner });
-    expect(events.body.data).toHaveLength(1);
-    expect(events.body.data[0].event.data.user).toEqual({ id: user.id });
-    expect(events.body.data[0].event).toMatchObject({
+    const messages = await call("GET", `/inboxes/${inbox.id}/messages`, { key: owner });
+    expect(messages.body.data).toHaveLength(1);
+    expect(messages.body.data[0].event.data.user).toEqual({ id: user.id });
+    expect(messages.body.data[0].event).toMatchObject({
       type: "source.requested",
       data: {
         description: "Linear, https://linear.app/developers/webhooks",
@@ -133,7 +133,7 @@ describe("inboxes", () => {
     const b = await newUser("b");
     const inbox = await newInbox(a);
     expect((await call("GET", `/inboxes/${inbox.id}`, { key: b })).status).toBe(404);
-    expect((await call("GET", `/inboxes/${inbox.id}/events`, { key: b })).status).toBe(404);
+    expect((await call("GET", `/inboxes/${inbox.id}/messages`, { key: b })).status).toBe(404);
   });
   it("patches config, keeping the secret", async () => {
     const key = await newUser();
@@ -143,13 +143,13 @@ describe("inboxes", () => {
   });
 });
 
-describe("events", () => {
+describe("messages", () => {
   async function setup(n = 3) {
     const key = await newUser();
     const inbox = await newInbox(key);
     for (let i = 1; i <= n; i++) await sendGithub(inbox, "pull_request", prPayload(i));
-    const ids = (await call("GET", `/inboxes/${inbox.id}/events`, { key })).body.data.map((e: any) => e.id);
-    return { key, inbox, ids: ids as string[], base: `/inboxes/${inbox.id}/events` };
+    const ids = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data.map((e: any) => e.id);
+    return { key, inbox, ids: ids as string[], base: `/inboxes/${inbox.id}/messages` };
   }
 
   it("lists with a type filter and cursor pagination", async () => {
@@ -167,9 +167,9 @@ describe("events", () => {
     expect(Object.keys(p1.body.data[0]).sort()).toEqual(["event", "id", "inbox_id", "received_at", "seq"]);
   });
 
-  it("counts an inbox's events", async () => {
+  it("counts an inbox's messages", async () => {
     const { key, inbox } = await setup(2);
-    expect((await call("GET", `/inboxes/${inbox.id}`, { key })).body.stats).toEqual({ events: 2 });
+    expect((await call("GET", `/inboxes/${inbox.id}`, { key })).body.stats).toEqual({ messages: 2 });
   });
 
   it("404s on bad ids", async () => {
@@ -183,7 +183,7 @@ describe("events", () => {
 describe("bots", () => {
   /** Ages an inbox's events past the holdback window, as if they'd arrived a minute ago. */
   const settle = (inboxId: string) =>
-    db.query(`UPDATE loopway.events SET received_at = received_at - interval '1 minute' WHERE inbox_id = $1`, [
+    db.query(`UPDATE loopway.messages SET received_at = received_at - interval '1 minute' WHERE inbox_id = $1`, [
       inboxId,
     ]);
   const seqs = (r: { body: { data: { seq: number }[] } }) => r.body.data.map((e) => e.seq);
@@ -255,7 +255,7 @@ describe("bots", () => {
     const inbox = await newInbox(key);
     for (let i = 1; i <= 2; i++) await sendGithub(inbox, "pull_request", prPayload(i));
     // Not before[1]: ids made in the same millisecond can sort either way, so the newest is the highest seq.
-    const newest = Math.max(...seqs(await call("GET", `/inboxes/${inbox.id}/events`, { key })));
+    const newest = Math.max(...seqs(await call("GET", `/inboxes/${inbox.id}/messages`, { key })));
 
     const bot = (await call("POST", "/bots", { key, body: { name: "b", kind: "k", inbox_ids: [inbox.id] } })).body;
     expect(bot.cursor).toBe(newest);
@@ -276,8 +276,8 @@ describe("bots", () => {
     await sendGithub(inbox, "pull_request", prPayload(6));
     await sendGithub(inbox, "pull_request", prPayload(7));
     await db.query(
-      `UPDATE loopway.events SET received_at = received_at - interval '1 minute'
-       WHERE inbox_id = $1 AND seq = (SELECT max(seq) FROM loopway.events WHERE inbox_id = $1)`,
+      `UPDATE loopway.messages SET received_at = received_at - interval '1 minute'
+       WHERE inbox_id = $1 AND seq = (SELECT max(seq) FROM loopway.messages WHERE inbox_id = $1)`,
       [inbox.id],
     );
     expect(seqs(await call("GET", `/bots/${bot.id}/messages`, { key }))).toEqual(after);
@@ -286,7 +286,7 @@ describe("bots", () => {
 
 describe("bot leases", () => {
   const settle = (inboxId: string) =>
-    db.query(`UPDATE loopway.events SET received_at = received_at - interval '1 minute' WHERE inbox_id = $1`, [
+    db.query(`UPDATE loopway.messages SET received_at = received_at - interval '1 minute' WHERE inbox_id = $1`, [
       inboxId,
     ]);
 

@@ -128,16 +128,16 @@ export async function deleteInbox(db: Db, id: string): Promise<void> {
 }
 
 export async function inboxStats(db: Db, inboxId: string) {
-  const [row] = await db.query<{ events: number }>(
-    `SELECT count(*)::int AS events FROM loopway.events WHERE inbox_id = $1`,
+  const [row] = await db.query<{ messages: number }>(
+    `SELECT count(*)::int AS messages FROM loopway.messages WHERE inbox_id = $1`,
     [inboxId],
   );
   return row!;
 }
 
-// ---------- Events ----------
+// ---------- Messages ----------
 
-export interface EventRow {
+export interface MessageRow {
   id: string;
   inbox_id: string;
   /** bigint; drivers return it as a string or BigInt. */
@@ -146,26 +146,26 @@ export interface EventRow {
   received_at: Date;
 }
 
-const EVENT_COLS = `id, inbox_id, seq, cloudevent, received_at`;
+const MESSAGE_COLS = `id, inbox_id, seq, cloudevent, received_at`;
 
-/** Returns the stored event and whether it was a redelivery of one we already had (same CE source+id). */
-export async function insertEvent(db: Db, inboxId: string, ce: CloudEvent) {
+/** Returns the stored message and whether it was a redelivery of one we already had (same CE source+id). */
+export async function insertMessage(db: Db, inboxId: string, ce: CloudEvent) {
   const [inserted] = await db.query<{ id: string }>(
-    `INSERT INTO loopway.events (id, inbox_id, ce_id, ce_source, ce_type, ce_subject, ce_time, cloudevent)
+    `INSERT INTO loopway.messages (id, inbox_id, ce_id, ce_source, ce_type, ce_subject, ce_time, cloudevent)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
-     ON CONFLICT ON CONSTRAINT events_ce_unique DO NOTHING
+     ON CONFLICT ON CONSTRAINT messages_ce_unique DO NOTHING
      RETURNING id`,
     [uuidv7(), inboxId, ce.id, ce.source, ce.type, ce.subject ?? null, ce.time ?? null, ce],
   );
   if (inserted) return { id: inserted.id, duplicate: false };
   const [existing] = await db.query<{ id: string }>(
-    `SELECT id FROM loopway.events WHERE inbox_id = $1 AND ce_source = $2 AND ce_id = $3`,
+    `SELECT id FROM loopway.messages WHERE inbox_id = $1 AND ce_source = $2 AND ce_id = $3`,
     [inboxId, ce.source, ce.id],
   );
   return { id: existing!.id, duplicate: true };
 }
 
-export async function listEvents(
+export async function listMessages(
   db: Db,
   inboxId: string,
   opts: { type?: string; after?: string; limit: number; order: "asc" | "desc" },
@@ -186,21 +186,21 @@ export async function listEvents(
     where.push(`id ${opts.order === "asc" ? ">" : "<"} $${params.length}`);
   }
   params.push(opts.limit + 1);
-  const rows = await db.query<EventRow>(
-    `SELECT ${EVENT_COLS} FROM loopway.events WHERE ${where.join(" AND ")}
+  const rows = await db.query<MessageRow>(
+    `SELECT ${MESSAGE_COLS} FROM loopway.messages WHERE ${where.join(" AND ")}
      ORDER BY id ${opts.order} LIMIT $${params.length}`,
     params,
   );
   const hasMore = rows.length > opts.limit;
   const page = hasMore ? rows.slice(0, opts.limit) : rows;
-  return { events: page, nextCursor: hasMore ? page[page.length - 1]!.id : null };
+  return { messages: page, nextCursor: hasMore ? page[page.length - 1]!.id : null };
 }
 
-export async function getEvent(db: Db, inboxId: string, eventId: string): Promise<EventRow | undefined> {
-  const [row] = await db.query<EventRow>(`SELECT ${EVENT_COLS} FROM loopway.events WHERE id = $1 AND inbox_id = $2`, [
-    eventId,
-    inboxId,
-  ]);
+export async function getMessage(db: Db, inboxId: string, messageId: string): Promise<MessageRow | undefined> {
+  const [row] = await db.query<MessageRow>(
+    `SELECT ${MESSAGE_COLS} FROM loopway.messages WHERE id = $1 AND inbox_id = $2`,
+    [messageId, inboxId],
+  );
   return row;
 }
 
@@ -243,7 +243,7 @@ export async function createBot(
   await db.query(
     `WITH b AS (
        INSERT INTO loopway.bots (id, user_id, name, kind, cursor)
-       VALUES ($1, $2, $3, $4, COALESCE((SELECT max(seq) FROM loopway.events WHERE inbox_id IN ${inboxIds("$5")}), 0))
+       VALUES ($1, $2, $3, $4, COALESCE((SELECT max(seq) FROM loopway.messages WHERE inbox_id IN ${inboxIds("$5")}), 0))
        RETURNING id, user_id
      )
      INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id)
@@ -345,16 +345,16 @@ export async function advanceCursor(db: Db, botId: string, seq: number, token: s
 }
 
 /** Messages in the bot's inboxes after its cursor, oldest first, stopping at the first one still held back. */
-export async function botMessages(db: Db, botId: string, limit: number): Promise<EventRow[]> {
-  return db.query<EventRow>(
+export async function botMessages(db: Db, botId: string, limit: number): Promise<MessageRow[]> {
+  return db.query<MessageRow>(
     `WITH mine AS (
-       SELECT e.* FROM loopway.events e
+       SELECT e.* FROM loopway.messages e
        JOIN loopway.bot_inboxes bi ON bi.inbox_id = e.inbox_id
        JOIN loopway.bots b ON b.id = bi.bot_id
        WHERE b.id = $1 AND e.seq > b.cursor
      ),
      fresh AS (SELECT min(seq) AS seq FROM mine WHERE received_at > now() - $2::int * interval '1 second')
-     SELECT ${EVENT_COLS} FROM mine
+     SELECT ${MESSAGE_COLS} FROM mine
      WHERE (SELECT seq FROM fresh) IS NULL OR seq < (SELECT seq FROM fresh)
      ORDER BY seq LIMIT $3`,
     [botId, MESSAGE_HOLDBACK_SECONDS, limit],

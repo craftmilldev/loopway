@@ -2,11 +2,11 @@
 
 loopway is a place to build bots and work alongside them. It accepts webhooks from the services you already use (GitHub, Vercel and Granola so far, plus loopway itself so bots can message each other), stores each delivery as a [CloudEvent](https://github.com/cloudevents/spec) in an **inbox**, and lets a bot work through them one at a time. The bot can be a script, a cron job or a Claude agent.
 
-- An **inbox** belongs to a user and listens to one source. The source's webhook points at the inbox, which checks the signature and keeps the event.
-- An **event** is a stored message: the CloudEvent, when it arrived, and its place in arrival order. Nothing is marked done.
-- A **bot** reads the events of one or more inboxes in arrival order and keeps a cursor, so it knows where it left off. `loopway bots run` turns GitHub issues and PRs into Claude Code sessions that pick up comments and reviews as they come in.
+- An **inbox** belongs to a user and listens to one source. The source's webhook points at the inbox, which checks the signature and keeps the message.
+- A **message** is a stored delivery: the CloudEvent, when it arrived, and its place in arrival order. Nothing is marked done.
+- A **bot** reads the messages of one or more inboxes in arrival order and keeps a cursor, so it knows where it left off. `loopway bots run` turns GitHub issues and PRs into Claude Code sessions that pick up comments and reviews as they come in.
 
-It runs on Vercel at [loopway.craftmill.dev](https://loopway.craftmill.dev), with a small web UI for logging in, creating inboxes and reading events.
+It runs on Vercel at [loopway.craftmill.dev](https://loopway.craftmill.dev), with a small web UI for logging in, creating inboxes and reading messages.
 
 - [`docs/sources/`](docs/sources/): one page per source ([github](docs/sources/github.md), [vercel](docs/sources/vercel.md), [granola](docs/sources/granola.md), [loopway](docs/sources/loopway.md)): its config, how to connect it, and how its deliveries map to CloudEvents.
 - [`docs/api.md`](docs/api.md): the HTTP API and the webhook ingestion rules.
@@ -19,7 +19,7 @@ npm install && npm run build -w @loopway/cli && npm link -w @loopway/cli   # put
 loopway login                 # emails you a one-time code; new emails get an account
 loopway inbox create          # name → source → events → secret → confirm
 loopway inbox show <inbox>    # the webhook URL and secret to add in the sender
-loopway events list <inbox>
+loopway messages list <inbox>
 ```
 
 ## CLI
@@ -39,11 +39,11 @@ loopway clear-config                   # deletes ~/.loopway/config.json
 
 loopway inbox create                   # interactive: name → source → events → secret → confirm
 loopway inbox list
-loopway inbox show <inbox>             # webhook setup + event count
+loopway inbox show <inbox>             # webhook setup + message count
 loopway inbox update <inbox> [--name n] [--events a,b] [--secret s] [--schema file.json]   # with no flags in a terminal, asks for the secret
 
-loopway events list <inbox> [--type 'com.github.pull_request.*'] [--limit 20] [--all]
-loopway events get  <inbox> <event> [--data]
+loopway messages list <inbox> [--type 'com.github.pull_request.*'] [--limit 20] [--all]
+loopway messages get  <inbox> <message> [--data]
 
 loopway bots create --name dev --kind github-threads --inbox <inbox>[,<inbox>]
 loopway bots list
@@ -89,7 +89,7 @@ Sessions talk back to the dispatcher over MCP: it serves a `loopway` server on 1
 - `link` adds a PR to the session's thread. Sessions call it right after opening a PR; a PR whose body says `Closes #N` also joins issue N's thread on its own.
 - `end` marks the thread finished. The session decides when that is (a close event usually means it, but not always). A later message for the thread resumes it and makes it active again.
 
-Delivery doesn't touch the inbox's events: they aren't locked or marked processed, and a session never marks them done. They're context for the thread, and `end` is what finishes it. A delivery lists each message's id, type, thread key and the command that reads it, `loopway events get <inbox> <message> --data` (a bot can read several inboxes). Sessions are tracked in `~/.loopway/threads.json` by the bot they belong to, with the messages delivered to each and those still waiting (writes take `threads.json.lock`), and each one's transcript (stream-json) is appended to `~/.loopway/threads/<session>.log`. Sessions written by older versions, which ran one inbox, are adopted by the bot that reads that inbox the first time it runs, so threads in flight carry on.
+Delivery doesn't touch the inbox's messages: they aren't locked or marked processed, and a session never marks them done. They're context for the thread, and `end` is what finishes it. A delivery lists each message's id, type, thread key and the command that reads it, `loopway messages get <inbox> <message> --data` (a bot can read several inboxes). Sessions are tracked in `~/.loopway/threads.json` by the bot they belong to, with the messages delivered to each and those still waiting (writes take `threads.json.lock`), and each one's transcript (stream-json) is appended to `~/.loopway/threads/<session>.log`. Sessions written by older versions, which ran one inbox, are adopted by the bot that reads that inbox the first time it runs, so threads in flight carry on.
 
 The inbox's GitHub webhook needs `pull_request`, `pull_request_review` and `pull_request_review_comment` (as well as `issues` and `issue_comment`) for reviews to reach sessions.
 

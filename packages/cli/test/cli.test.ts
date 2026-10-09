@@ -267,8 +267,8 @@ describe("inboxes", () => {
     const inbox = await inboxWithEvents(2, "named");
     const shown = await runJson("inbox", "show", "named");
     expect(shown.id).toBe(inbox.id);
-    expect(shown.stats).toEqual({ events: 2 });
-    expect(await run("inbox", "show", "named")).toMatch(/events\s+2/);
+    expect(shown.stats).toEqual({ messages: 2 });
+    expect(await run("inbox", "show", "named")).toMatch(/messages\s+2/);
     await expect(run("inbox", "show", "nope")).rejects.toThrow(/No inbox with id or name/);
   });
 
@@ -319,34 +319,34 @@ describe("inboxes", () => {
   });
 });
 
-describe("events", () => {
+describe("messages", () => {
   it("list filters, paginates with --all, and get shows one", async () => {
     await configured();
     const inbox = await inboxWithEvents(3);
-    const page = await runJson("events", "list", inbox.id, "--limit", "2");
+    const page = await runJson("messages", "list", inbox.id, "--limit", "2");
     expect(page.data).toHaveLength(2);
     expect(page.next_cursor).toBeTruthy();
 
-    const all = await runJson("events", "list", inbox.id, "--limit", "2", "--all");
+    const all = await runJson("messages", "list", inbox.id, "--limit", "2", "--all");
     expect(all.data).toHaveLength(3);
     expect(all.next_cursor).toBeNull();
-    expect(await run("events", "list", inbox.id)).toContain("com.github.pull_request.opened");
+    expect(await run("messages", "list", inbox.id)).toContain("com.github.pull_request.opened");
 
     const id = all.data[0].id;
-    expect((await runJson("events", "get", inbox.id, id)).event.subject).toBe("1");
-    expect(JSON.parse(await run("events", "get", inbox.id, id, "--data"))).toEqual(pr(1));
+    expect((await runJson("messages", "get", inbox.id, id)).event.subject).toBe("1");
+    expect(JSON.parse(await run("messages", "get", inbox.id, id, "--data"))).toEqual(pr(1));
   });
 
   it("rejects bad numbers before calling the API", async () => {
     await configured();
-    await expect(run("events", "list", "x", "--limit", "0")).rejects.toThrow(/positive integer/);
+    await expect(run("messages", "list", "x", "--limit", "0")).rejects.toThrow(/positive integer/);
   });
 });
 
 describe("bots", () => {
   /** Ages the inbox's events past the API's holdback window. */
   const settle = (inboxId: string) =>
-    db.query(`UPDATE loopway.events SET received_at = received_at - interval '1 minute' WHERE inbox_id = $1`, [
+    db.query(`UPDATE loopway.messages SET received_at = received_at - interval '1 minute' WHERE inbox_id = $1`, [
       inboxId,
     ]);
 
@@ -423,7 +423,7 @@ describe("threads", () => {
   /** Sends a webhook and ages it past the holdback window, so the bot reads it on the next tick. */
   async function send(inbox: { id: string; config: { secret: string } }, event: string, payload: unknown) {
     await sendGithub(inbox, event, payload);
-    await db.query(`UPDATE loopway.events SET received_at = received_at - interval '1 minute' WHERE inbox_id = $1`, [
+    await db.query(`UPDATE loopway.messages SET received_at = received_at - interval '1 minute' WHERE inbox_id = $1`, [
       inbox.id,
     ]);
   }
@@ -457,7 +457,7 @@ describe("threads", () => {
     );
     // Let runs still in flight write threads.json before the config dir is removed.
     closers.push(async () => (await finish(), await d.close()));
-    const list = async () => (await runJson("events", "list", boxes[0]!.id, "--all")).data;
+    const list = async () => (await runJson("messages", "list", boxes[0]!.id, "--all")).data;
     const cursor = async (bot = bots[0]!) => (await runJson("bots", "show", bot.id)).cursor;
     const newest = async () => Math.max(...(await list()).map((e: any) => e.seq));
     return { inbox: boxes[0]!, bots, bot: bots[0]!, client, runs, out, d, finish, list, cursor, newest };
@@ -486,7 +486,7 @@ describe("threads", () => {
     expect(lines).toHaveLength(2);
     expect(lines[0]).toMatch(
       new RegExp(
-        `^- [0-9a-f-]{36}  com\\.github\\.issues\\.opened  a/b#1  \\(read: loopway events get ${inbox.id} [0-9a-f-]{36} --data\\)$`,
+        `^- [0-9a-f-]{36}  com\\.github\\.issues\\.opened  a/b#1  \\(read: loopway messages get ${inbox.id} [0-9a-f-]{36} --data\\)$`,
       ),
     );
     expect(await cursor()).toBe(await newest());
@@ -540,13 +540,13 @@ describe("threads", () => {
     // Later ticks read nothing new, and the session keeps its record.
     await d.tick();
     expect(runs).toHaveLength(1);
-    expect((await sessions())[id]).toMatchObject({ bot_id: bot.id, events: [delivered.id], waiting: [] });
+    expect((await sessions())[id]).toMatchObject({ bot_id: bot.id, messages: [delivered.id], waiting: [] });
 
     // Messages that come back (the cursor didn't move after they were assigned) are skipped.
     await db.query(`UPDATE loopway.bots SET cursor = cursor - 1 WHERE id = $1`, [bot.id]);
     await d.tick();
     expect(runs).toHaveLength(1);
-    expect((await sessions())[id]).toMatchObject({ events: [delivered.id], waiting: [] });
+    expect((await sessions())[id]).toMatchObject({ messages: [delivered.id], waiting: [] });
     expect(await cursor()).toBe(await newest());
   });
 
@@ -617,7 +617,7 @@ describe("threads", () => {
     const state = await d.state();
     expect(state.running.size).toBe(0);
     expect(state.waiting.map((m) => m.key)).toEqual(["a/b#2", "a/b#1"]);
-    expect(state.sessions[first!.sessionId]!.events).toEqual(delivered);
+    expect(state.sessions[first!.sessionId]!.messages).toEqual(delivered);
     expect(state.sessions[first!.sessionId]!.limited).toBe(true);
 
     // Once it resets, the session is told to carry on, with the comment that arrived meanwhile.
@@ -667,7 +667,7 @@ describe("threads", () => {
     const state = await d.state();
     expect(state.running.size).toBe(0);
     expect(state.waiting.map((m) => m.key)).toEqual(["a/b#1", "a/b#2"]);
-    expect(state.sessions[first!.sessionId]!.events).toEqual([]);
+    expect(state.sessions[first!.sessionId]!.messages).toEqual([]);
 
     // Once it resets, the session is resumed with the same messages, and the new thread starts too.
     await new Promise((r) => setTimeout(r, 350));
@@ -809,7 +809,7 @@ describe("threads", () => {
     await send(b, "issues", issue("opened", 1));
     await d.tick();
     expect(runs).toHaveLength(1);
-    expect(runs[0]!.message).toContain(`loopway events get ${a.id} `);
+    expect(runs[0]!.message).toContain(`loopway messages get ${a.id} `);
     expect(out.join("\n")).toMatch(/1 session\(s\) waiting/);
     const state = await d.state();
     expect(state.bots.held.map((x) => x.name)).toEqual(["dev1", "dev2"]);
@@ -822,7 +822,7 @@ describe("threads", () => {
     await finish();
     await d.tick();
     expect(runs).toHaveLength(2);
-    expect(runs[1]!.message).toContain(`loopway events get ${b.id} `);
+    expect(runs[1]!.message).toContain(`loopway messages get ${b.id} `);
   });
 
   it("skips a bot leased by another runner, and picks it up once released", async () => {
@@ -911,7 +911,7 @@ describe("threads", () => {
     const d = await Dispatcher.start(ctx, client, [bot], { max: 3, ttl: 60 });
     closers.push(() => d.close());
     expect(out[0]).toMatch(/Adopted 1 session/);
-    expect((await sessions())["old-session"]).toMatchObject({ bot_id: bot.id, waiting: [], events: ["e1"] });
+    expect((await sessions())["old-session"]).toMatchObject({ bot_id: bot.id, waiting: [], messages: ["e1"] });
     expect((await sessions())["old-session"].inbox_id).toBeUndefined();
     expect((await sessions()).other).toMatchObject({ inbox_id: "x" });
 
@@ -1009,7 +1009,7 @@ describe("threads", () => {
   it("loads the session prompt from prompts/thread.md", async () => {
     const prompt = await threadPrompt();
     expect(prompt).toContain("You are a loopway thread session");
-    expect(prompt).toContain("loopway events get <inbox> <message> --data");
+    expect(prompt).toContain("loopway messages get <inbox> <message> --data");
     expect(prompt).not.toContain("{{");
   });
 
@@ -1025,7 +1025,7 @@ describe("threads", () => {
           s[`s${i}`] = {
             bot_id: "x",
             keys: [],
-            events: [],
+            messages: [],
             waiting: [],
             status: "active",
             started: false,
