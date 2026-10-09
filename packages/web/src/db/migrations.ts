@@ -181,4 +181,57 @@ ALTER INDEX loopway.events_seq_idx RENAME TO messages_seq_idx;
 ALTER SEQUENCE loopway.events_seq_seq RENAME TO messages_seq_seq;
 `,
   },
+  {
+    // Threads (agent sessions) move to the server. A thread belongs to one bot; its id is the Claude session id.
+    // The composite keys make a thread's keys and messages share its bot. thread_messages.state is
+    // waiting (assigned, not handed to a run), inflight (handed to a run that hasn't finished) or delivered.
+    version: "008_threads",
+    sql: `
+CREATE TABLE loopway.threads (
+  id           uuid PRIMARY KEY,
+  bot_id       uuid NOT NULL,
+  user_id      uuid NOT NULL,
+  status       text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'ended')),
+  started      boolean NOT NULL DEFAULT false,
+  interrupted  boolean NOT NULL DEFAULT false,
+  limited      boolean NOT NULL DEFAULT false,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  updated_at   timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT threads_id_bot_unique UNIQUE (id, bot_id),
+  FOREIGN KEY (bot_id, user_id) REFERENCES loopway.bots(id, user_id) ON DELETE CASCADE
+);
+
+CREATE INDEX threads_bot_idx ON loopway.threads (bot_id, status);
+
+CREATE TABLE loopway.thread_keys (
+  thread_id  uuid NOT NULL,
+  bot_id     uuid NOT NULL,
+  key        text NOT NULL,
+  PRIMARY KEY (bot_id, key),
+  FOREIGN KEY (thread_id, bot_id) REFERENCES loopway.threads(id, bot_id) ON DELETE CASCADE
+);
+
+CREATE INDEX thread_keys_thread_idx ON loopway.thread_keys (thread_id);
+
+CREATE TABLE loopway.thread_messages (
+  thread_id     uuid NOT NULL,
+  bot_id        uuid NOT NULL,
+  message_id    uuid NOT NULL REFERENCES loopway.messages(id) ON DELETE CASCADE,
+  state         text NOT NULL DEFAULT 'waiting' CHECK (state IN ('waiting', 'inflight', 'delivered')),
+  key           text,
+  assigned_at   timestamptz NOT NULL DEFAULT now(),
+  delivered_at  timestamptz,
+  UNIQUE (bot_id, message_id),
+  FOREIGN KEY (thread_id, bot_id) REFERENCES loopway.threads(id, bot_id) ON DELETE CASCADE
+);
+
+CREATE INDEX thread_messages_thread_idx ON loopway.thread_messages (thread_id, state);
+
+ALTER TABLE loopway.threads         ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE loopway.thread_keys     ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE loopway.thread_messages ENABLE ROW LEVEL SECURITY;
+`,
+  },
 ];

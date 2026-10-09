@@ -1,5 +1,6 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import { clearConfig, configure, login, whoami } from "./commands/auth.js";
+import { importBotThreads, listBotThreads } from "./commands/botThreads.js";
 import { botMessages, createBot, deleteBot, listBots, releaseBot, showBot, updateBot } from "./commands/bots.js";
 import { getMessage, listMessages } from "./commands/messages.js";
 import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
@@ -183,6 +184,22 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .option("--limit <n>", "how many (default 50, max 100)", positiveInt)
     .addOption(jsonOpt())
     .action((ref, opts) => botMessages(ctx, ref, opts));
+
+  const botThreads = bots
+    .command("threads")
+    .description("list a bot's threads on the server")
+    .argument("<bot>", "bot id or name")
+    .addOption(new Option("--status <status>", "which threads (default active)").choices(["active", "ended", "all"]))
+    .addOption(jsonOpt())
+    .action((ref, opts) => listBotThreads(ctx, ref, opts));
+
+  botThreads
+    .command("import")
+    .description(
+      "upload the sessions in ~/.loopway/threads.json the server doesn't have yet (threads.json is left alone)",
+    )
+    .option("--bot <bot>", "only this bot's sessions (id or name; default all your bots)")
+    .action((opts) => importBotThreads(ctx, opts));
 
   bots
     .command("run")

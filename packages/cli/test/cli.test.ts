@@ -397,6 +397,58 @@ describe("bots", () => {
       /No inbox with id or name "zzz"/,
     );
   });
+
+  it("imports threads.json sessions as server threads, once, and lists them", async () => {
+    await configured();
+    const inbox = await inboxWithEvents(3);
+    const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.id);
+    expect(await run("bots", "threads", "dev")).toBe("No active threads.");
+    const [m1, m2, m3] = (await runJson("messages", "list", inbox.id, "--order", "asc")).data.map((m: any) => m.id);
+    const type = "com.github.pull_request.opened";
+
+    const [live, done, strange] = [randomUUID(), randomUUID(), randomUUID()];
+    const now = new Date().toISOString();
+    const base = { bot_id: bot.id, started: true, created_at: now, updated_at: now };
+    const sessions = {
+      [live]: {
+        ...base,
+        keys: ["a/b#1", "a/b#2"],
+        status: "active",
+        messages: [m1],
+        waiting: [{ id: m3, inbox_id: inbox.id, type, key: "a/b#2" }],
+        inflight: [{ id: m2, inbox_id: inbox.id, type, key: "a/b#1" }],
+        interrupted: true,
+      },
+      [done]: { ...base, keys: ["a/b#9"], status: "ended", messages: [randomUUID()], waiting: [] },
+      // A session of another bot, and one whose key the first already holds.
+      [randomUUID()]: { ...base, bot_id: randomUUID(), keys: ["a/b#7"], status: "active", messages: [], waiting: [] },
+      [strange]: { ...base, keys: ["a/b#1"], status: "active", messages: [], waiting: [] },
+    };
+    await writeFile(join(configDir, "threads.json"), JSON.stringify(sessions));
+
+    const out = await run("bots", "threads", "import");
+    expect(out).toContain(`Skipped ${strange}`);
+    expect(out).toMatch(/Imported 2 thread\(s\); 0 already on the server/);
+    expect(JSON.parse(await readFile(join(configDir, "threads.json"), "utf8"))).toEqual(sessions);
+
+    const threads = await runJson("bots", "threads", "dev", "--status", "all");
+    expect(threads.map((t: any) => t.id).sort()).toEqual([live, done].sort());
+    expect(threads.find((t: any) => t.id === live)).toMatchObject({
+      status: "active",
+      keys: ["a/b#1", "a/b#2"],
+      interrupted: true,
+      delivered: 1,
+      waiting: [{ id: m3, key: "a/b#2" }],
+      inflight: [{ id: m2, key: "a/b#1" }],
+    });
+    expect(await run("bots", "threads", "dev")).toMatch(new RegExp(`${live}\\s+active\\s+a/b#1, a/b#2\\s+1\\s+1\\s+1`));
+    expect(await runJson("bots", "threads", "dev", "--status", "ended")).toHaveLength(1);
+
+    // Again: the two are already there; the odd one is retried and skipped again.
+    const again = await run("bots", "threads", "import", "--bot", "dev");
+    expect(again).toMatch(/Imported 0 thread\(s\); 2 already on the server/);
+    expect(await runJson("bots", "threads", "dev", "--status", "all")).toHaveLength(2);
+  });
 });
 
 describe("threads", () => {

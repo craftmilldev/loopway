@@ -64,6 +64,58 @@ export interface Bot {
   created_at: string;
 }
 
+/** Enough about an assigned message to deliver it without fetching it again. */
+export interface ThreadMessage {
+  id: string;
+  inbox_id: string;
+  type: string;
+  key: string | null;
+}
+
+export interface Thread {
+  /** The Claude session id. */
+  id: string;
+  bot_id: string;
+  status: "active" | "ended";
+  started: boolean;
+  interrupted: boolean;
+  limited: boolean;
+  /** Issues and PRs (`owner/repo#number`) this thread owns. */
+  keys: string[];
+  waiting: ThreadMessage[];
+  inflight: ThreadMessage[];
+  delivered: number;
+  /** Only from getThread(). */
+  delivered_ids?: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Assignment {
+  message_id: string;
+  thread_id: string;
+  add_keys?: string[];
+  key?: string;
+}
+
+export interface ThreadPatch {
+  status?: "active" | "ended";
+  started?: boolean;
+  interrupted?: boolean;
+  limited?: boolean;
+  add_keys?: string[];
+}
+
+export interface ImportThread {
+  id: string;
+  keys: string[];
+  status: "active" | "ended";
+  started: boolean;
+  interrupted?: boolean;
+  limited?: boolean;
+  messages: { id: string; state: "waiting" | "inflight" | "delivered"; key?: string }[];
+}
+
 export interface Lease {
   token: string;
   expires_at: string;
@@ -204,6 +256,46 @@ export class LoopwayClient {
   /** Moves the cursor forward to `seq`; it never goes backwards. 409 if the token isn't the live lease. */
   advanceCursor(botId: string, seq: number, leaseToken: string) {
     return this.request<Bot>("POST", `/bots/${enc(botId)}/cursor`, { seq, lease_token: leaseToken });
+  }
+
+  // ---------- threads ----------
+
+  /** Writes need the bot's live lease token (409 `not_leased` / `lease_mismatch` otherwise); import and reads don't. */
+  async listThreads(botId: string, status: "active" | "ended" | "all" = "active") {
+    return (await this.request<{ data: Thread[] }>("GET", `/bots/${enc(botId)}/threads?status=${status}`)).data;
+  }
+
+  getThread(botId: string, threadId: string) {
+    return this.request<Thread>("GET", `/bots/${enc(botId)}/threads/${enc(threadId)}`);
+  }
+
+  /**
+   * Hands messages to threads (creating the ones the bot doesn't have) as waiting, and moves the cursor to `cursor`,
+   * all or nothing. A message that's already assigned is skipped. 409 `key_taken` if a key is on another thread.
+   */
+  assign(botId: string, input: { lease_token: string; cursor: number; assignments: Assignment[] }) {
+    return this.request<{ assigned: number }>("POST", `/bots/${enc(botId)}/assign`, input);
+  }
+
+  patchThread(botId: string, threadId: string, input: ThreadPatch & { lease_token: string }) {
+    return this.request<Thread>("PATCH", `/bots/${enc(botId)}/threads/${enc(threadId)}`, input);
+  }
+
+  /** Moves the thread's waiting messages to inflight, marks it active, and returns them. */
+  async deliverThread(botId: string, threadId: string, leaseToken: string) {
+    const path = `/bots/${enc(botId)}/threads/${enc(threadId)}/deliver`;
+    return (await this.request<{ data: ThreadMessage[] }>("POST", path, { lease_token: leaseToken })).data;
+  }
+
+  /** Moves the thread's inflight messages to delivered, or back to waiting with `requeue`. */
+  finishThread(botId: string, threadId: string, leaseToken: string, opts: { requeue?: boolean } = {}) {
+    const path = `/bots/${enc(botId)}/threads/${enc(threadId)}/finish`;
+    return this.request<{ moved: number }>("POST", path, { lease_token: leaseToken, ...opts });
+  }
+
+  /** Creates a thread with this id; 409 `thread_exists` if there is one, `key_taken` if another thread has a key. */
+  importThread(botId: string, input: ImportThread) {
+    return this.request<{ thread: Thread; skipped: number }>("POST", `/bots/${enc(botId)}/threads`, input);
   }
 
   // ---------- transport ----------

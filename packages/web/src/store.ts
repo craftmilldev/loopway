@@ -360,3 +360,292 @@ export async function botMessages(db: Db, botId: string, limit: number): Promise
     [botId, MESSAGE_HOLDBACK_SECONDS, limit],
   );
 }
+
+// ---------- Threads ----------
+
+/** Enough about an assigned message to deliver it without fetching it again. */
+export interface ThreadMessage {
+  id: string;
+  inbox_id: string;
+  type: string;
+  key: string | null;
+}
+
+export interface Thread {
+  id: string;
+  bot_id: string;
+  status: "active" | "ended";
+  started: boolean;
+  interrupted: boolean;
+  limited: boolean;
+  keys: string[];
+  /** Assigned, not handed to a run yet. */
+  waiting: ThreadMessage[];
+  /** Handed to a run that hasn't finished. */
+  inflight: ThreadMessage[];
+  delivered: number;
+  /** Only from getThread(). */
+  delivered_ids?: string[];
+  created_at: Date;
+  updated_at: Date;
+}
+
+export type ThreadMessageState = "waiting" | "inflight" | "delivered";
+
+const threadMessages = (state: ThreadMessageState) => `
+  COALESCE((SELECT jsonb_agg(jsonb_build_object('id', m.id, 'inbox_id', m.inbox_id, 'type', m.ce_type, 'key', tm.key)
+                             ORDER BY tm.assigned_at, m.seq)
+            FROM loopway.thread_messages tm JOIN loopway.messages m ON m.id = tm.message_id
+            WHERE tm.thread_id = t.id AND tm.state = '${state}'), '[]'::jsonb)`;
+
+const THREAD_COLS = `
+  t.id, t.bot_id, t.status, t.started, t.interrupted, t.limited, t.created_at, t.updated_at,
+  COALESCE((SELECT jsonb_agg(k.key ORDER BY k.key) FROM loopway.thread_keys k WHERE k.thread_id = t.id),
+           '[]'::jsonb) AS keys,
+  ${threadMessages("waiting")} AS waiting,
+  ${threadMessages("inflight")} AS inflight,
+  (SELECT count(*)::int FROM loopway.thread_messages tm WHERE tm.thread_id = t.id AND tm.state = 'delivered') AS delivered`;
+
+const DELIVERED_IDS = `,
+  COALESCE((SELECT jsonb_agg(tm.message_id ORDER BY tm.delivered_at, tm.assigned_at)
+            FROM loopway.thread_messages tm WHERE tm.thread_id = t.id AND tm.state = 'delivered'),
+           '[]'::jsonb) AS delivered_ids`;
+
+/** The runner's live lease on bot $1 with token $2: the condition every thread write makes inside its own statement. */
+const LEASED = `b.id = $1 AND b.deleted_at IS NULL AND b.lock_token = $2 AND b.locked_until > now()`;
+
+// Strings go in as a jsonb array, like inbox ids.
+const jsonStrings = (param: string) => `(SELECT value FROM jsonb_array_elements_text(${param}::jsonb))`;
+
+export async function listThreads(db: Db, botId: string, status: "active" | "ended" | "all"): Promise<Thread[]> {
+  return db.query<Thread>(
+    `SELECT ${THREAD_COLS} FROM loopway.threads t
+     WHERE t.bot_id = $1 AND ($2 = 'all' OR t.status = $2) ORDER BY t.created_at, t.id`,
+    [botId, status],
+  );
+}
+
+export async function getThread(db: Db, botId: string, id: string): Promise<Thread | undefined> {
+  const [row] = await db.query<Thread>(
+    `SELECT ${THREAD_COLS}${DELIVERED_IDS} FROM loopway.threads t WHERE t.id = $1 AND t.bot_id = $2`,
+    [id, botId],
+  );
+  return row;
+}
+
+/** Which bot has each of these threads, for the ones that exist. */
+export async function threadBots(db: Db, ids: string[]): Promise<Map<string, string>> {
+  const rows = await db.query<{ id: string; bot_id: string }>(
+    `SELECT id, bot_id FROM loopway.threads WHERE id IN (SELECT value::uuid FROM jsonb_array_elements_text($1::jsonb))`,
+    [ids],
+  );
+  return new Map(rows.map((r) => [r.id, r.bot_id]));
+}
+
+/** The thread that holds each of these keys, for the bot's keys that are taken. */
+export async function keyHolders(db: Db, botId: string, keys: string[]): Promise<Map<string, string>> {
+  const rows = await db.query<{ key: string; thread_id: string }>(
+    `SELECT key, thread_id FROM loopway.thread_keys WHERE bot_id = $1 AND key IN ${jsonStrings("$2")}`,
+    [botId, keys],
+  );
+  return new Map(rows.map((r) => [r.key, r.thread_id]));
+}
+
+/** The ids among these that are messages in one of the bot's inboxes. */
+export async function botMessageIds(db: Db, botId: string, ids: string[]): Promise<Set<string>> {
+  const rows = await db.query<{ id: string }>(
+    `SELECT m.id FROM loopway.messages m JOIN loopway.bot_inboxes bi ON bi.inbox_id = m.inbox_id
+     WHERE bi.bot_id = $1 AND m.id IN (SELECT value::uuid FROM jsonb_array_elements_text($2::jsonb))`,
+    [botId, ids],
+  );
+  return new Set(rows.map((r) => r.id));
+}
+
+export interface Assignment {
+  message_id: string;
+  thread_id: string;
+  add_keys?: string[];
+  key?: string;
+}
+
+/**
+ * One statement, so it's atomic: creates the threads the bot doesn't have yet, adds keys, inserts the messages as
+ * waiting (one already assigned is skipped) and advances the cursor. Does nothing, and returns undefined, unless
+ * `token` is the live lease. Callers check the ids, keys and messages first (threadBots and friends).
+ */
+export async function assignMessages(
+  db: Db,
+  botId: string,
+  token: string,
+  cursor: number,
+  assignments: Assignment[],
+): Promise<{ assigned: number } | undefined> {
+  const [row] = await db.query<{ leased: number; assigned: number }>(
+    `WITH bot AS (
+       UPDATE loopway.bots b SET cursor = GREATEST(b.cursor, $3::bigint)
+       WHERE ${LEASED} RETURNING b.id, b.user_id
+     ),
+     a AS (
+       SELECT (x->>'message_id')::uuid AS message_id, (x->>'thread_id')::uuid AS thread_id,
+              x->'add_keys' AS add_keys, x->>'key' AS key
+       FROM jsonb_array_elements($4::jsonb) x
+     ),
+     new_threads AS (
+       INSERT INTO loopway.threads (id, bot_id, user_id)
+       SELECT DISTINCT a.thread_id, bot.id, bot.user_id FROM a, bot
+       ON CONFLICT (id) DO NOTHING
+     ),
+     new_keys AS (
+       INSERT INTO loopway.thread_keys (thread_id, bot_id, key)
+       SELECT DISTINCT a.thread_id, bot.id, k.key
+       FROM a CROSS JOIN bot CROSS JOIN LATERAL jsonb_array_elements_text(a.add_keys) AS k(key)
+       ON CONFLICT DO NOTHING
+     ),
+     msgs AS (
+       INSERT INTO loopway.thread_messages (thread_id, bot_id, message_id, state, key)
+       SELECT DISTINCT ON (a.message_id) a.thread_id, bot.id, a.message_id, 'waiting', a.key FROM a, bot
+       ON CONFLICT (bot_id, message_id) DO NOTHING RETURNING message_id
+     )
+     SELECT (SELECT count(*) FROM bot)::int AS leased, (SELECT count(*) FROM msgs)::int AS assigned`,
+    [botId, token, cursor, assignments],
+  );
+  return row!.leased ? { assigned: row!.assigned } : undefined;
+}
+
+export interface ThreadPatch {
+  status?: "active" | "ended";
+  started?: boolean;
+  interrupted?: boolean;
+  limited?: boolean;
+  addKeys?: string[];
+}
+
+/** False unless `token` is the live lease and the bot has this thread. */
+export async function patchThread(
+  db: Db,
+  botId: string,
+  token: string,
+  id: string,
+  patch: ThreadPatch,
+): Promise<boolean> {
+  const [row] = await db.query<{ n: number }>(
+    `WITH bot AS (SELECT b.id FROM loopway.bots b WHERE ${LEASED}),
+     upd AS (
+       UPDATE loopway.threads t SET
+         status      = COALESCE($4, t.status),
+         started     = COALESCE($5::boolean, t.started),
+         interrupted = COALESCE($6::boolean, t.interrupted),
+         limited     = COALESCE($7::boolean, t.limited),
+         updated_at  = now()
+       FROM bot WHERE t.id = $3::uuid AND t.bot_id = bot.id RETURNING t.id, t.bot_id
+     ),
+     new_keys AS (
+       INSERT INTO loopway.thread_keys (thread_id, bot_id, key)
+       SELECT upd.id, upd.bot_id, k.value FROM upd, ${jsonStrings("$8")} AS k
+       ON CONFLICT DO NOTHING
+     )
+     SELECT count(*)::int AS n FROM upd`,
+    [
+      botId,
+      token,
+      id,
+      patch.status ?? null,
+      patch.started ?? null,
+      patch.interrupted ?? null,
+      patch.limited ?? null,
+      patch.addKeys ?? [],
+    ],
+  );
+  return row!.n > 0;
+}
+
+/** Moves the thread's waiting messages to inflight and marks it active. Undefined unless `token` is the live lease. */
+export async function deliverThread(
+  db: Db,
+  botId: string,
+  token: string,
+  id: string,
+): Promise<ThreadMessage[] | undefined> {
+  const [row] = await db.query<{ ok: number; messages: ThreadMessage[] }>(
+    `WITH bot AS (SELECT b.id FROM loopway.bots b WHERE ${LEASED}),
+     t AS (
+       UPDATE loopway.threads t SET status = 'active', updated_at = now()
+       FROM bot WHERE t.id = $3::uuid AND t.bot_id = bot.id RETURNING t.id
+     ),
+     moved AS (
+       UPDATE loopway.thread_messages tm SET state = 'inflight'
+       FROM t WHERE tm.thread_id = t.id AND tm.state = 'waiting'
+       RETURNING tm.message_id, tm.key, tm.assigned_at
+     )
+     SELECT (SELECT count(*) FROM t)::int AS ok,
+       COALESCE((SELECT jsonb_agg(jsonb_build_object('id', m.id, 'inbox_id', m.inbox_id, 'type', m.ce_type, 'key', moved.key)
+                                  ORDER BY moved.assigned_at, m.seq)
+                 FROM moved JOIN loopway.messages m ON m.id = moved.message_id), '[]'::jsonb) AS messages`,
+    [botId, token, id],
+  );
+  return row!.ok ? row!.messages : undefined;
+}
+
+/** Moves the thread's inflight messages to delivered, or back to waiting. Undefined unless `token` is the live lease. */
+export async function finishThread(
+  db: Db,
+  botId: string,
+  token: string,
+  id: string,
+  requeue: boolean,
+): Promise<{ moved: number } | undefined> {
+  const [row] = await db.query<{ ok: number; moved: number }>(
+    `WITH bot AS (SELECT b.id FROM loopway.bots b WHERE ${LEASED}),
+     t AS (
+       UPDATE loopway.threads t SET updated_at = now()
+       FROM bot WHERE t.id = $3::uuid AND t.bot_id = bot.id RETURNING t.id
+     ),
+     moved AS (
+       UPDATE loopway.thread_messages tm SET
+         state        = CASE WHEN $4::boolean THEN 'waiting' ELSE 'delivered' END,
+         delivered_at = CASE WHEN $4::boolean THEN NULL ELSE now() END
+       FROM t WHERE tm.thread_id = t.id AND tm.state = 'inflight' RETURNING tm.message_id
+     )
+     SELECT (SELECT count(*) FROM t)::int AS ok, (SELECT count(*) FROM moved)::int AS moved`,
+    [botId, token, id, requeue],
+  );
+  return row!.ok ? { moved: row!.moved } : undefined;
+}
+
+export interface ImportedThread {
+  id: string;
+  keys: string[];
+  status: "active" | "ended";
+  started: boolean;
+  interrupted: boolean;
+  limited: boolean;
+  messages: { id: string; state: ThreadMessageState; key?: string }[];
+}
+
+/**
+ * Creates a thread with its keys and messages in one statement. Messages that don't exist (or aren't the user's)
+ * are skipped, as are ones the bot already assigned to another thread. Returns how many were kept.
+ */
+export async function importThread(db: Db, bot: Bot, t: ImportedThread): Promise<{ messages: number }> {
+  const [row] = await db.query<{ messages: number }>(
+    `WITH t AS (
+       INSERT INTO loopway.threads (id, bot_id, user_id, status, started, interrupted, limited)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::boolean, $6::boolean, $7::boolean) RETURNING id
+     ),
+     new_keys AS (
+       INSERT INTO loopway.thread_keys (thread_id, bot_id, key)
+       SELECT t.id, $2::uuid, k.value FROM t, ${jsonStrings("$8")} AS k
+     ),
+     msgs AS (
+       INSERT INTO loopway.thread_messages (thread_id, bot_id, message_id, state, key, delivered_at)
+       SELECT DISTINCT ON (m.id) t.id, $2::uuid, m.id, x.state, x.key, CASE WHEN x.state = 'delivered' THEN now() END
+       FROM t, jsonb_to_recordset($9::jsonb) AS x(id uuid, state text, key text)
+       JOIN loopway.messages m ON m.id = x.id
+       JOIN loopway.inboxes i ON i.id = m.inbox_id AND i.user_id = $3::uuid
+       ON CONFLICT (bot_id, message_id) DO NOTHING RETURNING message_id
+     )
+     SELECT (SELECT count(*) FROM msgs)::int AS messages`,
+    [t.id, bot.id, bot.user_id, t.status, t.started, t.interrupted, t.limited, t.keys, t.messages],
+  );
+  return row!;
+}
