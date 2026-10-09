@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { mkdir, open, readFile } from "node:fs/promises";
+import { closeSync, createWriteStream, openSync } from "node:fs";
+import { mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createInterface } from "node:readline";
 import { pipeline } from "node:stream/promises";
@@ -69,7 +70,8 @@ export class LimitWatch {
 /** Runs `claude -p` headless in the current directory, appending its stream-json transcript to the log. */
 export const spawnClaude: RunAgent = async (run) => {
   await mkdir(dirname(run.logPath), { recursive: true, mode: 0o700 });
-  const log = await open(run.logPath, "a", 0o600);
+  // Plain descriptors: a FileHandle that is never closed (or closed mid-write) is a fatal error on newer Node.
+  const errFd = openSync(run.logPath, "a", 0o600);
   try {
     const mcpConfig = JSON.stringify({ mcpServers: { loopway: { type: "http", url: run.mcpUrl } } });
     const args = ["-p", run.resume ? "--resume" : "--session-id", run.sessionId];
@@ -78,20 +80,21 @@ export const spawnClaude: RunAgent = async (run) => {
     args.push("--permission-mode", "auto", "--output-format", "stream-json", "--verbose");
     // The message goes in as stream-json so Claude Code can echo it back once it's in the session.
     args.push("--input-format", "stream-json", "--replay-user-messages");
-    const child = spawn("claude", args, { env: run.env, stdio: ["pipe", "pipe", log.fd] });
+    const child = spawn("claude", args, { env: run.env, stdio: ["pipe", "pipe", errFd] });
     child.stdin!.end(JSON.stringify({ type: "user", message: { role: "user", content: run.message } }) + "\n");
     // stdout goes to the log as before, and through the watch on the way.
     const watch = new LimitWatch();
     createInterface({ input: child.stdout! }).on("line", (l) => watch.line(l));
-    const copied = pipeline(child.stdout!, log.createWriteStream({ autoClose: false }));
-    const code = await new Promise<number>((resolve, reject) => {
+    const copied = pipeline(child.stdout!, createWriteStream(run.logPath, { flags: "a", mode: 0o600 }));
+    const exited = new Promise<number>((resolve, reject) => {
       child.once("error", reject);
       child.once("exit", (code) => resolve(code ?? -1));
     });
-    await copied;
+    // Awaited together, so whichever fails first is the error thrown and neither can go unhandled.
+    const [code] = await Promise.all([exited, copied]);
     return { code, delivered: watch.delivered, limitedUntil: watch.limitedUntil() };
   } finally {
-    await log.close();
+    closeSync(errFd);
   }
 };
 
