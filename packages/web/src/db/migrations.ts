@@ -95,4 +95,60 @@ ALTER TABLE loopway.login_codes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE loopway.users DROP COLUMN api_key_hash;
 `,
   },
+  {
+    // seq orders events for bots: it's assigned at insert, so unlike the UUIDv7 id it doesn't depend on which
+    // instance's clock made the row. A plain `ADD COLUMN seq bigserial` would number existing rows in disk order,
+    // so they're numbered by id first and the sequence is attached after.
+    // bot_inboxes carries user_id so the composite keys can require the bot and inbox to share an owner.
+    version: "005_bots",
+    sql: `
+ALTER TABLE loopway.events ADD COLUMN seq bigint;
+
+UPDATE loopway.events e SET seq = n.seq
+FROM (SELECT id, row_number() OVER (ORDER BY id) AS seq FROM loopway.events) n
+WHERE e.id = n.id;
+
+CREATE SEQUENCE loopway.events_seq_seq OWNED BY loopway.events.seq;
+
+SELECT setval('loopway.events_seq_seq', COALESCE((SELECT max(seq) FROM loopway.events), 0) + 1, false);
+
+ALTER TABLE loopway.events
+  ALTER COLUMN seq SET DEFAULT nextval('loopway.events_seq_seq'),
+  ALTER COLUMN seq SET NOT NULL;
+
+CREATE UNIQUE INDEX events_seq_idx ON loopway.events (seq);
+
+ALTER TABLE loopway.inboxes ADD CONSTRAINT inboxes_id_user_unique UNIQUE (id, user_id);
+
+CREATE TABLE loopway.bots (
+  id            uuid PRIMARY KEY,
+  user_id       uuid NOT NULL REFERENCES loopway.users(id) ON DELETE CASCADE,
+  name          text NOT NULL,
+  kind          text NOT NULL,
+  cursor        bigint NOT NULL DEFAULT 0,
+  lock_token    text,
+  locked_until  timestamptz,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  deleted_at    timestamptz,
+  CONSTRAINT bots_id_user_unique UNIQUE (id, user_id)
+);
+
+CREATE INDEX bots_user_idx ON loopway.bots (user_id);
+
+CREATE TABLE loopway.bot_inboxes (
+  bot_id    uuid NOT NULL,
+  inbox_id  uuid NOT NULL,
+  user_id   uuid NOT NULL,
+  PRIMARY KEY (bot_id, inbox_id),
+  FOREIGN KEY (bot_id, user_id) REFERENCES loopway.bots(id, user_id) ON DELETE CASCADE,
+  FOREIGN KEY (inbox_id, user_id) REFERENCES loopway.inboxes(id, user_id) ON DELETE CASCADE
+);
+
+CREATE INDEX bot_inboxes_inbox_idx ON loopway.bot_inboxes (inbox_id);
+
+ALTER TABLE loopway.bots        ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE loopway.bot_inboxes ENABLE ROW LEVEL SECURITY;
+`,
+  },
 ];

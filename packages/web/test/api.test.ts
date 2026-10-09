@@ -165,6 +165,110 @@ describe("event processing", () => {
   });
 });
 
+describe("bots", () => {
+  /** Ages an inbox's events past the holdback window, as if they'd arrived a minute ago. */
+  const settle = (inboxId: string) =>
+    db.query(`UPDATE loopway.events SET received_at = received_at - interval '1 minute' WHERE inbox_id = $1`, [
+      inboxId,
+    ]);
+  const seqs = (r: { body: { data: { seq: number }[] } }) => r.body.data.map((e) => e.seq);
+
+  it("creates, lists, updates and deletes bots over the user's inboxes", async () => {
+    const key = await newUser();
+    const a = await newInbox(key);
+    const b = await newInbox(key);
+    const created = await call("POST", "/bots", {
+      key,
+      body: { name: "dev", kind: "github-threads", inbox_ids: [a.id] },
+    });
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({ name: "dev", kind: "github-threads", inbox_ids: [a.id], cursor: 0 });
+    const id = created.body.id;
+
+    expect((await call("GET", "/bots", { key })).body.data.map((x: any) => x.id)).toEqual([id]);
+    const patched = await call("PATCH", `/bots/${id}`, { key, body: { name: "dev2", inbox_ids: [b.id, a.id, b.id] } });
+    expect(patched.body.name).toBe("dev2");
+    expect(patched.body.inbox_ids).toEqual([a.id, b.id].sort());
+    expect((await call("PATCH", `/bots/${id}`, { key, body: { inbox_ids: [b.id] } })).body.inbox_ids).toEqual([b.id]);
+    expect((await call("GET", `/bots/${id}`, { key })).body).toMatchObject({ name: "dev2", inbox_ids: [b.id] });
+
+    // Deleting an inbox detaches it.
+    await call("DELETE", `/inboxes/${b.id}`, { key });
+    expect((await call("GET", `/bots/${id}`, { key })).body.inbox_ids).toEqual([]);
+
+    // Deleting is soft: the row stays, but the API no longer sees it.
+    expect((await call("DELETE", `/bots/${id}`, { key })).status).toBe(204);
+    expect((await call("GET", `/bots/${id}`, { key })).status).toBe(404);
+    expect((await call("GET", "/bots", { key })).body.data).toEqual([]);
+    expect((await call("GET", `/bots/${id}/messages`, { key })).status).toBe(404);
+    expect((await call("DELETE", `/bots/${id}`, { key })).status).toBe(404);
+    const [row] = await db.query<{ deleted_at: Date | null }>(`SELECT deleted_at FROM loopway.bots WHERE id = $1`, [
+      id,
+    ]);
+    expect(row?.deleted_at).toBeTruthy();
+  });
+
+  it("won't attach another user's inbox, or show a bot to another user", async () => {
+    const a = await newUser("a");
+    const b = await newUser("b");
+    const theirs = await newInbox(b);
+    const mine = await newInbox(a);
+    const r = await call("POST", "/bots", { key: a, body: { name: "x", kind: "k", inbox_ids: [theirs.id] } });
+    expect(r.status).toBe(400);
+    expect(r.body.error.message).toContain(theirs.id);
+    expect((await call("POST", "/bots", { key: a, body: { name: "x", kind: "k", inbox_ids: [] } })).status).toBe(400);
+
+    const bot = (await call("POST", "/bots", { key: a, body: { name: "x", kind: "k", inbox_ids: [mine.id] } })).body;
+    expect((await call("PATCH", `/bots/${bot.id}`, { key: a, body: { inbox_ids: [theirs.id] } })).status).toBe(400);
+    expect((await call("GET", `/bots/${bot.id}`, { key: b })).status).toBe(404);
+    expect((await call("GET", `/bots/${bot.id}/messages`, { key: b })).status).toBe(404);
+    expect((await call("GET", "/bots", { key: b })).body.data).toEqual([]);
+    expect((await call("GET", "/bots/not-a-uuid", { key: a })).status).toBe(404);
+
+    // The table refuses it too, not just the API.
+    await expect(
+      db.query(`INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id) VALUES ($1, $2, $3)`, [
+        bot.id,
+        theirs.id,
+        (await call("GET", "/me", { key: a })).body.id,
+      ]),
+    ).rejects.toThrow();
+  });
+
+  it("reads only messages after creation, in seq order, holding back fresh ones", async () => {
+    const key = await newUser();
+    const inbox = await newInbox(key);
+    for (let i = 1; i <= 2; i++) await sendGithub(inbox, "pull_request", prPayload(i));
+    // Not before[1]: ids made in the same millisecond can sort either way, so the newest is the highest seq.
+    const newest = Math.max(...seqs(await call("GET", `/inboxes/${inbox.id}/events`, { key })));
+
+    const bot = (await call("POST", "/bots", { key, body: { name: "b", kind: "k", inbox_ids: [inbox.id] } })).body;
+    expect(bot.cursor).toBe(newest);
+
+    for (let i = 3; i <= 5; i++) await sendGithub(inbox, "pull_request", prPayload(i));
+    // Just arrived: held back.
+    expect((await call("GET", `/bots/${bot.id}/messages`, { key })).body.data).toEqual([]);
+
+    await settle(inbox.id);
+    const msgs = await call("GET", `/bots/${bot.id}/messages`, { key });
+    expect(msgs.body.data.map((e: any) => e.event.data.number)).toEqual([3, 4, 5]);
+    const after = seqs(msgs);
+    expect(after).toEqual([...after].sort((x, y) => x - y));
+    expect(after[0]).toBeGreaterThan(newest);
+    expect(seqs(await call("GET", `/bots/${bot.id}/messages?limit=2`, { key }))).toEqual(after.slice(0, 2));
+
+    // A fresh message stops the read there, even if an older-looking one follows it.
+    await sendGithub(inbox, "pull_request", prPayload(6));
+    await sendGithub(inbox, "pull_request", prPayload(7));
+    await db.query(
+      `UPDATE loopway.events SET received_at = received_at - interval '1 minute'
+       WHERE inbox_id = $1 AND seq = (SELECT max(seq) FROM loopway.events WHERE inbox_id = $1)`,
+      [inbox.id],
+    );
+    expect(seqs(await call("GET", `/bots/${bot.id}/messages`, { key }))).toEqual(after);
+  });
+});
+
 describe("session tokens", () => {
   it("rejects expired, tampered and wrongly signed tokens", async () => {
     const { user } = await createUser(db, { name: "Tok" });

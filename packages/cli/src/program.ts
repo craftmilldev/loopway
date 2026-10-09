@@ -1,6 +1,7 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import { LIST_STATUSES } from "./client.js";
 import { clearConfig, configure, login, whoami } from "./commands/auth.js";
+import { BOT_KINDS, botMessages, createBot, deleteBot, listBots, showBot, updateBot } from "./commands/bots.js";
 import { getEvent, listEvents, lockEvent, markProcessed, nextEvent, unlockEvent } from "./commands/events.js";
 import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
 import { runThreads } from "./commands/threads.js";
@@ -163,6 +164,58 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .addOption(tokenOpt())
     .addOption(jsonOpt())
     .action((ref, id, opts) => markProcessed(ctx, ref, id, opts));
+
+  // ---------- bots ----------
+
+  const bots = program.command("bots").alias("bot").description("create, list and update bots");
+  const inboxesOpt = (desc: string) => new Option("--inbox <list>", desc).argParser(splitList);
+
+  bots
+    .command("create")
+    .description("create a bot that reads the given inboxes, starting from their newest message")
+    .option("--name <name>", "bot name")
+    .addOption(new Option("--kind <kind>", "what the bot does").choices(BOT_KINDS))
+    .addOption(inboxesOpt("comma-separated inbox ids or names"))
+    .addOption(jsonOpt())
+    .action((opts) => createBot(ctx, opts));
+
+  bots
+    .command("list")
+    .alias("ls")
+    .description("list your bots")
+    .addOption(jsonOpt())
+    .action((opts) => listBots(ctx, opts));
+
+  bots
+    .command("show")
+    .description("show a bot, its inboxes and its cursor")
+    .argument("<bot>", "bot id or name")
+    .addOption(jsonOpt())
+    .action((ref, opts) => showBot(ctx, ref, opts));
+
+  bots
+    .command("update")
+    .description("rename a bot or replace its inboxes")
+    .argument("<bot>", "bot id or name")
+    .option("--name <name>", "new name")
+    .addOption(inboxesOpt("comma-separated inbox ids or names; replaces the bot's inboxes"))
+    .addOption(jsonOpt())
+    .action((ref, opts) => updateBot(ctx, ref, opts));
+
+  bots
+    .command("delete")
+    .alias("rm")
+    .description("delete a bot")
+    .argument("<bot>", "bot id or name")
+    .action((ref) => deleteBot(ctx, ref));
+
+  bots
+    .command("messages")
+    .description("list the messages the bot would read next (after its cursor, oldest first)")
+    .argument("<bot>", "bot id or name")
+    .option("--limit <n>", "how many (default 50, max 100)", positiveInt)
+    .addOption(jsonOpt())
+    .action((ref, opts) => botMessages(ctx, ref, opts));
 
   // ---------- threads ----------
 

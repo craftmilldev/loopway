@@ -389,6 +389,62 @@ describe("events", () => {
   });
 });
 
+describe("bots", () => {
+  /** Ages the inbox's events past the API's holdback window. */
+  const settle = (inboxId: string) =>
+    db.query(`UPDATE loopway.events SET received_at = received_at - interval '1 minute' WHERE inbox_id = $1`, [
+      inboxId,
+    ]);
+
+  it("create → messages shows only events that arrived after the bot was created", async () => {
+    await configured();
+    const inbox = await inboxWithEvents(2);
+    const out = await run("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.name);
+    expect(out).toMatch(/Created bot dev/);
+    expect(out).toContain(inbox.name);
+    expect(await run("bots", "messages", "dev")).toBe("No new messages.");
+
+    for (const n of [3, 4]) await sendGithub(inbox, "pull_request", pr(n));
+    await settle(inbox.id);
+    const messages = await runJson("bots", "messages", "dev");
+    expect(messages.map((m: any) => m.event.data.number)).toEqual([3, 4]);
+    expect(messages[1].seq).toBeGreaterThan(messages[0].seq);
+    expect(await run("bots", "messages", "dev", "--limit", "1")).toMatch(/SEQ.*\n.*com\.github\.pull_request\.opened/);
+  });
+
+  it("lists, shows, updates and deletes by name or id", async () => {
+    await configured();
+    const a = await inboxWithEvents(0, "a");
+    const b = await inboxWithEvents(0, "b");
+    const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", a.id);
+    expect(bot.inbox_ids).toEqual([a.id]);
+
+    expect(await run("bots", "list")).toMatch(/dev\s+github-threads\s+a/);
+    expect((await runJson("bots", "show", "dev")).id).toBe(bot.id);
+
+    const updated = await runJson("bots", "update", bot.id, "--name", "dev2", "--inbox", "a,b");
+    expect(updated.name).toBe("dev2");
+    expect(updated.inbox_ids).toEqual([a.id, b.id].sort());
+    await expect(run("bots", "update", "dev2")).rejects.toThrow(/--name or --inbox/);
+
+    expect(await run("bots", "delete", "dev2")).toMatch(/Deleted bot/);
+    expect(await run("bots", "list")).toMatch(/No bots yet/);
+    await expect(run("bots", "show", "dev2")).rejects.toThrow(/No bot with id or name "dev2"/);
+  });
+
+  it("checks the kind and inboxes before calling the API", async () => {
+    await configured();
+    await inboxWithEvents(0, "a");
+    await expect(run("bots", "create", "--name", "x", "--kind", "nope", "--inbox", "a")).rejects.toThrow(
+      /Allowed choices are github-threads/,
+    );
+    await expect(run("bots", "create", "--name", "x", "--inbox", "a")).rejects.toThrow(/--kind is required/);
+    await expect(run("bots", "create", "--name", "x", "--kind", "github-threads", "--inbox", "zzz")).rejects.toThrow(
+      /No inbox with id or name "zzz"/,
+    );
+  });
+});
+
 describe("threads", () => {
   const repository = { full_name: "a/b", url: "https://api.github.com/repos/a/b" };
   const issue = (action: string, n: number) => ({ action, issue: { number: n }, repository });
