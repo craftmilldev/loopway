@@ -261,13 +261,10 @@ describe("bots", () => {
     expect(seqs(await call("GET", `/bots/${bot.id}/messages`, { key }))).toEqual(after);
   });
 
-  it("leases to one runner at a time; only the holder moves the cursor, and only forward", async () => {
+  it("leases to one runner at a time", async () => {
     const key = await newUser();
     const inbox = await newInbox(key);
     const bot = (await call("POST", "/bots", { key, body: { name: "b", kind: "k", inbox_ids: [inbox.id] } })).body;
-    for (let i = 1; i <= 3; i++) await sendGithub(inbox, "pull_request", prPayload(i));
-    await settle(inbox.id);
-    const [s1, s2, s3] = seqs(await call("GET", `/bots/${bot.id}/messages`, { key }));
 
     const first = await call("POST", `/bots/${bot.id}/lease`, { key, body: { ttl_seconds: 60 } });
     expect(first.status).toBe(200);
@@ -285,22 +282,8 @@ describe("bots", () => {
     });
     expect(renewed.body.lease.token).toBe(token);
 
-    const cursor = (body: unknown) => call("POST", `/bots/${bot.id}/cursor`, { key, body });
-    expect((await cursor({ seq: s2 })).status).toBe(400);
-    expect((await cursor({ seq: s2, lease_token: "lk_nope" })).body.error.code).toBe("lease_mismatch");
-    // Only onto a message the bot reads: not past the newest one, nor onto another inbox's.
-    expect((await cursor({ seq: s3! + 1000, lease_token: token })).body.error.code).toBe("unknown_message");
-    const other = await newInbox(key);
-    await sendGithub(other, "pull_request", prPayload(9));
-    const [elsewhere] = (await call("GET", `/inboxes/${other.id}/events`, { key })).body.data;
-    expect((await cursor({ seq: elsewhere.seq, lease_token: token })).body.error.code).toBe("unknown_message");
-    expect((await cursor({ seq: s2, lease_token: token })).body.cursor).toBe(s2);
-    expect((await cursor({ seq: s1, lease_token: token })).body.cursor).toBe(s2);
-    expect(seqs(await call("GET", `/bots/${bot.id}/messages`, { key }))).toEqual([s3]);
-
-    // An expired lease can't move the cursor, and anyone can take it over.
+    // Once it expires, anyone can take it over.
     await db.query(`UPDATE loopway.bots SET locked_until = now() - interval '1 second' WHERE id = $1`, [bot.id]);
-    expect((await cursor({ seq: s3, lease_token: token })).status).toBe(409);
     const taken = await call("POST", `/bots/${bot.id}/lease`, { key });
     expect(taken.status).toBe(200);
     expect(taken.body.lease.token).not.toBe(token);

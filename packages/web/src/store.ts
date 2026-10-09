@@ -401,27 +401,6 @@ export async function leaseBot(
   return row && getBot(db, row.id);
 }
 
-/** Whether `seq` is a message in one of the bot's inboxes. */
-export async function botHasMessage(db: Db, botId: string, seq: number): Promise<boolean> {
-  const rows = await db.query(
-    `SELECT 1 FROM loopway.events e JOIN loopway.bot_inboxes bi ON bi.inbox_id = e.inbox_id
-     WHERE bi.bot_id = $1 AND e.seq = $2`,
-    [botId, seq],
-  );
-  return rows.length > 0;
-}
-
-/** Moves the cursor forward, never back, for whoever holds a live lease. */
-export async function advanceBotCursor(db: Db, id: string, seq: number, token: string): Promise<Bot | undefined> {
-  const [row] = await db.query<{ id: string }>(
-    `UPDATE loopway.bots SET cursor = GREATEST(cursor, $2::bigint)
-     WHERE id = $1 AND lock_token = $3 AND locked_until > now()
-     RETURNING id`,
-    [id, seq, token],
-  );
-  return row && getBot(db, row.id);
-}
-
 /** Messages in the bot's inboxes after its cursor, oldest first, stopping at the first one still held back. */
 export async function botMessages(db: Db, botId: string, limit: number): Promise<EventRow[]> {
   return db.query<EventRow>(
