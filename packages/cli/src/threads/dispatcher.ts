@@ -227,9 +227,11 @@ export class Dispatcher {
     }
     const running = new Set(this.running.keys());
     const { deliveries, held } = await withSessions(this.dir, (sessions) => {
+      // A session the limit stopped is ready too, with nothing new to deliver; ordering puts it first.
       const ready = Object.keys(sessions)
-        .filter((id) => sessions[id]!.waiting.length && !running.has(id) && this.prompts.has(sessions[id]!.bot_id))
-        .sort((a, b) => sessions[a]!.waiting[0]!.id.localeCompare(sessions[b]!.waiting[0]!.id));
+        .filter((id) => (sessions[id]!.waiting.length || sessions[id]!.limited) && !running.has(id))
+        .filter((id) => this.prompts.has(sessions[id]!.bot_id))
+        .sort((a, b) => (sessions[a]!.waiting[0]?.id ?? "").localeCompare(sessions[b]!.waiting[0]?.id ?? ""));
       const deliveries = new Map<string, { session: Session; messages: WaitingMessage[] }>();
       for (const id of ready) {
         if (running.size + deliveries.size >= this.max) break;
@@ -238,6 +240,7 @@ export class Dispatcher {
         s.events.push(...messages.map((m) => m.id));
         s.status = "active";
         deliveries.set(id, { session: { ...s }, messages });
+        delete s.limited;
       }
       return { deliveries, held: ready.length - deliveries.size };
     });
@@ -247,14 +250,23 @@ export class Dispatcher {
     for (const [id, { session, messages }] of deliveries) this.running.set(id, this.run(id, session, messages));
   }
 
-  /** One agent run for a session: start it with the prompt, or resume it with just the new messages. */
+  /**
+   * One agent run for a session: start it with the prompt, or resume it with just the new messages.
+   * A session the usage limit stopped is told to carry on, as its last messages are already in it.
+   */
   private async run(id: string, session: Session, messages: WaitingMessage[]): Promise<void> {
     const short = id.slice(0, 8);
-    const what = `${session.keys.join(", ") || "new thread"} (${messages.length} message${messages.length === 1 ? "" : "s"})`;
+    const count = `${messages.length} message${messages.length === 1 ? "" : "s"}`;
+    const what = `${session.keys.join(", ") || "new thread"} (${session.limited ? `after the usage limit, ${count}` : count})`;
     this.ctx.out(`${session.started ? "resumed" : "started"} ${short} for ${what}`);
 
     const prompt = this.prompts.get(session.bot_id)!;
-    const message = (session.started ? "" : prompt + "\n\n") + describeMessages(messages);
+    const parts = [
+      !session.started && prompt,
+      session.limited && RESUME_AFTER_LIMIT,
+      messages.length > 0 && describeMessages(messages),
+    ];
+    const message = parts.filter((p): p is string => typeof p === "string").join("\n\n");
     let outcome: RunOutcome;
     try {
       outcome = await this.runAgent({
@@ -266,16 +278,19 @@ export class Dispatcher {
         env: this.env,
       });
     } catch (err) {
-      outcome = { code: -1 };
+      outcome = { code: -1, delivered: false };
       this.ctx.out(`error: ${short} failed to start: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    const { code, limitedUntil } = outcome;
+    const { code, delivered, limitedUntil } = outcome;
     const ended = await withSessions(this.dir, (sessions) => {
       const s = editSession(sessions, id);
       s.started = true;
-      if (limitedUntil) {
-        // The run never got to these messages: deliver them again once the limit resets.
+      if (limitedUntil && delivered) {
+        // The messages reached the session before the limit cut the run short: resume it once the limit resets.
+        s.limited = true;
+      } else if (limitedUntil) {
+        // They didn't: deliver them again once the limit resets.
         const ids = new Set(messages.map((m) => m.id));
         s.events = s.events.filter((e) => !ids.has(e));
         s.waiting.unshift(...messages);
@@ -298,6 +313,9 @@ export class Dispatcher {
     if (held) this.ctx.out(dim(`${held} session(s) waiting: ${this.max} sessions are already running.`));
   }
 }
+
+const RESUME_AFTER_LIMIT =
+  "Your last run stopped because the account hit its usage limit. The limit has reset: carry on with the messages you were given, from wherever you got to.";
 
 function describeMessages(messages: WaitingMessage[]): string {
   const lines = messages.map(
