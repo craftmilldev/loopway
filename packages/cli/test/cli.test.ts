@@ -10,7 +10,7 @@ import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { LoopwayClient, type Bot } from "../src/client.js";
-import { threadPrompt, type AgentRun } from "../src/threads/agent.js";
+import { LIMIT_FALLBACK_MS, LimitWatch, threadPrompt, type AgentRun, type RunOutcome } from "../src/threads/agent.js";
 import { Dispatcher } from "../src/threads/dispatcher.js";
 import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
 import { botEnv } from "../src/threads/github.js";
@@ -477,7 +477,7 @@ describe("threads", () => {
       bots.push(await runJson("bots", "create", "--name", `dev${i}`, "--kind", "github-threads", "--inbox", inbox.id));
     }
     const runs: AgentRun[] = [];
-    const busy: (() => void)[] = [];
+    const busy: ((outcome: RunOutcome) => void)[] = [];
     const out: string[] = [];
     const ctx: Context = {
       configDir,
@@ -486,11 +486,14 @@ describe("threads", () => {
       out: (t) => out.push(t),
       fetch: apiFetch,
       // Each run stays "busy" until the test calls finish().
-      runAgent: (r) => new Promise((resolve) => (runs.push(r), busy.push(() => resolve(0)))),
+      runAgent: (r) => new Promise((resolve) => (runs.push(r), busy.push(resolve))),
     };
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
     const d = await Dispatcher.start(ctx, client, bots, { max, ttl: 60 });
-    const finish = async () => (busy.splice(0).forEach((f) => f()), await d.idle());
+    const finish = async (outcome: RunOutcome = { code: 0, delivered: true }) => (
+      busy.splice(0).forEach((f) => f(outcome)),
+      await d.idle()
+    );
     // Let runs still in flight write threads.json before the config dir is removed.
     closers.push(async () => (await finish(), await d.close()));
     const list = async (status: string) =>
@@ -639,6 +642,123 @@ describe("threads", () => {
     await finish();
   });
 
+  it("holds every delivery after a run hits the usage limit, then resumes the session where it was", async () => {
+    const { inbox, runs, out, d, finish, list } = await setup(3);
+    await send(inbox, "issues", issue("opened", 1));
+    await d.tick();
+    expect(runs).toHaveLength(1);
+    const [first] = runs;
+    const delivered = (await list("pending")).map((e: any) => e.id);
+
+    // The run stops for the limit after taking its messages: they stay delivered, and nothing starts.
+    await finish({ code: 1, delivered: true, limitedUntil: Date.now() + 300 });
+    expect(out.join("\n")).toMatch(/hit the usage limit; retrying sessions after/);
+    await send(inbox, "issues", issue("opened", 2));
+    await send(inbox, "issue_comment", comment(1));
+    await d.tick();
+    expect(runs).toHaveLength(1);
+    const state = await d.state();
+    expect(state.running.size).toBe(0);
+    expect(state.waiting.map((m) => m.key)).toEqual(["a/b#2", "a/b#1"]);
+    expect(state.sessions[first!.sessionId]!.events).toEqual(delivered);
+    expect(state.sessions[first!.sessionId]!.limited).toBe(true);
+
+    // Once it resets, the session is told to carry on, with the comment that arrived meanwhile.
+    await new Promise((r) => setTimeout(r, 350));
+    await d.tick();
+    expect(out.join("\n")).toMatch(/usage limit reset; resuming sessions/);
+    expect(out.join("\n")).toMatch(/resumed \w+ for a\/b#1 \(after the usage limit, 1 message\)/);
+    expect(runs).toHaveLength(3);
+    const retry = runs.find((r) => r.sessionId === first!.sessionId && r !== first)!;
+    expect(retry.resume).toBe(true);
+    expect(retry.message).toMatch(/^Your last run stopped because the account hit its usage limit/);
+    expect(retry.message).toContain((await list("pending")).find((e: any) => e.event.type.includes("comment")).id);
+    for (const id of delivered) expect(retry.message).not.toContain(id);
+    const after = await d.state();
+    expect(after.waiting).toEqual([]);
+    expect(after.sessions[first!.sessionId]!.limited).toBeUndefined();
+    await finish();
+
+    // A session the limit stopped with nothing new for it is resumed on its own, with just the note.
+    await send(inbox, "issue_comment", comment(2));
+    await d.tick();
+    expect(runs).toHaveLength(4);
+    await finish({ code: 1, delivered: true, limitedUntil: Date.now() + 100 });
+    await new Promise((r) => setTimeout(r, 150));
+    await d.tick();
+    expect(runs).toHaveLength(5);
+    expect(runs.at(-1)!.message).toBe(
+      "Your last run stopped because the account hit its usage limit. The limit has reset: carry on with the messages you were given, from wherever you got to.",
+    );
+    await finish();
+  });
+
+  it("redelivers a limited run's messages when they never reached the session", async () => {
+    const { inbox, runs, out, d, finish, list } = await setup(3);
+    await send(inbox, "issues", issue("opened", 1));
+    await d.tick();
+    expect(runs).toHaveLength(1);
+    const [first] = runs;
+    const delivered = (await list("pending")).map((e: any) => e.id);
+
+    // The run stops for the limit before taking its messages: they go back to waiting.
+    await finish({ code: 1, delivered: false, limitedUntil: Date.now() + 300 });
+    expect(out.join("\n")).toMatch(/hit the usage limit; retrying sessions after/);
+    await send(inbox, "issues", issue("opened", 2));
+    await d.tick();
+    expect(runs).toHaveLength(1);
+    const state = await d.state();
+    expect(state.running.size).toBe(0);
+    expect(state.waiting.map((m) => m.key)).toEqual(["a/b#1", "a/b#2"]);
+    expect(state.sessions[first!.sessionId]!.events).toEqual([]);
+
+    // Once it resets, the session is resumed with the same messages, and the new thread starts too.
+    await new Promise((r) => setTimeout(r, 350));
+    await d.tick();
+    expect(out.join("\n")).toMatch(/usage limit reset; resuming sessions/);
+    expect(runs).toHaveLength(3);
+    const retry = runs.find((r) => r.sessionId === first!.sessionId && r !== first)!;
+    expect(retry.resume).toBe(true);
+    for (const id of delivered) expect(retry.message).toContain(id);
+    expect(retry.message).not.toMatch(/usage limit/);
+    expect((await d.state()).waiting).toEqual([]);
+    await finish();
+  });
+
+  it("LimitWatch: sees our message echoed; a rejected rate_limit_event plus a usage_limit_reached result say when to retry", () => {
+    const now = 1_700_000_000_000;
+    const rejected = JSON.stringify({
+      type: "rate_limit_event",
+      rate_limit_info: { status: "rejected", resetsAt: now / 1000 + 3600 },
+    });
+    const limited = JSON.stringify({ type: "result", is_error: true, api_error: "usage_limit_reached" });
+
+    const w = new LimitWatch();
+    w.line(JSON.stringify({ type: "rate_limit_event", rate_limit_info: { status: "allowed", resetsAt: 1 } }));
+    w.line("not json (stderr noise)");
+    // Tool results and subagent turns are user records too; only our echoed message counts as delivered.
+    w.line(JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "tool_result" }] } }));
+    w.line(JSON.stringify({ type: "user", parent_tool_use_id: "t1", message: { role: "user", content: "sub" } }));
+    expect(w.delivered).toBe(false);
+    w.line(JSON.stringify({ type: "user", parent_tool_use_id: null, message: { role: "user", content: "hi" } }));
+    expect(w.delivered).toBe(true);
+    w.line(JSON.stringify({ type: "result", is_error: true, api_error: "other" }));
+    expect(w.limitedUntil(now)).toBeUndefined();
+    w.line(rejected);
+    expect(w.limitedUntil(now)).toBeUndefined();
+    w.line(limited);
+    expect(w.limitedUntil(now)).toBe(now + 3600_000);
+
+    // Without a reset time, or with one already past, it falls back to a fixed wait.
+    const bare = new LimitWatch();
+    bare.line(limited);
+    expect(bare.limitedUntil(now)).toBe(now + LIMIT_FALLBACK_MS);
+    const stale = new LimitWatch();
+    stale.line(JSON.stringify({ type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt: 1 } }));
+    stale.line(limited);
+    expect(stale.limitedUntil(now)).toBe(now + LIMIT_FALLBACK_MS);
+  });
+
   it("runs every bot, sharing --max across them", async () => {
     const { bots, runs, d, finish, cursor, out } = await setup(1, {}, 2);
     const [a, b] = await Promise.all(bots.map((bot) => runJson("inbox", "show", bot.inbox_ids[0]!)));
@@ -715,7 +835,7 @@ describe("threads", () => {
       interactive: false,
       out: (t) => out.push(t),
       fetch: apiFetch,
-      runAgent: async (r) => (runs.push(r), 0),
+      runAgent: async (r) => (runs.push(r), { code: 0, delivered: true }),
     };
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
     const d = await Dispatcher.start(ctx, client, [bot], { max: 3, ttl: 60 });

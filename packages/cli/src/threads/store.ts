@@ -20,6 +20,8 @@ export interface Session {
   status: "active" | "ended";
   /** Whether a claude session with this id exists yet (first run uses --session-id, later ones --resume). */
   started: boolean;
+  /** Set when the last run stopped at the usage limit after taking its messages: the next run resumes it. */
+  limited?: true;
   created_at: string;
   updated_at: string;
 }
