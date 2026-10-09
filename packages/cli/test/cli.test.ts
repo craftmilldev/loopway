@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApi } from "@loopway/web/api";
@@ -737,9 +737,9 @@ describe("threads", () => {
       skew = API_ERROR_BACKOFF_MS + 1000;
       await d.tick();
       expect(runs).toHaveLength(2);
-      expect(out.join("\n")).toMatch(/resumed \w+ for a\/b#1 \(after an API error, 0 messages\)/);
+      expect(out.join("\n")).toMatch(/resumed \w+ for a\/b#1 \(after an interruption, 0 messages\)/);
       expect(runs[1]!.resume).toBe(true);
-      expect(runs[1]!.message).toMatch(/^Your last run stopped on an API error/);
+      expect(runs[1]!.message).toMatch(/^Your last run was cut off before it finished/);
       expect((await d.state()).sessions[first!.sessionId]!.interrupted).toBeUndefined();
 
       await finish({ code: 0, delivered: true, apiError: error });
@@ -915,6 +915,46 @@ describe("threads", () => {
     await d.tick();
     await d.idle();
     expect(runs[0]).toMatchObject({ sessionId: "old-session", resume: true });
+  });
+
+  it("picks up a run a previous runner left cut off, and marks sessions started on init", async () => {
+    const { inbox, runs, bot, client, d, finish } = await setup(3);
+    await send(inbox, "issues", issue("opened", 7));
+    await d.tick();
+    const id = runs[0]!.sessionId;
+    expect((await sessions())[id]).toMatchObject({ started: false, inflight: [{ type: expect.any(String) }] });
+
+    // Claude Code created the session, then the runner died before the run produced a result.
+    let started = 0;
+    const watch = new LimitWatch(() => started++);
+    watch.line(JSON.stringify({ type: "system", subtype: "init" }));
+    expect([started, watch.finished]).toEqual([1, false]);
+    await mkdir(join(configDir, "threads"), { recursive: true });
+    await writeFile(
+      join(configDir, "threads", `${id}.log`),
+      `{"type":"system","subtype":"init"}\n{"type":"assistant","message":{}}\n`,
+    );
+    await run("bots", "release", bot.id, "--force");
+
+    const runs2: AgentRun[] = [];
+    const ctx: Context = {
+      configDir,
+      env: {},
+      interactive: false,
+      out: () => {},
+      fetch: apiFetch,
+      runAgent: async (r) => (runs2.push(r), { code: 0, delivered: true }),
+    };
+    const d2 = await Dispatcher.start(ctx, client, [bot], { max: 3, ttl: 60 });
+    closers.push(() => d2.close());
+    await d2.tick();
+    await d2.idle();
+    expect(runs2).toHaveLength(1);
+    expect(runs2[0]).toMatchObject({ sessionId: id, resume: true });
+    expect(runs2[0]!.message).toContain("New messages for this thread");
+    expect((await sessions())[id]).toMatchObject({ started: true, waiting: [] });
+    expect((await sessions())[id].inflight).toBeUndefined();
+    await finish();
   });
 
   it("serves a link tool that routes a PR's messages to the session", async () => {

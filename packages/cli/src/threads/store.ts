@@ -20,10 +20,12 @@ export interface Session {
   status: "active" | "ended";
   /** Whether a claude session with this id exists yet (first run uses --session-id, later ones --resume). */
   started: boolean;
+  /** Messages handed to a run that hasn't finished, so a runner that dies mid-run can deliver them again. */
+  inflight?: WaitingMessage[];
+  /** Set when a run was cut off (the runner died, or the run ended on an API error) after taking its messages: the next run is told to carry on. */
+  interrupted?: true;
   /** Set when the last run stopped at the usage limit after taking its messages: the next run resumes it. */
   limited?: true;
-  /** Set when the last run took its messages, then ended on an API error: the next run resumes it. */
-  interrupted?: true;
   created_at: string;
   updated_at: string;
 }
