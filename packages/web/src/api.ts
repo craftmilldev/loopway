@@ -39,7 +39,10 @@ export function createApi(opts: ApiOptions) {
     if (err instanceof ZodError) {
       return c.json({ error: { code: "invalid_request", message: "Invalid request", details: err.issues } }, 400);
     }
-    if (err instanceof ApiError) return c.json({ error: { code: err.code, message: err.message } }, err.status);
+    if (err instanceof ApiError) {
+      const details = err.details === undefined ? {} : { details: err.details };
+      return c.json({ error: { code: err.code, message: err.message, ...details } }, err.status);
+    }
     if (err instanceof HTTPException)
       return c.json({ error: { code: "http_error", message: err.message } }, err.status);
     console.error(err);
@@ -285,14 +288,22 @@ export function createApi(opts: ApiOptions) {
     const bot = await ownedBot(c);
     const input = ttlBody.extend({ lease_token: z.string().optional() }).parse(await jsonBody(c));
     const row = await store.leaseBot(c.var.db, bot.id, input.ttl_seconds, input.lease_token ?? null);
-    if (!row) throw new ApiError(409, "leased", `Bot is leased until ${iso(bot.locked_until)} by another runner`);
+    if (!row) {
+      const until = iso(bot.locked_until);
+      throw new ApiError(409, "leased", `Bot is leased until ${until} by another runner`, { expires_at: until });
+    }
     return c.json({ lease: { token: row.lock_token, expires_at: iso(row.locked_until) } });
   });
 
   authed.post("/bots/:botId/release", async (c) => {
     const bot = await ownedBot(c);
-    const { lease_token } = z.object({ lease_token: z.string().min(1) }).parse(await jsonBody(c));
-    if (!(await store.releaseBot(c.var.db, bot.id, lease_token))) throw leaseMismatch(bot);
+    const { lease_token, force } = z
+      .object({ lease_token: z.string().min(1).optional(), force: z.boolean().optional() })
+      .parse(await jsonBody(c));
+    if (force) await store.forceReleaseBot(c.var.db, bot.id);
+    else if (!lease_token)
+      throw new ApiError(400, "invalid_request", "Pass lease_token, or force: true to drop whoever's lease");
+    else if (!(await store.releaseBot(c.var.db, bot.id, lease_token))) throw leaseMismatch(bot);
     return c.body(null, 204);
   });
 
@@ -368,6 +379,7 @@ export class ApiError extends Error {
     public status: 400 | 401 | 403 | 404 | 409 | 415 | 422 | 500 | 502,
     public code: string,
     message: string,
+    public details?: unknown,
   ) {
     super(message);
   }

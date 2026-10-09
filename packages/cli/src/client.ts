@@ -184,13 +184,21 @@ export class LoopwayClient {
     return (await this.request<{ data: Event[] }>("GET", `/bots/${enc(botId)}/messages${suffix}`)).data;
   }
 
-  /** Takes the bot's lease, or renews it with the current token. 409 `leased` if another runner holds it. */
+  /**
+   * Takes the bot's lease, or renews it with the current token. 409 `leased` if another runner holds it,
+   * with `details.expires_at` saying until when.
+   */
   leaseBot(botId: string, opts: { ttl_seconds?: number; lease_token?: string } = {}) {
     return this.request<{ lease: Lease }>("POST", `/bots/${enc(botId)}/lease`, opts);
   }
 
   async releaseBot(botId: string, leaseToken: string) {
     await this.request("POST", `/bots/${enc(botId)}/release`, { lease_token: leaseToken });
+  }
+
+  /** Drops the bot's lease whoever holds it: for a runner that died without releasing. */
+  async forceReleaseBot(botId: string) {
+    await this.request("POST", `/bots/${enc(botId)}/release`, { force: true });
   }
 
   /** Moves the cursor forward to `seq`; it never goes backwards. 409 if the token isn't the live lease. */

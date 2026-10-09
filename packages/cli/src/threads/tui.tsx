@@ -1,6 +1,6 @@
 import { Box, render, Text, useApp, useInput, useWindowSize } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ago } from "../format.js";
+import { ago, clock } from "../format.js";
 import type { DispatcherState } from "./dispatcher.js";
 import { transcriptLines, wrap, type TranscriptLine } from "./transcript.js";
 
@@ -100,7 +100,8 @@ function ListView({ snap, selected, onSelect, onOpen }: ListViewProps) {
   const body = Math.max(1, height - 3);
   const rows = listRows(snap, lists, Math.max(3, Math.floor(body / 4)));
   const names = (bots: { name: string }[]) => bots.map((b) => b.name).join(", ");
-  const skipped = snap.bots.skipped.length ? ` · leased elsewhere: ${names(snap.bots.skipped)}` : "";
+  const leased = snap.bots.skipped.map((b) => b.name + (b.leased_until ? ` (until ${clock(b.leased_until)})` : ""));
+  const skipped = leased.length ? ` · leased elsewhere: ${leased.join(", ")}` : "";
 
   // Scroll just enough to keep the selection on screen, along with its list's header.
   const offset = useRef(0);

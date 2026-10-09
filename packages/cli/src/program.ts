@@ -1,6 +1,6 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import { clearConfig, configure, login, whoami } from "./commands/auth.js";
-import { botMessages, createBot, deleteBot, listBots, showBot, updateBot } from "./commands/bots.js";
+import { botMessages, createBot, deleteBot, listBots, releaseBot, showBot, updateBot } from "./commands/bots.js";
 import { getEvent, listEvents } from "./commands/events.js";
 import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
 import { runBots } from "./commands/threads.js";
@@ -170,6 +170,13 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .action((ref) => deleteBot(ctx, ref));
 
   bots
+    .command("release")
+    .description("drop the lease a runner left on a bot when it died, so the next `loopway bots run` can take it")
+    .argument("<bot>", "bot id or name")
+    .option("--force", "confirm: a `loopway bots run` still holding the lease loses the bot")
+    .action((ref, opts) => releaseBot(ctx, ref, opts));
+
+  bots
     .command("messages")
     .description("list the messages the bot would read next (after its cursor, oldest first)")
     .argument("<bot>", "bot id or name")
@@ -191,7 +198,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .addOption(
       new Option(
         "--ttl <seconds>",
-        "how long each bot lease lasts; it is renewed every poll (default 3600, max 43200)",
+        "how long each bot lease lasts; it is renewed every poll (default 6 × --interval, at least 30; max 43200)",
       ).argParser(positiveInt),
     )
     .option("--no-tui", "print a plain log instead of the full-screen view of threads and their transcripts")

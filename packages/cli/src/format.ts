@@ -36,6 +36,12 @@ export function ago(iso: string | null, now = Date.now()): string {
   return s >= 0 ? `${v} ago` : `in ${v}`;
 }
 
+/** "13:04": the local time of day, for things due within the hour or so. */
+export function clock(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 /** payload_url → "Payload URL" */
 export function humanize(key: string): string {
   const s = key.replace(/_/g, " ").replace(/\b(url|id)\b/gi, (m) => m.toUpperCase());

@@ -12,6 +12,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { LoopwayClient, type Bot } from "../src/client.js";
 import { LIMIT_FALLBACK_MS, LimitWatch, threadPrompt, type AgentRun, type RunOutcome } from "../src/threads/agent.js";
 import { Dispatcher } from "../src/threads/dispatcher.js";
+import { defaultTtl } from "../src/commands/threads.js";
 import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
 import { botEnv } from "../src/threads/github.js";
 import type { Context } from "../src/context.js";
@@ -410,6 +411,13 @@ describe("threads", () => {
   });
   const sessions = async () => JSON.parse(await readFile(join(configDir, "threads.json"), "utf8"));
   const closers: (() => Promise<void>)[] = [];
+  const ctxOf = (out: string[]): Context => ({
+    configDir,
+    env: {},
+    interactive: false,
+    out: (t) => out.push(t),
+    fetch: apiFetch,
+  });
   afterEach(async () => void (await Promise.all(closers.splice(0).map((c) => c()))));
 
   /** Sends a webhook and ages it past the holdback window, so the bot reads it on the next tick. */
@@ -740,8 +748,11 @@ describe("threads", () => {
     await d.tick();
     expect(runs).toHaveLength(0);
     expect(await cursor()).toBe(before);
-    expect(out.filter((l) => /dev1 is leased by another runner/.test(l))).toHaveLength(1);
-    expect((await d.state()).bots).toMatchObject({ held: [], skipped: [{ name: "dev1" }] });
+    expect(out.filter((l) => /dev1 is leased by another runner until \d\d:\d\d; skipping/.test(l))).toHaveLength(1);
+    expect((await d.state()).bots).toMatchObject({
+      held: [],
+      skipped: [{ name: "dev1", leased_until: other.expires_at }],
+    });
 
     await client.releaseBot(bot.id, other.token);
     await d.tick();
@@ -753,10 +764,34 @@ describe("threads", () => {
     await d.tick();
     await expect(client.leaseBot(bot.id)).rejects.toMatchObject({ code: "leased" });
 
-    // Closing gives it back right away.
-    await d.close();
+    // Closing gives it back right away, and closing again is fine.
+    await Promise.all([d.close(), d.close()]);
     closers.splice(0);
     expect((await client.leaseBot(bot.id)).lease.token).not.toBe(other.token);
+  });
+
+  it("leases are short by default, and `bots release --force` drops one a dead runner left", async () => {
+    expect(defaultTtl(5)).toBe(30);
+    expect(defaultTtl(10)).toBe(60);
+    expect(defaultTtl(1)).toBe(30);
+    const { bot, client, d } = await setup(3);
+    const other = await Dispatcher.start(ctxOf([]), client, [bot]);
+    closers.push(() => other.close());
+    const before = Date.now();
+    await other.tick();
+    const leased = await client.leaseBot(bot.id).catch((e) => e);
+    expect(leased).toMatchObject({ code: "leased" });
+    const until = Date.parse(leased.details.expires_at);
+    expect(until).toBeGreaterThan(before + 20_000);
+    expect(until).toBeLessThanOrEqual(Date.now() + 30_000);
+
+    // That runner "dies": without --force its lease stays, with it the next runner takes the bot right away.
+    await expect(run("bots", "release", bot.id)).rejects.toThrow(/Pass --force/);
+    await d.tick();
+    expect((await d.state()).bots.held).toEqual([]);
+    expect(await run("bots", "release", bot.id, "--force")).toMatch(/Released the lease/);
+    await d.tick();
+    expect((await d.state()).bots).toMatchObject({ held: [{ name: "dev1" }], skipped: [] });
   });
 
   it("adopts sessions from before bots, by the bot that reads their inbox", async () => {

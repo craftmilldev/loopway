@@ -325,6 +325,14 @@ export async function releaseBot(db: Db, botId: string, token: string): Promise<
   return rows.length > 0;
 }
 
+/** Drops the lease whoever holds it, for a runner that died without releasing. */
+export async function forceReleaseBot(db: Db, botId: string): Promise<void> {
+  await db.query(
+    `UPDATE loopway.bots SET lock_token = NULL, locked_until = NULL WHERE id = $1 AND deleted_at IS NULL`,
+    [botId],
+  );
+}
+
 /** Moves the cursor forward to `seq` (never backwards), if `token` is the live lease. */
 export async function advanceCursor(db: Db, botId: string, seq: number, token: string): Promise<Bot | undefined> {
   const [row] = await db.query<Bot>(
