@@ -61,7 +61,7 @@ async function openPglite(dir: string): Promise<Db> {
       await pg.close();
     },
   };
-  // Local DBs migrate themselves; Neon is migrated explicitly with `npm run db:migrate`.
+  // Local DBs migrate themselves; Neon is migrated by `npm run db:migrate` (Vercel runs it at build time).
   await migrate(db);
   return db;
 }
