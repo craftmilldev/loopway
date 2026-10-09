@@ -22,7 +22,7 @@ export interface Session {
   started: boolean;
   /** Messages handed to a run that hasn't finished, so a runner that dies mid-run can deliver them again. */
   inflight?: WaitingMessage[];
-  /** Set when a run was cut off with no record of its messages: the next run is told to carry on. */
+  /** Set when a run was cut off (the runner died, or the run ended on an API error) after taking its messages: the next run is told to carry on. */
   interrupted?: true;
   /** Set when the last run stopped at the usage limit after taking its messages: the next run resumes it. */
   limited?: true;

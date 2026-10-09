@@ -30,6 +30,10 @@ export interface ThreadsOptions {
  * The lease TTL is short on purpose: the bots of a runner that died without releasing them (killed,
  * crashed, power lost) come free in well under a minute instead of blocking the next runner.
  */
+/** API-error retries per session before giving up, and the first backoff, which doubles each time. */
+export const API_ERROR_RETRIES = 3;
+export const API_ERROR_BACKOFF_MS = 60_000;
+
 export const DEFAULTS = { max: 3, interval: 5, ttl: 30 };
 
 /** A bot another runner holds the lease on. */
@@ -82,6 +86,8 @@ export class Dispatcher {
   private queued = 0;
   /** While a run says the account hit its usage limit: when the limit resets (ms), until which nothing is delivered. */
   private limitedUntil = 0;
+  /** Session id → consecutive API-error retries so far, and when the next one may start (ms). */
+  private readonly errored = new Map<string, { retries: number; after: number }>();
   /** Whether a run has exited since the last tick started, and who to tell when one does. */
   private freed = false;
   private onFreed?: () => void;
@@ -300,6 +306,7 @@ export class Dispatcher {
           (id) =>
             (sessions[id]!.waiting.length || sessions[id]!.limited || sessions[id]!.interrupted) && !running.has(id),
         )
+        .filter((id) => (this.errored.get(id)?.after ?? 0) <= Date.now())
         .filter((id) => this.prompts.has(sessions[id]!.bot_id))
         .sort((a, b) => (sessions[a]!.waiting[0]?.id ?? "").localeCompare(sessions[b]!.waiting[0]?.id ?? ""));
       const deliveries = new Map<string, { session: Session; messages: WaitingMessage[] }>();
@@ -329,7 +336,8 @@ export class Dispatcher {
   private async run(id: string, session: Session, messages: WaitingMessage[]): Promise<void> {
     const short = id.slice(0, 8);
     const count = `${messages.length} message${messages.length === 1 ? "" : "s"}`;
-    const what = `${session.keys.join(", ") || "new thread"} (${session.limited ? `after the usage limit, ${count}` : count})`;
+    const after = session.limited ? "after the usage limit, " : session.interrupted ? "after an interruption, " : "";
+    const what = `${session.keys.join(", ") || "new thread"} (${after}${count})`;
     this.ctx.out(`${session.started ? "resumed" : "started"} ${short} for ${what}`);
 
     const prompt = this.prompts.get(session.bot_id)!;
@@ -365,16 +373,21 @@ export class Dispatcher {
       this.ctx.out(`error: ${short} failed to start: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    const { code, delivered, limitedUntil } = outcome;
+    const { code, delivered, limitedUntil, apiError } = outcome;
+    // The usage limit has its own wait; an API error gets a backoff per session, and a cap so a permanent one can't loop.
+    const prior = this.errored.get(id)?.retries ?? 0;
+    const retry = !limitedUntil && !!apiError && prior < API_ERROR_RETRIES;
+    const requeue = !!limitedUntil || retry;
     const ended = await withSessions(this.dir, (sessions) => {
       const s = editSession(sessions, id);
       s.started = true;
       delete s.inflight;
-      if (limitedUntil && delivered) {
-        // The messages reached the session before the limit cut the run short: resume it once the limit resets.
-        s.limited = true;
-      } else if (limitedUntil) {
-        // They didn't: deliver them again once the limit resets.
+      if (requeue && delivered) {
+        // The messages reached the session before the run was cut short: resume it once the wait is over.
+        if (limitedUntil) s.limited = true;
+        else s.interrupted = true;
+      } else if (requeue) {
+        // They didn't: deliver them again once the wait is over.
         const ids = new Set(messages.map((m) => m.id));
         s.events = s.events.filter((e) => !ids.has(e));
         s.waiting.unshift(...messages);
@@ -384,7 +397,18 @@ export class Dispatcher {
     if (limitedUntil) {
       this.limitedUntil = Math.max(this.limitedUntil, limitedUntil);
       this.ctx.out(`${short} hit the usage limit; retrying sessions after ${new Date(limitedUntil).toLocaleString()}`);
-    } else this.ctx.out(`${short} ${ended ? "ended" : "finished"} (exit ${code})`);
+    } else if (retry) {
+      const wait = API_ERROR_BACKOFF_MS * 2 ** prior;
+      this.errored.set(id, { retries: prior + 1, after: Date.now() + wait });
+      this.ctx.out(
+        `${short} hit an API error (${apiError}); retry ${prior + 1}/${API_ERROR_RETRIES} after ${new Date(Date.now() + wait).toLocaleString()}`,
+      );
+    } else {
+      this.errored.delete(id);
+      if (apiError)
+        this.ctx.out(`${short} hit an API error (${apiError}); giving up after ${API_ERROR_RETRIES} retries`);
+      this.ctx.out(`${short} ${ended ? "ended" : "finished"} (exit ${code})`);
+    }
     this.running.delete(id);
     this.freed = true;
     this.onFreed?.();
@@ -405,7 +429,7 @@ function leasedUntil(err: ApiError): string | undefined {
 }
 
 const RESUME_AFTER_INTERRUPT =
-  "Your last run was cut off before it finished (the runner stopped). Carry on from wherever you got to, and check the thread's latest messages on GitHub for anything you missed.";
+  "Your last run was cut off before it finished (the runner stopped, or the API failed). Carry on from wherever you got to, and check the thread's latest messages on GitHub for anything you missed.";
 
 const RESUME_AFTER_LIMIT =
   "Your last run stopped because the account hit its usage limit. The limit has reset: carry on with the messages you were given, from wherever you got to.";

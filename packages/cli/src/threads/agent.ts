@@ -27,6 +27,8 @@ export interface RunOutcome {
   finished?: boolean;
   /** Set when the run stopped because the account hit its usage limit: when the limit resets, in ms since the epoch. */
   limitedUntil?: number;
+  /** Set when the run ended on an API error (offline, asleep, overloaded) rather than finishing: the error text. */
+  apiError?: string;
 }
 
 export type RunAgent = (run: AgentRun) => Promise<RunOutcome>;
@@ -45,6 +47,7 @@ export class LimitWatch {
   finished = false;
   private resetsAt?: number;
   private hit = false;
+  private error?: string;
 
   constructor(private readonly onInit?: () => void) {}
 
@@ -53,6 +56,8 @@ export class LimitWatch {
       type?: string;
       subtype?: string;
       api_error?: string;
+      is_error?: boolean;
+      result?: unknown;
       parent_tool_use_id?: string | null;
       message?: { content?: unknown };
       rate_limit_info?: { status?: string; resetsAt?: number };
@@ -71,7 +76,15 @@ export class LimitWatch {
     else if (r.type === "result") {
       this.finished = true;
       if (r.api_error === "usage_limit_reached") this.hit = true;
+      // API errors come back with subtype `success`, so the run looks like it finished.
+      else if (r.is_error || (typeof r.result === "string" && r.result.startsWith("API Error:")))
+        this.error = typeof r.result === "string" ? r.result : "the run ended in an error";
     }
+  }
+
+  /** The error the run ended on, if it did and it wasn't the usage limit. */
+  apiError(): string | undefined {
+    return this.hit ? undefined : this.error;
   }
 
   /** When the limit resets, if the run stopped because of it. */
@@ -106,7 +119,13 @@ export const spawnClaude: RunAgent = async (run) => {
     });
     // Awaited together, so whichever fails first is the error thrown and neither can go unhandled.
     const [code] = await Promise.all([exited, copied]);
-    return { code, delivered: watch.delivered, finished: watch.finished, limitedUntil: watch.limitedUntil() };
+    return {
+      code,
+      delivered: watch.delivered,
+      finished: watch.finished,
+      limitedUntil: watch.limitedUntil(),
+      apiError: watch.apiError(),
+    };
   } finally {
     closeSync(errFd);
   }
