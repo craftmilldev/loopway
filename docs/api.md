@@ -79,20 +79,6 @@ Event shape:
 }
 ```
 
-## Consumer loop
-
-```bash
-API=http://localhost:3000; KEY=<token>; INBOX=...
-while :; do
-  ev=$(curl -s -X POST "$API/inboxes/$INBOX/events/next" -H "authorization: Bearer $KEY")
-  [ -z "$ev" ] && { sleep 5; continue; }
-  # ... handle "$ev" ...
-  curl -s -X POST "$API/inboxes/$INBOX/events/$(jq -r .id <<<"$ev")/processed" \
-    -H "authorization: Bearer $KEY" -H 'content-type: application/json' \
-    -d "{\"lock_token\":\"$(jq -r .lock.token <<<"$ev")\"}" >/dev/null
-done
-```
-
 ## Bots
 
 A bot reads the messages (events) of one or more of your inboxes, in `seq` order, and keeps a `cursor`: the `seq` of the last message it has read past. A runner (`loopway bots run`) takes a lease on the bot while it reads, so only one runner at a time moves the cursor.
