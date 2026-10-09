@@ -297,6 +297,31 @@ export function createApi(opts: ApiOptions) {
     return c.body(null, 204);
   });
 
+  authed.post("/bots/:botId/lease", async (c) => {
+    const bot = await ownedBot(c);
+    const input = ttlBody.extend({ lease_token: z.string().optional() }).parse(await jsonBody(c));
+    const row = await store.leaseBot(c.var.db, bot.id, input.ttl_seconds, input.lease_token ?? null);
+    if (!row) throw new ApiError(409, "leased", `Bot is leased until ${iso(bot.locked_until)} by another runner`);
+    return c.json({ lease: { token: row.lock_token, expires_at: iso(row.locked_until) } });
+  });
+
+  authed.post("/bots/:botId/release", async (c) => {
+    const bot = await ownedBot(c);
+    const { lease_token } = z.object({ lease_token: z.string().min(1) }).parse(await jsonBody(c));
+    if (!(await store.releaseBot(c.var.db, bot.id, lease_token))) throw leaseMismatch(bot);
+    return c.body(null, 204);
+  });
+
+  authed.post("/bots/:botId/cursor", async (c) => {
+    const bot = await ownedBot(c);
+    const { seq, lease_token } = z
+      .object({ seq: z.number().int().min(0), lease_token: z.string().min(1) })
+      .parse(await jsonBody(c));
+    const row = await store.advanceCursor(c.var.db, bot.id, seq, lease_token);
+    if (!row) throw leaseMismatch(bot);
+    return c.json(serializeBot(row));
+  });
+
   authed.get("/bots/:botId/messages", async (c) => {
     const bot = await ownedBot(c);
     const q = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(c.req.query());
@@ -385,6 +410,12 @@ async function existingEvent(c: Context<Env>, inbox: Inbox): Promise<EventRow> {
   const row = isUuid(id) ? await store.getEvent(c.var.db, inbox.id, id) : undefined;
   if (!row) throw new ApiError(404, "not_found", "Event not found");
   return row;
+}
+
+function leaseMismatch(b: store.Bot): ApiError {
+  if (!b.locked_until || new Date(b.locked_until) <= new Date())
+    return new ApiError(409, "not_leased", "Bot is not leased");
+  return new ApiError(409, "lease_mismatch", "lease_token is not the bot's live lease");
 }
 
 function conflictFor(e: EventRow): ApiError {

@@ -269,6 +269,83 @@ describe("bots", () => {
   });
 });
 
+describe("bot leases", () => {
+  const settle = (inboxId: string) =>
+    db.query(`UPDATE loopway.events SET received_at = received_at - interval '1 minute' WHERE inbox_id = $1`, [
+      inboxId,
+    ]);
+
+  it("lease / renew / release, and the cursor only moves forward under the live lease", async () => {
+    const key = await newUser();
+    const inbox = await newInbox(key);
+    const bot = (await call("POST", "/bots", { key, body: { name: "b", kind: "k", inbox_ids: [inbox.id] } })).body;
+    const base = `/bots/${bot.id}`;
+
+    const leased = await call("POST", `${base}/lease`, { key, body: { ttl_seconds: 60 } });
+    expect(leased.status).toBe(200);
+    const token = leased.body.lease.token;
+    expect(token).toMatch(/^lk_/);
+    expect(Date.parse(leased.body.lease.expires_at)).toBeGreaterThan(Date.now() + 50_000);
+    // The lease isn't part of the bot.
+    expect((await call("GET", base, { key })).body).not.toHaveProperty("lock_token");
+
+    // Another runner can't take it; the holder renews and keeps the token.
+    const other = await call("POST", `${base}/lease`, { key });
+    expect(other.status).toBe(409);
+    expect(other.body.error.code).toBe("leased");
+    expect((await call("POST", `${base}/lease`, { key, body: { lease_token: "lk_x" } })).body.error.code).toBe(
+      "leased",
+    );
+    const renewed = await call("POST", `${base}/lease`, { key, body: { lease_token: token, ttl_seconds: 120 } });
+    expect(renewed.body.lease.token).toBe(token);
+
+    // The cursor moves only with the live token, and never backwards.
+    for (let i = 1; i <= 3; i++) await sendGithub(inbox, "pull_request", prPayload(i));
+    await settle(inbox.id);
+    const msgs = (await call("GET", `${base}/messages`, { key })).body.data;
+    expect(msgs).toHaveLength(3);
+    const bad = await call("POST", `${base}/cursor`, { key, body: { seq: msgs[1].seq, lease_token: "lk_x" } });
+    expect(bad.status).toBe(409);
+    expect(bad.body.error.code).toBe("lease_mismatch");
+    const moved = await call("POST", `${base}/cursor`, { key, body: { seq: msgs[1].seq, lease_token: token } });
+    expect(moved.body.cursor).toBe(msgs[1].seq);
+    expect((await call("GET", `${base}/messages`, { key })).body.data.map((e: any) => e.seq)).toEqual([msgs[2].seq]);
+    const back = await call("POST", `${base}/cursor`, { key, body: { seq: msgs[0].seq, lease_token: token } });
+    expect(back.body.cursor).toBe(msgs[1].seq);
+    expect((await call("POST", `${base}/cursor`, { key, body: { seq: 1 } })).status).toBe(400);
+
+    // Release frees it for the next runner; a wrong token can't.
+    expect((await call("POST", `${base}/release`, { key, body: { lease_token: "lk_x" } })).body.error.code).toBe(
+      "lease_mismatch",
+    );
+    expect((await call("POST", `${base}/release`, { key, body: { lease_token: token } })).status).toBe(204);
+    expect((await call("POST", `${base}/release`, { key, body: { lease_token: token } })).body.error.code).toBe(
+      "not_leased",
+    );
+    const next = await call("POST", `${base}/lease`, { key });
+    expect(next.status).toBe(200);
+    expect(next.body.lease.token).not.toBe(token);
+    // The old token no longer moves the cursor.
+    expect((await call("POST", `${base}/cursor`, { key, body: { seq: 9, lease_token: token } })).status).toBe(409);
+  });
+
+  it("expired leases can be taken over", async () => {
+    const key = await newUser();
+    const inbox = await newInbox(key);
+    const bot = (await call("POST", "/bots", { key, body: { name: "b", kind: "k", inbox_ids: [inbox.id] } })).body;
+    const first = (await call("POST", `/bots/${bot.id}/lease`, { key, body: { ttl_seconds: 1 } })).body.lease.token;
+    await db.query(`UPDATE loopway.bots SET locked_until = now() - interval '1 second' WHERE id = $1`, [bot.id]);
+    const second = await call("POST", `/bots/${bot.id}/lease`, { key });
+    expect(second.status).toBe(200);
+    expect(second.body.lease.token).not.toBe(first);
+    expect((await call("POST", `/bots/${bot.id}/cursor`, { key, body: { seq: 1, lease_token: first } })).status).toBe(
+      409,
+    );
+    // Another user never sees it.
+    expect((await call("POST", `/bots/${bot.id}/lease`, { key: await newUser("b") })).status).toBe(404);
+  });
+});
+
 describe("session tokens", () => {
   it("rejects expired, tampered and wrongly signed tokens", async () => {
     const { user } = await createUser(db, { name: "Tok" });

@@ -9,7 +9,7 @@ import { createUser } from "@loopway/web/store";
 import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { LoopwayClient } from "../src/client.js";
+import { LoopwayClient, type Bot } from "../src/client.js";
 import { threadPrompt, type AgentRun } from "../src/threads/agent.js";
 import { Dispatcher } from "../src/threads/dispatcher.js";
 import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
@@ -459,9 +459,23 @@ describe("threads", () => {
   const closers: (() => Promise<void>)[] = [];
   afterEach(async () => void (await Promise.all(closers.splice(0).map((c) => c()))));
 
-  async function setup(max: number, env: NodeJS.ProcessEnv = {}) {
+  /** Sends a webhook and ages it past the holdback window, so the bot reads it on the next tick. */
+  async function send(inbox: { id: string; config: { secret: string } }, event: string, payload: unknown) {
+    await sendGithub(inbox, event, payload);
+    await db.query(`UPDATE loopway.events SET received_at = received_at - interval '1 minute' WHERE inbox_id = $1`, [
+      inbox.id,
+    ]);
+  }
+
+  async function setup(max: number, env: NodeJS.ProcessEnv = {}, inboxes = 1) {
     const key = await configured();
-    const inbox = await runJson("inbox", "create", "--name", "gh", "--source", "github");
+    const bots: Bot[] = [];
+    const boxes: { id: string; config: { secret: string } }[] = [];
+    for (let i = 1; i <= inboxes; i++) {
+      const inbox = await runJson("inbox", "create", "--name", `gh${i}`, "--source", "github");
+      boxes.push(inbox);
+      bots.push(await runJson("bots", "create", "--name", `dev${i}`, "--kind", "github-threads", "--inbox", inbox.id));
+    }
     const runs: AgentRun[] = [];
     const busy: (() => void)[] = [];
     const out: string[] = [];
@@ -475,12 +489,15 @@ describe("threads", () => {
       runAgent: (r) => new Promise((resolve) => (runs.push(r), busy.push(() => resolve(0)))),
     };
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
-    const d = await Dispatcher.start(ctx, client, inbox.id, { max, ttl: 60 });
+    const d = await Dispatcher.start(ctx, client, bots, { max, ttl: 60 });
     const finish = async () => (busy.splice(0).forEach((f) => f()), await d.idle());
     // Let runs still in flight write threads.json before the config dir is removed.
     closers.push(async () => (await finish(), await d.close()));
-    const list = async (status: string) => (await runJson("events", "list", inbox.id, "--status", status)).data;
-    return { inbox, runs, out, d, finish, list };
+    const list = async (status: string) =>
+      (await runJson("events", "list", boxes[0]!.id, "--status", status, "--all")).data;
+    const cursor = async (bot = bots[0]!) => (await runJson("bots", "show", bot.id)).cursor;
+    const newest = async () => Math.max(...(await list("all")).map((e: any) => e.seq));
+    return { inbox: boxes[0]!, bots, bot: bots[0]!, client, runs, out, d, finish, list, cursor, newest };
   }
 
   /** Calls one of the dispatcher's MCP methods the way Claude Code would. */
@@ -493,83 +510,106 @@ describe("threads", () => {
     return ((await res.json()) as { result: any }).result;
   }
 
-  it("routes events by issue/PR, batches while busy, follows Closes #N, and ends when the session says so", async () => {
-    const { inbox, runs, out, d, finish, list } = await setup(3);
-    await sendGithub(inbox, "issues", issue("opened", 1));
-    await sendGithub(inbox, "issue_comment", comment(1));
+  it("routes messages by issue/PR, batches while busy, follows Closes #N, and ends when the session says so", async () => {
+    const { inbox, runs, out, d, finish, cursor, newest } = await setup(3);
+    await send(inbox, "issues", issue("opened", 1));
+    await send(inbox, "issue_comment", comment(1));
     await d.tick();
     expect(runs).toHaveLength(1);
     const [first] = runs;
     expect(first!.resume).toBe(false);
     expect(first!.message).toContain("You are a loopway thread session");
-    expect(first!.message.split("New events for this thread:\n")[1]!.split("\n")).toHaveLength(2);
-    expect(await list("pending")).toHaveLength(0);
+    const lines = first!.message.split("New messages for this thread:\n")[1]!.split("\n");
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatch(
+      new RegExp(
+        `^- [0-9a-f-]{36}  com\\.github\\.issues\\.opened  a/b#1  \\(read: loopway events get ${inbox.id} [0-9a-f-]{36} --data\\)$`,
+      ),
+    );
+    expect(await cursor()).toBe(await newest());
 
-    // While the run is busy, its new events wait; others' don't.
-    await sendGithub(inbox, "issue_comment", comment(1));
+    // While the run is busy, its new messages wait; others' don't.
+    await send(inbox, "issue_comment", comment(1));
     await d.tick();
     expect(runs).toHaveLength(1);
+    expect((await sessions())[first!.sessionId].waiting).toHaveLength(1);
     await finish();
     expect((await sessions())[first!.sessionId]).toMatchObject({ keys: ["a/b#1"], status: "active", started: true });
 
     await d.tick(); // the comment that arrived while busy
     expect(runs[1]).toMatchObject({ sessionId: first!.sessionId, resume: true });
     expect(runs[1]!.message).not.toContain("## 1. Triage");
+    expect((await sessions())[first!.sessionId].waiting).toEqual([]);
     await finish();
 
     // A PR that closes #1 joins that thread.
-    await sendGithub(inbox, "pull_request", pull("opened", 2, "Adds it.\n\nCloses #1"));
+    await send(inbox, "pull_request", pull("opened", 2, "Adds it.\n\nCloses #1"));
     await d.tick();
     expect(runs[2]!.sessionId).toBe(first!.sessionId);
     await finish();
     expect((await sessions())[first!.sessionId].keys).toEqual(["a/b#1", "a/b#2"]);
 
     // A close event alone doesn't end the thread; the session decides, through its end tool.
-    await sendGithub(inbox, "pull_request", pull("closed", 2));
+    await send(inbox, "pull_request", pull("closed", 2));
     await d.tick();
     expect((await mcp(first!.mcpUrl, "tools/call", { name: "end", arguments: {} })).content[0].text).toMatch(/Ended/);
     await finish();
     expect((await sessions())[first!.sessionId].status).toBe("ended");
     expect(out.at(-1)).toMatch(/ended \(exit 0\)/);
 
-    // A later event resumes it and makes it active again.
-    await sendGithub(inbox, "issue_comment", comment(2));
+    // A later message resumes it and makes it active again.
+    await send(inbox, "issue_comment", comment(2));
     await d.tick();
     expect(runs.at(-1)).toMatchObject({ sessionId: first!.sessionId, resume: true });
     expect((await sessions())[first!.sessionId].status).toBe("active");
   });
 
-  it("marks events processed as it delivers them, and records them on the session", async () => {
-    const { inbox, runs, d, finish, list } = await setup(3);
-    await sendGithub(inbox, "issues", issue("opened", 1));
+  it("moves the cursor past what it assigned, leaves the inbox's events alone, and records them on the session", async () => {
+    const { inbox, runs, d, finish, list, cursor, newest, bot } = await setup(3);
+    await send(inbox, "issues", issue("opened", 1));
     await d.tick();
+    // Delivery doesn't lock or process events.
     expect(await list("locked")).toHaveLength(0);
-    const [delivered] = await list("processed");
+    expect(await list("processed")).toHaveLength(0);
+    const [delivered] = await list("pending");
     const id = runs[0]!.sessionId;
     expect(runs[0]!.message).toContain(delivered.id);
+    expect(await cursor()).toBe(await newest());
     await finish();
 
-    // The session never marks it done; later ticks leave it processed and still recorded.
+    // Later ticks read nothing new, and the session keeps its record.
     await d.tick();
     expect(runs).toHaveLength(1);
-    expect(await list("processed")).toHaveLength(1);
-    expect((await sessions())[id].events).toEqual([delivered.id]);
+    expect((await sessions())[id]).toMatchObject({ bot_id: bot.id, events: [delivered.id], waiting: [] });
+
+    // Messages that come back (the cursor didn't move after they were assigned) are skipped.
+    await db.query(`UPDATE loopway.bots SET cursor = cursor - 1 WHERE id = $1`, [bot.id]);
+    await d.tick();
+    expect(runs).toHaveLength(1);
+    expect((await sessions())[id]).toMatchObject({ events: [delivered.id], waiting: [] });
+    expect(await cursor()).toBe(await newest());
   });
 
   it("never runs more than --max sessions at once, but sessions waiting on their thread don't count", async () => {
     const { inbox, runs, out, d, finish, list } = await setup(2);
-    await sendGithub(inbox, "issues", issue("opened", 1));
-    await sendGithub(inbox, "issues", issue("opened", 2));
-    await sendGithub(inbox, "issues", issue("opened", 3));
+    await send(inbox, "issues", issue("opened", 1));
+    await send(inbox, "issues", issue("opened", 2));
+    await send(inbox, "issues", issue("opened", 3));
     await d.tick();
     expect(runs).toHaveLength(2);
     expect(new Set(runs.map((r) => r.sessionId)).size).toBe(2);
-    expect(await list("pending")).toHaveLength(1);
-    expect(out.join("\n")).toMatch(/1 event\(s\) waiting: 2 sessions are already running/);
-    // The TUI's view: the queued event is raw, and both sessions are working.
+    expect(out.join("\n")).toMatch(/1 session\(s\) waiting: 2 sessions are already running/);
+    // The TUI's view: the third issue's message is assigned and waiting, and both sessions are working.
     const state = await d.state();
-    expect(state.raw.map((e) => e.id)).toEqual((await list("pending")).map((e: any) => e.id));
-    expect([...state.running].sort()).toEqual(Object.keys(state.sessions).sort());
+    expect(state.bots.held.map((b) => b.name)).toEqual(["dev1"]);
+    expect(state.waiting).toEqual([
+      { id: (await list("pending")).at(-1).id, inbox_id: inbox.id, type: "com.github.issues.opened", key: "a/b#3" },
+    ]);
+    expect([...state.running].sort()).toEqual(
+      Object.keys(state.sessions)
+        .filter((id) => !state.sessions[id]!.waiting.length)
+        .sort(),
+    );
 
     // Once their runs exit, both sessions wait on their threads (still active) without holding a
     // slot, so the queued issue starts right away.
@@ -578,30 +618,123 @@ describe("threads", () => {
     await freed;
     await d.tick();
     expect(runs).toHaveLength(3);
-    expect(await list("pending")).toHaveLength(0);
+    expect((await d.state()).waiting).toEqual([]);
     expect(Object.values(await sessions()).map((s: any) => s.status)).toEqual(["active", "active", "active"]);
 
-    // With one slot left, new events for the two waiting threads go oldest first; the other waits.
-    await sendGithub(inbox, "issue_comment", comment(1));
-    await sendGithub(inbox, "issue_comment", comment(2));
-    const [oldest] = await list("pending");
+    // With one slot left, new messages for the two waiting threads go oldest first; the other waits.
+    await send(inbox, "issue_comment", comment(1));
+    await send(inbox, "issue_comment", comment(2));
+    const oldest = (await list("pending")).at(-2);
     await d.tick();
     expect(runs).toHaveLength(4);
     expect(runs[3]!.resume).toBe(true);
     expect(runs[3]!.message).toContain(oldest.id);
-    expect(await list("pending")).toHaveLength(1);
+    expect((await d.state()).waiting).toHaveLength(1);
 
-    // A run exiting frees its slot for the event still waiting.
+    // A run exiting frees its slot for the session still waiting.
     await finish();
     await d.tick();
     expect(runs).toHaveLength(5);
-    expect(await list("pending")).toHaveLength(0);
+    expect((await d.state()).waiting).toEqual([]);
     await finish();
   });
 
-  it("serves a link tool that routes a PR's events to the session", async () => {
+  it("runs every bot, sharing --max across them", async () => {
+    const { bots, runs, d, finish, cursor, out } = await setup(1, {}, 2);
+    const [a, b] = await Promise.all(bots.map((bot) => runJson("inbox", "show", bot.inbox_ids[0]!)));
+    await send(a, "issues", issue("opened", 1));
+    await send(b, "issues", issue("opened", 1));
+    await d.tick();
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.message).toContain(`loopway events get ${a.id} `);
+    expect(out.join("\n")).toMatch(/1 session\(s\) waiting/);
+    const state = await d.state();
+    expect(state.bots.held.map((x) => x.name)).toEqual(["dev1", "dev2"]);
+    expect(state.waiting.map((m) => m.inbox_id)).toEqual([b.id]);
+    // Both cursors moved: assignment doesn't wait on --max.
+    expect(await cursor(bots[0])).toBeGreaterThan(bots[0]!.cursor);
+    expect(await cursor(bots[1])).toBeGreaterThan(bots[1]!.cursor);
+    expect(new Set(Object.values(await sessions()).map((s: any) => s.bot_id))).toEqual(new Set(bots.map((x) => x.id)));
+
+    await finish();
+    await d.tick();
+    expect(runs).toHaveLength(2);
+    expect(runs[1]!.message).toContain(`loopway events get ${b.id} `);
+  });
+
+  it("skips a bot leased by another runner, and picks it up once released", async () => {
+    const { inbox, bot, client, runs, out, d, cursor } = await setup(3);
+    const other = (await client.leaseBot(bot.id, { ttl_seconds: 60 })).lease;
+    await send(inbox, "issues", issue("opened", 1));
+    const before = await cursor();
+    await d.tick();
+    await d.tick();
+    expect(runs).toHaveLength(0);
+    expect(await cursor()).toBe(before);
+    expect(out.filter((l) => /dev1 is leased by another runner/.test(l))).toHaveLength(1);
+    expect((await d.state()).bots).toMatchObject({ held: [], skipped: [{ name: "dev1" }] });
+
+    await client.releaseBot(bot.id, other.token);
+    await d.tick();
+    expect(runs).toHaveLength(1);
+    expect(out.at(-2)).toBe("bot dev1: lease taken");
+    expect((await d.state()).bots).toMatchObject({ held: [{ name: "dev1" }], skipped: [] });
+    // Now this runner holds it, and keeps it across ticks.
+    await expect(client.leaseBot(bot.id)).rejects.toMatchObject({ code: "leased" });
+    await d.tick();
+    await expect(client.leaseBot(bot.id)).rejects.toMatchObject({ code: "leased" });
+
+    // Closing gives it back right away.
+    await d.close();
+    closers.splice(0);
+    expect((await client.leaseBot(bot.id)).lease.token).not.toBe(other.token);
+  });
+
+  it("adopts sessions from before bots, by the bot that reads their inbox", async () => {
+    const key = await configured();
+    const inbox = await runJson("inbox", "create", "--name", "gh", "--source", "github");
+    const old = {
+      inbox_id: inbox.id,
+      keys: ["a/b#1"],
+      events: ["e1"],
+      status: "active",
+      started: true,
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    };
+    await writeFile(
+      join(configDir, "threads.json"),
+      JSON.stringify({ "old-session": old, other: { ...old, inbox_id: "x" } }),
+    );
+    const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.id);
+    const runs: AgentRun[] = [];
+    const out: string[] = [];
+    const ctx: Context = {
+      configDir,
+      env: {},
+      interactive: false,
+      out: (t) => out.push(t),
+      fetch: apiFetch,
+      runAgent: async (r) => (runs.push(r), 0),
+    };
+    const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
+    const d = await Dispatcher.start(ctx, client, [bot], { max: 3, ttl: 60 });
+    closers.push(() => d.close());
+    expect(out[0]).toMatch(/Adopted 1 session/);
+    expect((await sessions())["old-session"]).toMatchObject({ bot_id: bot.id, waiting: [], events: ["e1"] });
+    expect((await sessions())["old-session"].inbox_id).toBeUndefined();
+    expect((await sessions()).other).toMatchObject({ inbox_id: "x" });
+
+    // A comment on its issue resumes the adopted session.
+    await send(inbox, "issue_comment", comment(1));
+    await d.tick();
+    await d.idle();
+    expect(runs[0]).toMatchObject({ sessionId: "old-session", resume: true });
+  });
+
+  it("serves a link tool that routes a PR's messages to the session", async () => {
     const { inbox, runs, d, finish } = await setup(3);
-    await sendGithub(inbox, "issues", issue("opened", 5));
+    await send(inbox, "issues", issue("opened", 5));
     await d.tick();
     const url = runs[0]!.mcpUrl;
     expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\//);
@@ -616,14 +749,14 @@ describe("threads", () => {
     expect((await sessions())[runs[0]!.sessionId].keys).toEqual(["a/b#5", "a/b#9", "c/d#3"]);
 
     // A comment on the linked PR now resumes the session instead of starting a new one.
-    await sendGithub(inbox, "issue_comment", comment(9));
+    await send(inbox, "issue_comment", comment(9));
     await d.tick();
     expect(runs[1]).toMatchObject({ sessionId: runs[0]!.sessionId, resume: true });
   });
 
   it("runs sessions as the GitHub bot when one is configured", async () => {
     const plain = await setup(3);
-    await sendGithub(plain.inbox, "issues", issue("opened", 1));
+    await send(plain.inbox, "issues", issue("opened", 1));
     await plain.d.tick();
     expect(plain.runs[0]!.env.GH_TOKEN).toBeUndefined();
 
@@ -633,7 +766,7 @@ describe("threads", () => {
       LOOPWAY_GITHUB_EMAIL: "2+loopway-bot@users.noreply.github.com",
     };
     const { inbox, runs, d } = await setup(3, bot);
-    await sendGithub(inbox, "issues", issue("opened", 2));
+    await send(inbox, "issues", issue("opened", 2));
     await d.tick();
     expect(runs[0]!.env).toMatchObject({
       GH_TOKEN: "ghp_bot",
@@ -644,9 +777,15 @@ describe("threads", () => {
   });
 
   it("loads the session prompt from prompts/thread.md", async () => {
-    const prompt = await threadPrompt("inbox-123");
-    expect(prompt).toContain("events from inbox inbox-123");
+    const prompt = await threadPrompt();
+    expect(prompt).toContain("You are a loopway thread session");
+    expect(prompt).toContain("loopway events get <inbox> <message> --data");
     expect(prompt).not.toContain("{{");
+  });
+
+  it("says how to create a bot when there is none to run", async () => {
+    await configured();
+    expect(await run("threads", "--no-tui")).toMatch(/No bots to run.*loopway bots create.*--kind github-threads/);
   });
 
   it("serializes threads.json writes through its lock file", async () => {
@@ -654,9 +793,10 @@ describe("threads", () => {
       Array.from({ length: 20 }, (_, i) =>
         withSessions(configDir, (s) => {
           s[`s${i}`] = {
-            inbox_id: "x",
+            bot_id: "x",
             keys: [],
             events: [],
+            waiting: [],
             status: "active",
             started: false,
             created_at: "",

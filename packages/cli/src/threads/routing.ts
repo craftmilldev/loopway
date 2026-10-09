@@ -25,64 +25,33 @@ export function threadKeys(e: Event): { key?: string; refs: string[] } {
   return { key: `${repo}#${n}`, refs };
 }
 
-export interface RouteOptions {
-  inboxId: string;
-  max: number;
-  /** Session ids with a run in flight. */
-  running: ReadonlySet<string>;
-}
-
-export interface Routes {
-  /** Session id → the pending events to hand it now. */
-  deliveries: Map<string, Event[]>;
-  /** Events left pending because --max runs are already in flight. */
-  waiting: number;
-}
-
 /**
- * Decides where each pending event goes, oldest first:
+ * Decides which of the bot's sessions a message goes to:
  *
  * 1. Its issue/PR already belongs to a session → that session.
  * 2. It's a PR that closes a known issue ("Closes #N") → that issue's session, and the PR joins it.
  * 3. Otherwise → a new session.
  *
- * --max caps runs in flight, not sessions: a session waiting for its next event doesn't hold a
- * slot, so starting or resuming one takes a free slot, oldest event first. A running session's
- * events wait for its run to exit. New sessions and links are added to `sessions` in place, for the
- * caller to save.
+ * New sessions and links are added to `sessions` in place, for the caller to save.
  */
-export function route(sessions: Sessions, pending: Event[], { inboxId, max, running }: RouteOptions): Routes {
-  const deliveries = new Map<string, Event[]>();
-  let waiting = 0;
-
-  for (const e of pending) {
-    const { key, refs } = threadKeys(e);
-    let id = key ? findSession(sessions, inboxId, key) : undefined;
-    if (!id && key) {
-      id = refs.map((r) => findSession(sessions, inboxId, r)).find(Boolean);
-      if (id) editSession(sessions, id).keys.push(key);
-    }
-
-    if (id && running.has(id)) continue;
-    if (!id || !deliveries.has(id)) {
-      if (running.size + deliveries.size >= max) {
-        waiting++;
-        continue;
-      }
-      id ??= newSession(sessions, inboxId, key);
-    }
-    deliveries.set(id, [...(deliveries.get(id) ?? []), e]);
+export function route(sessions: Sessions, botId: string, e: Event): { session: string; key?: string } {
+  const { key, refs } = threadKeys(e);
+  let id = key ? findSession(sessions, botId, key) : undefined;
+  if (!id && key) {
+    id = refs.map((r) => findSession(sessions, botId, r)).find(Boolean);
+    if (id) editSession(sessions, id).keys.push(key);
   }
-  return { deliveries, waiting };
+  return { session: id ?? newSession(sessions, botId, key), key };
 }
 
-function newSession(sessions: Sessions, inboxId: string, key: string | undefined): string {
+function newSession(sessions: Sessions, botId: string, key: string | undefined): string {
   const id = randomUUID();
   const now = new Date().toISOString();
   sessions[id] = {
-    inbox_id: inboxId,
+    bot_id: botId,
     keys: key ? [key] : [],
     events: [],
+    waiting: [],
     status: "active",
     started: false,
     created_at: now,

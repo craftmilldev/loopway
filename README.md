@@ -81,28 +81,35 @@ loopway bots messages <bot> [--limit 20]            # what the bot would read ne
 - `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`, `--schema file.json` for `loopway` inboxes); without a terminal it runs from flags alone. For sources whose sender makes the secret (`vercel`, `granola`) it doesn't ask for one: add the webhook in the sender, then paste the secret it shows with `loopway inbox update <inbox>` (or on the inbox's dashboard page).
 - Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, plus an optional `github` bot for [threads](#acting-as-a-github-bot), mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `https://loopway.craftmill.dev`.
 - Lock tokens from `next`/`lock` are kept in `~/.loopway/locks.json` until they expire, so `lock` (renew), `unlock` and `done` on the same machine don't need `--token`.
-- A bot reads messages from one or more inboxes (see [Bots](#bots)). `--kind` must be one this CLI knows how to run: `github-threads`. Nothing runs bots yet; `loopway threads <inbox>` still reads its inbox directly.
+- A bot reads messages from one or more inboxes (see [Bots](#bots)). `--kind` must be one this CLI knows how to run: `github-threads`. `loopway threads` runs them (see [Threads](#threads)).
 
 ### Threads
 
 ```bash
-loopway threads <inbox> [--max 3] [--interval 30] [--ttl 3600] [--no-tui]   # run the dispatcher (q or Ctrl-C to stop)
+loopway threads [--max 3] [--interval 30] [--ttl 3600] [--no-tui]   # run your bots (q or Ctrl-C to stop)
 ```
 
-In a terminal, `loopway threads` takes over the screen with four lists: raw events (pending, not yet handed to a session), working sessions (a run in flight), waiting sessions (active, waiting for their next event) and done sessions (ended, newest first). ↑/↓ moves between sessions, Tab/Shift-Tab jumps between lists, and Enter or → opens a session's transcript, which follows new output until you scroll up (↑/↓, PgUp/PgDn, Home/End). ← goes back to the lists. The dispatcher's latest log line shows at the bottom. Quitting stops the dispatcher and its sessions, as Ctrl-C does. `--no-tui`, or output that isn't a terminal, prints the plain log instead.
+`loopway threads` runs every bot on your account whose kind this CLI knows (`github-threads`), in the current directory. With no bots, it says how to create one and exits. One process runs all your bots, and `--max` is shared across them, since it caps the load on this machine.
 
-`loopway threads` runs one headless Claude Code session (`claude -p --permission-mode auto`) per thread, in the current directory. A thread is an issue and the PRs linked to it, keyed by `owner/repo#number`. Every `--interval` seconds it lists the inbox's pending events:
+In a terminal, `loopway threads` takes over the screen. The header names the bots this runner holds, and any it skipped because another runner holds their lease. Below are four lists: waiting messages (assigned to a session but not delivered yet), working sessions (a run in flight), waiting sessions (active, waiting for their next message) and done sessions (ended, newest first). ↑/↓ moves between sessions, Tab/Shift-Tab jumps between lists, and Enter or → opens a session's transcript, which follows new output until you scroll up (↑/↓, PgUp/PgDn, Home/End). ← goes back to the lists. The dispatcher's latest log line shows at the bottom. Quitting stops the dispatcher and its sessions, as Ctrl-C does. `--no-tui`, or output that isn't a terminal, prints the plain log instead.
 
-- An event for a known issue/PR is marked processed and handed to that thread's session (`claude --resume`). Sessions run in parallel; one that is still running gets its new events together once its current run exits.
-- Any other event starts a new session with the prompt in [`packages/cli/prompts/thread.md`](packages/cli/prompts/thread.md) (`{{inbox}}` is filled in).
-- `--max` is a hard cap on sessions running at once. A session waiting for its next event doesn't count, so any number can wait. Events that would start or resume another session stay pending, oldest first, and go as soon as a run exits.
+**Leasing.** At startup, and every tick, the runner takes or renews each bot's lease (`POST /bots/:id/lease`, held for `--ttl` seconds). A bot leased by another runner is skipped, with one log line, and tried again next tick, so two copies of `loopway threads` never read the same bot. Quitting releases the leases; a runner that dies leaves its leases to expire.
+
+**Each tick, per leased bot**, every `--interval` seconds:
+
+1. It reads `GET /bots/:id/messages` until there are none.
+2. Every message is assigned to a session: the one its issue/PR already belongs to, the issue's session when it's a PR that `Closes #N`, or a new one. Assignment never waits on `--max` or on a running session; an assigned message waits on its session until it can be delivered.
+3. The assignments are saved to `threads.json`, then the cursor is moved past them with `POST /bots/:id/cursor`. If the runner dies between the two, the messages come back next tick and are skipped as already assigned.
+4. Every session with waiting messages and no run in flight gets them all in one run (`claude -p --permission-mode auto`, then `claude --resume`), oldest first, while `--max` allows. `--max` caps runs in flight, not sessions: a session waiting for its next message doesn't count, so any number can wait.
+
+A thread is an issue and the PRs linked to it, keyed by `owner/repo#number`. A new session starts with the prompt in [`packages/cli/prompts/thread.md`](packages/cli/prompts/thread.md). Bot kinds live in `packages/cli/src/threads/kinds.ts`, a map from kind to how it routes messages and the prompt it uses.
 
 Sessions talk back to the dispatcher over MCP: it serves a `loopway` server on 127.0.0.1 (one URL per session, passed with `--mcp-config`) with two tools:
 
 - `link` adds a PR to the session's thread. Sessions call it right after opening a PR; a PR whose body says `Closes #N` also joins issue N's thread on its own.
-- `end` marks the thread finished. The session decides when that is (a close event usually means it, but not always). A later event for the thread resumes it and makes it active again.
+- `end` marks the thread finished. The session decides when that is (a close event usually means it, but not always). A later message for the thread resumes it and makes it active again.
 
-The dispatcher claims an event (a lock held for at most `--ttl` seconds) and marks it processed as it hands it over, so a session never marks events done: they're context for the thread, and `end` is what finishes it. A delivery lists event ids and types, and the session reads payloads with `loopway events get <inbox> <event> --data`. Sessions are tracked in `~/.loopway/threads.json` (including the events delivered to each; writes take `threads.json.lock`, so dispatchers for several inboxes can share it) and each one's transcript (stream-json) is appended to `~/.loopway/threads/<session>.log`.
+Delivery doesn't touch the inbox's events: they aren't locked or marked processed, and a session never marks them done. They're context for the thread, and `end` is what finishes it. A delivery lists each message's id, type, thread key and the command that reads it, `loopway events get <inbox> <message> --data` (a bot can read several inboxes). Sessions are tracked in `~/.loopway/threads.json` by the bot they belong to, with the messages delivered to each and those still waiting (writes take `threads.json.lock`), and each one's transcript (stream-json) is appended to `~/.loopway/threads/<session>.log`. Sessions written by older versions, which ran one inbox, are adopted by the bot that reads that inbox the first time it runs, so threads in flight carry on.
 
 The inbox's GitHub webhook needs `pull_request`, `pull_request_review` and `pull_request_review_comment` (as well as `issues` and `issue_comment`) for reviews to reach sessions.
 
@@ -259,7 +266,7 @@ done
 
 ### Bots
 
-A bot reads the messages (events) of one or more of your inboxes, in `seq` order, and keeps a `cursor`: the `seq` of the last message it has read past. Nothing runs bots yet: for now you create them and see what they'd read.
+A bot reads the messages (events) of one or more of your inboxes, in `seq` order, and keeps a `cursor`: the `seq` of the last message it has read past. A runner (`loopway threads`) takes a lease on the bot while it reads, so only one runner at a time moves the cursor.
 
 |                                                    |                                                                                                                                                                                                 |
 | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -267,9 +274,13 @@ A bot reads the messages (events) of one or more of your inboxes, in `seq` order
 | `GET /bots`                                        | List yours.                                                                                                                                                                                     |
 | `GET /bots/:id`                                    | One bot.                                                                                                                                                                                        |
 | `PATCH /bots/:id` `{name?, inbox_ids?}`            | Update. `inbox_ids` replaces the bot's inboxes; the cursor stays where it is.                                                                                                                   |
-| `DELETE /bots/:id`                                 | Delete. The row is kept with `deleted_at` set, but the API no longer returns it. Deleting an inbox also removes it from its bots.                                                                                                                                        || `GET /bots/:id/messages` `?limit=`                 | Messages in the bot's inboxes with `seq > cursor`, oldest first (`limit` ≤100, default 50). Messages received in the last 5 seconds, and anything after them, are held back (see below).       |
+| `DELETE /bots/:id`                                 | Delete. The row is kept with `deleted_at` set, but the API no longer returns it. Deleting an inbox also removes it from its bots.                                                                                |
+| `GET /bots/:id/messages` `?limit=`                 | Messages in the bot's inboxes with `seq > cursor`, oldest first (`limit` ≤100, default 50). Messages received in the last 5 seconds, and anything after them, are held back (see below).       |
+| `POST /bots/:id/lease` `{ttl_seconds?, lease_token?}` | Take the bot's lease, or renew it by passing your current token. Returns `{lease: {token, expires_at}}`. `409 leased` while another runner holds a live lease. Same TTL rules as event locks. |
+| `POST /bots/:id/release` `{lease_token}`           | Drop the lease, so the next runner needn't wait out the TTL. `409 lease_mismatch` if the token isn't the live lease, `409 not_leased` if there is none.                                        |
+| `POST /bots/:id/cursor` `{seq, lease_token}`       | Move the cursor forward to `seq`; it never moves backwards. Returns the bot. `409` if the token isn't the live lease.                                                                          |
 
-`inbox_ids` must be your inboxes. Bot shape: `{id, name, kind, inbox_ids, cursor, created_at}`.
+`inbox_ids` must be your inboxes. Bot shape: `{id, name, kind, inbox_ids, cursor, created_at}`; the lease is never part of it.
 
 Two webhooks landing at once can commit out of `seq` order, and a cursor that had moved past the later one would skip the earlier. So `messages` stops at the first message received in the last few seconds, giving inserts still in flight time to land.
 
@@ -295,8 +306,9 @@ packages/cli/
   src/config.ts         ~/.loopway/config.json
   src/locks.ts          ~/.loopway/locks.json
   src/mcp.ts            minimal MCP server (HTTP, localhost) the threads dispatcher serves to its sessions
-  src/threads/          `loopway threads`: dispatcher.ts (the poll loop), routing.ts (event → session),
-                        store.ts (~/.loopway/threads.json + its lock), tools.ts (MCP link/end), agent.ts (claude -p),
+  src/threads/          `loopway threads`: dispatcher.ts (lease, read, assign, deliver), kinds.ts (bot kind → route + prompt),
+                        routing.ts (github-threads: message → session), store.ts (~/.loopway/threads.json + its lock),
+                        tools.ts (MCP link/end), agent.ts (claude -p),
                         tui.tsx (the Ink TUI), transcript.ts (stream-json log → readable lines)
   prompts/thread.md     the prompt every thread session starts with
   test/cli.test.ts      runs commands against the real API app in-process

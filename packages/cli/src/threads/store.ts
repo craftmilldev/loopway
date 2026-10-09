@@ -8,16 +8,28 @@ import { readJson, writeJson } from "../config.js";
  * A session owns a thread: the issues and PRs in `keys` (`owner/repo#number`).
  */
 export interface Session {
-  inbox_id: string;
+  bot_id: string;
+  /** Set instead of bot_id by versions that ran one inbox; a bot reading that inbox adopts the session. */
+  inbox_id?: string;
   keys: string[];
-  /** Events delivered to the session. The dispatcher marks them processed on delivery. */
+  /** Messages delivered to the session, as event ids. */
   events: string[];
+  /** Messages assigned to the session but not delivered yet: its run is in flight, or --max is reached. */
+  waiting: WaitingMessage[];
   /** `ended` once the session calls its `end` tool; a new event for the thread makes it active again. */
   status: "active" | "ended";
   /** Whether a claude session with this id exists yet (first run uses --session-id, later ones --resume). */
   started: boolean;
   created_at: string;
   updated_at: string;
+}
+
+/** Enough about an assigned message to deliver it without fetching it again. */
+export interface WaitingMessage {
+  id: string;
+  inbox_id: string;
+  type: string;
+  key?: string;
 }
 
 export type Sessions = Record<string, Session>;
@@ -70,8 +82,26 @@ async function lockFile(path: string, staleMs = 10_000): Promise<() => Promise<v
   }
 }
 
-export function findSession(sessions: Sessions, inboxId: string, key: string): string | undefined {
-  return Object.keys(sessions).find((id) => sessions[id]!.inbox_id === inboxId && sessions[id]!.keys.includes(key));
+export function findSession(sessions: Sessions, botId: string, key: string): string | undefined {
+  return Object.keys(sessions).find((id) => sessions[id]!.bot_id === botId && sessions[id]!.keys.includes(key));
+}
+
+/**
+ * Gives sessions written before bots existed (`inbox_id`, no `bot_id`) to the bot that reads that
+ * inbox, so threads in flight carry on. Those sessions have no `waiting` list yet either.
+ */
+export function adoptSessions(sessions: Sessions, bots: { id: string; inbox_ids: string[] }[]): number {
+  let adopted = 0;
+  for (const s of Object.values(sessions)) {
+    s.waiting ??= [];
+    if (s.bot_id || !s.inbox_id) continue;
+    const bot = bots.find((b) => b.inbox_ids.includes(s.inbox_id!));
+    if (!bot) continue;
+    s.bot_id = bot.id;
+    delete s.inbox_id;
+    adopted++;
+  }
+  return adopted;
 }
 
 /** The session with this id, for changes inside withSessions(); stamps updated_at. */

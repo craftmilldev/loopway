@@ -2,7 +2,6 @@ import { Box, render, Text, useApp, useInput, useWindowSize } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ago } from "../format.js";
 import type { DispatcherState } from "./dispatcher.js";
-import { threadKeys } from "./routing.js";
 import { transcriptLines, wrap, type TranscriptLine } from "./transcript.js";
 
 /** What the TUI shows, reloaded every second. */
@@ -12,7 +11,6 @@ export interface Snapshot extends DispatcherState {
 }
 
 export interface TuiProps {
-  inbox: string;
   load: () => Promise<Snapshot>;
   /** A session's transcript, or "" if it has none yet. */
   readLog: (sessionId: string) => Promise<string>;
@@ -37,10 +35,10 @@ export async function showTui(props: TuiProps): Promise<void> {
 }
 
 /**
- * The threads TUI: raw events, then working, waiting and done sessions. ↑/↓ moves between sessions
- * (raw events can't be opened), Tab jumps to the next list, Enter or → opens a session's transcript.
+ * The threads TUI: waiting messages, then working, waiting and done sessions. ↑/↓ moves between
+ * sessions (messages can't be opened), Tab jumps to the next list, Enter or → opens a session's transcript.
  */
-export function ThreadsTui({ inbox, load, readLog, refreshMs = 1000 }: TuiProps) {
+export function ThreadsTui({ load, readLog, refreshMs = 1000 }: TuiProps) {
   const [snap, setSnap] = useState<Snapshot>();
   const [selected, setSelected] = useState<string>();
   const [open, setOpen] = useState<string>();
@@ -49,7 +47,7 @@ export function ThreadsTui({ inbox, load, readLog, refreshMs = 1000 }: TuiProps)
   if (!snap) return <Text dimColor>Loading…</Text>;
   if (open)
     return <LogView id={open} snap={snap} readLog={readLog} refreshMs={refreshMs} onBack={() => setOpen(undefined)} />;
-  return <ListView inbox={inbox} snap={snap} selected={selected} onSelect={setSelected} onOpen={setOpen} />;
+  return <ListView snap={snap} selected={selected} onSelect={setSelected} onOpen={setOpen} />;
 }
 
 /** Sorts sessions into the three session lists, most recently updated first. */
@@ -73,14 +71,13 @@ interface Row {
 }
 
 interface ListViewProps {
-  inbox: string;
   snap: Snapshot;
   selected: string | undefined;
   onSelect: (id: string) => void;
   onOpen: (id: string) => void;
 }
 
-function ListView({ inbox, snap, selected, onSelect, onOpen }: ListViewProps) {
+function ListView({ snap, selected, onSelect, onOpen }: ListViewProps) {
   const { exit } = useApp();
   const { rows: height } = useWindowSize();
   const lists = sessionLists(snap);
@@ -102,6 +99,8 @@ function ListView({ inbox, snap, selected, onSelect, onOpen }: ListViewProps) {
   // Title above, status and help below; the lists scroll in what's left.
   const body = Math.max(1, height - 3);
   const rows = listRows(snap, lists, Math.max(3, Math.floor(body / 4)));
+  const names = (bots: { name: string }[]) => bots.map((b) => b.name).join(", ");
+  const skipped = snap.bots.skipped.length ? ` · leased elsewhere: ${names(snap.bots.skipped)}` : "";
 
   // Scroll just enough to keep the selection on screen, along with its list's header.
   const offset = useRef(0);
@@ -116,7 +115,11 @@ function ListView({ inbox, snap, selected, onSelect, onOpen }: ListViewProps) {
   return (
     <Box flexDirection="column" height={height}>
       <Text bold>
-        loopway threads <Text dimColor>· {inbox}</Text>
+        loopway threads{" "}
+        <Text dimColor>
+          · {names(snap.bots.held) || "no bots held"}
+          {skipped}
+        </Text>
       </Text>
       <Box flexDirection="column" height={body} overflow="hidden">
         {rows.slice(offset.current, offset.current + body).map((r) => (
@@ -133,18 +136,13 @@ function ListView({ inbox, snap, selected, onSelect, onOpen }: ListViewProps) {
   );
 }
 
-/** Every row of the list view. Raw events stop at `rawMax` so the session lists stay in view. */
-function listRows(snap: Snapshot, lists: Record<Section, string[]>, rawMax: number): Row[] {
-  const rows: Row[] = [{ key: "h-raw", header: `Raw events (${snap.raw.length})` }];
-  for (const e of snap.raw.slice(0, rawMax)) {
-    rows.push({
-      key: e.id,
-      label: e.event.type,
-      meta: `${threadKeys(e).key ?? e.event.subject ?? ""}  ${ago(e.received_at)}`,
-    });
-  }
-  if (snap.raw.length > rawMax) rows.push({ key: "more-raw", meta: `… ${snap.raw.length - rawMax} more` });
-  if (!snap.raw.length) rows.push({ key: "none-raw", meta: "none" });
+/** Every row of the list view. Waiting messages stop at `waitingMax` so the session lists stay in view. */
+function listRows(snap: Snapshot, lists: Record<Section, string[]>, waitingMax: number): Row[] {
+  const rows: Row[] = [{ key: "h-messages", header: `Waiting messages (${snap.waiting.length})` }];
+  for (const m of snap.waiting.slice(0, waitingMax)) rows.push({ key: m.id, label: m.type, meta: m.key ?? "" });
+  const more = snap.waiting.length - waitingMax;
+  if (more > 0) rows.push({ key: "more-messages", meta: `… ${more} more` });
+  if (!snap.waiting.length) rows.push({ key: "none-messages", meta: "none" });
 
   for (const sec of SECTIONS) {
     rows.push({ key: `gap-${sec}` }, { key: `h-${sec}`, header: `${TITLES[sec]} (${lists[sec].length})` });
