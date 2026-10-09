@@ -24,6 +24,8 @@ export interface ThreadsOptions {
   interval?: number;
   /** How long each bot lease lasts; it's renewed every tick. */
   ttl?: number;
+  /** This machine's runner id (see ensureRunner), recorded on the leases it takes. */
+  runnerId?: string;
 }
 
 /**
@@ -81,6 +83,7 @@ export class Dispatcher {
   private closing?: Promise<void>;
   private readonly max: number;
   private readonly ttl: number;
+  private readonly runnerId?: string;
   private readonly runAgent: RunAgent;
   private readonly dir: string;
   private queued = 0;
@@ -124,6 +127,7 @@ export class Dispatcher {
   ) {
     this.max = opts.max ?? DEFAULTS.max;
     this.ttl = opts.ttl ?? DEFAULTS.ttl;
+    this.runnerId = opts.runnerId;
     this.runAgent = ctx.runAgent ?? spawnClaude;
     this.dir = ctx.configDir;
   }
@@ -207,6 +211,7 @@ export class Dispatcher {
       const { lease } = await this.client.leaseBot(bot.id, {
         ttl_seconds: this.ttl,
         lease_token: this.leases.get(bot.id)?.token,
+        runner_id: this.runnerId,
       });
       this.leases.set(bot.id, lease);
       if (this.skipped.delete(bot.id)) this.ctx.out(`bot ${bot.name}: lease taken`);

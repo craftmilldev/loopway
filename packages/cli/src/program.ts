@@ -4,6 +4,7 @@ import { importBotThreads, listBotThreads } from "./commands/botThreads.js";
 import { botMessages, createBot, deleteBot, listBots, releaseBot, showBot, updateBot } from "./commands/bots.js";
 import { getMessage, listMessages } from "./commands/messages.js";
 import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
+import { listRunners } from "./commands/runners.js";
 import { runBots } from "./commands/threads.js";
 import type { Context } from "./context.js";
 import { BOT_KINDS } from "./threads/kinds.js";
@@ -125,6 +126,15 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .option("--data", "print only the CloudEvent data (the webhook payload) as JSON")
     .addOption(jsonOpt())
     .action((ref, id, opts) => getMessage(ctx, ref, id, opts));
+
+  // ---------- runners ----------
+
+  program
+    .command("runners")
+    .alias("runner")
+    .description("list the machines that run your bots, and the bots and threads each holds")
+    .addOption(jsonOpt())
+    .action((opts) => listRunners(ctx, opts));
 
   // ---------- bots ----------
 

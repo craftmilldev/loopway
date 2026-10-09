@@ -17,6 +17,7 @@ import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
 import { botEnv } from "../src/threads/github.js";
 import type { Context } from "../src/context.js";
 import { createProgram } from "../src/program.js";
+import { ensureRunner } from "../src/threads/runner.js";
 import { withSessions } from "../src/threads/store.js";
 
 const API = "https://loopway.test";
@@ -448,6 +449,24 @@ describe("bots", () => {
     const again = await run("bots", "threads", "import", "--bot", "dev");
     expect(again).toMatch(/Imported 0 thread\(s\); 2 already on the server/);
     expect(await runJson("bots", "threads", "dev", "--status", "all")).toHaveLength(2);
+  });
+});
+
+describe("runners", () => {
+  it("keeps one id per machine, registers it, and lists what it holds", async () => {
+    const key = await configured();
+    expect(await run("runners")).toMatch(/No runners yet/);
+
+    const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
+    const first = await ensureRunner(configDir, client);
+    expect((await ensureRunner(configDir, client)).id).toBe(first.id);
+    expect(JSON.parse(await readFile(join(configDir, "runner.json"), "utf8"))).toEqual({ id: first.id });
+
+    const inbox = await inboxWithEvents(0);
+    const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.id);
+    await client.leaseBot(bot.id, { runner_id: first.id });
+    expect(await run("runners")).toMatch(new RegExp(`${first.id}\\s+\\S+\\s+dev\\s+0`));
+    expect(await runJson("runners")).toMatchObject([{ id: first.id, bots: [{ id: bot.id, name: "dev" }] }]);
   });
 });
 

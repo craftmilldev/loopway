@@ -234,4 +234,30 @@ ALTER TABLE loopway.thread_keys     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE loopway.thread_messages ENABLE ROW LEVEL SECURITY;
 `,
   },
+  {
+    // A runner is a machine running loopway (its id is made by the CLI). Bots and threads are leased to runners:
+    // the bot lease covers reading messages and assigning them, the thread lease covers a thread's session, which
+    // lives on one machine. runner_id says who holds a lease; it is only meaningful while locked_until is in the future.
+    version: "009_runners",
+    sql: `
+CREATE TABLE loopway.runners (
+  id            uuid PRIMARY KEY,
+  user_id       uuid NOT NULL REFERENCES loopway.users(id) ON DELETE CASCADE,
+  name          text NOT NULL,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  last_seen_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX runners_user_idx ON loopway.runners (user_id);
+
+ALTER TABLE loopway.runners ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE loopway.bots ADD COLUMN runner_id uuid REFERENCES loopway.runners(id) ON DELETE SET NULL;
+
+ALTER TABLE loopway.threads
+  ADD COLUMN runner_id     uuid REFERENCES loopway.runners(id) ON DELETE SET NULL,
+  ADD COLUMN lock_token    text,
+  ADD COLUMN locked_until  timestamptz;
+`,
+  },
 ];

@@ -21,7 +21,13 @@ async function setup(count = 3) {
       body: { lease_token: o.token ?? lease, cursor: o.cursor ?? 0, assignments },
     });
   const thread = (id: string) => call("GET", `${base}/threads/${id}`, { key });
-  return { key, inbox, bot, base, messages, lease, assign, thread };
+  const runner = randomUUID();
+  await call("POST", "/runners", { key, body: { id: runner, name: "laptop" } });
+  /** Takes a thread's lease as the runner; returns its token. */
+  const leaseThread = async (id: string) =>
+    (await call("POST", `${base}/threads/${id}/lease`, { key, body: { runner_id: runner, ttl_seconds: 60 } })).body
+      .lease.token as string;
+  return { key, inbox, bot, base, messages, lease, assign, thread, runner, leaseThread };
 }
 
 describe("thread assignment", () => {
@@ -169,9 +175,10 @@ describe("thread assignment", () => {
 
 describe("thread writes", () => {
   it("patches flags, status and keys under the lease", async () => {
-    const { key, base, messages, assign, thread, lease } = await setup(2);
+    const { key, base, messages, assign, thread, leaseThread } = await setup(2);
     const t = randomUUID();
     await assign([{ message_id: messages[0]!.id, thread_id: t, add_keys: ["a#1"] }]);
+    const lease = await leaseThread(t);
     const patch = (body: object) =>
       call("PATCH", `${base}/threads/${t}`, { key, body: { lease_token: lease, ...body } });
 
@@ -206,12 +213,13 @@ describe("thread writes", () => {
   });
 
   it("delivers waiting messages as inflight, then finishes or requeues them", async () => {
-    const { key, base, messages, assign, thread, lease } = await setup(3);
+    const { key, base, messages, assign, thread, leaseThread } = await setup(3);
     const t = randomUUID();
     await assign([
       { message_id: messages[0]!.id, thread_id: t },
       { message_id: messages[1]!.id, thread_id: t },
     ]);
+    const lease = await leaseThread(t);
     await call("PATCH", `${base}/threads/${t}`, { key, body: { lease_token: lease, status: "ended" } });
     const post = (action: string, body: object = {}) =>
       call("POST", `${base}/threads/${t}/${action}`, { key, body: { lease_token: lease, ...body } });

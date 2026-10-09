@@ -2,6 +2,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { authedClient, type Context } from "../context.js";
 import { DEFAULTS, Dispatcher, type ThreadsOptions } from "../threads/dispatcher.js";
 import { BOT_KINDS } from "../threads/kinds.js";
+import { ensureRunner } from "../threads/runner.js";
 import { showTui } from "../threads/tui.js";
 
 export interface RunBotsOptions extends ThreadsOptions {
@@ -23,7 +24,8 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     return;
   }
   const interval = opts.interval ?? DEFAULTS.interval;
-  opts = { ...opts, ttl: opts.ttl ?? defaultTtl(interval) };
+  const runner = await ensureRunner(ctx.configDir, client);
+  opts = { ...opts, ttl: opts.ttl ?? defaultTtl(interval), runnerId: runner.id };
   const names = bots.map((b) => b.name).join(", ");
   const watching = `Running ${names} every ${interval}s (at most ${opts.max ?? DEFAULTS.max} sessions running at once).`;
 

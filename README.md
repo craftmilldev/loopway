@@ -54,6 +54,7 @@ loopway bots messages <bot> [--limit 20]            # what the bot would read ne
 loopway bots release <bot> --force                  # drop a lease a dead runner left behind
 loopway bots threads <bot> [--status active|ended|all]   # the threads the server has for the bot
 loopway bots threads import [--bot <bot>]           # upload threads.json sessions the server doesn't have yet
+loopway runners                                     # the machines running your bots, and what each holds
 loopway bots run [--max 3] [--interval 5] [--ttl <seconds>] [--no-tui]   # run your bots (see below)
 ```
 
