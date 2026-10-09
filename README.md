@@ -76,7 +76,7 @@ In a terminal, `loopway bots run` takes over the screen. The header names the bo
 **Each tick, per leased bot**, every `--interval` seconds:
 
 1. It reads `GET /bots/:id/messages` until there are none.
-2. Every message is assigned to a session: the one its issue/PR already belongs to, the issue's session when it's a PR that `Closes #N`, or a new one. Assignment never waits on `--max` or on a running session; an assigned message waits on its session until it can be delivered.
+2. Every message is assigned to a session: the one its issue/PR already belongs to, the issue's session when it's a PR that `Closes #N`, or a new one. Messages for an issue labeled `future` that has no session yet are dropped, so ideas can be recorded without being worked on. Assignment never waits on `--max` or on a running session; an assigned message waits on its session until it can be delivered.
 3. The assignments are saved to `threads.json`, then the cursor is moved past them with `POST /bots/:id/cursor`. If the runner dies between the two, the messages come back next tick and are skipped as already assigned.
 4. Every session with waiting messages and no run in flight gets them all in one run (`claude -p --permission-mode auto`, then `claude --resume`), oldest first, while `--max` allows. `--max` caps runs in flight, not sessions: a session waiting for its next message doesn't count, so any number can wait.
 

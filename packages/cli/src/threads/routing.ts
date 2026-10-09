@@ -4,7 +4,7 @@ import { editSession, findSession, type Sessions } from "./store.js";
 
 interface GithubPayload {
   number?: number;
-  issue?: { number?: number };
+  issue?: { number?: number; labels?: { name?: string }[] };
   pull_request?: { number?: number; body?: string | null };
   repository?: { full_name?: string };
   check_run?: { pull_requests?: { number?: number }[] };
@@ -36,7 +36,9 @@ export function threadKeys(e: Message): { key?: string; refs: string[] } {
  * 2. It's a PR that closes a known issue ("Closes #N") → that issue's session, and the PR joins it.
  * 3. Otherwise → a new session.
  *
- * CI messages with no PR (a run on main) belong to no thread and get no session.
+ * CI messages with no PR (a run on main) belong to no thread and get no session. Neither do messages
+ * for an issue labeled `future` that has no session yet: it's recorded, not to be worked on. Removing
+ * the label lets the next message for the issue start a session.
  *
  * New sessions and links are added to `sessions` in place, for the caller to save.
  */
@@ -48,7 +50,13 @@ export function route(sessions: Sessions, botId: string, e: Message): { session?
     id = refs.map((r) => findSession(sessions, botId, r)).find(Boolean);
     if (id) editSession(sessions, id).keys.push(key);
   }
+  if (!id && isFuture(e)) return {};
   return { session: id ?? newSession(sessions, botId, key), key };
+}
+
+function isFuture(e: Message): boolean {
+  const d = (e.event.data ?? {}) as GithubPayload;
+  return !!d.issue?.labels?.some((l) => l.name === "future");
 }
 
 function newSession(sessions: Sessions, botId: string, key: string | undefined): string {
