@@ -81,7 +81,7 @@ In a terminal, `loopway bots run` takes over the screen. The header names the bo
 
 **Usage limits.** When a run stops because the account hit its Claude usage limit (Claude Code reports a rejected `rate_limit_event` with the reset time, then a `result` with `api_error: usage_limit_reached`), the runner delivers nothing to any session until the limit resets, then carries on from its next tick. Messages keep being read and assigned meanwhile. Messages go in as stream-json with `--replay-user-messages`, so the runner sees when Claude Code has taken a message into the session: if the stopped run had taken its messages, the session is resumed with a note to carry on; if not, they go back to waiting and are delivered again. Without a reset time it waits 5 minutes. The hold itself lives in the runner process: a restarted runner retries right away and learns the reset time again if the limit still holds.
 
-A thread is an issue and the PRs linked to it, keyed by `owner/repo#number`. A new session starts with the prompt in [`packages/cli/prompts/thread.md`](packages/cli/prompts/thread.md). Bot kinds live in `packages/cli/src/threads/kinds.ts`, a map from kind to how it routes messages and the prompt it uses.
+A thread is an issue and the PRs linked to it, keyed by `owner/repo#number`. A new session starts with the prompt in [`packages/cli/prompts/thread.md`](packages/cli/prompts/thread.md). Bot kinds live in `packages/cli/src/bots/kinds.ts`, a map from kind to how it routes messages and the prompt it uses.
 
 Sessions talk back to the dispatcher over MCP: it serves a `loopway` server on 127.0.0.1 (one URL per session, passed with `--mcp-config`) with two tools:
 

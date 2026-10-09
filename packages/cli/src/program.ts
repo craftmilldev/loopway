@@ -3,9 +3,9 @@ import { clearConfig, configure, login, whoami } from "./commands/auth.js";
 import { botMessages, createBot, deleteBot, listBots, showBot, updateBot } from "./commands/bots.js";
 import { getEvent, listEvents } from "./commands/events.js";
 import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
-import { runBots } from "./commands/threads.js";
+import { runBots } from "./commands/bots-run.js";
 import type { Context } from "./context.js";
-import { BOT_KINDS } from "./threads/kinds.js";
+import { BOT_KINDS } from "./bots/kinds.js";
 
 export function createProgram(ctx: Context): Command {
   const program = new Command("loopway")
