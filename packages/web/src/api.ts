@@ -3,7 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { z, ZodError } from "zod";
 import type { Db } from "./db/index.js";
 import { consoleSender, type SendEmail } from "./email.js";
-import { isUuid, LOGIN_CODE_RE, normalizeLoginCode } from "./ids.js";
+import { isUuid, LOGIN_CODE_RE, normalizeLoginCode, uuidv7 } from "./ids.js";
 import { sources } from "./sources/index.js";
 import * as store from "./store.js";
 import type { EventRow, Inbox, User } from "./store.js";
@@ -18,6 +18,13 @@ export interface ApiOptions {
   sendEmail?: SendEmail;
   /** Signs session tokens (JWTs). */
   tokenSecret: string;
+  /**
+   * The craftmill loopway inbox that requests for new source types go to: its webhook URL and inbox
+   * token. Without it, `POST /sources/requests` is a 404 and the web UI doesn't offer requests.
+   */
+  sourceRequests?: { url: string; token: string };
+  /** Sends source requests. Defaults to the global fetch. */
+  fetch?: typeof fetch;
 }
 
 type Env = { Variables: { db: Db; user: User } };
@@ -129,7 +136,32 @@ export function createApi(opts: ApiOptions) {
 
   authed.get("/me", (c) => c.json(serializeUser(c.var.user)));
 
-  authed.get("/sources", (c) => c.json({ data: sources.describe() }));
+  authed.get("/sources", (c) => c.json({ data: sources.describe(), can_request: !!opts.sourceRequests }));
+
+  // Asks for a source type loopway doesn't have yet, by posting a message to the craftmill inbox for them.
+  authed.post("/sources/requests", async (c) => {
+    const target = opts.sourceRequests;
+    if (!target) throw new ApiError(404, "not_found", "This deployment doesn't take source requests");
+    const { description } = z.object({ description: z.string().trim().min(1).max(500) }).parse(await jsonBody(c));
+    const r = await (opts.fetch ?? fetch)(target.url, {
+      method: "POST",
+      headers: { authorization: `Bearer ${target.token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "source.requested",
+        id: uuidv7(),
+        // Only the user's id: it's enough to look them up, and keeps their name and email out of the message.
+        data: { description, user: { id: c.var.user.id } },
+      }),
+    }).catch((err: unknown) => {
+      console.error("source request failed", err);
+      return undefined;
+    });
+    if (!r?.ok) {
+      if (r) console.error(`source request failed: ${r.status} ${await r.text()}`);
+      throw new ApiError(502, "upstream", "Couldn't send the request. Try again later.");
+    }
+    return c.json({ requested: true }, 202);
+  });
 
   // Inboxes
 
@@ -381,7 +413,7 @@ export function createApi(opts: ApiOptions) {
 
 export class ApiError extends Error {
   constructor(
-    public status: 400 | 401 | 403 | 404 | 409 | 415 | 422 | 500,
+    public status: 400 | 401 | 403 | 404 | 409 | 415 | 422 | 500 | 502,
     public code: string,
     message: string,
   ) {
