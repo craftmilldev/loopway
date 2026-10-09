@@ -99,8 +99,9 @@ export class Dispatcher {
     // With a GitHub bot configured, sessions comment, push and commit as it; otherwise as the user.
     const gh = await loadGithubBot(ctx.configDir, ctx.env);
     const env = gh ? botEnv(ctx.env, gh) : ctx.env;
+    const login = gh ? await githubLogin(ctx, gh.token) : undefined;
     const mcp = await startMcpServer("loopway", sessionTools(ctx.configDir));
-    return new Dispatcher(ctx, client, bots, kinds, prompts, opts, mcp, env);
+    return new Dispatcher(ctx, client, bots, kinds, prompts, opts, mcp, env, login);
   }
 
   private constructor(
@@ -113,6 +114,8 @@ export class Dispatcher {
     private readonly mcp: McpServer,
     /** The environment each session runs with. */
     private readonly env: NodeJS.ProcessEnv,
+    /** The GitHub login of the bot the sessions act as; events it sent never reach a session. */
+    private readonly login?: string,
   ) {
     this.max = opts.max ?? DEFAULTS.max;
     this.ttl = opts.ttl ?? DEFAULTS.ttl;
@@ -222,7 +225,8 @@ export class Dispatcher {
 
   /**
    * Gives each message to a session, as a waiting message. Messages already assigned (the last run
-   * died between saving and moving the cursor) are skipped.
+   * died between saving and moving the cursor) are skipped, and so are the ones the bot's own GitHub
+   * account sent; the cursor still moves past those.
    */
   private assign(bot: Bot, messages: Event[]): Promise<void> {
     const kind = this.kinds.get(bot.id)!;
@@ -230,6 +234,8 @@ export class Dispatcher {
       const known = new Set(Object.values(sessions).flatMap((s) => [...s.events, ...s.waiting.map((m) => m.id)]));
       for (const e of messages) {
         if (known.has(e.id)) continue;
+        // The bot's own comments come back as events; a session woken for one spends a full turn on nothing.
+        if (this.login && senderOf(e)?.toLowerCase() === this.login.toLowerCase()) continue;
         const { session, key } = kind.route(sessions, bot.id, e);
         editSession(sessions, session).waiting.push({ id: e.id, inbox_id: e.inbox_id, type: e.event.type, key });
       }
@@ -350,4 +356,25 @@ function describeMessages(messages: WaitingMessage[]): string {
     (m) => `- ${m.id}  ${m.type}  ${m.key ?? ""}  (read: loopway events get ${m.inbox_id} ${m.id} --data)`,
   );
   return `New messages for this thread:\n${lines.join("\n")}`;
+}
+
+/** Who triggered a GitHub event, if it says. */
+function senderOf(e: Event): string | undefined {
+  const login = ((e.event.data ?? {}) as { sender?: { login?: unknown } }).sender?.login;
+  return typeof login === "string" ? login : undefined;
+}
+
+/** The login the token belongs to. If GitHub won't say, warns and returns undefined, so nothing is filtered. */
+async function githubLogin(ctx: Context, token: string): Promise<string | undefined> {
+  try {
+    const res = await (ctx.githubFetch ?? fetch)("https://api.github.com/user", {
+      headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json" },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { login } = (await res.json()) as { login?: string };
+    if (login) return login;
+  } catch (err) {
+    const why = err instanceof Error ? err.message : String(err);
+    ctx.out(`warning: couldn't look up the GitHub bot's login (${why}); its own comments will still wake threads.`);
+  }
 }

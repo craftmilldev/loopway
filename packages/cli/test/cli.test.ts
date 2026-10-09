@@ -446,6 +446,7 @@ describe("threads", () => {
       interactive: false,
       out: (t) => out.push(t),
       fetch: apiFetch,
+      githubFetch: (async () => Response.json({ login: "loopway-bot" })) as unknown as typeof fetch,
       // Each run stays "busy" until the test calls finish().
       runAgent: (r) => new Promise((resolve) => (runs.push(r), busy.push(resolve))),
     };
@@ -525,6 +526,25 @@ describe("threads", () => {
     await d.tick();
     expect(runs.at(-1)).toMatchObject({ sessionId: first!.sessionId, resume: true });
     expect((await sessions())[first!.sessionId].status).toBe("active");
+  });
+
+  it("drops events the GitHub bot sent itself, but still delivers a human's in the same batch", async () => {
+    const env = { LOOPWAY_GITHUB_TOKEN: "t", LOOPWAY_GITHUB_NAME: "loopway-bot", LOOPWAY_GITHUB_EMAIL: "b@x" };
+    const { inbox, runs, d, finish, cursor, newest } = await setup(3, env);
+    await send(inbox, "issues", issue("opened", 1));
+    await d.tick();
+    await finish();
+    await send(inbox, "issue_comment", { ...comment(1), sender: { login: "Loopway-Bot" } });
+    await d.tick();
+    expect(runs).toHaveLength(1);
+    expect(await cursor()).toBe(await newest());
+
+    await send(inbox, "issue_comment", { ...comment(1), sender: { login: "Loopway-Bot" } });
+    await send(inbox, "issue_comment", { ...comment(1), sender: { login: "someone" } });
+    await d.tick();
+    expect(runs).toHaveLength(2);
+    expect(runs[1]!.message.split("New messages for this thread:\n")[1]!.split("\n")).toHaveLength(1);
+    expect(await cursor()).toBe(await newest());
   });
 
   it("moves the cursor past what it assigned and records the messages on the session", async () => {

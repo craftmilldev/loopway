@@ -12,6 +12,8 @@ export interface Context {
   /** Writes one chunk of command output to stdout. */
   out: (text: string) => void;
   fetch?: typeof fetch;
+  /** Reaches api.github.com; defaults to the global fetch. */
+  githubFetch?: typeof fetch;
   /** Runs one `loopway bots run` agent turn; defaults to headless `claude -p`. */
   runAgent?: (run: AgentRun) => Promise<RunOutcome>;
 }
