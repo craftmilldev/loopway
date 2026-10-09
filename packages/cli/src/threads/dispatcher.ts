@@ -1,4 +1,6 @@
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { promisify } from "node:util";
 import { ApiError, type Bot, type Event, type Lease, type LoopwayClient } from "../client.js";
 import { loadGithubBot } from "../config.js";
 import type { Context } from "../context.js";
@@ -304,7 +306,7 @@ export class Dispatcher {
       this.ctx.out(`error: ${short} failed to start: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    const { code, delivered, limitedUntil } = outcome;
+    const { code, delivered, limitedUntil, denied } = outcome;
     const ended = await withSessions(this.dir, (sessions) => {
       const s = editSession(sessions, id);
       s.started = true;
@@ -323,9 +325,29 @@ export class Dispatcher {
       this.limitedUntil = Math.max(this.limitedUntil, limitedUntil);
       this.ctx.out(`${short} hit the usage limit; retrying sessions after ${new Date(limitedUntil).toLocaleString()}`);
     } else this.ctx.out(`${short} ${ended ? "ended" : "finished"} (exit ${code})`);
+    if (denied) await this.reportDenials(short, session.keys[0], denied);
     this.running.delete(id);
     this.freed = true;
     this.onFreed?.();
+  }
+
+  /** A run with denied tool calls is blocked on permissions, not on an answer: say so in the log and on the thread. */
+  private async reportDenials(short: string, key: string | undefined, denied: string[]): Promise<void> {
+    this.ctx.out(
+      `warning: ${short} had ${denied.length} tool call(s) denied by the permission classifier: ${denied[0]}`,
+    );
+    if (!key) return;
+    const list = denied.slice(0, 10).map((d) => `- \`${d.replaceAll("`", "'")}\``);
+    const body = [
+      `This thread's last run was blocked on permissions: ${denied.length} tool call(s) were denied, so it may have stopped before finishing.`,
+      ...list,
+      "To allow them, set `LOOPWAY_ALLOWED_TOOLS` (e.g. `Bash(npm run *)`) for `loopway bots run`; the thread resumes on its next message.",
+    ].join("\n");
+    try {
+      await (this.ctx.comment ?? ghComment)(key, body, this.env);
+    } catch (err) {
+      this.ctx.out(`error: ${short} couldn't comment on ${key}: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /** Says how many sessions are held back by --max, only when that number changes. */
@@ -334,6 +356,11 @@ export class Dispatcher {
     this.queued = held;
     if (held) this.ctx.out(dim(`${held} session(s) waiting: ${this.max} sessions are already running.`));
   }
+}
+
+async function ghComment(key: string, body: string, env: NodeJS.ProcessEnv): Promise<void> {
+  const [repo, number] = key.split("#");
+  await promisify(execFile)("gh", ["issue", "comment", number!, "--repo", repo!, "--body", body], { env });
 }
 
 /** When the lease a 409 `leased` ran into expires, if the server said. */

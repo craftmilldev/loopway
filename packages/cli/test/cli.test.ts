@@ -716,6 +716,22 @@ describe("threads", () => {
     expect(stale.limitedUntil(now)).toBe(now + LIMIT_FALLBACK_MS);
   });
 
+  it("LimitWatch: collects the tool calls a result says were denied", () => {
+    const w = new LimitWatch();
+    expect(w.denied).toEqual([]);
+    w.line(
+      JSON.stringify({
+        type: "result",
+        permission_denials: [
+          { tool_name: "Bash", tool_input: { command: "npm ci\nnpm test" } },
+          { tool_name: "Edit", tool_input: { file_path: "/a/b.ts" } },
+          { tool_name: "Foo", tool_input: {} },
+        ],
+      }),
+    );
+    expect(w.denied).toEqual(["Bash: npm ci", "Edit: /a/b.ts", "Foo"]);
+  });
+
   it("runs every bot, sharing --max across them", async () => {
     const { bots, runs, d, finish, cursor, out } = await setup(1, {}, 2);
     const [a, b] = await Promise.all(bots.map((bot) => runJson("inbox", "show", bot.inbox_ids[0]!)));

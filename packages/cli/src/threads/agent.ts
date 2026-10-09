@@ -23,6 +23,8 @@ export interface RunOutcome {
   delivered: boolean;
   /** Set when the run stopped because the account hit its usage limit: when the limit resets, in ms since the epoch. */
   limitedUntil?: number;
+  /** The tool calls the permission classifier denied, as "Bash: npm ci"; set only when there were any. */
+  denied?: string[];
 }
 
 export type RunAgent = (run: AgentRun) => Promise<RunOutcome>;
@@ -39,6 +41,8 @@ export class LimitWatch {
   delivered = false;
   private resetsAt?: number;
   private hit = false;
+  /** The tool calls the final `result` says were denied. */
+  denied: string[] = [];
 
   line(raw: string): void {
     let r: {
@@ -47,6 +51,7 @@ export class LimitWatch {
       parent_tool_use_id?: string | null;
       message?: { content?: unknown };
       rate_limit_info?: { status?: string; resetsAt?: number };
+      permission_denials?: { tool_name?: string; tool_input?: { command?: string; file_path?: string } }[];
     };
     try {
       r = JSON.parse(raw) as typeof r;
@@ -57,7 +62,13 @@ export class LimitWatch {
     if (r.type === "user" && !r.parent_tool_use_id && typeof r.message?.content === "string") this.delivered = true;
     else if (r.type === "rate_limit_event" && r.rate_limit_info?.status === "rejected" && r.rate_limit_info.resetsAt)
       this.resetsAt = r.rate_limit_info.resetsAt * 1000;
-    else if (r.type === "result" && r.api_error === "usage_limit_reached") this.hit = true;
+    else if (r.type === "result") {
+      if (r.api_error === "usage_limit_reached") this.hit = true;
+      this.denied = (r.permission_denials ?? []).map((d) => {
+        const input = (d.tool_input?.command ?? d.tool_input?.file_path ?? "").split("\n")[0]!.slice(0, 120);
+        return `${d.tool_name ?? "unknown tool"}${input && `: ${input}`}`;
+      });
+    }
   }
 
   /** When the limit resets, if the run stopped because of it. */
@@ -76,7 +87,9 @@ export const spawnClaude: RunAgent = async (run) => {
     const mcpConfig = JSON.stringify({ mcpServers: { loopway: { type: "http", url: run.mcpUrl } } });
     const args = ["-p", run.resume ? "--resume" : "--session-id", run.sessionId];
     // --mcp-config and --allowedTools take several values, so each is followed by another flag.
-    args.push("--mcp-config", mcpConfig, "--allowedTools", "mcp__loopway__link", "mcp__loopway__end");
+    // LOOPWAY_ALLOWED_TOOLS adds more, separated by spaces or commas outside parentheses: "Bash(npm run *),Bash(npx prettier *)".
+    const extra = (run.env.LOOPWAY_ALLOWED_TOOLS ?? "").split(/[\s,]+(?![^(]*\))/).filter(Boolean);
+    args.push("--mcp-config", mcpConfig, "--allowedTools", "mcp__loopway__link", "mcp__loopway__end", ...extra);
     args.push("--permission-mode", "auto", "--output-format", "stream-json", "--verbose");
     // The message goes in as stream-json so Claude Code can echo it back once it's in the session.
     args.push("--input-format", "stream-json", "--replay-user-messages");
@@ -92,7 +105,8 @@ export const spawnClaude: RunAgent = async (run) => {
     });
     // Awaited together, so whichever fails first is the error thrown and neither can go unhandled.
     const [code] = await Promise.all([exited, copied]);
-    return { code, delivered: watch.delivered, limitedUntil: watch.limitedUntil() };
+    const denied = watch.denied.length ? { denied: watch.denied } : {};
+    return { code, delivered: watch.delivered, limitedUntil: watch.limitedUntil(), ...denied };
   } finally {
     closeSync(errFd);
   }

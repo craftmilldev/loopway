@@ -14,6 +14,8 @@ export interface Context {
   fetch?: typeof fetch;
   /** Runs one `loopway bots run` agent turn; defaults to headless `claude -p`. */
   runAgent?: (run: AgentRun) => Promise<RunOutcome>;
+  /** Comments on the issue or PR `key` (`owner/repo#number`); defaults to `gh issue comment`. */
+  comment?: (key: string, body: string, env: NodeJS.ProcessEnv) => Promise<void>;
 }
 
 export async function authedClient(ctx: Context): Promise<LoopwayClient> {
