@@ -51,7 +51,8 @@ loopway bots show <bot>
 loopway bots update <bot> [--name n] [--inbox a,b]   # --inbox replaces the bot's inboxes
 loopway bots delete <bot>
 loopway bots messages <bot> [--limit 20]            # what the bot would read next
-loopway bots run [--max 3] [--interval 5] [--ttl 3600] [--no-tui]   # run your bots (see below)
+loopway bots release <bot> --force                  # drop a lease a dead runner left behind
+loopway bots run [--max 3] [--interval 5] [--ttl <seconds>] [--no-tui]   # run your bots (see below)
 ```
 
 - `<inbox>` is an inbox id or its exact name; `<bot>` is a bot id or its exact name.
@@ -63,14 +64,14 @@ loopway bots run [--max 3] [--interval 5] [--ttl 3600] [--no-tui]   # run your b
 ### Running bots
 
 ```bash
-loopway bots run [--max 3] [--interval 5] [--ttl 3600] [--no-tui]   # run your bots (q or Ctrl-C to stop)
+loopway bots run [--max 3] [--interval 5] [--ttl <seconds>] [--no-tui]   # run your bots (q or Ctrl-C to stop)
 ```
 
 `loopway bots run` runs every bot on your account whose kind this CLI knows (`github-threads`), in the current directory. With no bots, it says how to create one and exits. One process runs all your bots, and `--max` is shared across them, since it caps the load on this machine.
 
 In a terminal, `loopway bots run` takes over the screen. The header names the bots this runner holds, and any it skipped because another runner holds their lease. Below are four lists: waiting messages (assigned to a session but not delivered yet), working sessions (a run in flight), waiting sessions (active, waiting for their next message) and done sessions (ended, newest first). ↑/↓ moves between sessions, Tab/Shift-Tab jumps between lists, and Enter or → opens a session's transcript, which follows new output until you scroll up (↑/↓, PgUp/PgDn, Home/End). ← goes back to the lists. The dispatcher's latest log line shows at the bottom. Quitting stops the dispatcher and its sessions, as Ctrl-C does. `--no-tui`, or output that isn't a terminal, prints the plain log instead.
 
-**Leasing.** At startup, and every tick, the runner takes or renews each bot's lease (`POST /bots/:id/lease`, held for `--ttl` seconds). A bot leased by another runner is skipped, with one log line, and tried again next tick, so two copies of `loopway bots run` never read the same bot. Quitting releases the leases; a runner that dies leaves its leases to expire.
+**Leasing.** At startup, and every tick, the runner takes or renews each bot's lease (`POST /bots/:id/lease`, held for `--ttl` seconds: by default six polls, at least 30 s). A bot leased by another runner is skipped, with one log line saying until when, and tried again next tick, so two copies of `loopway bots run` never read the same bot. Quitting, `kill`, a closed terminal and a crash all release the leases on the way out; a runner killed outright (SIGKILL, power loss) leaves its leases to expire within `--ttl`, or `loopway bots release <bot> --force` drops one right away.
 
 **Each tick, per leased bot**, every `--interval` seconds:
 

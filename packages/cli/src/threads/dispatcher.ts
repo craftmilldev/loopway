@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { ApiError, type Bot, type Event, type Lease, type LoopwayClient } from "../client.js";
 import { loadGithubBot } from "../config.js";
 import type { Context } from "../context.js";
-import { dim } from "../format.js";
+import { clock, dim } from "../format.js";
 import { startMcpServer, type McpServer } from "../mcp.js";
 import { spawnClaude, type RunAgent, type RunOutcome } from "./agent.js";
 import { botEnv } from "./github.js";
@@ -22,16 +22,28 @@ import { sessionTools } from "./tools.js";
 export interface ThreadsOptions {
   max?: number;
   interval?: number;
-  /** How long each bot lease lasts; it's renewed every tick. */
+  /** How long each bot lease lasts; it's renewed every tick. Defaults to defaultTtl(interval). */
   ttl?: number;
 }
 
-export const DEFAULTS = { max: 3, interval: 5, ttl: 3600 };
+export const DEFAULTS = { max: 3, interval: 5 };
+
+/**
+ * The lease TTL when --ttl isn't given: a few polls, so the bots of a runner that died without releasing
+ * them (killed, crashed, power lost) come free in well under a minute instead of blocking the next runner.
+ */
+export const defaultTtl = (interval: number) => Math.max(30, 6 * interval);
+
+/** A bot another runner holds the lease on. */
+export interface SkippedBot extends Bot {
+  /** When that lease expires, if the server said. */
+  leased_until?: string;
+}
 
 /** What a dispatcher is doing right now, for the TUI. */
 export interface DispatcherState {
   /** The bots this runner holds a lease on, and the ones it skipped because another runner holds theirs. */
-  bots: { held: Bot[]; skipped: Bot[] };
+  bots: { held: Bot[]; skipped: SkippedBot[] };
   /** Messages assigned to a session but not delivered yet, oldest first. */
   waiting: WaitingMessage[];
   /** The sessions of this runner's bots. */
@@ -60,8 +72,9 @@ export class Dispatcher {
   private readonly running = new Map<string, Promise<void>>();
   /** Bot id → the lease this runner holds. */
   private readonly leases = new Map<string, Lease>();
-  /** Bots skipped last tick because another runner holds their lease. */
-  private readonly skipped = new Set<string>();
+  /** Bots skipped last tick because another runner holds their lease → when that lease expires, if known. */
+  private readonly skipped = new Map<string, string | undefined>();
+  private closing?: Promise<void>;
   private readonly max: number;
   private readonly ttl: number;
   private readonly runAgent: RunAgent;
@@ -104,7 +117,7 @@ export class Dispatcher {
     private readonly env: NodeJS.ProcessEnv,
   ) {
     this.max = opts.max ?? DEFAULTS.max;
-    this.ttl = opts.ttl ?? DEFAULTS.ttl;
+    this.ttl = opts.ttl ?? defaultTtl(opts.interval ?? DEFAULTS.interval);
     this.runAgent = ctx.runAgent ?? spawnClaude;
     this.dir = ctx.configDir;
   }
@@ -133,7 +146,9 @@ export class Dispatcher {
     return {
       bots: {
         held: this.bots.filter((b) => this.leases.has(b.id)),
-        skipped: this.bots.filter((b) => this.skipped.has(b.id)),
+        skipped: this.bots
+          .filter((b) => this.skipped.has(b.id))
+          .map((b) => ({ ...b, leased_until: this.skipped.get(b.id) })),
       },
       waiting,
       sessions,
@@ -157,8 +172,15 @@ export class Dispatcher {
     while (this.running.size) await Promise.all(this.running.values());
   }
 
-  /** Releases the bot leases, so the next runner needn't wait out the TTL, and stops the MCP server. */
-  async close(): Promise<void> {
+  /**
+   * Releases the bot leases, so the next runner needn't wait out the TTL, and stops the MCP server.
+   * Closing again, as a second Ctrl-C does, joins the close in progress.
+   */
+  close(): Promise<void> {
+    return (this.closing ??= this.doClose());
+  }
+
+  private async doClose(): Promise<void> {
     for (const [id, lease] of this.leases) {
       // A lease that expired or was taken over is gone already; nothing to do about it on the way out.
       await this.client.releaseBot(id, lease.token).catch(() => {});
@@ -180,10 +202,12 @@ export class Dispatcher {
     } catch (err) {
       if (!(err instanceof ApiError && err.code === "leased")) throw err;
       this.leases.delete(bot.id);
+      const until = leasedUntil(err);
       if (!this.skipped.has(bot.id)) {
-        this.skipped.add(bot.id);
-        this.ctx.out(`bot ${bot.name} is leased by another runner; skipping it until that lease ends.`);
+        const when = until ? ` until ${clock(until)}` : "";
+        this.ctx.out(`bot ${bot.name} is leased by another runner${when}; skipping it until that lease ends.`);
       }
+      this.skipped.set(bot.id, until);
       return false;
     }
   }
@@ -312,6 +336,12 @@ export class Dispatcher {
     this.queued = held;
     if (held) this.ctx.out(dim(`${held} session(s) waiting: ${this.max} sessions are already running.`));
   }
+}
+
+/** When the lease a 409 `leased` ran into expires, if the server said. */
+function leasedUntil(err: ApiError): string | undefined {
+  const details = err.details as { expires_at?: unknown } | undefined;
+  return typeof details?.expires_at === "string" ? details.expires_at : undefined;
 }
 
 const RESUME_AFTER_LIMIT =
