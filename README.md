@@ -270,7 +270,7 @@ A bot reads the messages (events) of one or more of your inboxes, in `seq` order
 | `DELETE /bots/:id`                                 | Delete. Deleting an inbox also removes it from its bots.                                                                                                                                        |
 | `POST /bots/:id/lease` `{ttl_seconds?, lease_token?}` | Take the lease, or pass your `lease_token` to renew it. `200` with the bot + `lease: {token, expires_at}`, or `409 leased` if another runner holds a live one. `ttl_seconds` as for events. |
 | `GET /bots/:id/messages` `?limit=`                 | Messages in the bot's inboxes with `seq > cursor`, oldest first (`limit` ≤100, default 50). Messages received in the last 5 seconds, and anything after them, are held back (see below).       |
-| `POST /bots/:id/cursor` `{seq, lease_token}`       | Move the cursor to `seq`. It never moves back. `409 lease_mismatch` unless `lease_token` holds a live lease.                                                                                    |
+| `POST /bots/:id/cursor` `{seq, lease_token}`       | Once the runner has handed messages to their threads, move the cursor to the last one's `seq`. It never moves back. `400 unknown_message` unless `seq` is a message in the bot's inboxes; `409 lease_mismatch` unless `lease_token` holds a live lease.                                                                                    |
 
 `inbox_ids` must be your inboxes. Bot shape: `{id, name, kind, inbox_ids, cursor, leased_until, created_at}`; `leased_until` is `null` when nobody holds the lease.
 

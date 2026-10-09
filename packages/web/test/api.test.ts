@@ -288,6 +288,12 @@ describe("bots", () => {
     const cursor = (body: unknown) => call("POST", `/bots/${bot.id}/cursor`, { key, body });
     expect((await cursor({ seq: s2 })).status).toBe(400);
     expect((await cursor({ seq: s2, lease_token: "lk_nope" })).body.error.code).toBe("lease_mismatch");
+    // Only onto a message the bot reads: not past the newest one, nor onto another inbox's.
+    expect((await cursor({ seq: s3! + 1000, lease_token: token })).body.error.code).toBe("unknown_message");
+    const other = await newInbox(key);
+    await sendGithub(other, "pull_request", prPayload(9));
+    const [elsewhere] = (await call("GET", `/inboxes/${other.id}/events`, { key })).body.data;
+    expect((await cursor({ seq: elsewhere.seq, lease_token: token })).body.error.code).toBe("unknown_message");
     expect((await cursor({ seq: s2, lease_token: token })).body.cursor).toBe(s2);
     expect((await cursor({ seq: s1, lease_token: token })).body.cursor).toBe(s2);
     expect(seqs(await call("GET", `/bots/${bot.id}/messages`, { key }))).toEqual([s3]);

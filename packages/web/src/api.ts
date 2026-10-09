@@ -314,9 +314,14 @@ export function createApi(opts: ApiOptions) {
     return c.json({ data: rows.map((e) => serializeEvent(e)) });
   });
 
+  // The runner calls this once it has handed messages to their threads. The cursor can only land on a message
+  // the bot reads, so a runner can't skip ahead past ones it hasn't seen.
   authed.post("/bots/:botId/cursor", async (c) => {
     const bot = await ownedBot(c);
-    const input = z.object({ seq: z.number().int().min(0), lease_token: z.string().min(1) }).parse(await jsonBody(c));
+    const input = z.object({ seq: z.number().int().min(1), lease_token: z.string().min(1) }).parse(await jsonBody(c));
+    if (!(await store.botHasMessage(c.var.db, bot.id, input.seq))) {
+      throw new ApiError(400, "unknown_message", "seq is not a message in this bot's inboxes");
+    }
     const moved = await store.advanceBotCursor(c.var.db, bot.id, input.seq, input.lease_token);
     if (!moved) throw new ApiError(409, "lease_mismatch", "lease_token does not match a live lease on this bot");
     return c.json(serializeBot(moved));
