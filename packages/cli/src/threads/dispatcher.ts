@@ -26,7 +26,7 @@ export interface ThreadsOptions {
   ttl?: number;
 }
 
-export const DEFAULTS = { max: 3, interval: 30, ttl: 3600 };
+export const DEFAULTS = { max: 3, interval: 5, ttl: 3600 };
 
 /** What a dispatcher is doing right now, for the TUI. */
 export interface DispatcherState {

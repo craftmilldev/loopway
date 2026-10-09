@@ -74,7 +74,7 @@ loopway bots show <bot>
 loopway bots update <bot> [--name n] [--inbox a,b]   # --inbox replaces the bot's inboxes
 loopway bots delete <bot>
 loopway bots messages <bot> [--limit 20]            # what the bot would read next
-loopway bots run [--max 3] [--interval 30] [--ttl 3600] [--no-tui]   # run your bots (see below)
+loopway bots run [--max 3] [--interval 5] [--ttl 3600] [--no-tui]   # run your bots (see below)
 ```
 
 - `<inbox>` is an inbox id or its exact name; `<bot>` is a bot id or its exact name.
@@ -87,7 +87,7 @@ loopway bots run [--max 3] [--interval 30] [--ttl 3600] [--no-tui]   # run your 
 ### Running bots
 
 ```bash
-loopway bots run [--max 3] [--interval 30] [--ttl 3600] [--no-tui]   # run your bots (q or Ctrl-C to stop)
+loopway bots run [--max 3] [--interval 5] [--ttl 3600] [--no-tui]   # run your bots (q or Ctrl-C to stop)
 ```
 
 `loopway bots run` runs every bot on your account whose kind this CLI knows (`github-threads`), in the current directory. With no bots, it says how to create one and exits. One process runs all your bots, and `--max` is shared across them, since it caps the load on this machine.

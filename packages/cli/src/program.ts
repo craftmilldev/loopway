@@ -228,7 +228,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
       "most sessions running at once; sessions waiting on their thread don't count (default 3)",
       positiveInt,
     )
-    .option("--interval <seconds>", "seconds between polls (default 30)", positiveInt)
+    .option("--interval <seconds>", "seconds between polls (default 5)", positiveInt)
     .addOption(
       new Option(
         "--ttl <seconds>",
