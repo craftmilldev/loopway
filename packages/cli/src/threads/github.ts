@@ -4,7 +4,7 @@ import type { GithubBot } from "../config.js";
 const CREDENTIAL_HELPER = `!f() { test "$1" = get && echo username=x-access-token && echo "password=$GH_TOKEN"; }; f`;
 
 /**
- * The environment for sessions that act as a GitHub bot instead of the user running `loopway threads`:
+ * The environment for sessions that act as a GitHub bot instead of the user running `loopway bots run`:
  *
  * - `gh` uses GH_TOKEN over its stored login, so comments and PRs come from the bot. GITHUB_TOKEN is
  *   set too, so other tools that read it don't pick up a token the user exported.

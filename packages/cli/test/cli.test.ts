@@ -785,7 +785,7 @@ describe("threads", () => {
 
   it("says how to create a bot when there is none to run", async () => {
     await configured();
-    expect(await run("threads", "--no-tui")).toMatch(/No bots to run.*loopway bots create.*--kind github-threads/);
+    expect(await run("bots", "run", "--no-tui")).toMatch(/No bots to run.*loopway bots create.*--kind github-threads/);
   });
 
   it("serializes threads.json writes through its lock file", async () => {

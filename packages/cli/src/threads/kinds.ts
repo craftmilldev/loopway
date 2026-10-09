@@ -3,7 +3,7 @@ import { threadPrompt } from "./agent.js";
 import { route as routeGithub } from "./routing.js";
 import type { Sessions } from "./store.js";
 
-/** How `loopway threads` runs a bot of some `kind`. The server stores any kind; the CLI runs these. */
+/** How `loopway bots run` runs a bot of some `kind`. The server stores any kind; the CLI runs these. */
 export interface BotKind {
   /**
    * Which session a message belongs to, adding a new session or a link to `sessions` (inside

@@ -12,7 +12,7 @@ export interface Context {
   /** Writes one chunk of command output to stdout. */
   out: (text: string) => void;
   fetch?: typeof fetch;
-  /** Runs one `loopway threads` agent turn; defaults to headless `claude -p`. */
+  /** Runs one `loopway bots run` agent turn; defaults to headless `claude -p`. */
   runAgent?: (run: AgentRun) => Promise<number>;
 }
 

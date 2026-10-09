@@ -4,7 +4,7 @@ import { clearConfig, configure, login, whoami } from "./commands/auth.js";
 import { botMessages, createBot, deleteBot, listBots, showBot, updateBot } from "./commands/bots.js";
 import { getEvent, listEvents, lockEvent, markProcessed, nextEvent, unlockEvent } from "./commands/events.js";
 import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
-import { runThreads } from "./commands/threads.js";
+import { runBots } from "./commands/threads.js";
 import type { Context } from "./context.js";
 import { BOT_KINDS } from "./threads/kinds.js";
 
@@ -39,10 +39,10 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
   program
     .command("config")
     .description(
-      "set the API URL, and the GitHub bot for `loopway threads`, in ~/.loopway/config.json; run `loopway login` after",
+      "set the API URL, and the GitHub bot for `loopway bots run`, in ~/.loopway/config.json; run `loopway login` after",
     )
     .option("--url <url>", "API base URL, e.g. https://loopway.example.com (prompted for if omitted)")
-    .option("--github-token <token>", "token for the GitHub bot that threads sessions act as")
+    .option("--github-token <token>", "token for the GitHub bot that `loopway bots run` sessions act as")
     .option("--github-name <name>", "the bot's git author name")
     .option("--github-email <email>", "the bot's git author email")
     .action((opts) => configure(ctx, opts));
@@ -168,7 +168,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
 
   // ---------- bots ----------
 
-  const bots = program.command("bots").alias("bot").description("create, list and update bots");
+  const bots = program.command("bots").alias("bot").description("create, list, update and run bots");
   const inboxesOpt = (desc: string) => new Option("--inbox <list>", desc).argParser(splitList);
 
   bots
@@ -218,11 +218,8 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .addOption(jsonOpt())
     .action((ref, opts) => botMessages(ctx, ref, opts));
 
-  // ---------- threads ----------
-
-  program
-    .command("threads")
-    .alias("thread")
+  bots
+    .command("run")
     .description(
       "run your bots: read each one's messages and hand them to a Claude Code session per issue/PR thread, starting one if none matches",
     )
@@ -239,7 +236,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
       ).argParser(positiveInt),
     )
     .option("--no-tui", "print a plain log instead of the full-screen view of threads and their transcripts")
-    .action((opts) => runThreads(ctx, opts));
+    .action((opts) => runBots(ctx, opts));
 
   return program;
 }

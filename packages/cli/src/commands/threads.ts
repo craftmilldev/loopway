@@ -4,13 +4,13 @@ import { DEFAULTS, Dispatcher, type ThreadsOptions } from "../threads/dispatcher
 import { BOT_KINDS } from "../threads/kinds.js";
 import { showTui } from "../threads/tui.js";
 
-export interface RunThreadsOptions extends ThreadsOptions {
+export interface RunBotsOptions extends ThreadsOptions {
   /** false with --no-tui; the TUI only shows in an interactive terminal either way. */
   tui?: boolean;
 }
 
-/** `loopway threads`: run every bot on the account, handing each message to its thread's session, forever. */
-export async function runThreads(ctx: Context, opts: RunThreadsOptions) {
+/** `loopway bots run`: run every bot on the account, handing each message to its thread's session, forever. */
+export async function runBots(ctx: Context, opts: RunBotsOptions) {
   const client = await authedClient(ctx);
   const all = await client.listBots();
   const bots = all.filter((b) => b.kind in BOT_KINDS);

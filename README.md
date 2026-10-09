@@ -74,26 +74,27 @@ loopway bots show <bot>
 loopway bots update <bot> [--name n] [--inbox a,b]   # --inbox replaces the bot's inboxes
 loopway bots delete <bot>
 loopway bots messages <bot> [--limit 20]            # what the bot would read next
+loopway bots run [--max 3] [--interval 30] [--ttl 3600] [--no-tui]   # run your bots (see below)
 ```
 
 - `<inbox>` is an inbox id or its exact name; `<bot>` is a bot id or its exact name.
 - Every read command takes `--json` for the raw API response. `events next --json` prints nothing when the inbox is empty.
 - `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`, `--schema file.json` for `loopway` inboxes); without a terminal it runs from flags alone. For sources whose sender makes the secret (`vercel`, `granola`) it doesn't ask for one: add the webhook in the sender, then paste the secret it shows with `loopway inbox update <inbox>` (or on the inbox's dashboard page).
-- Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, plus an optional `github` bot for [threads](#acting-as-a-github-bot), mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `https://loopway.craftmill.dev`.
+- Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, plus an optional `github` bot for [bot sessions](#acting-as-a-github-bot), mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `https://loopway.craftmill.dev`.
 - Lock tokens from `next`/`lock` are kept in `~/.loopway/locks.json` until they expire, so `lock` (renew), `unlock` and `done` on the same machine don't need `--token`.
-- A bot reads messages from one or more inboxes (see [Bots](#bots)). `--kind` must be one this CLI knows how to run: `github-threads`. `loopway threads` runs them (see [Threads](#threads)).
+- A bot reads messages from one or more inboxes (see [Bots](#bots)). `--kind` must be one this CLI knows how to run: `github-threads`. `loopway bots run` runs them (see [Running bots](#running-bots)).
 
-### Threads
+### Running bots
 
 ```bash
-loopway threads [--max 3] [--interval 30] [--ttl 3600] [--no-tui]   # run your bots (q or Ctrl-C to stop)
+loopway bots run [--max 3] [--interval 30] [--ttl 3600] [--no-tui]   # run your bots (q or Ctrl-C to stop)
 ```
 
-`loopway threads` runs every bot on your account whose kind this CLI knows (`github-threads`), in the current directory. With no bots, it says how to create one and exits. One process runs all your bots, and `--max` is shared across them, since it caps the load on this machine.
+`loopway bots run` runs every bot on your account whose kind this CLI knows (`github-threads`), in the current directory. With no bots, it says how to create one and exits. One process runs all your bots, and `--max` is shared across them, since it caps the load on this machine.
 
-In a terminal, `loopway threads` takes over the screen. The header names the bots this runner holds, and any it skipped because another runner holds their lease. Below are four lists: waiting messages (assigned to a session but not delivered yet), working sessions (a run in flight), waiting sessions (active, waiting for their next message) and done sessions (ended, newest first). ↑/↓ moves between sessions, Tab/Shift-Tab jumps between lists, and Enter or → opens a session's transcript, which follows new output until you scroll up (↑/↓, PgUp/PgDn, Home/End). ← goes back to the lists. The dispatcher's latest log line shows at the bottom. Quitting stops the dispatcher and its sessions, as Ctrl-C does. `--no-tui`, or output that isn't a terminal, prints the plain log instead.
+In a terminal, `loopway bots run` takes over the screen. The header names the bots this runner holds, and any it skipped because another runner holds their lease. Below are four lists: waiting messages (assigned to a session but not delivered yet), working sessions (a run in flight), waiting sessions (active, waiting for their next message) and done sessions (ended, newest first). ↑/↓ moves between sessions, Tab/Shift-Tab jumps between lists, and Enter or → opens a session's transcript, which follows new output until you scroll up (↑/↓, PgUp/PgDn, Home/End). ← goes back to the lists. The dispatcher's latest log line shows at the bottom. Quitting stops the dispatcher and its sessions, as Ctrl-C does. `--no-tui`, or output that isn't a terminal, prints the plain log instead.
 
-**Leasing.** At startup, and every tick, the runner takes or renews each bot's lease (`POST /bots/:id/lease`, held for `--ttl` seconds). A bot leased by another runner is skipped, with one log line, and tried again next tick, so two copies of `loopway threads` never read the same bot. Quitting releases the leases; a runner that dies leaves its leases to expire.
+**Leasing.** At startup, and every tick, the runner takes or renews each bot's lease (`POST /bots/:id/lease`, held for `--ttl` seconds). A bot leased by another runner is skipped, with one log line, and tried again next tick, so two copies of `loopway bots run` never read the same bot. Quitting releases the leases; a runner that dies leaves its leases to expire.
 
 **Each tick, per leased bot**, every `--interval` seconds:
 
@@ -266,7 +267,7 @@ done
 
 ### Bots
 
-A bot reads the messages (events) of one or more of your inboxes, in `seq` order, and keeps a `cursor`: the `seq` of the last message it has read past. A runner (`loopway threads`) takes a lease on the bot while it reads, so only one runner at a time moves the cursor.
+A bot reads the messages (events) of one or more of your inboxes, in `seq` order, and keeps a `cursor`: the `seq` of the last message it has read past. A runner (`loopway bots run`) takes a lease on the bot while it reads, so only one runner at a time moves the cursor.
 
 |                                                    |                                                                                                                                                                                                 |
 | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -305,8 +306,8 @@ packages/cli/
   src/client.ts         typed API client
   src/config.ts         ~/.loopway/config.json
   src/locks.ts          ~/.loopway/locks.json
-  src/mcp.ts            minimal MCP server (HTTP, localhost) the threads dispatcher serves to its sessions
-  src/threads/          `loopway threads`: dispatcher.ts (lease, read, assign, deliver), kinds.ts (bot kind → route + prompt),
+  src/mcp.ts            minimal MCP server (HTTP, localhost) the bots dispatcher serves to its sessions
+  src/threads/          `loopway bots run`: dispatcher.ts (lease, read, assign, deliver), kinds.ts (bot kind → route + prompt),
                         routing.ts (github-threads: message → session), store.ts (~/.loopway/threads.json + its lock),
                         tools.ts (MCP link/end), agent.ts (claude -p),
                         tui.tsx (the Ink TUI), transcript.ts (stream-json log → readable lines)

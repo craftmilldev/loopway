@@ -4,7 +4,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { readJson, writeJson } from "../config.js";
 
 /**
- * Agent sessions started by `loopway threads`, kept in ~/.loopway/threads.json keyed by session id.
+ * Agent sessions started by `loopway bots run`, kept in ~/.loopway/threads.json keyed by session id.
  * A session owns a thread: the issues and PRs in `keys` (`owner/repo#number`).
  */
 export interface Session {

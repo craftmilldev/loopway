@@ -115,7 +115,7 @@ function ListView({ snap, selected, onSelect, onOpen }: ListViewProps) {
   return (
     <Box flexDirection="column" height={height}>
       <Text bold>
-        loopway threads{" "}
+        loopway bots run{" "}
         <Text dimColor>
           · {names(snap.bots.held) || "no bots held"}
           {skipped}
