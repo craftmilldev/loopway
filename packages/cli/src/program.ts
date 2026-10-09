@@ -135,6 +135,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .description("create a bot that reads the given inboxes, starting from their newest message")
     .option("--name <name>", "bot name")
     .addOption(new Option("--kind <kind>", "what the bot does").choices(Object.keys(BOT_KINDS)))
+    .option("--model <model>", "model its sessions run on: an alias (sonnet, opus) or a full model id")
     .addOption(inboxesOpt("comma-separated inbox ids or names"))
     .addOption(jsonOpt())
     .action((opts) => createBot(ctx, opts));
@@ -155,9 +156,10 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
 
   bots
     .command("update")
-    .description("rename a bot or replace its inboxes")
+    .description("rename a bot, change its model, or replace its inboxes")
     .argument("<bot>", "bot id or name")
     .option("--name <name>", "new name")
+    .option("--model <model>", "new model; applies to runs that start after `loopway bots run` is restarted")
     .addOption(inboxesOpt("comma-separated inbox ids or names; replaces the bot's inboxes"))
     .addOption(jsonOpt())
     .action((ref, opts) => updateBot(ctx, ref, opts));

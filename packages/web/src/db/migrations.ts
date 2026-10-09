@@ -164,4 +164,14 @@ ALTER TABLE loopway.events
   DROP COLUMN processed_at;
 `,
   },
+  {
+    // Which model a bot's sessions run on. Existing bots get sonnet; until now they ran on whatever `claude`
+    // defaulted to, which nobody had chosen.
+    version: "007_bot_model",
+    sql: `
+ALTER TABLE loopway.bots ADD COLUMN model text NOT NULL DEFAULT 'sonnet';
+
+ALTER TABLE loopway.bots ALTER COLUMN model DROP DEFAULT;
+`,
+  },
 ];

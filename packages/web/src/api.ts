@@ -243,6 +243,8 @@ export function createApi(opts: ApiOptions) {
 
   const inboxIdsBody = z.array(z.string().refine(isUuid, "must be an inbox id")).min(1).max(100);
 
+  const modelBody = z.string().min(1).max(100);
+
   authed.get("/bots", async (c) => {
     const rows = await store.listBots(c.var.db, c.var.user.id);
     return c.json({ data: rows.map(serializeBot) });
@@ -250,12 +252,18 @@ export function createApi(opts: ApiOptions) {
 
   authed.post("/bots", async (c) => {
     const input = z
-      .object({ name: z.string().min(1).max(200), kind: z.string().min(1).max(100), inbox_ids: inboxIdsBody })
+      .object({
+        name: z.string().min(1).max(200),
+        kind: z.string().min(1).max(100),
+        model: modelBody,
+        inbox_ids: inboxIdsBody,
+      })
       .parse(await jsonBody(c));
     const bot = await store.createBot(c.var.db, {
       userId: c.var.user.id,
       name: input.name,
       kind: input.kind,
+      model: input.model,
       inboxIds: await ownedInboxIds(c, input.inbox_ids),
     });
     return c.json(serializeBot(bot), 201);
@@ -266,10 +274,15 @@ export function createApi(opts: ApiOptions) {
   authed.patch("/bots/:botId", async (c) => {
     const bot = await ownedBot(c);
     const input = z
-      .object({ name: z.string().min(1).max(200).optional(), inbox_ids: inboxIdsBody.optional() })
+      .object({
+        name: z.string().min(1).max(200).optional(),
+        model: modelBody.optional(),
+        inbox_ids: inboxIdsBody.optional(),
+      })
       .parse(await jsonBody(c));
     const updated = await store.updateBot(c.var.db, bot, {
       name: input.name,
+      model: input.model,
       inboxIds: input.inbox_ids && (await ownedInboxIds(c, input.inbox_ids)),
     });
     return c.json(serializeBot(updated));
@@ -421,6 +434,7 @@ function serializeBot(b: store.Bot) {
     id: b.id,
     name: b.name,
     kind: b.kind,
+    model: b.model,
     inbox_ids: b.inbox_ids,
     cursor: Number(b.cursor),
     created_at: iso(b.created_at),

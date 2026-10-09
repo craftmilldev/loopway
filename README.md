@@ -45,10 +45,10 @@ loopway inbox update <inbox> [--name n] [--events a,b] [--secret s] [--schema fi
 loopway events list <inbox> [--type 'com.github.pull_request.*'] [--limit 20] [--all]
 loopway events get  <inbox> <event> [--data]
 
-loopway bots create --name dev --kind github-threads --inbox <inbox>[,<inbox>]
+loopway bots create --name dev --kind github-threads --model sonnet --inbox <inbox>[,<inbox>]
 loopway bots list
 loopway bots show <bot>
-loopway bots update <bot> [--name n] [--inbox a,b]   # --inbox replaces the bot's inboxes
+loopway bots update <bot> [--name n] [--model m] [--inbox a,b]   # --inbox replaces the bot's inboxes
 loopway bots delete <bot>
 loopway bots messages <bot> [--limit 20]            # what the bot would read next
 loopway bots run [--max 3] [--interval 5] [--ttl 3600] [--no-tui]   # run your bots (see below)
