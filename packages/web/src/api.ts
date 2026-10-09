@@ -6,7 +6,7 @@ import { consoleSender, type SendEmail } from "./email.js";
 import { isUuid, LOGIN_CODE_RE, normalizeLoginCode, uuidv7 } from "./ids.js";
 import { sources } from "./sources/index.js";
 import * as store from "./store.js";
-import type { EventRow, Inbox, User } from "./store.js";
+import type { MessageRow, Inbox, User } from "./store.js";
 import { signSessionToken, verifyToken } from "./tokens.js";
 import { createWeb } from "./ui.js";
 
@@ -39,7 +39,10 @@ export function createApi(opts: ApiOptions) {
     if (err instanceof ZodError) {
       return c.json({ error: { code: "invalid_request", message: "Invalid request", details: err.issues } }, 400);
     }
-    if (err instanceof ApiError) return c.json({ error: { code: err.code, message: err.message } }, err.status);
+    if (err instanceof ApiError) {
+      const details = err.details === undefined ? {} : { details: err.details };
+      return c.json({ error: { code: err.code, message: err.message, ...details } }, err.status);
+    }
     if (err instanceof HTTPException)
       return c.json({ error: { code: "http_error", message: err.message } }, err.status);
     console.error(err);
@@ -81,7 +84,7 @@ export function createApi(opts: ApiOptions) {
     );
     if (result.kind === "rejected") throw new ApiError(result.status, "rejected", result.message);
     if (result.kind === "ignored") return c.json({ ignored: true, reason: result.reason }, 200);
-    const { id, duplicate } = await store.insertEvent(c.var.db, inbox.id, result.event);
+    const { id, duplicate } = await store.insertMessage(c.var.db, inbox.id, result.event);
     return c.json({ id, duplicate }, duplicate ? 200 : 202);
   });
 
@@ -211,32 +214,32 @@ export function createApi(opts: ApiOptions) {
     return c.body(null, 204);
   });
 
-  // Events
+  // Messages
 
-  authed.get("/inboxes/:inboxId/events", async (c) => {
+  authed.get("/inboxes/:inboxId/messages", async (c) => {
     const inbox = await ownedInbox(c);
     const q = z
       .object({
         type: z.string().min(1).optional(),
-        cursor: z.string().refine(isUuid, "cursor must be an event id").optional(),
+        cursor: z.string().refine(isUuid, "cursor must be a message id").optional(),
         limit: z.coerce.number().int().min(1).max(100).default(50),
         order: z.enum(["asc", "desc"]).default("asc"),
       })
       .parse(c.req.query());
-    const { events, nextCursor } = await store.listEvents(c.var.db, inbox.id, {
+    const { messages, nextCursor } = await store.listMessages(c.var.db, inbox.id, {
       type: q.type,
       after: q.cursor,
       limit: q.limit,
       order: q.order,
     });
-    return c.json({ data: events.map((e) => serializeEvent(e)), next_cursor: nextCursor });
+    return c.json({ data: messages.map((e) => serializeMessage(e)), next_cursor: nextCursor });
   });
 
   const ttlBody = z.object({ ttl_seconds: z.number().int().min(1).max(MAX_TTL).default(DEFAULT_TTL) });
 
-  authed.get("/inboxes/:inboxId/events/:eventId", async (c) => {
+  authed.get("/inboxes/:inboxId/messages/:messageId", async (c) => {
     const inbox = await ownedInbox(c);
-    return c.json(serializeEvent(await existingEvent(c, inbox)));
+    return c.json(serializeMessage(await existingMessage(c, inbox)));
   });
 
   // Bots
@@ -285,14 +288,22 @@ export function createApi(opts: ApiOptions) {
     const bot = await ownedBot(c);
     const input = ttlBody.extend({ lease_token: z.string().optional() }).parse(await jsonBody(c));
     const row = await store.leaseBot(c.var.db, bot.id, input.ttl_seconds, input.lease_token ?? null);
-    if (!row) throw new ApiError(409, "leased", `Bot is leased until ${iso(bot.locked_until)} by another runner`);
+    if (!row) {
+      const until = iso(bot.locked_until);
+      throw new ApiError(409, "leased", `Bot is leased until ${until} by another runner`, { expires_at: until });
+    }
     return c.json({ lease: { token: row.lock_token, expires_at: iso(row.locked_until) } });
   });
 
   authed.post("/bots/:botId/release", async (c) => {
     const bot = await ownedBot(c);
-    const { lease_token } = z.object({ lease_token: z.string().min(1) }).parse(await jsonBody(c));
-    if (!(await store.releaseBot(c.var.db, bot.id, lease_token))) throw leaseMismatch(bot);
+    const { lease_token, force } = z
+      .object({ lease_token: z.string().min(1).optional(), force: z.boolean().optional() })
+      .parse(await jsonBody(c));
+    if (force) await store.forceReleaseBot(c.var.db, bot.id);
+    else if (!lease_token)
+      throw new ApiError(400, "invalid_request", "Pass lease_token, or force: true to drop whoever's lease");
+    else if (!(await store.releaseBot(c.var.db, bot.id, lease_token))) throw leaseMismatch(bot);
     return c.body(null, 204);
   });
 
@@ -310,7 +321,7 @@ export function createApi(opts: ApiOptions) {
     const bot = await ownedBot(c);
     const q = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(c.req.query());
     const rows = await store.botMessages(c.var.db, bot.id, q.limit);
-    return c.json({ data: rows.map((e) => serializeEvent(e)) });
+    return c.json({ data: rows.map((e) => serializeMessage(e)) });
   });
 
   app.route("/", authed);
@@ -368,6 +379,7 @@ export class ApiError extends Error {
     public status: 400 | 401 | 403 | 404 | 409 | 415 | 422 | 500 | 502,
     public code: string,
     message: string,
+    public details?: unknown,
   ) {
     super(message);
   }
@@ -389,10 +401,10 @@ async function jsonBody(c: Context): Promise<unknown> {
   }
 }
 
-async function existingEvent(c: Context<Env>, inbox: Inbox): Promise<EventRow> {
-  const id = c.req.param("eventId") ?? "";
-  const row = isUuid(id) ? await store.getEvent(c.var.db, inbox.id, id) : undefined;
-  if (!row) throw new ApiError(404, "not_found", "Event not found");
+async function existingMessage(c: Context<Env>, inbox: Inbox): Promise<MessageRow> {
+  const id = c.req.param("messageId") ?? "";
+  const row = isUuid(id) ? await store.getMessage(c.var.db, inbox.id, id) : undefined;
+  if (!row) throw new ApiError(404, "not_found", "Message not found");
   return row;
 }
 
@@ -406,7 +418,7 @@ function serializeUser(u: User) {
   return { id: u.id, name: u.name, email: u.email, created_at: iso(u.created_at) };
 }
 
-function serializeEvent(e: EventRow) {
+function serializeMessage(e: MessageRow) {
   return {
     id: e.id,
     inbox_id: e.inbox_id,

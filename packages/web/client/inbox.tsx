@@ -3,7 +3,7 @@ import type { Inbox as InboxInfo } from "./dashboard.js";
 import { Layout, UserNav } from "./layout.js";
 import * as lw from "./lw.js";
 
-interface InboxEvent {
+interface InboxMessage {
   id: string;
   received_at: string;
   event: { type: string; subject?: string };
@@ -13,7 +13,7 @@ export function Inbox({ id }: { id: string }) {
   const me = lw.useMe();
   const [inbox, setInbox] = useState<InboxInfo | null>(null);
   const [missing, setMissing] = useState(false);
-  const [events, setEvents] = useState<InboxEvent[] | null>(null);
+  const [messages, setMessages] = useState<InboxMessage[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const source = lw.useSources()?.data.find((s) => s.type === inbox?.source_type);
 
@@ -32,10 +32,10 @@ export function Inbox({ id }: { id: string }) {
     async (after: string | null) => {
       const q = new URLSearchParams({ order: "desc", limit: "50" });
       if (after) q.set("cursor", after);
-      const r = await lw.api("/inboxes/" + encodeURIComponent(id) + "/events?" + q.toString());
+      const r = await lw.api("/inboxes/" + encodeURIComponent(id) + "/messages?" + q.toString());
       if (!r.ok) return lw.expired(r);
-      const body = (await r.json()) as { data: InboxEvent[]; next_cursor: string | null };
-      setEvents((prev) => (after && prev ? [...prev, ...body.data] : body.data));
+      const body = (await r.json()) as { data: InboxMessage[]; next_cursor: string | null };
+      setMessages((prev) => (after && prev ? [...prev, ...body.data] : body.data));
       setCursor(body.next_cursor);
     },
     [id],
@@ -64,8 +64,8 @@ export function Inbox({ id }: { id: string }) {
       </div>
       {inbox && source?.secret.from === "sender" && <SenderSecret inbox={inbox} source={source} onSaved={setInbox} />}
       <div>
-        {events?.map((e) => (
-          <details key={e.id} className="event">
+        {messages?.map((e) => (
+          <details key={e.id} className="message">
             <summary>
               <span className="type">{e.event.type}</span>
               <span className="muted">{e.event.subject || ""}</span>
@@ -75,9 +75,9 @@ export function Inbox({ id }: { id: string }) {
           </details>
         ))}
       </div>
-      {events?.length === 0 && (
+      {messages?.length === 0 && (
         <p className="muted" style={{ marginTop: 24 }}>
-          No events.
+          No messages.
         </p>
       )}
       <div className="form-actions">

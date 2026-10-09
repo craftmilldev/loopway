@@ -1,7 +1,7 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import { clearConfig, configure, login, whoami } from "./commands/auth.js";
-import { botMessages, createBot, deleteBot, listBots, showBot, updateBot } from "./commands/bots.js";
-import { getEvent, listEvents } from "./commands/events.js";
+import { botMessages, createBot, deleteBot, listBots, releaseBot, showBot, updateBot } from "./commands/bots.js";
+import { getMessage, listMessages } from "./commands/messages.js";
 import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
 import { runBots } from "./commands/bots-run.js";
 import type { Context } from "./context.js";
@@ -9,7 +9,7 @@ import { BOT_KINDS } from "./bots/kinds.js";
 
 export function createProgram(ctx: Context): Command {
   const program = new Command("loopway")
-    .description("Work with loopway inboxes and events from the terminal.")
+    .description("Work with loopway inboxes and messages from the terminal.")
     .version("0.1.0")
     .showHelpAfterError()
     .addHelpText(
@@ -93,19 +93,19 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
 
   inbox
     .command("show")
-    .description("show an inbox, its webhook setup, and event counts")
+    .description("show an inbox, its webhook setup, and message counts")
     .argument("<inbox>", "inbox id or name")
     .addOption(jsonOpt())
     .action((ref, opts) => showInbox(ctx, ref, opts));
 
-  // ---------- events ----------
+  // ---------- messages ----------
 
-  const events = program.command("events").alias("event").description("read an inbox's events");
+  const messages = program.command("messages").alias("message").description("read an inbox's messages");
 
-  events
+  messages
     .command("list")
     .alias("ls")
-    .description("list events")
+    .description("list messages")
     .argument("<inbox>", "inbox id or name")
     .option("--type <type>", "exact CloudEvent type, or a prefix ending in * (e.g. com.github.pull_request.*)")
     .option("--limit <n>", "page size (max 100)", positiveInt)
@@ -113,17 +113,17 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .option("--cursor <cursor>", "next_cursor from a previous page")
     .option("--all", "follow cursors and print every page")
     .addOption(jsonOpt())
-    .action((ref, opts) => listEvents(ctx, ref, opts));
+    .action((ref, opts) => listMessages(ctx, ref, opts));
 
-  events
+  messages
     .command("get")
     .alias("show")
-    .description("show one event and its payload")
+    .description("show one message and its payload")
     .argument("<inbox>", "inbox id or name")
-    .argument("<event>", "event id")
+    .argument("<message>", "message id")
     .option("--data", "print only the CloudEvent data (the webhook payload) as JSON")
     .addOption(jsonOpt())
-    .action((ref, id, opts) => getEvent(ctx, ref, id, opts));
+    .action((ref, id, opts) => getMessage(ctx, ref, id, opts));
 
   // ---------- bots ----------
 
@@ -170,6 +170,13 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .action((ref) => deleteBot(ctx, ref));
 
   bots
+    .command("release")
+    .description("drop the lease a runner left on a bot when it died, so the next `loopway bots run` can take it")
+    .argument("<bot>", "bot id or name")
+    .option("--force", "confirm: a `loopway bots run` still holding the lease loses the bot")
+    .action((ref, opts) => releaseBot(ctx, ref, opts));
+
+  bots
     .command("messages")
     .description("list the messages the bot would read next (after its cursor, oldest first)")
     .argument("<bot>", "bot id or name")
@@ -191,7 +198,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .addOption(
       new Option(
         "--ttl <seconds>",
-        "how long each bot lease lasts; it is renewed every poll (default 3600, max 43200)",
+        "how long each bot lease lasts; it is renewed every poll (default 6 × --interval, at least 30; max 43200)",
       ).argParser(positiveInt),
     )
     .option("--no-tui", "print a plain log instead of the full-screen view of threads and their transcripts")

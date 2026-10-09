@@ -30,7 +30,7 @@ export interface Inbox {
 }
 
 export interface InboxStats {
-  events: number;
+  messages: number;
 }
 
 export interface CloudEvent {
@@ -45,7 +45,7 @@ export interface CloudEvent {
   [ext: string]: unknown;
 }
 
-export interface Event {
+export interface Message {
   id: string;
   inbox_id: string;
   /** Arrival order across all inboxes; bots read by it. */
@@ -69,7 +69,7 @@ export interface Lease {
   expires_at: string;
 }
 
-export interface ListEventsQuery {
+export interface ListMessagesQuery {
   type?: string;
   limit?: number;
   order?: "asc" | "desc";
@@ -143,17 +143,17 @@ export class LoopwayClient {
     return this.request<Inbox>("PATCH", `/inboxes/${enc(inboxId)}`, input);
   }
 
-  // ---------- events ----------
+  // ---------- messages ----------
 
-  listEvents(inboxId: string, q: ListEventsQuery = {}) {
+  listMessages(inboxId: string, q: ListMessagesQuery = {}) {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(q)) if (v !== undefined) qs.set(k, String(v));
     const suffix = qs.size ? `?${qs}` : "";
-    return this.request<{ data: Event[]; next_cursor: string | null }>("GET", `${events(inboxId)}${suffix}`);
+    return this.request<{ data: Message[]; next_cursor: string | null }>("GET", `${messages(inboxId)}${suffix}`);
   }
 
-  getEvent(inboxId: string, eventId: string) {
-    return this.request<Event>("GET", `${events(inboxId)}/${enc(eventId)}`);
+  getMessage(inboxId: string, messageId: string) {
+    return this.request<Message>("GET", `${messages(inboxId)}/${enc(messageId)}`);
   }
 
   // ---------- bots ----------
@@ -181,16 +181,24 @@ export class LoopwayClient {
   /** Messages in the bot's inboxes after its cursor, oldest first. */
   async botMessages(botId: string, q: { limit?: number } = {}) {
     const suffix = q.limit ? `?limit=${q.limit}` : "";
-    return (await this.request<{ data: Event[] }>("GET", `/bots/${enc(botId)}/messages${suffix}`)).data;
+    return (await this.request<{ data: Message[] }>("GET", `/bots/${enc(botId)}/messages${suffix}`)).data;
   }
 
-  /** Takes the bot's lease, or renews it with the current token. 409 `leased` if another runner holds it. */
+  /**
+   * Takes the bot's lease, or renews it with the current token. 409 `leased` if another runner holds it,
+   * with `details.expires_at` saying until when.
+   */
   leaseBot(botId: string, opts: { ttl_seconds?: number; lease_token?: string } = {}) {
     return this.request<{ lease: Lease }>("POST", `/bots/${enc(botId)}/lease`, opts);
   }
 
   async releaseBot(botId: string, leaseToken: string) {
     await this.request("POST", `/bots/${enc(botId)}/release`, { lease_token: leaseToken });
+  }
+
+  /** Drops the bot's lease whoever holds it: for a runner that died without releasing. */
+  async forceReleaseBot(botId: string) {
+    await this.request("POST", `/bots/${enc(botId)}/release`, { force: true });
   }
 
   /** Moves the cursor forward to `seq`; it never goes backwards. 409 if the token isn't the live lease. */
@@ -240,4 +248,4 @@ export class LoopwayClient {
 }
 
 const enc = encodeURIComponent;
-const events = (inboxId: string) => `/inboxes/${enc(inboxId)}/events`;
+const messages = (inboxId: string) => `/inboxes/${enc(inboxId)}/messages`;

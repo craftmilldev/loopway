@@ -429,29 +429,29 @@ pre {
   padding: 20px;
   background: var(--paper-100);
 }
-details.event {
+details.message {
   padding: 12px 0;
   border-bottom: 1px solid var(--rule-hair);
 }
-details.event summary {
+details.message summary {
   cursor: pointer;
   display: flex;
   flex-wrap: wrap;
   gap: 4px 16px;
   align-items: baseline;
 }
-details.event .type {
+details.message .type {
   font-family: var(--font-type);
   font-size: 0.8125rem;
   color: var(--ink-900);
 }
-details.event .when {
+details.message .when {
   margin-left: auto;
   font-family: var(--font-type);
   font-size: 0.75rem;
   color: var(--ink-400);
 }
-details.event pre {
+details.message pre {
   max-height: 480px;
   overflow: auto;
 }

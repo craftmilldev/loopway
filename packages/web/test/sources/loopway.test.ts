@@ -50,7 +50,7 @@ describe("loopway webhooks", () => {
 
     const r = await sendLoopway(inbox, { type: "build.finished", id: "build-42", data: { ok: true } });
     expect(r.status).toBe(202);
-    const e = (await call("GET", `/inboxes/${inbox.id}/events`, { key })).body.data[0];
+    const e = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data[0];
     expect(e.event).toEqual({
       specversion: "1.0",
       id: expect.stringMatching(/^[0-9a-f-]{36}$/),
@@ -69,7 +69,7 @@ describe("loopway webhooks", () => {
     const msg = { type: "build.finished", id: 42, data: null };
     expect((await sendLoopway(inbox, msg)).status).toBe(202);
     expect((await sendLoopway(inbox, msg)).status).toBe(202);
-    const events = (await call("GET", `/inboxes/${inbox.id}/events`, { key })).body.data;
+    const events = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data;
     expect(events.map((e: { event: { subject: string } }) => e.event.subject)).toEqual([
       "build.finished/42",
       "build.finished/42",
