@@ -825,6 +825,23 @@ describe("threads", () => {
     expect(runs[1]!.message).toContain(`loopway messages get ${b.id} `);
   });
 
+  it("ignores issues labeled future that have no session, but not ones already being worked", async () => {
+    const { inbox, runs, d, cursor, newest } = await setup(3);
+    const labels = [{ name: "future" }];
+    await send(inbox, "issues", { action: "opened", issue: { number: 1, labels }, repository });
+    await send(inbox, "issue_comment", { ...comment(1), issue: { number: 1, labels } });
+    await send(inbox, "issues", issue("opened", 2));
+    await d.tick();
+    expect(runs).toHaveLength(1);
+    expect(Object.values(await sessions()).map((s: any) => s.keys)).toEqual([["a/b#2"]]);
+    expect(await cursor()).toBe(await newest());
+
+    // A label added mid-work doesn't cut off a thread that already has a session.
+    await send(inbox, "issues", { action: "labeled", issue: { number: 2, labels }, repository });
+    await d.tick();
+    expect((await sessions())[runs[0]!.sessionId].waiting).toHaveLength(1);
+  });
+
   it("skips a bot leased by another runner, and picks it up once released", async () => {
     const { inbox, bot, client, runs, out, d, cursor } = await setup(3);
     const other = (await client.leaseBot(bot.id, { ttl_seconds: 60 })).lease;
