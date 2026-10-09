@@ -32,7 +32,9 @@ async function openPostgres(url: string): Promise<Db> {
   const u = new URL(url);
   u.searchParams.delete("channel_binding");
   // prepare:false: Neon's pooled endpoint (-pooler) is PgBouncer in transaction mode.
-  const sql = postgres(u.toString(), { prepare: false, max: 5, idle_timeout: 20 });
+  // onnotice: no-op, since postgres.js console.logs NOTICEs by default, and our idempotent
+  // `CREATE ... IF NOT EXISTS` migration bookkeeping emits one on every run.
+  const sql = postgres(u.toString(), { prepare: false, max: 5, idle_timeout: 20, onnotice: () => {} });
   return {
     async query<T>(text: string, params: unknown[] = []) {
       const rows = await sql.unsafe(text, params as never[]);
