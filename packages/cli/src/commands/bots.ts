@@ -1,10 +1,8 @@
 import type { Bot, LoopwayClient } from "../client.js";
 import { authedClient, UsageError, type Context } from "../context.js";
 import { ago, bold, dim, fields, json, table } from "../format.js";
+import { BOT_KINDS } from "../threads/kinds.js";
 import { resolveInbox } from "./inboxes.js";
-
-/** The kinds this CLI knows how to run. The server stores any string. */
-export const BOT_KINDS = ["github-threads"] as const;
 
 interface JsonOpt {
   json?: boolean;
@@ -33,7 +31,7 @@ export async function showBot(ctx: Context, ref: string, opts: JsonOpt) {
 
 export async function createBot(ctx: Context, opts: JsonOpt & { name?: string; kind?: string; inbox?: string[] }) {
   if (!opts.name) throw new UsageError("--name is required");
-  if (!opts.kind) throw new UsageError(`--kind is required (${BOT_KINDS.join(", ")})`);
+  if (!opts.kind) throw new UsageError(`--kind is required (${Object.keys(BOT_KINDS).join(", ")})`);
   if (!opts.inbox?.length) throw new UsageError("--inbox is required");
   const client = await authedClient(ctx);
   const bot = await client.createBot({

@@ -1,75 +1,102 @@
 import { readFile } from "node:fs/promises";
-import { ApiError, type Event, type LoopwayClient } from "../client.js";
+import { ApiError, type Bot, type Event, type Lease, type LoopwayClient } from "../client.js";
 import { loadGithubBot } from "../config.js";
 import type { Context } from "../context.js";
 import { dim } from "../format.js";
 import { startMcpServer, type McpServer } from "../mcp.js";
-import { spawnClaude, threadPrompt, type RunAgent } from "./agent.js";
+import { spawnClaude, type RunAgent } from "./agent.js";
 import { botEnv } from "./github.js";
-import { route, threadKeys } from "./routing.js";
-import { editSession, loadSessions, sessionLogPath, withSessions, type Session, type Sessions } from "./store.js";
+import { BOT_KINDS, type BotKind } from "./kinds.js";
+import {
+  adoptSessions,
+  editSession,
+  loadSessions,
+  sessionLogPath,
+  withSessions,
+  type Session,
+  type Sessions,
+  type WaitingMessage,
+} from "./store.js";
 import { sessionTools } from "./tools.js";
 
 export interface ThreadsOptions {
   max?: number;
   interval?: number;
+  /** How long each bot lease lasts; it's renewed every tick. */
   ttl?: number;
 }
 
-export const DEFAULTS = { max: 3, interval: 30, ttl: 3600 };
+export const DEFAULTS = { max: 3, interval: 5, ttl: 3600 };
 
 /** What a dispatcher is doing right now, for the TUI. */
 export interface DispatcherState {
-  /** Pending events not handed to a session yet: queued behind --max runs, or waiting for their session's run to exit. */
-  raw: Event[];
-  /** This inbox's sessions. */
+  /** The bots this runner holds a lease on, and the ones it skipped because another runner holds theirs. */
+  bots: { held: Bot[]; skipped: Bot[] };
+  /** Messages assigned to a session but not delivered yet, oldest first. */
+  waiting: WaitingMessage[];
+  /** The sessions of this runner's bots. */
   sessions: Sessions;
   /** Sessions with a run in flight. */
   running: ReadonlySet<string>;
 }
 
 /**
- * Hands one inbox's events to Claude Code sessions, one per thread. Each tick:
+ * Runs the bots of this account: hands their messages to Claude Code sessions, one per thread.
+ * Each tick, per bot it holds a lease on:
  *
- * 1. routes the pending events to sessions (see routing.ts), and
- * 2. marks each session's new events processed and starts or resumes it in the background.
+ * 1. reads the messages after the bot's cursor,
+ * 2. assigns each one to a session with the bot kind's `route` (see kinds.ts), saves that, and
+ *    moves the cursor past them;
  *
- * Delivered events are context for the session, not tasks it has to mark done. Sessions talk back
- * through the MCP tools in tools.ts, and `end` is what finishes a thread.
+ * then starts or resumes, in the background, every session that has waiting messages and no run in
+ * flight, as far as --max allows.
+ *
+ * Delivered messages are context for the session, not tasks it has to mark done; the inbox's events
+ * are left alone. Sessions talk back through the MCP tools in tools.ts, and `end` is what finishes
+ * a thread.
  */
 export class Dispatcher {
   /** Session id → its run in flight. */
   private readonly running = new Map<string, Promise<void>>();
+  /** Bot id → the lease this runner holds. */
+  private readonly leases = new Map<string, Lease>();
+  /** Bots skipped last tick because another runner holds their lease. */
+  private readonly skipped = new Set<string>();
   private readonly max: number;
   private readonly ttl: number;
   private readonly runAgent: RunAgent;
   private readonly dir: string;
   private queued = 0;
-  private raw: Event[] = [];
   /** Whether a run has exited since the last tick started, and who to tell when one does. */
   private freed = false;
   private onFreed?: () => void;
 
-  static async start(
-    ctx: Context,
-    client: LoopwayClient,
-    inboxId: string,
-    opts: ThreadsOptions = {},
-  ): Promise<Dispatcher> {
-    const prompt = await threadPrompt(inboxId);
+  /** `bots` must all be of a kind in BOT_KINDS. */
+  static async start(ctx: Context, client: LoopwayClient, bots: Bot[], opts: ThreadsOptions = {}): Promise<Dispatcher> {
+    const kinds = new Map<string, BotKind>();
+    const prompts = new Map<string, string>();
+    for (const bot of bots) {
+      const kind = BOT_KINDS[bot.kind];
+      if (!kind) throw new Error(`Bot ${bot.name} has kind ${bot.kind}, which this CLI can't run.`);
+      kinds.set(bot.id, kind);
+      prompts.set(bot.id, await kind.prompt());
+    }
+    const adopted = await withSessions(ctx.configDir, (sessions) => adoptSessions(sessions, bots));
+    if (adopted) ctx.out(dim(`Adopted ${adopted} session(s) from before bots.`));
     // With a GitHub bot configured, sessions comment, push and commit as it; otherwise as the user.
-    const bot = await loadGithubBot(ctx.configDir, ctx.env);
-    const env = bot ? botEnv(ctx.env, bot) : ctx.env;
+    const gh = await loadGithubBot(ctx.configDir, ctx.env);
+    const env = gh ? botEnv(ctx.env, gh) : ctx.env;
     const mcp = await startMcpServer("loopway", sessionTools(ctx.configDir));
-    return new Dispatcher(ctx, client, inboxId, opts, prompt, mcp, env);
+    return new Dispatcher(ctx, client, bots, kinds, prompts, opts, mcp, env);
   }
 
   private constructor(
     private readonly ctx: Context,
     private readonly client: LoopwayClient,
-    private readonly inboxId: string,
+    private readonly bots: Bot[],
+    private readonly kinds: Map<string, BotKind>,
+    private readonly prompts: Map<string, string>,
     opts: ThreadsOptions,
-    private readonly prompt: string,
     private readonly mcp: McpServer,
     /** The environment each session runs with. */
     private readonly env: NodeJS.ProcessEnv,
@@ -82,22 +109,34 @@ export class Dispatcher {
 
   async tick(): Promise<void> {
     this.freed = false;
-    const pending = await this.listPending();
-    const running = new Set(this.running.keys());
-    const { deliveries, waiting } = await withSessions(this.dir, (sessions) =>
-      route(sessions, pending, { inboxId: this.inboxId, max: this.max, running }),
-    );
-    this.reportWaiting(waiting);
-    const handed = new Set([...deliveries.values()].flat().map((e) => e.id));
-    this.raw = pending.filter((e) => !handed.has(e.id));
-    for (const [id, events] of deliveries) await this.deliver(id, events);
+    for (const bot of this.bots) {
+      try {
+        if (await this.lease(bot)) await this.poll(bot);
+      } catch (err) {
+        // One bot's trouble (a flaky network, say) shouldn't stop the others; try again next tick.
+        this.ctx.out(`error: bot ${bot.name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    await this.deliverAll();
   }
 
-  /** The raw events as of the last tick, and this inbox's sessions as of now. */
+  /** The waiting messages and sessions of this runner's bots, as of now. */
   async state(): Promise<DispatcherState> {
     const all = await loadSessions(this.dir);
-    const sessions = Object.fromEntries(Object.entries(all).filter(([, s]) => s.inbox_id === this.inboxId));
-    return { raw: this.raw, sessions, running: new Set(this.running.keys()) };
+    const mine = new Set(this.bots.map((b) => b.id));
+    const sessions = Object.fromEntries(Object.entries(all).filter(([, s]) => mine.has(s.bot_id)));
+    const waiting = Object.values(sessions)
+      .flatMap((s) => s.waiting)
+      .sort((a, b) => a.id.localeCompare(b.id));
+    return {
+      bots: {
+        held: this.bots.filter((b) => this.leases.has(b.id)),
+        skipped: this.bots.filter((b) => this.skipped.has(b.id)),
+      },
+      waiting,
+      sessions,
+      running: new Set(this.running.keys()),
+    };
   }
 
   /** A session's transcript so far, or "" if it hasn't written one. */
@@ -105,7 +144,7 @@ export class Dispatcher {
     return readFile(sessionLogPath(this.dir, id), "utf8").catch(() => "");
   }
 
-  /** Resolves once a run has exited since the last tick started, freeing its slot for a waiting event. */
+  /** Resolves once a run has exited since the last tick started, freeing its slot for a waiting session. */
   slotFreed(): Promise<void> {
     if (this.freed) return Promise.resolve();
     return new Promise((resolve) => (this.onFreed = resolve));
@@ -116,36 +155,95 @@ export class Dispatcher {
     while (this.running.size) await Promise.all(this.running.values());
   }
 
-  close(): Promise<void> {
-    return this.mcp.close();
+  /** Releases the bot leases, so the next runner needn't wait out the TTL, and stops the MCP server. */
+  async close(): Promise<void> {
+    for (const [id, lease] of this.leases) {
+      // A lease that expired or was taken over is gone already; nothing to do about it on the way out.
+      await this.client.releaseBot(id, lease.token).catch(() => {});
+      this.leases.delete(id);
+    }
+    await this.mcp.close();
   }
 
-  /** Marks a session's new events processed, records that they were delivered to it, and starts its run. */
-  private async deliver(id: string, events: Event[]): Promise<void> {
-    const claimed = await this.claimAll(events);
-    const session = await withSessions(this.dir, (sessions) => {
-      if (!claimed.length) {
-        // Everything was claimed elsewhere first; a brand-new session has nothing to do.
-        if (!sessions[id]?.started) delete sessions[id];
-        return undefined;
+  /** Takes or renews the bot's lease. False, with a log line the first time, if another runner holds it. */
+  private async lease(bot: Bot): Promise<boolean> {
+    try {
+      const { lease } = await this.client.leaseBot(bot.id, {
+        ttl_seconds: this.ttl,
+        lease_token: this.leases.get(bot.id)?.token,
+      });
+      this.leases.set(bot.id, lease);
+      if (this.skipped.delete(bot.id)) this.ctx.out(`bot ${bot.name}: lease taken`);
+      return true;
+    } catch (err) {
+      if (!(err instanceof ApiError && err.code === "leased")) throw err;
+      this.leases.delete(bot.id);
+      if (!this.skipped.has(bot.id)) {
+        this.skipped.add(bot.id);
+        this.ctx.out(`bot ${bot.name} is leased by another runner; skipping it until that lease ends.`);
       }
-      const s = editSession(sessions, id);
-      s.status = "active";
-      s.events.push(...claimed.map((e) => e.id).filter((e) => !s.events.includes(e)));
-      return { ...s };
+      return false;
+    }
+  }
+
+  /** Reads the bot's messages until there are none, assigning each page to sessions and moving the cursor past it. */
+  private async poll(bot: Bot): Promise<void> {
+    for (;;) {
+      const messages = await this.client.botMessages(bot.id, { limit: 100 });
+      if (!messages.length) return;
+      await this.assign(bot, messages);
+      await this.client.advanceCursor(bot.id, messages.at(-1)!.seq, this.leases.get(bot.id)!.token);
+    }
+  }
+
+  /**
+   * Gives each message to a session, as a waiting message. Messages already assigned (the last run
+   * died between saving and moving the cursor) are skipped.
+   */
+  private assign(bot: Bot, messages: Event[]): Promise<void> {
+    const kind = this.kinds.get(bot.id)!;
+    return withSessions(this.dir, (sessions) => {
+      const known = new Set(Object.values(sessions).flatMap((s) => [...s.events, ...s.waiting.map((m) => m.id)]));
+      for (const e of messages) {
+        if (known.has(e.id)) continue;
+        const { session, key } = kind.route(sessions, bot.id, e);
+        editSession(sessions, session).waiting.push({ id: e.id, inbox_id: e.inbox_id, type: e.event.type, key });
+      }
     });
+  }
+
+  /** Starts or resumes every session with waiting messages and no run in flight, oldest first, while --max allows. */
+  private async deliverAll(): Promise<void> {
+    const running = new Set(this.running.keys());
+    const { deliveries, held } = await withSessions(this.dir, (sessions) => {
+      const ready = Object.keys(sessions)
+        .filter((id) => sessions[id]!.waiting.length && !running.has(id) && this.prompts.has(sessions[id]!.bot_id))
+        .sort((a, b) => sessions[a]!.waiting[0]!.id.localeCompare(sessions[b]!.waiting[0]!.id));
+      const deliveries = new Map<string, { session: Session; messages: WaitingMessage[] }>();
+      for (const id of ready) {
+        if (running.size + deliveries.size >= this.max) break;
+        const s = editSession(sessions, id);
+        const messages = s.waiting.splice(0);
+        s.events.push(...messages.map((m) => m.id));
+        s.status = "active";
+        deliveries.set(id, { session: { ...s }, messages });
+      }
+      return { deliveries, held: ready.length - deliveries.size };
+    });
+    this.reportWaiting(held);
     // Not awaited: each session runs in the background, so threads proceed in parallel and the
     // next tick isn't held up. `running` tracks them for --max and for batching.
-    if (session) this.running.set(id, this.run(id, session, claimed));
+    for (const [id, { session, messages }] of deliveries) this.running.set(id, this.run(id, session, messages));
   }
 
-  /** One agent run for a session: start it with the prompt, or resume it with just the new events. */
-  private async run(id: string, session: Session, events: Event[]): Promise<void> {
+  /** One agent run for a session: start it with the prompt, or resume it with just the new messages. */
+  private async run(id: string, session: Session, messages: WaitingMessage[]): Promise<void> {
     const short = id.slice(0, 8);
-    const what = `${session.keys.join(", ") || "new thread"} (${events.length} event${events.length === 1 ? "" : "s"})`;
+    const what = `${session.keys.join(", ") || "new thread"} (${messages.length} message${messages.length === 1 ? "" : "s"})`;
     this.ctx.out(`${session.started ? "resumed" : "started"} ${short} for ${what}`);
 
-    const message = (session.started ? "" : this.prompt + "\n\n") + describeEvents(events);
+    const prompt = this.prompts.get(session.bot_id)!;
+    const message = (session.started ? "" : prompt + "\n\n") + describeMessages(messages);
     let code: number;
     try {
       code = await this.runAgent({
@@ -172,43 +270,17 @@ export class Dispatcher {
     this.onFreed?.();
   }
 
-  /** Locks each event, so no other consumer gets it too, then marks it processed with that lock. */
-  private async claimAll(events: Event[]): Promise<Event[]> {
-    const claimed: Event[] = [];
-    for (const e of events) {
-      try {
-        const l = await this.client.lock(this.inboxId, e.id, { ttl_seconds: this.ttl });
-        claimed.push(await this.client.processed(this.inboxId, e.id, { lock_token: l.lock.token }));
-      } catch (err) {
-        // Someone else claimed it between the list and the lock; it's theirs now.
-        if (!(err instanceof ApiError && err.code === "locked")) throw err;
-      }
-    }
-    return claimed;
-  }
-
-  private async listPending(): Promise<Event[]> {
-    const query = { status: "pending", order: "asc", limit: 100 } as const;
-    let page = await this.client.listEvents(this.inboxId, query);
-    const events = [...page.data];
-    while (page.next_cursor) {
-      page = await this.client.listEvents(this.inboxId, { ...query, cursor: page.next_cursor });
-      events.push(...page.data);
-    }
-    return events;
-  }
-
-  /** Says how many events are queued behind --max, only when that number changes. */
-  private reportWaiting(waiting: number): void {
-    if (waiting === this.queued) return;
-    this.queued = waiting;
-    if (waiting) this.ctx.out(dim(`${waiting} event(s) waiting: ${this.max} sessions are already running.`));
+  /** Says how many sessions are held back by --max, only when that number changes. */
+  private reportWaiting(held: number): void {
+    if (held === this.queued) return;
+    this.queued = held;
+    if (held) this.ctx.out(dim(`${held} session(s) waiting: ${this.max} sessions are already running.`));
   }
 }
 
-function describeEvents(events: Event[]): string {
-  const lines = events.map((e) =>
-    `- ${e.id}  ${e.event.type}  ${threadKeys(e).key ?? e.event.subject ?? ""}`.trimEnd(),
+function describeMessages(messages: WaitingMessage[]): string {
+  const lines = messages.map(
+    (m) => `- ${m.id}  ${m.type}  ${m.key ?? ""}  (read: loopway events get ${m.inbox_id} ${m.id} --data)`,
   );
-  return `New events for this thread:\n${lines.join("\n")}`;
+  return `New messages for this thread:\n${lines.join("\n")}`;
 }

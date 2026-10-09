@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo } from "node:net";
 
 /**
- * A minimal MCP server (streamable HTTP, JSON responses only) on 127.0.0.1, so `loopway threads` can
+ * A minimal MCP server (streamable HTTP, JSON responses only) on 127.0.0.1, so `loopway bots run` can
  * give each Claude Code session tools that talk straight back to the dispatcher. Each session gets its
  * own URL (`/<secret>/<session>`); the random secret keeps other local processes from guessing one.
  */

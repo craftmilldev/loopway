@@ -74,8 +74,13 @@ export interface Bot {
   created_at: string;
 }
 
+export interface Lease {
+  token: string;
+  expires_at: string;
+}
+
 export interface LockedEvent extends Event {
-  lock: { token: string; expires_at: string };
+  lock: Lease;
 }
 
 export interface ListEventsQuery {
@@ -209,6 +214,20 @@ export class LoopwayClient {
   async botMessages(botId: string, q: { limit?: number } = {}) {
     const suffix = q.limit ? `?limit=${q.limit}` : "";
     return (await this.request<{ data: Event[] }>("GET", `/bots/${enc(botId)}/messages${suffix}`)).data;
+  }
+
+  /** Takes the bot's lease, or renews it with the current token. 409 `leased` if another runner holds it. */
+  leaseBot(botId: string, opts: { ttl_seconds?: number; lease_token?: string } = {}) {
+    return this.request<{ lease: Lease }>("POST", `/bots/${enc(botId)}/lease`, opts);
+  }
+
+  async releaseBot(botId: string, leaseToken: string) {
+    await this.request("POST", `/bots/${enc(botId)}/release`, { lease_token: leaseToken });
+  }
+
+  /** Moves the cursor forward to `seq`; it never goes backwards. 409 if the token isn't the live lease. */
+  advanceCursor(botId: string, seq: number, leaseToken: string) {
+    return this.request<Bot>("POST", `/bots/${enc(botId)}/cursor`, { seq, lease_token: leaseToken });
   }
 
   // ---------- transport ----------

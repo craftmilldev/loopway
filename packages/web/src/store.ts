@@ -314,11 +314,14 @@ export interface Bot {
   /** bigint: the `seq` of the last message the bot has read past. */
   cursor: string | bigint;
   inbox_ids: string[];
+  /** The runner's lease, with the same TTL rules as event locks: see leaseBot(). */
+  lock_token: string | null;
+  locked_until: Date | null;
   created_at: Date;
 }
 
 const BOT_COLS = `
-  b.id, b.user_id, b.name, b.kind, b.cursor, b.created_at,
+  b.id, b.user_id, b.name, b.kind, b.cursor, b.lock_token, b.locked_until, b.created_at,
   COALESCE((SELECT jsonb_agg(bi.inbox_id ORDER BY bi.inbox_id) FROM loopway.bot_inboxes bi WHERE bi.bot_id = b.id),
            '[]'::jsonb) AS inbox_ids`;
 
@@ -387,6 +390,50 @@ export async function updateBot(db: Db, bot: Bot, patch: { name?: string; inboxI
 
 export async function deleteBot(db: Db, id: string): Promise<void> {
   await db.query(`UPDATE loopway.bots SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`, [id]);
+}
+
+/**
+ * Lease the bot to a runner. Succeeds if nobody holds a live lease, or the bot is already leased with
+ * `currentToken` (in which case the lease is extended and the token kept).
+ */
+export async function leaseBot(
+  db: Db,
+  botId: string,
+  ttlSeconds: number,
+  currentToken: string | null,
+): Promise<Bot | undefined> {
+  const [row] = await db.query<Bot>(
+    `UPDATE loopway.bots b SET
+       lock_token   = CASE WHEN b.lock_token = $3 THEN b.lock_token ELSE $2 END,
+       locked_until = now() + $4::int * interval '1 second'
+     WHERE b.id = $1 AND b.deleted_at IS NULL
+       AND (b.locked_until IS NULL OR b.locked_until <= now() OR b.lock_token = $3)
+     RETURNING ${BOT_COLS}`,
+    [botId, newLockToken(), currentToken, ttlSeconds],
+  );
+  return row;
+}
+
+/** Drops the lease, if `token` is the one held. */
+export async function releaseBot(db: Db, botId: string, token: string): Promise<boolean> {
+  const rows = await db.query<{ id: string }>(
+    `UPDATE loopway.bots SET lock_token = NULL, locked_until = NULL
+     WHERE id = $1 AND deleted_at IS NULL AND lock_token = $2
+     RETURNING id`,
+    [botId, token],
+  );
+  return rows.length > 0;
+}
+
+/** Moves the cursor forward to `seq` (never backwards), if `token` is the live lease. */
+export async function advanceCursor(db: Db, botId: string, seq: number, token: string): Promise<Bot | undefined> {
+  const [row] = await db.query<Bot>(
+    `UPDATE loopway.bots b SET cursor = GREATEST(b.cursor, $2::bigint)
+     WHERE b.id = $1 AND b.deleted_at IS NULL AND b.lock_token = $3 AND b.locked_until > now()
+     RETURNING ${BOT_COLS}`,
+    [botId, seq, token],
+  );
+  return row;
 }
 
 /** Messages in the bot's inboxes after its cursor, oldest first, stopping at the first one still held back. */

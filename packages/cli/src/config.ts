@@ -9,7 +9,7 @@ export const defaultConfigDir = () => join(homedir(), ".loopway");
 export interface Config {
   api_url: string;
   api_key: string;
-  /** The GitHub bot `loopway threads` sessions act as. Set by `loopway config`; `login` keeps it. */
+  /** The GitHub bot `loopway bots run` sessions act as. Set by `loopway config`; `login` keeps it. */
   github?: GithubBot;
 }
 
@@ -49,7 +49,7 @@ export async function resolveAuth(dir: string, env: NodeJS.ProcessEnv = process.
 }
 
 /**
- * The GitHub bot for `loopway threads`: LOOPWAY_GITHUB_TOKEN / LOOPWAY_GITHUB_NAME / LOOPWAY_GITHUB_EMAIL,
+ * The GitHub bot for `loopway bots run`: LOOPWAY_GITHUB_TOKEN / LOOPWAY_GITHUB_NAME / LOOPWAY_GITHUB_EMAIL,
  * then config.json's `github`. Undefined when none of the three is set; an error when only some are.
  */
 export async function loadGithubBot(dir: string, env: NodeJS.ProcessEnv = process.env): Promise<GithubBot | undefined> {

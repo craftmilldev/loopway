@@ -1,7 +1,7 @@
 import { render } from "ink-testing-library";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Event } from "../src/client.js";
+import type { Bot } from "../src/client.js";
 import type { Session } from "../src/threads/store.js";
 import { transcriptLines } from "../src/threads/transcript.js";
 import { ThreadsTui, type Snapshot } from "../src/threads/tui.js";
@@ -9,26 +9,21 @@ import { ThreadsTui, type Snapshot } from "../src/threads/tui.js";
 const KEYS = { up: "\u001B[A", down: "\u001B[B", right: "\u001B[C", left: "\u001B[D", enter: "\r", tab: "\t" };
 
 const session = (keys: string[], status: Session["status"], updated_at: string): Session => ({
-  inbox_id: "in",
+  bot_id: "bot",
   keys,
   events: [],
+  waiting: [],
   status,
   started: true,
   created_at: updated_at,
   updated_at,
 });
 
-const rawEvent = (id: string, type: string): Event =>
-  ({
-    id,
-    inbox_id: "in",
-    status: "pending",
-    received_at: new Date().toISOString(),
-    event: { type, data: {} },
-  }) as unknown as Event;
+const bot = (name: string) => ({ id: name, name, kind: "github-threads", inbox_ids: [] }) as unknown as Bot;
 
 const snapshot: Snapshot = {
-  raw: [rawEvent("e1", "com.github.push")],
+  bots: { held: [bot("dev")], skipped: [bot("ci")] },
+  waiting: [{ id: "e1", inbox_id: "in", type: "com.github.push", key: "a/b#9" }],
   sessions: {
     "aaaaaaaa-1": session(["a/b#1"], "active", "2026-01-01T00:00:03Z"),
     "bbbbbbbb-2": session(["a/b#2", "a/b#3"], "active", "2026-01-01T00:00:02Z"),
@@ -82,30 +77,36 @@ describe("ThreadsTui", () => {
   afterEach(() => unmount?.());
 
   async function show(snap = snapshot) {
-    const app = render(
-      <ThreadsTui inbox="gh" load={async () => snap} readLog={async (id) => (id === "bbbbbbbb-2" ? log : "")} />,
-    );
+    const app = render(<ThreadsTui load={async () => snap} readLog={async (id) => (id === "bbbbbbbb-2" ? log : "")} />);
     unmount = app.unmount;
     const press = async (key: string) => (app.stdin.write(key), await sleep(30));
     await sleep(30);
     return { frame: () => app.lastFrame() ?? "", press };
   }
 
-  it("lists raw events and working, waiting and done sessions", async () => {
+  it("lists the bots, waiting messages, and working, waiting and done sessions", async () => {
     const { frame } = await show();
     const f = frame();
-    for (const s of ["Raw events (1)", "com.github.push", "Working (1)", "Waiting (1)", "Done (2)", "started aaaaaaaa"])
+    for (const s of [
+      "· dev · leased elsewhere: ci",
+      "Waiting messages (1)",
+      "com.github.push a/b#9",
+      "Working (1)",
+      "Waiting (1)",
+      "Done (2)",
+      "started aaaaaaaa",
+    ])
       expect(f).toContain(s);
     // Each section in order, done sessions newest first, and the first session selected.
     const at = (s: string) => f.indexOf(s);
-    expect(at("Raw events")).toBeLessThan(at("Working"));
-    expect(at("Working")).toBeLessThan(at("Waiting"));
-    expect(at("Waiting")).toBeLessThan(at("Done"));
+    expect(at("Waiting messages")).toBeLessThan(at("Working"));
+    expect(at("Working")).toBeLessThan(at("Waiting (1)"));
+    expect(at("Waiting (1)")).toBeLessThan(at("Done"));
     expect(at("a/b#5")).toBeLessThan(at("a/b#4"));
     expect(f).toMatch(/❯ a\/b#1/);
   });
 
-  it("moves with the arrows and tab, never onto raw events, and opens a transcript until ←", async () => {
+  it("moves with the arrows and tab, never onto waiting messages, and opens a transcript until ←", async () => {
     const { frame, press } = await show();
     await press(KEYS.up);
     expect(frame()).toMatch(/❯ a\/b#1/);
@@ -120,7 +121,7 @@ describe("ThreadsTui", () => {
     await press(KEYS.enter);
     expect(frame()).toContain("bbbbbbbb · waiting");
     expect(frame()).toContain("● Bash(Read issue #2)");
-    expect(frame()).not.toContain("Raw events");
+    expect(frame()).not.toContain("Waiting messages");
 
     await press(KEYS.left);
     expect(frame()).toMatch(/❯ a\/b#2, a\/b#3/);
@@ -138,13 +139,13 @@ describe("ThreadsTui", () => {
         session([`a/b#${i}`], "ended", `2026-01-01T00:${String(i % 60).padStart(2, "0")}:00Z`),
       ]),
     );
-    const { frame, press } = await show({ raw: [], sessions, running: new Set() });
+    const { frame, press } = await show({ bots: { held: [], skipped: [] }, waiting: [], sessions, running: new Set() });
     const rows = frame().split("\n").length;
     expect(rows).toBeLessThan(200);
     for (let i = 0; i < 60; i++) await press(KEYS.down);
     // Same height, scrolled past the top, with the selection still on screen.
     expect(frame().split("\n").length).toBe(rows);
-    expect(frame()).not.toContain("Raw events");
+    expect(frame()).not.toContain("Waiting messages");
     expect(frame()).toMatch(/❯ a\/b#/);
   });
 });

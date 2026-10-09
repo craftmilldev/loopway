@@ -40,6 +40,6 @@ export const spawnClaude: RunAgent = async (run) => {
 const PROMPT_FILE = new URL("../../prompts/thread.md", import.meta.url);
 
 /** The instructions every session starts with. */
-export async function threadPrompt(inbox: string): Promise<string> {
-  return (await readFile(PROMPT_FILE, "utf8")).replaceAll("{{inbox}}", inbox).trimEnd();
+export async function threadPrompt(): Promise<string> {
+  return (await readFile(PROMPT_FILE, "utf8")).trimEnd();
 }

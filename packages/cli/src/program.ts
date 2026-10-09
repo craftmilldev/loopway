@@ -1,11 +1,12 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import { LIST_STATUSES } from "./client.js";
 import { clearConfig, configure, login, whoami } from "./commands/auth.js";
-import { BOT_KINDS, botMessages, createBot, deleteBot, listBots, showBot, updateBot } from "./commands/bots.js";
+import { botMessages, createBot, deleteBot, listBots, showBot, updateBot } from "./commands/bots.js";
 import { getEvent, listEvents, lockEvent, markProcessed, nextEvent, unlockEvent } from "./commands/events.js";
 import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
-import { runThreads } from "./commands/threads.js";
+import { runBots } from "./commands/threads.js";
 import type { Context } from "./context.js";
+import { BOT_KINDS } from "./threads/kinds.js";
 
 export function createProgram(ctx: Context): Command {
   const program = new Command("loopway")
@@ -38,10 +39,10 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
   program
     .command("config")
     .description(
-      "set the API URL, and the GitHub bot for `loopway threads`, in ~/.loopway/config.json; run `loopway login` after",
+      "set the API URL, and the GitHub bot for `loopway bots run`, in ~/.loopway/config.json; run `loopway login` after",
     )
     .option("--url <url>", "API base URL, e.g. https://loopway.example.com (prompted for if omitted)")
-    .option("--github-token <token>", "token for the GitHub bot that threads sessions act as")
+    .option("--github-token <token>", "token for the GitHub bot that `loopway bots run` sessions act as")
     .option("--github-name <name>", "the bot's git author name")
     .option("--github-email <email>", "the bot's git author email")
     .action((opts) => configure(ctx, opts));
@@ -167,14 +168,14 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
 
   // ---------- bots ----------
 
-  const bots = program.command("bots").alias("bot").description("create, list and update bots");
+  const bots = program.command("bots").alias("bot").description("create, list, update and run bots");
   const inboxesOpt = (desc: string) => new Option("--inbox <list>", desc).argParser(splitList);
 
   bots
     .command("create")
     .description("create a bot that reads the given inboxes, starting from their newest message")
     .option("--name <name>", "bot name")
-    .addOption(new Option("--kind <kind>", "what the bot does").choices(BOT_KINDS))
+    .addOption(new Option("--kind <kind>", "what the bot does").choices(Object.keys(BOT_KINDS)))
     .addOption(inboxesOpt("comma-separated inbox ids or names"))
     .addOption(jsonOpt())
     .action((opts) => createBot(ctx, opts));
@@ -217,29 +218,25 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .addOption(jsonOpt())
     .action((ref, opts) => botMessages(ctx, ref, opts));
 
-  // ---------- threads ----------
-
-  program
-    .command("threads")
-    .alias("thread")
+  bots
+    .command("run")
     .description(
-      "run a Claude Code session per issue/PR thread: poll an inbox and hand each pending event to its thread's session, starting one if none matches",
+      "run your bots: read each one's messages and hand them to a Claude Code session per issue/PR thread, starting one if none matches",
     )
-    .argument("<inbox>", "inbox id or name")
     .option(
       "--max <n>",
       "most sessions running at once; sessions waiting on their thread don't count (default 3)",
       positiveInt,
     )
-    .option("--interval <seconds>", "seconds between polls (default 30)", positiveInt)
+    .option("--interval <seconds>", "seconds between polls (default 5)", positiveInt)
     .addOption(
       new Option(
         "--ttl <seconds>",
-        "lock duration while claiming an event, before it is marked processed (default 3600, max 43200)",
+        "how long each bot lease lasts; it is renewed every poll (default 3600, max 43200)",
       ).argParser(positiveInt),
     )
     .option("--no-tui", "print a plain log instead of the full-screen view of threads and their transcripts")
-    .action((ref, opts) => runThreads(ctx, ref, opts));
+    .action((opts) => runBots(ctx, opts));
 
   return program;
 }
