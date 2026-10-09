@@ -597,7 +597,7 @@ describe("threads", () => {
     await d.tick();
     expect(runs).toHaveLength(1);
     const [first] = runs;
-    const delivered = (await list("pending")).map((e: any) => e.id);
+    const delivered = (await list()).map((e: any) => e.id);
 
     // The run stops for the limit after taking its messages: they stay delivered, and nothing starts.
     await finish({ code: 1, delivered: true, limitedUntil: Date.now() + 300 });
@@ -621,7 +621,7 @@ describe("threads", () => {
     const retry = runs.find((r) => r.sessionId === first!.sessionId && r !== first)!;
     expect(retry.resume).toBe(true);
     expect(retry.message).toMatch(/^Your last run stopped because the account hit its usage limit/);
-    expect(retry.message).toContain((await list("pending")).find((e: any) => e.event.type.includes("comment")).id);
+    expect(retry.message).toContain((await list()).find((e: any) => e.event.type.includes("comment")).id);
     for (const id of delivered) expect(retry.message).not.toContain(id);
     const after = await d.state();
     expect(after.waiting).toEqual([]);
@@ -648,7 +648,7 @@ describe("threads", () => {
     await d.tick();
     expect(runs).toHaveLength(1);
     const [first] = runs;
-    const delivered = (await list("pending")).map((e: any) => e.id);
+    const delivered = (await list()).map((e: any) => e.id);
 
     // The run stops for the limit before taking its messages: they go back to waiting.
     await finish({ code: 1, delivered: false, limitedUntil: Date.now() + 300 });
