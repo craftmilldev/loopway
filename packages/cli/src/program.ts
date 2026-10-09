@@ -101,33 +101,29 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
   // ---------- messages ----------
 
   const messages = program.command("messages").alias("message").description("read an inbox's messages");
-  // Deprecated: `events` was the old name for `messages`.
-  const events = program.command("events", { hidden: true }).alias("event").description("deprecated alias of messages");
 
-  for (const group of [messages, events]) {
-    group
-      .command("list")
-      .alias("ls")
-      .description("list messages")
-      .argument("<inbox>", "inbox id or name")
-      .option("--type <type>", "exact CloudEvent type, or a prefix ending in * (e.g. com.github.pull_request.*)")
-      .option("--limit <n>", "page size (max 100)", positiveInt)
-      .addOption(new Option("--order <order>", "sort by arrival").choices(["asc", "desc"]))
-      .option("--cursor <cursor>", "next_cursor from a previous page")
-      .option("--all", "follow cursors and print every page")
-      .addOption(jsonOpt())
-      .action((ref, opts) => listMessages(ctx, ref, opts));
+  messages
+    .command("list")
+    .alias("ls")
+    .description("list messages")
+    .argument("<inbox>", "inbox id or name")
+    .option("--type <type>", "exact CloudEvent type, or a prefix ending in * (e.g. com.github.pull_request.*)")
+    .option("--limit <n>", "page size (max 100)", positiveInt)
+    .addOption(new Option("--order <order>", "sort by arrival").choices(["asc", "desc"]))
+    .option("--cursor <cursor>", "next_cursor from a previous page")
+    .option("--all", "follow cursors and print every page")
+    .addOption(jsonOpt())
+    .action((ref, opts) => listMessages(ctx, ref, opts));
 
-    group
-      .command("get")
-      .alias("show")
-      .description("show one message and its payload")
-      .argument("<inbox>", "inbox id or name")
-      .argument("<message>", "message id")
-      .option("--data", "print only the CloudEvent data (the webhook payload) as JSON")
-      .addOption(jsonOpt())
-      .action((ref, id, opts) => getMessage(ctx, ref, id, opts));
-  }
+  messages
+    .command("get")
+    .alias("show")
+    .description("show one message and its payload")
+    .argument("<inbox>", "inbox id or name")
+    .argument("<message>", "message id")
+    .option("--data", "print only the CloudEvent data (the webhook payload) as JSON")
+    .addOption(jsonOpt())
+    .action((ref, id, opts) => getMessage(ctx, ref, id, opts));
 
   // ---------- bots ----------
 

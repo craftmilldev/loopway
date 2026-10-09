@@ -337,13 +337,6 @@ describe("messages", () => {
     expect(JSON.parse(await run("messages", "get", inbox.id, id, "--data"))).toEqual(pr(1));
   });
 
-  it("keeps `events` as an alias", async () => {
-    await configured();
-    const inbox = await inboxWithEvents(1);
-    const id = (await runJson("events", "list", inbox.id)).data[0].id;
-    expect(JSON.parse(await run("events", "get", inbox.id, id, "--data"))).toEqual(pr(1));
-  });
-
   it("rejects bad numbers before calling the API", async () => {
     await configured();
     await expect(run("messages", "list", "x", "--limit", "0")).rejects.toThrow(/positive integer/);
