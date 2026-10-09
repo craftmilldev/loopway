@@ -4,7 +4,7 @@ import { loadGithubBot } from "../config.js";
 import type { Context } from "../context.js";
 import { dim } from "../format.js";
 import { startMcpServer, type McpServer } from "../mcp.js";
-import { spawnClaude, type RunAgent } from "./agent.js";
+import { spawnClaude, type RunAgent, type RunOutcome } from "./agent.js";
 import { botEnv } from "./github.js";
 import { BOT_KINDS, type BotKind } from "./kinds.js";
 import {
@@ -67,6 +67,8 @@ export class Dispatcher {
   private readonly runAgent: RunAgent;
   private readonly dir: string;
   private queued = 0;
+  /** While a run says the account hit its usage limit: when the limit resets (ms), until which nothing is delivered. */
+  private limitedUntil = 0;
   /** Whether a run has exited since the last tick started, and who to tell when one does. */
   private freed = false;
   private onFreed?: () => void;
@@ -212,8 +214,17 @@ export class Dispatcher {
     });
   }
 
-  /** Starts or resumes every session with waiting messages and no run in flight, oldest first, while --max allows. */
+  /**
+   * Starts or resumes every session with waiting messages and no run in flight, oldest first, while
+   * --max allows. Delivers nothing while the usage limit a run hit hasn't reset yet; messages keep
+   * queueing up and go out on the first tick after it does.
+   */
   private async deliverAll(): Promise<void> {
+    if (Date.now() < this.limitedUntil) return;
+    if (this.limitedUntil) {
+      this.limitedUntil = 0;
+      this.ctx.out("usage limit reset; resuming sessions");
+    }
     const running = new Set(this.running.keys());
     const { deliveries, held } = await withSessions(this.dir, (sessions) => {
       const ready = Object.keys(sessions)
@@ -244,9 +255,9 @@ export class Dispatcher {
 
     const prompt = this.prompts.get(session.bot_id)!;
     const message = (session.started ? "" : prompt + "\n\n") + describeMessages(messages);
-    let code: number;
+    let outcome: RunOutcome;
     try {
-      code = await this.runAgent({
+      outcome = await this.runAgent({
         sessionId: id,
         resume: session.started,
         message,
@@ -255,16 +266,26 @@ export class Dispatcher {
         env: this.env,
       });
     } catch (err) {
-      code = -1;
+      outcome = { code: -1 };
       this.ctx.out(`error: ${short} failed to start: ${err instanceof Error ? err.message : String(err)}`);
     }
 
+    const { code, limitedUntil } = outcome;
     const ended = await withSessions(this.dir, (sessions) => {
       const s = editSession(sessions, id);
       s.started = true;
+      if (limitedUntil) {
+        // The run never got to these messages: deliver them again once the limit resets.
+        const ids = new Set(messages.map((m) => m.id));
+        s.events = s.events.filter((e) => !ids.has(e));
+        s.waiting.unshift(...messages);
+      }
       return s.status === "ended";
     });
-    this.ctx.out(`${short} ${ended ? "ended" : "finished"} (exit ${code})`);
+    if (limitedUntil) {
+      this.limitedUntil = Math.max(this.limitedUntil, limitedUntil);
+      this.ctx.out(`${short} hit the usage limit; retrying sessions after ${new Date(limitedUntil).toLocaleString()}`);
+    } else this.ctx.out(`${short} ${ended ? "ended" : "finished"} (exit ${code})`);
     this.running.delete(id);
     this.freed = true;
     this.onFreed?.();

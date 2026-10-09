@@ -84,6 +84,8 @@ In a terminal, `loopway bots run` takes over the screen. The header names the bo
 3. The assignments are saved to `threads.json`, then the cursor is moved past them with `POST /bots/:id/cursor`. If the runner dies between the two, the messages come back next tick and are skipped as already assigned.
 4. Every session with waiting messages and no run in flight gets them all in one run (`claude -p --permission-mode auto`, then `claude --resume`), oldest first, while `--max` allows. `--max` caps runs in flight, not sessions: a session waiting for its next message doesn't count, so any number can wait.
 
+**Usage limits.** When a run stops because the account hit its Claude usage limit (Claude Code reports a rejected `rate_limit_event` with the reset time, then a `result` with `api_error: usage_limit_reached`), its messages go back to waiting and the runner delivers nothing to any session until the limit resets, then retries them on its next tick. Messages keep being read and assigned meanwhile. Without a reset time it waits 5 minutes. The hold lives in the runner process: a restarted runner retries right away and learns the reset time again if the limit still holds.
+
 A thread is an issue and the PRs linked to it, keyed by `owner/repo#number`. A new session starts with the prompt in [`packages/cli/prompts/thread.md`](packages/cli/prompts/thread.md). Bot kinds live in `packages/cli/src/threads/kinds.ts`, a map from kind to how it routes messages and the prompt it uses.
 
 Sessions talk back to the dispatcher over MCP: it serves a `loopway` server on 127.0.0.1 (one URL per session, passed with `--mcp-config`) with two tools:
