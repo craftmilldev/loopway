@@ -23,6 +23,7 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     return;
   }
   const interval = opts.interval ?? DEFAULTS.interval;
+  opts = { ...opts, ttl: opts.ttl ?? defaultTtl(interval) };
   const names = bots.map((b) => b.name).join(", ");
   const watching = `Running ${names} every ${interval}s (at most ${opts.max ?? DEFAULTS.max} sessions running at once).`;
 
@@ -55,6 +56,12 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
   // the claude sessions this dispatcher started stop with it.
   process.kill(0, "SIGINT");
 }
+
+/**
+ * The lease TTL when --ttl isn't given. The lease is renewed every poll, so it lasts several polls: one
+ * slow renewal mustn't lose it. The floor keeps a tiny --interval from making it fragile.
+ */
+export const defaultTtl = (interval: number) => Math.max(DEFAULTS.ttl, 6 * interval);
 
 /** How long an exit waits for the leases to be released before going ahead without. */
 const RELEASE_TIMEOUT_MS = 5000;

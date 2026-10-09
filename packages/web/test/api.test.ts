@@ -347,26 +347,21 @@ describe("bot leases", () => {
     expect((await call("POST", `${base}/cursor`, { key, body: { seq: 9, lease_token: token } })).status).toBe(409);
   });
 
-  it("the lease a dead runner left can be taken over or released by force", async () => {
+  it("the lease a dead runner left can be released by force", async () => {
     const key = await newUser();
     const inbox = await newInbox(key);
     const bot = (await call("POST", "/bots", { key, body: { name: "b", kind: "k", inbox_ids: [inbox.id] } })).body;
     const base = `/bots/${bot.id}`;
     const dead = (await call("POST", `${base}/lease`, { key, body: { ttl_seconds: 3600 } })).body.lease.token;
+    expect((await call("POST", `${base}/lease`, { key })).status).toBe(409);
 
-    const taken = await call("POST", `${base}/lease`, { key, body: { force: true } });
-    expect(taken.status).toBe(200);
-    expect(taken.body.lease.token).not.toBe(dead);
+    expect((await call("POST", `${base}/release`, { key, body: { force: true } })).status).toBe(204);
+    // Forcing again, with nothing held, is fine too.
+    expect((await call("POST", `${base}/release`, { key, body: { force: true } })).status).toBe(204);
+    const next = await call("POST", `${base}/lease`, { key });
+    expect(next.status).toBe(200);
+    expect(next.body.lease.token).not.toBe(dead);
     expect((await call("POST", `${base}/cursor`, { key, body: { seq: 1, lease_token: dead } })).status).toBe(409);
-    // Renewing the live token under force keeps it.
-    const live = taken.body.lease.token;
-    expect(
-      (await call("POST", `${base}/lease`, { key, body: { force: true, lease_token: live } })).body.lease.token,
-    ).toBe(live);
-
-    expect((await call("POST", `${base}/release`, { key, body: { force: true } })).status).toBe(204);
-    expect((await call("POST", `${base}/release`, { key, body: { force: true } })).status).toBe(204);
-    expect((await call("POST", `${base}/lease`, { key })).status).toBe(200);
   });
 
   it("expired leases can be taken over", async () => {

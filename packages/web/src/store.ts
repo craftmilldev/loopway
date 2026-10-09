@@ -294,37 +294,43 @@ export async function deleteBot(db: Db, id: string): Promise<void> {
 
 /**
  * Lease the bot to a runner. Succeeds if nobody holds a live lease, or the bot is already leased with
- * `currentToken` (in which case the lease is extended and the token kept). With `force`, takes the
- * lease over whoever holds it: for a runner that died without releasing.
+ * `currentToken` (in which case the lease is extended and the token kept).
  */
 export async function leaseBot(
   db: Db,
   botId: string,
   ttlSeconds: number,
   currentToken: string | null,
-  force = false,
 ): Promise<Bot | undefined> {
   const [row] = await db.query<Bot>(
     `UPDATE loopway.bots b SET
        lock_token   = CASE WHEN b.lock_token = $3 THEN b.lock_token ELSE $2 END,
        locked_until = now() + $4::int * interval '1 second'
      WHERE b.id = $1 AND b.deleted_at IS NULL
-       AND (b.locked_until IS NULL OR b.locked_until <= now() OR b.lock_token = $3 OR $5::boolean)
+       AND (b.locked_until IS NULL OR b.locked_until <= now() OR b.lock_token = $3)
      RETURNING ${BOT_COLS}`,
-    [botId, newLockToken(), currentToken, ttlSeconds, force],
+    [botId, newLockToken(), currentToken, ttlSeconds],
   );
   return row;
 }
 
-/** Drops the lease, if `token` is the one held; with no token, whoever holds it (a runner that died). */
-export async function releaseBot(db: Db, botId: string, token: string | null): Promise<boolean> {
+/** Drops the lease, if `token` is the one held. */
+export async function releaseBot(db: Db, botId: string, token: string): Promise<boolean> {
   const rows = await db.query<{ id: string }>(
     `UPDATE loopway.bots SET lock_token = NULL, locked_until = NULL
-     WHERE id = $1 AND deleted_at IS NULL AND ($2::text IS NULL OR lock_token = $2)
+     WHERE id = $1 AND deleted_at IS NULL AND lock_token = $2
      RETURNING id`,
     [botId, token],
   );
   return rows.length > 0;
+}
+
+/** Drops the lease whoever holds it, for a runner that died without releasing. */
+export async function forceReleaseBot(db: Db, botId: string): Promise<void> {
+  await db.query(
+    `UPDATE loopway.bots SET lock_token = NULL, locked_until = NULL WHERE id = $1 AND deleted_at IS NULL`,
+    [botId],
+  );
 }
 
 /** Moves the cursor forward to `seq` (never backwards), if `token` is the live lease. */

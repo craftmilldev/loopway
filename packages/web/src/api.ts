@@ -286,10 +286,8 @@ export function createApi(opts: ApiOptions) {
 
   authed.post("/bots/:botId/lease", async (c) => {
     const bot = await ownedBot(c);
-    const input = ttlBody
-      .extend({ lease_token: z.string().optional(), force: z.boolean().optional() })
-      .parse(await jsonBody(c));
-    const row = await store.leaseBot(c.var.db, bot.id, input.ttl_seconds, input.lease_token ?? null, input.force);
+    const input = ttlBody.extend({ lease_token: z.string().optional() }).parse(await jsonBody(c));
+    const row = await store.leaseBot(c.var.db, bot.id, input.ttl_seconds, input.lease_token ?? null);
     if (!row) {
       const until = iso(bot.locked_until);
       throw new ApiError(409, "leased", `Bot is leased until ${until} by another runner`, { expires_at: until });
@@ -302,10 +300,10 @@ export function createApi(opts: ApiOptions) {
     const { lease_token, force } = z
       .object({ lease_token: z.string().min(1).optional(), force: z.boolean().optional() })
       .parse(await jsonBody(c));
-    if (!lease_token && !force) {
+    if (force) await store.forceReleaseBot(c.var.db, bot.id);
+    else if (!lease_token)
       throw new ApiError(400, "invalid_request", "Pass lease_token, or force: true to drop whoever's lease");
-    }
-    if (!(await store.releaseBot(c.var.db, bot.id, force ? null : lease_token!))) throw leaseMismatch(bot);
+    else if (!(await store.releaseBot(c.var.db, bot.id, lease_token))) throw leaseMismatch(bot);
     return c.body(null, 204);
   });
 

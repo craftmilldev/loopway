@@ -11,7 +11,8 @@ import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { LoopwayClient, type Bot } from "../src/client.js";
 import { LIMIT_FALLBACK_MS, LimitWatch, threadPrompt, type AgentRun, type RunOutcome } from "../src/threads/agent.js";
-import { defaultTtl, Dispatcher } from "../src/threads/dispatcher.js";
+import { Dispatcher } from "../src/threads/dispatcher.js";
+import { defaultTtl } from "../src/commands/threads.js";
 import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
 import { botEnv } from "../src/threads/github.js";
 import type { Context } from "../src/context.js";
@@ -769,19 +770,20 @@ describe("threads", () => {
     expect((await client.leaseBot(bot.id)).lease.token).not.toBe(other.token);
   });
 
-  it("leases last a few polls by default, and `bots release --force` drops one a dead runner left", async () => {
+  it("leases are short by default, and `bots release --force` drops one a dead runner left", async () => {
     expect(defaultTtl(5)).toBe(30);
     expect(defaultTtl(10)).toBe(60);
+    expect(defaultTtl(1)).toBe(30);
     const { bot, client, d } = await setup(3);
-    const other = await Dispatcher.start(ctxOf([]), client, [bot], { interval: 10 });
+    const other = await Dispatcher.start(ctxOf([]), client, [bot]);
     closers.push(() => other.close());
     const before = Date.now();
     await other.tick();
     const leased = await client.leaseBot(bot.id).catch((e) => e);
     expect(leased).toMatchObject({ code: "leased" });
     const until = Date.parse(leased.details.expires_at);
-    expect(until).toBeGreaterThan(before + 50_000);
-    expect(until).toBeLessThanOrEqual(Date.now() + 60_000);
+    expect(until).toBeGreaterThan(before + 20_000);
+    expect(until).toBeLessThanOrEqual(Date.now() + 30_000);
 
     // That runner "dies": without --force its lease stays, with it the next runner takes the bot right away.
     await expect(run("bots", "release", bot.id)).rejects.toThrow(/Pass --force/);

@@ -22,17 +22,15 @@ import { sessionTools } from "./tools.js";
 export interface ThreadsOptions {
   max?: number;
   interval?: number;
-  /** How long each bot lease lasts; it's renewed every tick. Defaults to defaultTtl(interval). */
+  /** How long each bot lease lasts; it's renewed every tick. */
   ttl?: number;
 }
 
-export const DEFAULTS = { max: 3, interval: 5 };
-
 /**
- * The lease TTL when --ttl isn't given: a few polls, so the bots of a runner that died without releasing
- * them (killed, crashed, power lost) come free in well under a minute instead of blocking the next runner.
+ * The lease TTL is short on purpose: the bots of a runner that died without releasing them (killed,
+ * crashed, power lost) come free in well under a minute instead of blocking the next runner.
  */
-export const defaultTtl = (interval: number) => Math.max(30, 6 * interval);
+export const DEFAULTS = { max: 3, interval: 5, ttl: 30 };
 
 /** A bot another runner holds the lease on. */
 export interface SkippedBot extends Bot {
@@ -117,7 +115,7 @@ export class Dispatcher {
     private readonly env: NodeJS.ProcessEnv,
   ) {
     this.max = opts.max ?? DEFAULTS.max;
-    this.ttl = opts.ttl ?? defaultTtl(opts.interval ?? DEFAULTS.interval);
+    this.ttl = opts.ttl ?? DEFAULTS.ttl;
     this.runAgent = ctx.runAgent ?? spawnClaude;
     this.dir = ctx.configDir;
   }

@@ -186,9 +186,9 @@ export class LoopwayClient {
 
   /**
    * Takes the bot's lease, or renews it with the current token. 409 `leased` if another runner holds it,
-   * with `details.expires_at` saying until when; `force` takes it over anyway.
+   * with `details.expires_at` saying until when.
    */
-  leaseBot(botId: string, opts: { ttl_seconds?: number; lease_token?: string; force?: boolean } = {}) {
+  leaseBot(botId: string, opts: { ttl_seconds?: number; lease_token?: string } = {}) {
     return this.request<{ lease: Lease }>("POST", `/bots/${enc(botId)}/lease`, opts);
   }
 
