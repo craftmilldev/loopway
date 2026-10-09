@@ -36,10 +36,13 @@ export function threadKeys(e: Event): { key?: string; refs: string[] } {
  * 2. It's a PR that closes a known issue ("Closes #N") → that issue's session, and the PR joins it.
  * 3. Otherwise → a new session.
  *
+ * CI events with no PR (a run on main) belong to no thread and get no session.
+ *
  * New sessions and links are added to `sessions` in place, for the caller to save.
  */
-export function route(sessions: Sessions, botId: string, e: Event): { session: string; key?: string } {
+export function route(sessions: Sessions, botId: string, e: Event): { session?: string; key?: string } {
   const { key, refs } = threadKeys(e);
+  if (!key && /^com\.github\.(check_run|check_suite|workflow_run)\./.test(e.event.type)) return {};
   let id = key ? findSession(sessions, botId, key) : undefined;
   if (!id && key) {
     id = refs.map((r) => findSession(sessions, botId, r)).find(Boolean);

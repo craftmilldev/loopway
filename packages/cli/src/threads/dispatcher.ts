@@ -282,6 +282,7 @@ export class Dispatcher {
       for (const e of messages) {
         if (known.has(e.id)) continue;
         const { session, key } = kind.route(sessions, bot.id, e);
+        if (!session) continue;
         editSession(sessions, session).waiting.push({ id: e.id, inbox_id: e.inbox_id, type: e.event.type, key });
       }
     });
