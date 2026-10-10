@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { useSourceRequest } from "../ee/client/source-request.js";
 import { DashNav, Layout } from "./layout.js";
 import * as lw from "./lw.js";
 
@@ -204,9 +205,8 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
   const [all, setAll] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [secret, setSecret] = useState("");
-  const [wanted, setWanted] = useState("");
-  const [requested, setRequested] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const sourceRequest = useSourceRequest(setError);
 
   const requesting = type === REQUEST;
   // The first source is picked until the user picks another.
@@ -227,7 +227,7 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (requesting) return request();
+    if (requesting) return sourceRequest.send();
     if (!source) return;
     const events = all ? ["*"] : source.events.filter((ev) => checked.has(ev));
     if (!events.length) return setError("Pick at least one event.");
@@ -237,15 +237,6 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) return setError(await lw.message(r));
     onCreated();
-  }
-
-  async function request() {
-    setRequested(false);
-    const r = await lw.api("/sources/requests", { method: "POST", body: { description: wanted } });
-    if (r.status === 401) return lw.expired(r);
-    if (!r.ok) return setError(await lw.message(r));
-    setWanted("");
-    setRequested(true);
   }
 
   return (
@@ -281,34 +272,7 @@ function CreateInbox({ onCreated }: { onCreated: () => void }) {
         </div>
       </div>
       {requesting ? (
-        <>
-          <div className="field">
-            <label htmlFor="wanted">Which webhook do you want?</label>
-            <div className="input-wrap">
-              <input
-                id="wanted"
-                required
-                maxLength={500}
-                placeholder="e.g. Linear, https://linear.app/developers/webhooks"
-                value={wanted}
-                onChange={(e) => {
-                  setWanted(e.target.value);
-                  setRequested(false);
-                }}
-              />
-            </div>
-            <p className="hint">
-              {requested
-                ? "Thanks, we've got it. We'll open an issue for it on loopway's GitHub."
-                : "Name the service, and link its webhook docs if you have them."}
-            </p>
-          </div>
-          <div className="form-actions">
-            <button className="btn" type="submit">
-              Request it
-            </button>
-          </div>
-        </>
+        sourceRequest.fields
       ) : (
         <>
           <div className="field">
