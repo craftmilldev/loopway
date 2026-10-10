@@ -488,7 +488,7 @@ export class Dispatcher {
       this.limitedUntil = Math.max(this.limitedUntil, limitedUntil);
       this.ctx.out(`${short} hit the usage limit; retrying sessions after ${new Date(limitedUntil).toLocaleString()}`);
     } else if (retry) {
-      const network = isNetworkError(apiError!);
+      const network = isNetworkError(apiError);
       const wait = Math.min(API_ERROR_BACKOFF_MS * 2 ** prior, network ? NETWORK_ERROR_MAX_BACKOFF_MS : Infinity);
       this.errored.set(id, { retries: prior + 1, after: Date.now() + wait });
       const of = network ? "" : `/${API_ERROR_RETRIES}`;
