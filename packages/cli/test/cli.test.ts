@@ -17,6 +17,7 @@ import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
 import { botEnv } from "../src/bots/github.js";
 import type { Context } from "../src/context.js";
 import { createProgram } from "../src/program.js";
+import { ensureRunner } from "../src/bots/runner.js";
 import { withSessions } from "../src/bots/store.js";
 
 const API = "https://loopway.test";
@@ -396,6 +397,122 @@ describe("bots", () => {
     await expect(run("bots", "create", "--name", "x", "--kind", "github-threads", "--inbox", "zzz")).rejects.toThrow(
       /No inbox with id or name "zzz"/,
     );
+  });
+
+  it("imports threads.json sessions as server threads, once, and lists them", async () => {
+    await configured();
+    const inbox = await inboxWithEvents(3);
+    const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.id);
+    expect(await run("bots", "threads", "dev")).toBe("No active threads.");
+    const [m1, m2, m3] = (await runJson("messages", "list", inbox.id, "--order", "asc")).data.map((m: any) => m.id);
+    const type = "com.github.pull_request.opened";
+
+    const [live, done, strange] = [randomUUID(), randomUUID(), randomUUID()];
+    const now = new Date().toISOString();
+    const base = { bot_id: bot.id, started: true, created_at: now, updated_at: now };
+    const sessions = {
+      [live]: {
+        ...base,
+        keys: ["a/b#1", "a/b#2"],
+        status: "active",
+        messages: [m1],
+        waiting: [{ id: m3, inbox_id: inbox.id, type, key: "a/b#2" }],
+        inflight: [{ id: m2, inbox_id: inbox.id, type, key: "a/b#1" }],
+        interrupted: true,
+      },
+      [done]: { ...base, keys: ["a/b#9"], status: "ended", messages: [randomUUID()], waiting: [] },
+      // A session of another bot, and one whose key the first already holds.
+      [randomUUID()]: { ...base, bot_id: randomUUID(), keys: ["a/b#7"], status: "active", messages: [], waiting: [] },
+      [strange]: { ...base, keys: ["a/b#1"], status: "active", messages: [], waiting: [] },
+    };
+    await writeFile(join(configDir, "threads.json"), JSON.stringify(sessions));
+
+    const out = await run("bots", "threads", "import");
+    expect(out).toContain(`Skipped ${strange}`);
+    expect(out).toMatch(/Imported 2 thread\(s\); 0 already on the server/);
+    expect(JSON.parse(await readFile(join(configDir, "threads.json"), "utf8"))).toEqual(sessions);
+
+    const threads = await runJson("bots", "threads", "dev", "--status", "all");
+    expect(threads.map((t: any) => t.id).sort()).toEqual([live, done].sort());
+    expect(threads.find((t: any) => t.id === live)).toMatchObject({
+      status: "active",
+      subjects: ["a/b#1", "a/b#2"],
+      interrupted: true,
+      delivered: 1,
+      waiting: [{ id: m3, subject: "a/b#2" }],
+      inflight: [{ id: m2, subject: "a/b#1" }],
+    });
+    expect(await run("bots", "threads", "dev")).toMatch(
+      new RegExp(`${live}\\s+active\\s+a/b#1, a/b#2\\s+\\S+\\s+1\\s+1\\s+1`),
+    );
+    expect(await runJson("bots", "threads", "dev", "--status", "ended")).toHaveLength(1);
+
+    // Again: the two are already there; the odd one is retried and skipped again.
+    const again = await run("bots", "threads", "import", "--bot", "dev");
+    expect(again).toMatch(/Imported 0 thread\(s\); 2 already on the server/);
+    expect(await runJson("bots", "threads", "dev", "--status", "all")).toHaveLength(2);
+  });
+});
+
+describe("runners", () => {
+  it("keeps one id per machine, registers it, and lists what it holds", async () => {
+    const key = await configured();
+    expect(await run("runners")).toMatch(/No runners yet/);
+
+    const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
+    const first = await ensureRunner(configDir, client);
+    expect((await ensureRunner(configDir, client)).id).toBe(first.id);
+    expect(JSON.parse(await readFile(join(configDir, "runner.json"), "utf8"))).toEqual({ id: first.id });
+
+    const inbox = await inboxWithEvents(0);
+    const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.id);
+    await client.leaseBot(bot.id, { runner_id: first.id });
+    expect(await run("runners")).toMatch(new RegExp(`${first.id}\\s+\\S+\\s+dev\\s+0`));
+    expect(await runJson("runners")).toMatchObject([{ id: first.id, bots: [{ id: bot.id, name: "dev" }] }]);
+  });
+
+  it("is leased by one bots run at a time, and released when it stops", async () => {
+    const key = await configured();
+    const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
+    const runner = await ensureRunner(configDir, client);
+    const inbox = await inboxWithEvents(0);
+    const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.id);
+    const ctx: Context = { configDir, env: {}, interactive: false, out: () => {}, fetch: apiFetch };
+
+    const first = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id });
+    expect((await runJson("runners"))[0].leased_until).toEqual(expect.any(String));
+    await first.tick();
+    // Another process on the same machine (or a copy of runner.json) is refused.
+    await expect(Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id })).rejects.toThrow(
+      /runner is already in use/,
+    );
+    await first.close();
+    expect((await runJson("runners"))[0]).toMatchObject({ leased_until: null, bots: [] });
+    const second = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id });
+    await second.close();
+  });
+
+  it("owns the threads it imports, and a released thread has no owner", async () => {
+    await configured();
+    const inbox = await inboxWithEvents(0);
+    const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.id);
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const session = { bot_id: bot.id, keys: ["a/b#1"], messages: [], waiting: [], status: "active", started: true };
+    await writeFile(
+      join(configDir, "threads.json"),
+      JSON.stringify({ [id]: { ...session, created_at: now, updated_at: now } }),
+    );
+
+    await run("bots", "threads", "import");
+    const runner = (await runJson("runners"))[0];
+    expect((await runJson("bots", "threads", "dev"))[0].runner_id).toBe(runner.id);
+    expect(runner.threads).toBe(1);
+    expect(await run("bots", "threads", "dev")).toContain(runner.name);
+
+    expect(await run("bots", "threads", "release", "dev", id)).toMatch(/Released thread/);
+    expect((await runJson("bots", "threads", "dev"))[0].runner_id).toBeNull();
+    expect(await run("bots", "threads", "dev")).toMatch(/none/);
   });
 });
 

@@ -1,8 +1,10 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import { clearConfig, configure, login, whoami } from "./commands/auth.js";
+import { importBotThreads, listBotThreads, releaseBotThread } from "./commands/botThreads.js";
 import { botMessages, createBot, deleteBot, listBots, releaseBot, showBot, updateBot } from "./commands/bots.js";
 import { getMessage, listMessages } from "./commands/messages.js";
 import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
+import { listRunners } from "./commands/runners.js";
 import { runBots } from "./commands/bots-run.js";
 import type { Context } from "./context.js";
 import { BOT_KINDS } from "./bots/kinds.js";
@@ -125,6 +127,15 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .addOption(jsonOpt())
     .action((ref, id, opts) => getMessage(ctx, ref, id, opts));
 
+  // ---------- runners ----------
+
+  program
+    .command("runners")
+    .alias("runner")
+    .description("list the machines that run your bots, and the bots and threads each holds")
+    .addOption(jsonOpt())
+    .action((opts) => listRunners(ctx, opts));
+
   // ---------- bots ----------
 
   const bots = program.command("bots").alias("bot").description("create, list, update and run bots");
@@ -183,6 +194,29 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .option("--limit <n>", "how many (default 50, max 100)", positiveInt)
     .addOption(jsonOpt())
     .action((ref, opts) => botMessages(ctx, ref, opts));
+
+  const botThreads = bots
+    .command("threads")
+    .description("list a bot's threads on the server")
+    .argument("<bot>", "bot id or name")
+    .addOption(new Option("--status <status>", "which threads (default active)").choices(["active", "ended", "all"]))
+    .addOption(jsonOpt())
+    .action((ref, opts) => listBotThreads(ctx, ref, opts));
+
+  botThreads
+    .command("import")
+    .description(
+      "upload the sessions in ~/.loopway/threads.json the server doesn't have yet, owned by this machine (threads.json is left alone)",
+    )
+    .option("--bot <bot>", "only this bot's sessions (id or name; default all your bots)")
+    .action((opts) => importBotThreads(ctx, opts));
+
+  botThreads
+    .command("release")
+    .description("give up a thread whose runner is gone, so another runner can claim it")
+    .argument("<bot>", "bot id or name")
+    .argument("<thread>", "thread id")
+    .action((ref, thread) => releaseBotThread(ctx, ref, thread));
 
   bots
     .command("run")
