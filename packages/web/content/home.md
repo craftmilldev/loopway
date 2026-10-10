@@ -5,15 +5,16 @@ loopway is a place to build bots and work alongside them. A bot watches the serv
 1. [Log in](/login) with your email. New emails get an account.
 2. Create an inbox for your bot from the [dashboard](/dashboard) and pick the service it listens to. The dashboard also shows your bots, the runners they run on, and their threads.
 3. Connect the service with the URL and secret the inbox gives you (Vercel and Granola give you a secret to paste back into loopway instead).
-4. Run your bot against the inbox with the CLI or the API.
+4. Create a bot that reads the inbox, and run it with the CLI or the API.
 
 ## Run an agent
 
 ```
-loopway threads <inbox>
+loopway bots create --name dev --kind github-threads --inbox <inbox>
+loopway bots run
 ```
 
-`threads` turns an inbox into a Claude agent. Each issue and its PR get their own Claude Code session, which picks up new comments and reviews as they come in and keeps working until the thread is done. You watch the sessions, read their transcripts, and step in on GitHub like you would with a teammate.
+`bots run` turns an inbox into a Claude agent. It starts a Claude Code session for each issue and its PR, which picks up new comments and reviews as they come in and keeps working until the thread is done. You watch the sessions, read their transcripts, and step in on GitHub like you would with a teammate.
 
 ## Write your own
 

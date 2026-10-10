@@ -152,28 +152,4 @@ describe("thread ownership", () => {
     expect(await store.finishThread(db, base.split("/")[2]!, token, thread, false)).toBeUndefined();
     expect((await call("GET", `${base}/threads/${thread}`, { key })).body.status).toBe("active");
   });
-
-  it("is set by an import that names its runner, and isn't open to other users' runners", async () => {
-    const { key, base, runner } = await setup();
-    const id = randomUUID();
-    const imported = await call("POST", `${base}/threads`, {
-      key,
-      body: { id, subjects: ["a#1"], status: "active", started: true, runner_id: runner, messages: [] },
-    });
-    expect(imported.body.thread).toMatchObject({ id, runner_id: runner });
-
-    const bare = await call("POST", `${base}/threads`, {
-      key,
-      body: { id: randomUUID(), subjects: [], status: "active", started: true, messages: [] },
-    });
-    expect(bare.body.thread.runner_id).toBeNull();
-
-    const stranger = await newUser("Other");
-    const theirs = (await call("POST", "/runners", { key: stranger, body: { id: randomUUID(), name: "t" } })).body;
-    const stolen = await call("POST", `${base}/threads`, {
-      key,
-      body: { id: randomUUID(), subjects: [], status: "active", started: true, runner_id: theirs.id, messages: [] },
-    });
-    expect(stolen.status).toBe(404);
-  });
 });

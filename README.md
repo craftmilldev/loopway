@@ -94,8 +94,6 @@ Sessions talk back to the dispatcher over MCP: it serves a `loopway` server on 1
 
 Delivery doesn't touch the inbox's messages: they aren't locked or marked processed, and a session never marks them done. They're context for the thread, and `end` is what finishes it. A delivery lists each message's id, type, subject and the command that reads it, `loopway messages get <inbox> <message> --data` (a bot can read several inboxes). Each thread's transcript (stream-json) is appended to `~/.loopway/threads/<thread>.log` on the machine whose runner owns it. A runner that dies mid-run leaves the messages it was delivering inflight; the next `loopway bots run` on that machine puts them back to waiting and delivers them again.
 
-**Upgrading from `threads.json`.** Older versions kept threads in `~/.loopway/threads.json`. At startup, once the runner is leased, `bots run` syncs every session there for its bots to the server, owned by this runner: sessions the server doesn't have are created, and ones it has under this runner (from an earlier `bots threads import`) are refreshed from the file, which is newer. Then the file is renamed to `threads.json.imported` and never read again. If an import fails, the file stays and `bots run` stops with the reason; fix it and start again.
-
 The inbox's GitHub webhook needs `pull_request`, `pull_request_review` and `pull_request_review_comment` (as well as `issues` and `issue_comment`) for reviews to reach sessions.
 
 #### Acting as a GitHub bot
