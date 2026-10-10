@@ -84,6 +84,8 @@ export class Dispatcher {
   private readonly max: number;
   private readonly ttl: number;
   private readonly runnerId?: string;
+  /** This process's lease on its runner, so no other process uses the same runner id. */
+  private runnerLease?: Lease;
   private readonly runAgent: RunAgent;
   private readonly dir: string;
   private queued = 0;
@@ -111,7 +113,14 @@ export class Dispatcher {
     const gh = await loadGithubBot(ctx.configDir, ctx.env);
     const env = gh ? botEnv(ctx.env, gh) : ctx.env;
     const mcp = await startMcpServer("loopway", sessionTools(ctx.configDir));
-    return new Dispatcher(ctx, client, bots, kinds, prompts, opts, mcp, env);
+    const dispatcher = new Dispatcher(ctx, client, bots, kinds, prompts, opts, mcp, env);
+    try {
+      await dispatcher.leaseRunner();
+    } catch (err) {
+      await mcp.close();
+      throw err;
+    }
+    return dispatcher;
   }
 
   private constructor(
@@ -134,6 +143,7 @@ export class Dispatcher {
 
   async tick(): Promise<void> {
     this.freed = false;
+    await this.leaseRunner();
     for (const bot of this.bots) {
       try {
         if (await this.lease(bot)) {
@@ -202,7 +212,28 @@ export class Dispatcher {
       await this.client.releaseBot(id, lease.token).catch(() => {});
       this.leases.delete(id);
     }
+    if (this.runnerId && this.runnerLease)
+      await this.client.releaseRunner(this.runnerId, this.runnerLease.token).catch(() => {});
     await this.mcp.close();
+  }
+
+  /** Takes or renews the lease on this machine's runner. Fails if another process holds it. */
+  private async leaseRunner(): Promise<void> {
+    if (!this.runnerId) return;
+    try {
+      const { lease } = await this.client.leaseRunner(this.runnerId, {
+        ttl_seconds: this.ttl,
+        lease_token: this.runnerLease?.token,
+      });
+      this.runnerLease = lease;
+    } catch (err) {
+      if (!(err instanceof ApiError && err.code === "runner_leased")) throw err;
+      const until = leasedUntil(err);
+      throw new Error(
+        `This machine's runner is already in use by another \`loopway bots run\`${until ? ` (its lease lasts until ${clock(until)})` : ""}. Stop that one, or wait for its lease to end.`,
+        { cause: err },
+      );
+    }
   }
 
   /** Takes or renews the bot's lease. False, with a log line the first time, if another runner holds it. */

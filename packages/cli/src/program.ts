@@ -1,6 +1,6 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import { clearConfig, configure, login, whoami } from "./commands/auth.js";
-import { importBotThreads, listBotThreads } from "./commands/botThreads.js";
+import { importBotThreads, listBotThreads, releaseBotThread } from "./commands/botThreads.js";
 import { botMessages, createBot, deleteBot, listBots, releaseBot, showBot, updateBot } from "./commands/bots.js";
 import { getMessage, listMessages } from "./commands/messages.js";
 import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
@@ -206,10 +206,17 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
   botThreads
     .command("import")
     .description(
-      "upload the sessions in ~/.loopway/threads.json the server doesn't have yet (threads.json is left alone)",
+      "upload the sessions in ~/.loopway/threads.json the server doesn't have yet, owned by this machine (threads.json is left alone)",
     )
     .option("--bot <bot>", "only this bot's sessions (id or name; default all your bots)")
     .action((opts) => importBotThreads(ctx, opts));
+
+  botThreads
+    .command("release")
+    .description("give up a thread whose runner is gone, so another runner can claim it")
+    .argument("<bot>", "bot id or name")
+    .argument("<thread>", "thread id")
+    .action((ref, thread) => releaseBotThread(ctx, ref, thread));
 
   bots
     .command("run")

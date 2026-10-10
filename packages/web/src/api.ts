@@ -261,6 +261,38 @@ export function createApi(opts: ApiOptions) {
     return c.json(serializeRunner(runner));
   });
 
+  // One process at a time uses a runner id: it leases the runner while it runs, and thread writes need the lease.
+  authed.post("/runners/:runnerId/lease", async (c) => {
+    const runner = await routeRunner(c);
+    const input = ttlBody.extend({ lease_token: z.string().optional() }).parse(await jsonBody(c));
+    const row = await store.leaseRunner(
+      c.var.db,
+      c.var.user.id,
+      runner.id,
+      input.ttl_seconds,
+      input.lease_token ?? null,
+    );
+    if (!row) {
+      const until = iso(runner.locked_until);
+      throw new ApiError(409, "runner_leased", `Runner is leased until ${until} by another process`, {
+        expires_at: until,
+      });
+    }
+    return c.json({ lease: { token: row.lock_token, expires_at: iso(row.locked_until) } });
+  });
+
+  authed.post("/runners/:runnerId/release", async (c) => {
+    const runner = await routeRunner(c);
+    const { lease_token, force } = z
+      .object({ lease_token: z.string().min(1).optional(), force: z.boolean().optional() })
+      .parse(await jsonBody(c));
+    if (!force && !lease_token)
+      throw new ApiError(400, "invalid_request", "Pass lease_token, or force: true to drop whoever's lease");
+    if (!(await store.releaseRunner(c.var.db, c.var.user.id, runner.id, force ? null : lease_token!)))
+      throw new ApiError(409, "runner_lease_mismatch", "lease_token is not the runner's live lease");
+    return c.body(null, 204);
+  });
+
   // Bots
 
   const inboxIdsBody = z.array(z.string().refine(isUuid, "must be an inbox id")).min(1).max(100);
@@ -346,7 +378,7 @@ export function createApi(opts: ApiOptions) {
     return c.json({ data: rows.map((e) => serializeMessage(e)) });
   });
 
-  // Threads. Writes (except import) need the bot's live lease, so only its runner changes its threads.
+  // Threads. A thread belongs to the runner that claimed it; writing it needs that runner's live lease.
 
   const leaseToken = z.string().min(1);
   const uuid = z
@@ -367,35 +399,23 @@ export function createApi(opts: ApiOptions) {
     return c.json(serializeThread(await existingThread(c, bot)));
   });
 
-  authed.post("/bots/:botId/threads/:threadId/lease", async (c) => {
-    const bot = await ownedBot(c);
-    const thread = await existingThread(c, bot);
-    const input = ttlBody.extend({ runner_id: runnerId, lease_token: z.string().optional() }).parse(await jsonBody(c));
-    await ownedRunner(c, input.runner_id);
-    const row = await store.leaseThread(
-      c.var.db,
-      bot.id,
-      thread.id,
-      input.runner_id,
-      input.ttl_seconds,
-      input.lease_token ?? null,
-    );
-    if (!row) {
-      const until = iso(thread.locked_until);
-      throw new ApiError(409, "leased", `Thread is leased until ${until} by another runner`, {
-        expires_at: until,
-        runner_id: thread.runner_id,
-      });
-    }
-    return c.json({ lease: { token: row.lock_token, expires_at: iso(row.locked_until) } });
-  });
-
-  authed.post("/bots/:botId/threads/:threadId/release", async (c) => {
+  authed.post("/bots/:botId/threads/:threadId/claim", async (c) => {
     const bot = await ownedBot(c);
     const thread = await existingThread(c, bot);
     const { lease_token } = z.object({ lease_token: leaseToken }).parse(await jsonBody(c));
-    if (!(await store.releaseThread(c.var.db, bot.id, thread.id, lease_token))) throw threadLeaseMismatch(thread);
-    return c.body(null, 204);
+    const runner = await liveRunner(c, lease_token);
+    if (thread.runner_id && thread.runner_id !== runner.id) throw threadOwned(thread);
+    const claimed = await store.claimThread(c.var.db, c.var.user.id, bot.id, thread.id, lease_token);
+    if (!claimed) throw runnerNotLeased();
+    return c.json(serializeThread(claimed));
+  });
+
+  // The manual move, for when the thread's runner is gone: the thread has no owner until a runner claims it.
+  authed.post("/bots/:botId/threads/:threadId/release", async (c) => {
+    const bot = await ownedBot(c);
+    const thread = await existingThread(c, bot);
+    await store.releaseThread(c.var.db, bot.id, thread.id);
+    return c.json(serializeThread((await store.getThread(c.var.db, bot.id, thread.id))!));
   });
 
   authed.post("/bots/:botId/assign", async (c) => {
@@ -455,7 +475,7 @@ export function createApi(opts: ApiOptions) {
         add_subjects: threadSubjects.optional(),
       })
       .parse(await jsonBody(c));
-    requireThreadLease(thread, input.lease_token);
+    await requireOwner(c, thread, input.lease_token);
     await checkSubjects(
       c,
       bot,
@@ -464,7 +484,7 @@ export function createApi(opts: ApiOptions) {
 
     const { lease_token, add_subjects, ...fields } = input;
     if (!(await store.patchThread(c.var.db, bot.id, lease_token, thread.id, { ...fields, addSubjects: add_subjects })))
-      throw threadLeaseMismatch(thread);
+      throw runnerNotLeased();
     return c.json(serializeThread((await store.getThread(c.var.db, bot.id, thread.id))!));
   });
 
@@ -472,9 +492,9 @@ export function createApi(opts: ApiOptions) {
     const bot = await ownedBot(c);
     const thread = await existingThread(c, bot);
     const { lease_token } = z.object({ lease_token: leaseToken }).parse(await jsonBody(c));
-    requireThreadLease(thread, lease_token);
+    await requireOwner(c, thread, lease_token);
     const messages = await store.deliverThread(c.var.db, bot.id, lease_token, thread.id);
-    if (!messages) throw threadLeaseMismatch(thread);
+    if (!messages) throw runnerNotLeased();
     return c.json({ data: messages });
   });
 
@@ -484,13 +504,13 @@ export function createApi(opts: ApiOptions) {
     const { lease_token, requeue } = z
       .object({ lease_token: leaseToken, requeue: z.boolean().optional() })
       .parse(await jsonBody(c));
-    requireThreadLease(thread, lease_token);
+    await requireOwner(c, thread, lease_token);
     const done = await store.finishThread(c.var.db, bot.id, lease_token, thread.id, requeue ?? false);
-    if (!done) throw threadLeaseMismatch(thread);
+    if (!done) throw runnerNotLeased();
     return c.json({ moved: done.moved });
   });
 
-  // Takes no lease, so a runner can be going while sessions are imported.
+  // Takes no lease, so a runner can be going while sessions are imported. `runner_id` makes that runner the owner.
   authed.post("/bots/:botId/threads", async (c) => {
     const bot = await ownedBot(c);
     const input = z
@@ -501,6 +521,7 @@ export function createApi(opts: ApiOptions) {
         started: z.boolean(),
         interrupted: z.boolean().optional(),
         limited: z.boolean().optional(),
+        runner_id: runnerId.optional(),
         messages: z
           .array(
             z.object({ id: uuid, state: z.enum(["waiting", "inflight", "delivered"]), subject: z.string().optional() }),
@@ -508,6 +529,7 @@ export function createApi(opts: ApiOptions) {
           .max(10_000),
       })
       .parse(await jsonBody(c));
+    if (input.runner_id) await ownedRunner(c, input.runner_id);
     if ((await store.threadBots(c.var.db, [input.id])).size)
       throw new ApiError(409, "thread_exists", `Thread ${input.id} already exists`);
     await checkSubjects(
@@ -517,6 +539,7 @@ export function createApi(opts: ApiOptions) {
     );
     const { messages } = await store.importThread(c.var.db, bot, {
       ...(input as store.ImportedThread),
+      runnerId: input.runner_id,
       interrupted: input.interrupted ?? false,
       limited: input.limited ?? false,
     });
@@ -547,6 +570,29 @@ export function createApi(opts: ApiOptions) {
     if (!runner) throw new ApiError(404, "not_found", "Runner not found; register it with POST /runners");
     await store.touchRunner(c.var.db, runner.id);
     return runner;
+  }
+
+  /** The runner in the path, if it's the user's. */
+  async function routeRunner(c: Context<Env>): Promise<store.Runner> {
+    const id = c.req.param("runnerId") ?? "";
+    const runner = isUuid(id) ? await store.getRunner(c.var.db, c.var.user.id, id.toLowerCase()) : undefined;
+    if (!runner) throw new ApiError(404, "not_found", "Runner not found; register it with POST /runners");
+    return runner;
+  }
+
+  /** The runner holding the live lease `token`: 409 if there is none. */
+  async function liveRunner(c: Context<Env>, token: string): Promise<store.Runner> {
+    const runner = await store.runnerByToken(c.var.db, c.var.user.id, token);
+    if (!runner) throw runnerNotLeased();
+    return runner;
+  }
+
+  /** Fails fast, with the 409s the write's own check would give, unless `token` is the live lease of the thread's owner. */
+  async function requireOwner(c: Context<Env>, thread: store.Thread, token: string) {
+    const runner = await liveRunner(c, token);
+    if (!thread.runner_id)
+      throw new ApiError(409, "thread_unclaimed", "Claim the thread with POST .../claim before writing it");
+    if (thread.runner_id !== runner.id) throw threadOwned(thread);
   }
 
   async function existingThread(c: Context<Env>, bot: store.Bot): Promise<store.Thread> {
@@ -650,15 +696,12 @@ function leaseMismatch(b: store.Bot): ApiError {
   return new ApiError(409, "lease_mismatch", "lease_token is not the bot's live lease");
 }
 
-function threadLeaseMismatch(t: store.Thread): ApiError {
-  if (!t.locked_until || new Date(t.locked_until) <= new Date())
-    return new ApiError(409, "thread_not_leased", "Thread is not leased");
-  return new ApiError(409, "thread_lease_mismatch", "lease_token is not the thread's live lease");
+function runnerNotLeased(): ApiError {
+  return new ApiError(409, "runner_not_leased", "lease_token is not a live runner lease");
 }
 
-function requireThreadLease(t: store.Thread, token: string) {
-  if (!t.lock_token || t.lock_token !== token || !t.locked_until || new Date(t.locked_until) <= new Date())
-    throw threadLeaseMismatch(t);
+function threadOwned(t: store.Thread): ApiError {
+  return new ApiError(409, "thread_owned", "The thread belongs to another runner", { runner_id: t.runner_id });
 }
 
 function serializeRunner(r: store.Runner) {
@@ -667,6 +710,7 @@ function serializeRunner(r: store.Runner) {
     name: r.name,
     created_at: iso(r.created_at),
     last_seen_at: iso(r.last_seen_at),
+    leased_until: r.locked_until && new Date(r.locked_until) > new Date() ? iso(r.locked_until) : null,
     bots: r.bots,
     threads: r.threads,
   };
@@ -679,7 +723,6 @@ function requireLease(b: store.Bot, token: string) {
 }
 
 function serializeThread(t: store.Thread) {
-  const live = !!t.locked_until && new Date(t.locked_until) > new Date();
   return {
     id: t.id,
     bot_id: t.bot_id,
@@ -687,8 +730,7 @@ function serializeThread(t: store.Thread) {
     started: t.started,
     interrupted: t.interrupted,
     limited: t.limited,
-    runner_id: live ? t.runner_id : null,
-    leased_until: live ? iso(t.locked_until) : null,
+    runner_id: t.runner_id,
     subjects: t.subjects,
     waiting: t.waiting,
     inflight: t.inflight,

@@ -71,12 +71,14 @@ Message shape:
 
 ## Runners
 
-A runner is a machine running loopway. The CLI makes its id (kept in `~/.loopway/runner.json`) and registers it on startup. Leases on bots and threads record which runner holds them.
+A runner is a machine running loopway. The CLI makes its id (kept in `~/.loopway/runner.json`) and registers it on startup. A process leases its runner while it runs, so only one process uses a runner id at a time. A bot lease records which runner holds it, and a thread belongs to the runner that claimed it (see [Threads](#threads)).
 
 | Endpoint | |
 | --- | --- |
 | `POST /runners` `{id, name}` | Register the runner, or rename it and mark it seen; safe to repeat. `409 runner_exists` if the id is another user's. |
-| `GET /runners` | Your runners: `{id, name, created_at, last_seen_at, bots, threads}`, where `bots` is `[{id, name}]` for the bot leases it holds now and `threads` counts the thread leases. |
+| `POST /runners/:id/lease` `{ttl_seconds?, lease_token?}` | Take the runner's lease, or renew it by passing your current token. Returns `{lease: {token, expires_at}}`. `409 runner_leased` while another process holds a live lease, with `details.expires_at`. `ttl_seconds` defaults to 300, max 43200. |
+| `POST /runners/:id/release` `{lease_token?, force?}` | Drop the lease. `409 runner_lease_mismatch` if the token isn't the live lease. `force: true` drops whoever's, for a process that died without releasing. |
+| `GET /runners` | Your runners: `{id, name, created_at, last_seen_at, leased_until, bots, threads}`. `leased_until` is null unless a process holds the lease, `bots` is `[{id, name}]` for the bot leases it holds now, and `threads` counts the threads it owns. The lease token is never part of it. |
 
 ## Bots
 
@@ -101,9 +103,9 @@ Two webhooks landing at once can commit out of `seq` order, and a cursor that ha
 
 ## Threads
 
-A thread is an agent session working on one or more issues and PRs. It belongs to one bot, and its id is the Claude session id (a UUID made by the client). A message is assigned to at most one thread per bot. Transcripts and the Claude session itself stay on the runner's machine, so a thread is leased to a [runner](#runners): only the runner holding its lease changes it, so a thread can't run twice. The bot's lease covers reading its messages and assigning them to threads.
+A thread is an agent session working on one or more issues and PRs. It belongs to one bot, and its id is the Claude session id (a UUID made by the client). A message is assigned to at most one thread per bot. Transcripts and the Claude session itself stay on one machine, so a thread belongs to the [runner](#runners) that claimed it, until someone releases it. Only that runner, holding its live lease, changes the thread, so a thread can't run twice. The bot's lease covers reading its messages and assigning them to threads.
 
-Thread shape: `{id, bot_id, status, started, interrupted, limited, runner_id, leased_until, subjects, waiting, inflight, delivered, created_at, updated_at}`. `runner_id` and `leased_until` are null unless a runner holds a live lease; the token is never part of it.
+Thread shape: `{id, bot_id, status, started, interrupted, limited, runner_id, subjects, waiting, inflight, delivered, created_at, updated_at}`. `runner_id` is the owning runner, null until one claims the thread.
 
 - `status` is `active` or `ended`.
 - `subjects` are the things the thread works on. For GitHub, its issues and PRs (`owner/repo#number`). Assigning a message means working out the message's subjects and finding the thread that has one of them. A subject belongs to one thread per bot.
@@ -114,11 +116,11 @@ Thread shape: `{id, bot_id, status, started, interrupted, limited, runner_id, le
 | `GET /bots/:id/threads` `?status=active\|ended\|all` | List (default `active`), oldest first. |
 | `GET /bots/:id/threads/:threadId` | One thread, plus `delivered_ids`. |
 | `POST /bots/:id/assign` `{lease_token, cursor, assignments}` | In one transaction: creates the threads the bot doesn't have yet, adds subjects, inserts each message as `waiting` (one already assigned is skipped), and moves the bot's cursor forward to `cursor` (a `seq`). Each assignment is `{message_id, thread_id, add_subjects?, subject?}` (`subject` is for display). Returns `{assigned}`. The messages must be in the bot's inboxes (`400`). `409 thread_exists` if a `thread_id` is another bot's, `409 subject_taken` if a subject is on another thread. |
-| `POST /bots/:id/threads/:threadId/lease` `{runner_id, ttl_seconds?, lease_token?}` | Take the thread's lease for a runner, or renew it by passing your current token. Returns `{lease: {token, expires_at}}`. `409 leased` while another runner holds a live lease, with `details.runner_id` and `details.expires_at`. The runner must be registered (`404`). Needs no bot lease, so a runner can run threads without reading the bot. |
-| `POST /bots/:id/threads/:threadId/release` `{lease_token}` | Drop the thread's lease. `409` if the token isn't the live lease. |
+| `POST /bots/:id/threads/:threadId/claim` `{lease_token}` | Make the runner holding the live lease `lease_token` (a runner lease) the thread's owner. Fine if it already is; returns the thread. `409 thread_owned` if another runner owns it, `409 runner_not_leased` if the token isn't a live runner lease. |
+| `POST /bots/:id/threads/:threadId/release` | Give the thread up, so a runner can claim it: the manual move for when its runner is gone. Needs no lease. Returns the thread. |
 | `PATCH /bots/:id/threads/:threadId` `{lease_token, status?, started?, interrupted?, limited?, add_subjects?}` | Update. Returns the thread. |
 | `POST /bots/:id/threads/:threadId/deliver` `{lease_token}` | Moves `waiting` to `inflight`, sets `status` to `active`, and returns `{data: [message]}`. |
 | `POST /bots/:id/threads/:threadId/finish` `{lease_token, requeue?}` | Moves `inflight` to `delivered`, or back to `waiting` with `requeue: true`. Returns `{moved}`. |
-| `POST /bots/:id/threads` `{id, subjects, status, started, interrupted?, limited?, messages}` | Import a thread with this id; `messages` is `[{id, state, subject?}]` with `state` `waiting`, `inflight` or `delivered`. Needs no lease. `409 thread_exists` if the id exists, `409 subject_taken` if a subject is on another thread. Messages that don't exist are skipped. Returns `201 {thread, skipped}`. |
+| `POST /bots/:id/threads` `{id, subjects, status, started, interrupted?, limited?, runner_id?, messages}` | Import a thread with this id; `messages` is `[{id, state, subject?}]` with `state` `waiting`, `inflight` or `delivered`. Needs no lease; `runner_id` makes that runner the owner. `409 thread_exists` if the id exists, `409 subject_taken` if a subject is on another thread. Messages that don't exist are skipped. Returns `201 {thread, skipped}`. |
 
-`assign` needs the bot's live `lease_token`. `PATCH`, `deliver` and `finish` need the thread's: `409` (`thread_not_leased` or `thread_lease_mismatch`) otherwise, and nothing changes. A new thread starts unleased, for a runner to claim. Import needs no lease. An unknown thread, or one of another bot or user, is `404`.
+`assign` needs the bot's live `lease_token`. `PATCH`, `deliver` and `finish` take the live lease token of the runner that owns the thread as `lease_token`: `409` (`runner_not_leased`, `thread_unclaimed` or `thread_owned`) otherwise, and nothing changes. A new thread has no owner until a runner claims it. Import needs no lease. An unknown thread, or one of another bot or user, is `404`.

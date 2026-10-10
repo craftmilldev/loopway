@@ -23,11 +23,15 @@ async function setup(count = 3) {
   const thread = (id: string) => call("GET", `${base}/threads/${id}`, { key });
   const runner = randomUUID();
   await call("POST", "/runners", { key, body: { id: runner, name: "laptop" } });
-  /** Takes a thread's lease as the runner; returns its token. */
-  const leaseThread = async (id: string) =>
-    (await call("POST", `${base}/threads/${id}/lease`, { key, body: { runner_id: runner, ttl_seconds: 60 } })).body
-      .lease.token as string;
-  return { key, inbox, bot, base, messages, lease, assign, thread, runner, leaseThread };
+  const runnerLease = (await call("POST", `/runners/${runner}/lease`, { key, body: { ttl_seconds: 60 } })).body.lease
+    .token as string;
+  /** Claims the thread for the runner; returns the runner's lease token, which thread writes take. */
+  const leaseThread = async (id: string) => {
+    const r = await call("POST", `${base}/threads/${id}/claim`, { key, body: { lease_token: runnerLease } });
+    expect(r.status).toBe(200);
+    return runnerLease;
+  };
+  return { key, inbox, bot, base, messages, lease, assign, thread, runner, runnerLease, leaseThread };
 }
 
 describe("thread assignment", () => {

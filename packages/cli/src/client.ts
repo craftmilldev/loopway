@@ -70,9 +70,11 @@ export interface Runner {
   name: string;
   created_at: string;
   last_seen_at: string;
+  /** Until when a process holds the runner's lease; null if none does. */
+  leased_until: string | null;
   /** Bots whose live lease it holds. */
   bots: { id: string; name: string }[];
-  /** Threads whose live lease it holds. */
+  /** Threads it owns. */
   threads: number;
 }
 
@@ -92,10 +94,9 @@ export interface Thread {
   started: boolean;
   interrupted: boolean;
   limited: boolean;
-  /** Issues and PRs (`owner/repo#number`) this thread owns. */
-  /** The runner holding the thread's lease, and until when; null when unleased or expired. */
+  /** The runner that owns the thread, whose machine has its session; null until a runner claims it. */
   runner_id: string | null;
-  leased_until: string | null;
+  /** What the thread works on: for GitHub, its issues and PRs (`owner/repo#number`). */
   subjects: string[];
   waiting: ThreadMessage[];
   inflight: ThreadMessage[];
@@ -128,6 +129,8 @@ export interface ImportThread {
   started: boolean;
   interrupted?: boolean;
   limited?: boolean;
+  /** The runner that owns the thread: the one whose machine has the session. */
+  runner_id?: string;
   messages: { id: string; state: "waiting" | "inflight" | "delivered"; subject?: string }[];
 }
 
@@ -230,6 +233,23 @@ export class LoopwayClient {
     return this.request<Runner>("POST", "/runners", input);
   }
 
+  /**
+   * Takes the runner's lease for this process, or renews it with the current token. 409 `runner_leased` if another
+   * process holds it, with `details.expires_at`. Thread writes (patch, deliver, finish) take this lease's token.
+   */
+  leaseRunner(runnerId: string, opts: { ttl_seconds?: number; lease_token?: string } = {}) {
+    return this.request<{ lease: Lease }>("POST", `/runners/${enc(runnerId)}/lease`, opts);
+  }
+
+  async releaseRunner(runnerId: string, leaseToken: string) {
+    await this.request("POST", `/runners/${enc(runnerId)}/release`, { lease_token: leaseToken });
+  }
+
+  /** Drops the runner's lease whoever holds it: for a process that died without releasing. */
+  async forceReleaseRunner(runnerId: string) {
+    await this.request("POST", `/runners/${enc(runnerId)}/release`, { force: true });
+  }
+
   async listRunners() {
     return (await this.request<{ data: Runner[] }>("GET", "/runners")).data;
   }
@@ -286,7 +306,7 @@ export class LoopwayClient {
 
   // ---------- threads ----------
 
-  /** Writes need the bot's live lease token (409 `not_leased` / `lease_mismatch` otherwise); import and reads don't. */
+  /** `assign` needs the bot's live lease token; thread writes need the live lease token of the runner that owns the thread. */
   async listThreads(botId: string, status: "active" | "ended" | "all" = "active") {
     return (await this.request<{ data: Thread[] }>("GET", `/bots/${enc(botId)}/threads?status=${status}`)).data;
   }
@@ -304,19 +324,17 @@ export class LoopwayClient {
   }
 
   /**
-   * Takes the thread's lease for a runner, or renews it with the current token. 409 `leased` if another runner
-   * holds it (`details.runner_id`, `details.expires_at`). Patch, deliver and finish need this lease.
+   * Makes the runner holding the live lease `runnerLeaseToken` the thread's owner (fine if it already is). 409
+   * `thread_owned` if another runner owns it, `runner_not_leased` if the token isn't a live runner lease.
    */
-  leaseThread(
-    botId: string,
-    threadId: string,
-    opts: { runner_id: string; ttl_seconds?: number; lease_token?: string },
-  ) {
-    return this.request<{ lease: Lease }>("POST", `/bots/${enc(botId)}/threads/${enc(threadId)}/lease`, opts);
+  claimThread(botId: string, threadId: string, runnerLeaseToken: string) {
+    const path = `/bots/${enc(botId)}/threads/${enc(threadId)}/claim`;
+    return this.request<Thread>("POST", path, { lease_token: runnerLeaseToken });
   }
 
-  async releaseThread(botId: string, threadId: string, leaseToken: string) {
-    await this.request("POST", `/bots/${enc(botId)}/threads/${enc(threadId)}/release`, { lease_token: leaseToken });
+  /** Gives the thread up so a runner can claim it: for when its runner is gone. Needs no lease. */
+  releaseThread(botId: string, threadId: string) {
+    return this.request<Thread>("POST", `/bots/${enc(botId)}/threads/${enc(threadId)}/release`, {});
   }
 
   patchThread(botId: string, threadId: string, input: ThreadPatch & { lease_token: string }) {

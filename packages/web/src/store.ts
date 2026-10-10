@@ -370,19 +370,22 @@ export interface Runner {
   id: string;
   user_id: string;
   name: string;
+  /** The runner's lease: see leaseRunner(). */
+  lock_token: string | null;
+  locked_until: Date | null;
   created_at: Date;
   last_seen_at: Date;
   /** Bots whose live lease this runner holds. */
   bots: { id: string; name: string }[];
-  /** Threads whose live lease this runner holds. */
+  /** Threads this runner owns. */
   threads: number;
 }
 
 const RUNNER_COLS = `
-  r.id, r.user_id, r.name, r.created_at, r.last_seen_at,
+  r.id, r.user_id, r.name, r.lock_token, r.locked_until, r.created_at, r.last_seen_at,
   COALESCE((SELECT jsonb_agg(jsonb_build_object('id', b.id, 'name', b.name) ORDER BY b.id) FROM loopway.bots b
             WHERE b.runner_id = r.id AND b.deleted_at IS NULL AND b.locked_until > now()), '[]'::jsonb) AS bots,
-  (SELECT count(*)::int FROM loopway.threads t WHERE t.runner_id = r.id AND t.locked_until > now()) AS threads`;
+  (SELECT count(*)::int FROM loopway.threads t WHERE t.runner_id = r.id) AS threads`;
 
 /** Registers the runner, or renames it and notes it was seen. Undefined if the id is another user's. */
 export async function upsertRunner(db: Db, userId: string, id: string, name: string): Promise<Runner | undefined> {
@@ -415,6 +418,50 @@ export async function touchRunner(db: Db, id: string): Promise<void> {
   await db.query(`UPDATE loopway.runners SET last_seen_at = now() WHERE id = $1`, [id]);
 }
 
+/**
+ * Lease the runner to a process. Succeeds if nobody holds a live lease, or it's already leased with `currentToken`
+ * (in which case the lease is extended and the token kept). Only one process uses a runner id at a time.
+ */
+export async function leaseRunner(
+  db: Db,
+  userId: string,
+  id: string,
+  ttlSeconds: number,
+  currentToken: string | null,
+): Promise<Runner | undefined> {
+  const rows = await db.query<{ id: string }>(
+    `UPDATE loopway.runners r SET
+       lock_token   = CASE WHEN r.lock_token = $4 THEN r.lock_token ELSE $3 END,
+       locked_until = now() + $5::int * interval '1 second',
+       last_seen_at = now()
+     WHERE r.id = $1 AND r.user_id = $2
+       AND (r.locked_until IS NULL OR r.locked_until <= now() OR r.lock_token = $4)
+     RETURNING r.id`,
+    [id, userId, newLockToken(), currentToken, ttlSeconds],
+  );
+  return rows.length ? getRunner(db, userId, id) : undefined;
+}
+
+/** Drops the runner's lease, if `token` is the one held; or whoever's, with `token` null (a process that died). */
+export async function releaseRunner(db: Db, userId: string, id: string, token: string | null): Promise<boolean> {
+  const rows = await db.query<{ id: string }>(
+    `UPDATE loopway.runners SET lock_token = NULL, locked_until = NULL
+     WHERE id = $1 AND user_id = $2 AND ($3::text IS NULL OR lock_token = $3)
+     RETURNING id`,
+    [id, userId, token],
+  );
+  return rows.length > 0;
+}
+
+/** The runner whose live lease has this token. */
+export async function runnerByToken(db: Db, userId: string, token: string): Promise<Runner | undefined> {
+  const [row] = await db.query<Runner>(
+    `SELECT ${RUNNER_COLS} FROM loopway.runners r WHERE r.user_id = $1 AND r.lock_token = $2 AND r.locked_until > now()`,
+    [userId, token],
+  );
+  return row;
+}
+
 // ---------- Threads ----------
 
 /** Enough about an assigned message to deliver it without fetching it again. */
@@ -432,10 +479,8 @@ export interface Thread {
   started: boolean;
   interrupted: boolean;
   limited: boolean;
-  /** The runner holding the thread's lease (see leaseThread), while locked_until is in the future. */
+  /** The runner that owns the thread (see claimThread): its session lives there. Null until a runner claims it. */
   runner_id: string | null;
-  lock_token: string | null;
-  locked_until: Date | null;
   subjects: string[];
   /** Assigned, not handed to a run yet. */
   waiting: ThreadMessage[];
@@ -457,7 +502,7 @@ const threadMessages = (state: ThreadMessageState) => `
             WHERE tm.thread_id = t.id AND tm.state = '${state}'), '[]'::jsonb)`;
 
 const THREAD_COLS = `
-  t.id, t.bot_id, t.status, t.started, t.interrupted, t.limited, t.runner_id, t.lock_token, t.locked_until,
+  t.id, t.bot_id, t.status, t.started, t.interrupted, t.limited, t.runner_id,
   t.created_at, t.updated_at,
   COALESCE((SELECT jsonb_agg(k.subject ORDER BY k.subject) FROM loopway.thread_subjects k WHERE k.thread_id = t.id),
            '[]'::jsonb) AS subjects,
@@ -520,43 +565,42 @@ export async function botMessageIds(db: Db, botId: string, ids: string[]): Promi
   return new Set(rows.map((r) => r.id));
 }
 
-/** The live thread lease with token $2 on thread $3 of bot $1: the condition thread writes make inside their statement. */
-const THREAD_LEASED = `t.id = $3::uuid AND t.bot_id = $1::uuid AND t.lock_token = $2 AND t.locked_until > now()`;
+/**
+ * The thread's owner holds a live runner lease with token $2: the condition thread writes make inside their statement.
+ * Thread $3 of bot $1.
+ */
+const THREAD_OWNED = `t.id = $3::uuid AND t.bot_id = $1::uuid AND EXISTS (
+  SELECT 1 FROM loopway.runners r
+  WHERE r.id = t.runner_id AND r.lock_token = $2 AND r.locked_until > now())`;
 
 /**
- * Lease the thread to a runner. Succeeds if nobody holds a live lease, or it's already leased with `currentToken`
- * (in which case the lease is extended and the token kept). Undefined otherwise, or if the bot has no such thread.
+ * Makes the runner holding the live lease `token` the thread's owner. Fine if it already is; undefined if the
+ * thread has another owner, `token` isn't a live runner lease, or the bot has no such thread.
  */
-export async function leaseThread(
+export async function claimThread(
   db: Db,
+  userId: string,
   botId: string,
   id: string,
-  runnerId: string,
-  ttlSeconds: number,
-  currentToken: string | null,
+  token: string,
 ): Promise<Thread | undefined> {
   const rows = await db.query<{ id: string }>(
-    `UPDATE loopway.threads t SET
-       lock_token   = CASE WHEN t.lock_token = $4 THEN t.lock_token ELSE $3 END,
-       locked_until = now() + $6::int * interval '1 second',
-       runner_id    = $5::uuid
-     WHERE t.id = $1::uuid AND t.bot_id = $2::uuid
-       AND (t.locked_until IS NULL OR t.locked_until <= now() OR t.lock_token = $4)
+    `UPDATE loopway.threads t SET runner_id = r.id, updated_at = now()
+     FROM loopway.runners r
+     WHERE t.id = $4::uuid AND t.bot_id = $1::uuid AND r.user_id = $2::uuid AND t.user_id = r.user_id
+       AND r.lock_token = $3 AND r.locked_until > now() AND (t.runner_id IS NULL OR t.runner_id = r.id)
      RETURNING t.id`,
-    [id, botId, newLockToken(), currentToken, runnerId, ttlSeconds],
+    [botId, userId, token, id],
   );
   return rows.length ? getThread(db, botId, id) : undefined;
 }
 
-/** Drops the thread's lease, if `token` is the one held. */
-export async function releaseThread(db: Db, botId: string, id: string, token: string): Promise<boolean> {
-  const rows = await db.query<{ id: string }>(
-    `UPDATE loopway.threads t SET lock_token = NULL, locked_until = NULL, runner_id = NULL
-     WHERE t.id = $3::uuid AND t.bot_id = $1::uuid AND t.lock_token = $2
-     RETURNING t.id`,
-    [botId, token, id],
+/** Gives up the thread's owner, so a runner can claim it: the manual move for when its runner is gone. */
+export async function releaseThread(db: Db, botId: string, id: string): Promise<void> {
+  await db.query(
+    `UPDATE loopway.threads SET runner_id = NULL, updated_at = now() WHERE id = $2::uuid AND bot_id = $1::uuid`,
+    [botId, id],
   );
-  return rows.length > 0;
 }
 
 export interface Assignment {
@@ -618,7 +662,7 @@ export interface ThreadPatch {
   addSubjects?: string[];
 }
 
-/** False unless `token` is the live lease on the thread. */
+/** False unless `token` is the live lease of the thread's owner. */
 export async function patchThread(
   db: Db,
   botId: string,
@@ -634,7 +678,7 @@ export async function patchThread(
          interrupted = COALESCE($6::boolean, t.interrupted),
          limited     = COALESCE($7::boolean, t.limited),
          updated_at  = now()
-       WHERE ${THREAD_LEASED} RETURNING t.id, t.bot_id
+       WHERE ${THREAD_OWNED} RETURNING t.id, t.bot_id
      ),
      new_subjects AS (
        INSERT INTO loopway.thread_subjects (thread_id, bot_id, subject)
@@ -656,7 +700,7 @@ export async function patchThread(
   return row!.n > 0;
 }
 
-/** Moves the thread's waiting messages to inflight and marks it active. Undefined unless `token` is the thread's live lease. */
+/** Moves the thread's waiting messages to inflight and marks it active. Undefined unless `token` is the live lease of the thread's owner. */
 export async function deliverThread(
   db: Db,
   botId: string,
@@ -666,7 +710,7 @@ export async function deliverThread(
   const [row] = await db.query<{ ok: number; messages: ThreadMessage[] }>(
     `WITH t AS (
        UPDATE loopway.threads t SET status = 'active', updated_at = now()
-       WHERE ${THREAD_LEASED} RETURNING t.id
+       WHERE ${THREAD_OWNED} RETURNING t.id
      ),
      moved AS (
        UPDATE loopway.thread_messages tm SET state = 'inflight'
@@ -682,7 +726,7 @@ export async function deliverThread(
   return row!.ok ? row!.messages : undefined;
 }
 
-/** Moves the thread's inflight messages to delivered, or back to waiting. Undefined unless `token` is the thread's live lease. */
+/** Moves the thread's inflight messages to delivered, or back to waiting. Undefined unless `token` is the live lease of the thread's owner. */
 export async function finishThread(
   db: Db,
   botId: string,
@@ -693,7 +737,7 @@ export async function finishThread(
   const [row] = await db.query<{ ok: number; moved: number }>(
     `WITH t AS (
        UPDATE loopway.threads t SET updated_at = now()
-       WHERE ${THREAD_LEASED} RETURNING t.id
+       WHERE ${THREAD_OWNED} RETURNING t.id
      ),
      moved AS (
        UPDATE loopway.thread_messages tm SET
@@ -714,6 +758,8 @@ export interface ImportedThread {
   started: boolean;
   interrupted: boolean;
   limited: boolean;
+  /** The runner that owns the thread, if the import says (the session is on its machine). */
+  runnerId?: string;
   messages: { id: string; state: ThreadMessageState; subject?: string }[];
 }
 
@@ -724,8 +770,8 @@ export interface ImportedThread {
 export async function importThread(db: Db, bot: Bot, t: ImportedThread): Promise<{ messages: number }> {
   const [row] = await db.query<{ messages: number }>(
     `WITH t AS (
-       INSERT INTO loopway.threads (id, bot_id, user_id, status, started, interrupted, limited)
-       VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::boolean, $6::boolean, $7::boolean) RETURNING id
+       INSERT INTO loopway.threads (id, bot_id, user_id, status, started, interrupted, limited, runner_id)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::boolean, $6::boolean, $7::boolean, $10::uuid) RETURNING id
      ),
      new_subjects AS (
        INSERT INTO loopway.thread_subjects (thread_id, bot_id, subject)
@@ -740,7 +786,18 @@ export async function importThread(db: Db, bot: Bot, t: ImportedThread): Promise
        ON CONFLICT (bot_id, message_id) DO NOTHING RETURNING message_id
      )
      SELECT (SELECT count(*) FROM msgs)::int AS messages`,
-    [t.id, bot.id, bot.user_id, t.status, t.started, t.interrupted, t.limited, t.subjects, t.messages],
+    [
+      t.id,
+      bot.id,
+      bot.user_id,
+      t.status,
+      t.started,
+      t.interrupted,
+      t.limited,
+      t.subjects,
+      t.messages,
+      t.runnerId ?? null,
+    ],
   );
   return row!;
 }

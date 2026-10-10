@@ -2,13 +2,15 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { call, db, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
 
-/** A user with a bot (its lease held), one message, a registered runner and a thread of that message. */
+/** A user with a bot (its lease held), two messages, a registered runner (not leased) and a thread of the first. */
 async function setup() {
   const key = await newUser();
   const inbox = await newInbox(key);
   const bot = (await call("POST", "/bots", { key, body: { name: "b", kind: "k", inbox_ids: [inbox.id] } })).body;
-  await sendGithub(inbox, "pull_request", prPayload(1));
-  const message = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data[0].id as string;
+  for (const n of [1, 2]) await sendGithub(inbox, "pull_request", prPayload(n));
+  const messages = (await call("GET", `/inboxes/${inbox.id}/messages?order=asc`, { key })).body.data.map(
+    (m: { id: string }) => m.id,
+  ) as string[];
   const base = `/bots/${bot.id}`;
   const lease = (await call("POST", `${base}/lease`, { key, body: { ttl_seconds: 60 } })).body.lease.token as string;
   const runner = randomUUID();
@@ -16,80 +18,160 @@ async function setup() {
   const thread = randomUUID();
   const assigned = await call("POST", `${base}/assign`, {
     key,
-    body: { lease_token: lease, cursor: 0, assignments: [{ message_id: message, thread_id: thread }] },
+    body: { lease_token: lease, cursor: 0, assignments: [{ message_id: messages[0], thread_id: thread }] },
   });
   expect(assigned.status).toBe(200);
-  const leaseThread = (body: object, id = thread) => call("POST", `${base}/threads/${id}/lease`, { key, body });
+
+  const newRunner = async (name: string) => {
+    const id = randomUUID();
+    await call("POST", "/runners", { key, body: { id, name } });
+    return id;
+  };
+  const leaseRunner = (id: string, body: object = {}) => call("POST", `/runners/${id}/lease`, { key, body });
+  const claim = (token: string, id = thread) =>
+    call("POST", `${base}/threads/${id}/claim`, { key, body: { lease_token: token } });
   const patch = (token: string) =>
     call("PATCH", `${base}/threads/${thread}`, { key, body: { lease_token: token, status: "ended" } });
-  return { key, base, bot, lease, runner, thread, leaseThread, patch };
+  const get = async () => (await call("GET", `${base}/threads/${thread}`, { key })).body;
+  return { key, base, bot, messages, lease, runner, thread, newRunner, leaseRunner, claim, patch, get };
 }
 
 describe("runners", () => {
   it("registers idempotently, per user, and lists what they hold", async () => {
-    const { key, base, bot, lease, runner, thread, leaseThread } = await setup();
+    const { key, base, bot, lease, runner, thread, leaseRunner, claim } = await setup();
     const renamed = await call("POST", "/runners", { key, body: { id: runner, name: "renamed" } });
-    expect(renamed.body).toMatchObject({ id: runner, name: "renamed", bots: [], threads: 0 });
+    expect(renamed.body).toMatchObject({ id: runner, name: "renamed", leased_until: null, bots: [], threads: 0 });
     expect((await call("GET", "/runners", { key })).body.data).toHaveLength(1);
     expect((await call("POST", "/runners", { key, body: { id: "nope", name: "x" } })).status).toBe(400);
 
     const stranger = await newUser("Other");
     expect((await call("POST", "/runners", { key: stranger, body: { id: runner, name: "mine" } })).status).toBe(409);
     expect((await call("GET", "/runners", { key: stranger })).body.data).toEqual([]);
+    expect((await call("POST", `/runners/${runner}/lease`, { key: stranger, body: {} })).status).toBe(404);
     const theirs = (await call("POST", "/runners", { key: stranger, body: { id: randomUUID(), name: "t" } })).body;
     const asTheirs = await call("POST", `${base}/lease`, { key, body: { lease_token: lease, runner_id: theirs.id } });
     expect(asTheirs.status).toBe(404);
 
     await call("POST", `${base}/lease`, { key, body: { lease_token: lease, runner_id: runner } });
-    await leaseThread({ runner_id: runner });
+    const token = (await leaseRunner(runner)).body.lease.token;
+    await claim(token);
     const listed = (await call("GET", "/runners", { key })).body.data[0];
-    expect(listed).toMatchObject({ bots: [{ id: bot.id, name: "b" }], threads: 1 });
-    const got = (await call("GET", `${base}/threads/${thread}`, { key })).body;
-    expect(got).toMatchObject({ runner_id: runner, leased_until: expect.any(String) });
-    expect(got.lock_token).toBeUndefined();
+    expect(listed).toMatchObject({ bots: [{ id: bot.id, name: "b" }], threads: 1, leased_until: expect.any(String) });
+    expect(listed.lock_token).toBeUndefined();
+    expect((await call("GET", `${base}/threads/${thread}`, { key })).body.runner_id).toBe(runner);
 
     // Releasing the bot lease clears who holds it.
     await call("POST", `${base}/release`, { key, body: { lease_token: lease } });
     expect((await call("GET", "/runners", { key })).body.data[0].bots).toEqual([]);
   });
+
+  it("is leased to one process at a time", async () => {
+    const { key, runner, leaseRunner } = await setup();
+    const release = (body: object, id = runner) => call("POST", `/runners/${id}/release`, { key, body });
+
+    const token = (await leaseRunner(runner, { ttl_seconds: 60 })).body.lease.token;
+    // A second process is refused; the holder renews with its token and keeps it.
+    const second = await leaseRunner(runner);
+    expect(second).toMatchObject({ status: 409, body: { error: { code: "runner_leased" } } });
+    expect(second.body.error.details.expires_at).toEqual(expect.any(String));
+    expect((await leaseRunner(runner, { lease_token: token })).body.lease.token).toBe(token);
+    expect((await leaseRunner(randomUUID())).status).toBe(404);
+
+    expect((await release({})).status).toBe(400);
+    expect((await release({ lease_token: "x" })).status).toBe(409);
+    expect((await release({ lease_token: token })).status).toBe(204);
+    const taken = (await leaseRunner(runner)).body.lease.token;
+    expect(taken).not.toBe(token);
+
+    // A process that died without releasing: forced release, or the lease expiring.
+    expect((await release({ force: true })).status).toBe(204);
+    expect((await leaseRunner(runner)).status).toBe(200);
+    await db.query(`UPDATE loopway.runners SET locked_until = now() - interval '1 second' WHERE id = $1`, [runner]);
+    expect((await leaseRunner(runner)).status).toBe(200);
+  });
 });
 
-describe("thread leases", () => {
-  it("go to one runner at a time, and thread writes need them", async () => {
-    const { key, base, runner, thread, leaseThread, patch } = await setup();
-    const other = randomUUID();
-    await call("POST", "/runners", { key, body: { id: other, name: "desktop" } });
+describe("thread ownership", () => {
+  it("goes to the runner that claims the thread, and thread writes need that runner's lease", async () => {
+    const { key, base, runner, thread, newRunner, leaseRunner, claim, patch, get } = await setup();
+    const other = await newRunner("desktop");
 
-    // Unleased, writes fail; the bot's lease doesn't count.
-    expect((await patch("x")).body.error.code).toBe("thread_not_leased");
+    // Unclaimed, writes fail, even with a live runner lease.
+    const token = (await leaseRunner(runner)).body.lease.token;
+    const otherToken = (await leaseRunner(other)).body.lease.token;
+    expect((await patch("x")).body.error.code).toBe("runner_not_leased");
+    expect((await patch(token)).body.error.code).toBe("thread_unclaimed");
 
-    const token = (await leaseThread({ runner_id: runner, ttl_seconds: 60 })).body.lease.token;
+    expect((await claim("x")).body.error.code).toBe("runner_not_leased");
+    expect((await claim(token)).body).toMatchObject({ id: thread, runner_id: runner });
+    expect((await claim(token)).status).toBe(200);
     expect((await patch(token)).status).toBe(200);
-    // Held: another runner is refused, the holder can renew with its token.
-    const refused = await leaseThread({ runner_id: other });
-    expect(refused).toMatchObject({ status: 409, body: { error: { code: "leased", details: { runner_id: runner } } } });
-    expect((await patch("x")).body.error.code).toBe("thread_lease_mismatch");
-    expect((await leaseThread({ runner_id: runner, lease_token: token })).body.lease.token).toBe(token);
-    expect((await leaseThread({ runner_id: randomUUID() })).status).toBe(404);
-    expect((await leaseThread({ runner_id: runner }, randomUUID())).status).toBe(404);
 
-    // Released, the other runner can take it, and the old token stops working.
-    const release = (lease_token: string) =>
-      call("POST", `${base}/threads/${thread}/release`, { key, body: { lease_token } });
-    expect((await release("x")).status).toBe(409);
-    expect((await release(token)).status).toBe(204);
-    expect((await call("GET", `${base}/threads/${thread}`, { key })).body).toMatchObject({
-      runner_id: null,
-      leased_until: null,
+    // Owned: another runner can't claim it or write it, even with a live lease of its own.
+    expect(await claim(otherToken)).toMatchObject({ status: 409, body: { error: { code: "thread_owned" } } });
+    expect((await patch(otherToken)).body.error).toMatchObject({
+      code: "thread_owned",
+      details: { runner_id: runner },
     });
-    const taken = (await leaseThread({ runner_id: other })).body.lease.token;
-    expect(taken).not.toBe(token);
-    expect((await patch(token)).status).toBe(409);
-    expect((await patch(taken)).status).toBe(200);
+    expect((await get()).runner_id).toBe(runner);
+    expect((await claim(token, randomUUID())).status).toBe(404);
 
-    // An expired lease is up for grabs.
-    await db.query(`UPDATE loopway.threads SET locked_until = now() - interval '1 second' WHERE id = $1`, [thread]);
-    expect((await patch(taken)).body.error.code).toBe("thread_not_leased");
-    expect((await leaseThread({ runner_id: runner })).status).toBe(200);
+    // Ownership doesn't expire with the lease: the same runner takes a new lease and carries on.
+    await call("POST", `/runners/${runner}/release`, { key, body: { lease_token: token } });
+    expect((await patch(token)).body.error.code).toBe("runner_not_leased");
+    expect((await get()).runner_id).toBe(runner);
+    const again = (await leaseRunner(runner)).body.lease.token;
+    expect((await patch(again)).status).toBe(200);
+    expect((await patch(otherToken)).body.error.code).toBe("thread_owned");
+
+    // Moving it takes an explicit release, after which the other runner can claim it.
+    const released = await call("POST", `${base}/threads/${thread}/release`, { key, body: {} });
+    expect(released.body.runner_id).toBeNull();
+    expect((await patch(again)).body.error.code).toBe("thread_unclaimed");
+    expect((await claim(otherToken)).body.runner_id).toBe(other);
+    expect((await patch(otherToken)).status).toBe(200);
+    expect((await call("GET", "/runners", { key })).body.data.map((r: any) => [r.id, r.threads])).toEqual(
+      expect.arrayContaining([
+        [runner, 0],
+        [other, 1],
+      ]),
+    );
+  });
+
+  it("is checked in the write itself, not just before it", async () => {
+    const { key, base, runner, thread, leaseRunner, claim } = await setup();
+    const token = (await leaseRunner(runner)).body.lease.token;
+    await claim(token);
+    // The lease lapses between the precheck and the write: the statement still refuses.
+    await db.query(`UPDATE loopway.runners SET locked_until = now() - interval '1 second' WHERE id = $1`, [runner]);
+    const store = await import("../src/store.js");
+    expect(await store.patchThread(db, base.split("/")[2]!, token, thread, { status: "ended" })).toBe(false);
+    expect(await store.deliverThread(db, base.split("/")[2]!, token, thread)).toBeUndefined();
+    expect(await store.finishThread(db, base.split("/")[2]!, token, thread, false)).toBeUndefined();
+    expect((await call("GET", `${base}/threads/${thread}`, { key })).body.status).toBe("active");
+  });
+
+  it("is set by an import that names its runner, and isn't open to other users' runners", async () => {
+    const { key, base, runner } = await setup();
+    const id = randomUUID();
+    const imported = await call("POST", `${base}/threads`, {
+      key,
+      body: { id, subjects: ["a#1"], status: "active", started: true, runner_id: runner, messages: [] },
+    });
+    expect(imported.body.thread).toMatchObject({ id, runner_id: runner });
+
+    const bare = await call("POST", `${base}/threads`, {
+      key,
+      body: { id: randomUUID(), subjects: [], status: "active", started: true, messages: [] },
+    });
+    expect(bare.body.thread.runner_id).toBeNull();
+
+    const stranger = await newUser("Other");
+    const theirs = (await call("POST", "/runners", { key: stranger, body: { id: randomUUID(), name: "t" } })).body;
+    const stolen = await call("POST", `${base}/threads`, {
+      key,
+      body: { id: randomUUID(), subjects: [], status: "active", started: true, runner_id: theirs.id, messages: [] },
+    });
+    expect(stolen.status).toBe(404);
   });
 });
