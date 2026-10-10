@@ -15,7 +15,7 @@ import { API_ERROR_BACKOFF_MS, Dispatcher } from "../src/bots/dispatcher.js";
 import { defaultTtl } from "../src/commands/bots-run.js";
 import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
 import { botEnv } from "../src/bots/github.js";
-import type { Context } from "../src/context.js";
+import { UsageError, type Context } from "../src/context.js";
 import { createProgram } from "../src/program.js";
 import { ensureRunner } from "../src/bots/runner.js";
 import { withSessions } from "../src/bots/store.js";
@@ -483,9 +483,10 @@ describe("runners", () => {
     expect((await runJson("runners"))[0].leased_until).toEqual(expect.any(String));
     await first.tick();
     // Another process on the same machine (or a copy of runner.json) is refused.
-    await expect(Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id })).rejects.toThrow(
-      /runner is already in use/,
-    );
+    // A UsageError, which index.ts prints as one `error:` line instead of a stack trace.
+    const refused = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id }).catch((e) => e);
+    expect(refused).toBeInstanceOf(UsageError);
+    expect(refused.message).toMatch(/runner is already in use/);
     await first.close();
     expect((await runJson("runners"))[0]).toMatchObject({ leased_until: null, bots: [] });
     const second = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id });

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { ApiError, type Bot, type Message, type Lease, type LoopwayClient } from "../client.js";
 import { loadGithubBot } from "../config.js";
-import type { Context } from "../context.js";
+import { UsageError, type Context } from "../context.js";
 import { clock, dim } from "../format.js";
 import { startMcpServer, type McpServer } from "../mcp.js";
 import { spawnClaude, type RunAgent, type RunOutcome } from "./agent.js";
@@ -229,7 +229,8 @@ export class Dispatcher {
     } catch (err) {
       if (!(err instanceof ApiError && err.code === "runner_leased")) throw err;
       const until = leasedUntil(err);
-      throw new Error(
+      // A UsageError, so the CLI prints just the message rather than a stack trace.
+      throw new UsageError(
         `This machine's runner is already in use by another \`loopway bots run\`${until ? ` (its lease lasts until ${clock(until)})` : ""}. Stop that one, or wait for its lease to end.`,
         { cause: err },
       );
