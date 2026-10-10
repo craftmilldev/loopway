@@ -57,11 +57,11 @@ packages/web/
 packages/cli/
   src/index.ts          `loopway` entry: error handling + exit codes
   src/program.ts        commands and flags (commander)
-  src/commands/         auth, inboxes (incl. the create TUI, @clack/prompts), messages, bots, threads
+  src/commands/         auth, inboxes (incl. the create TUI, @clack/prompts), messages, bots, bots-run (`loopway bots run`)
   src/client.ts         typed API client
   src/config.ts         ~/.loopway/config.json
   src/mcp.ts            minimal MCP server (HTTP, localhost) the bots dispatcher serves to its sessions
-  src/threads/          `loopway bots run`: dispatcher.ts (lease, read, assign, deliver), kinds.ts (bot kind → route + prompt),
+  src/bots/             `loopway bots run`: dispatcher.ts (lease, read, assign, deliver), kinds.ts (bot kind → route + prompt),
                         routing.ts (github-threads: message → session), store.ts (~/.loopway/threads.json + its lock),
                         tools.ts (MCP link/end), agent.ts (claude -p),
                         tui.tsx (the Ink TUI), transcript.ts (stream-json log → readable lines)

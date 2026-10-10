@@ -1,7 +1,7 @@
 import type { Bot, LoopwayClient } from "../client.js";
 import { authedClient, UsageError, type Context } from "../context.js";
 import { ago, bold, dim, fields, json, table } from "../format.js";
-import { BOT_KINDS } from "../threads/kinds.js";
+import { BOT_KINDS } from "../bots/kinds.js";
 import { resolveInbox } from "./inboxes.js";
 
 interface JsonOpt {
