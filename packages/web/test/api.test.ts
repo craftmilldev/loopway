@@ -323,8 +323,10 @@ describe("bot leases", () => {
     const token = leased.body.lease.token;
     expect(token).toMatch(/^lk_/);
     expect(Date.parse(leased.body.lease.expires_at)).toBeGreaterThan(Date.now() + 50_000);
-    // The lease isn't part of the bot.
-    expect((await call("GET", base, { key })).body).not.toHaveProperty("lock_token");
+    // The lease token isn't part of the bot, but whether it's held is.
+    const held = (await call("GET", base, { key })).body;
+    expect(held).not.toHaveProperty("lock_token");
+    expect(held).toMatchObject({ runner_id: null, leased_until: leased.body.lease.expires_at });
 
     // Another runner can't take it; the holder renews and keeps the token.
     const other = await call("POST", `${base}/lease`, { key });
@@ -516,13 +518,22 @@ describe("web ui", () => {
   }
 
   it("serves the page shell without auth", async () => {
-    for (const path of ["/", "/login", "/dashboard", `/dashboard/${randomUUID()}`]) {
+    const id = randomUUID();
+    const paths = ["/", "/login", "/dashboard", `/dashboard/inboxes/${id}`, `/dashboard/bots/${id}`];
+    for (const path of [...paths, `/dashboard/bots/${id}/threads/${id}`]) {
       const r = await get(path);
       expect(r.status, path).toBe(200);
       expect(r.type).toContain("text/html");
       expect(r.text).toContain('<script type="module" src="/app.js">');
       expect(r.text).toContain('<link rel="icon" href="/favicon.ico"');
     }
+  });
+
+  it("redirects the old inbox page", async () => {
+    const id = randomUUID();
+    const res = await app.request(`/dashboard/${id}`);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(`/dashboard/inboxes/${id}`);
   });
 
   it("serves the built bundle without auth", async () => {

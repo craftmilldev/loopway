@@ -254,6 +254,16 @@ describe("thread writes", () => {
     got = (await thread(t)).body;
     expect([got.waiting.length, got.inflight.length, got.delivered]).toEqual([0, 0, 2]);
     expect(got.delivered_ids).toEqual([messages[0]!.id, messages[1]!.id]);
+    expect(got.delivered_messages).toEqual([
+      {
+        id: messages[0]!.id,
+        inbox_id: expect.any(String),
+        type: "com.github.pull_request.opened",
+        key: null,
+        delivered_at: expect.any(String),
+      },
+      expect.objectContaining({ id: messages[1]!.id }),
+    ]);
     expect((await post("finish")).body.moved).toBe(0);
 
     // A message that arrives later waits until the next deliver.

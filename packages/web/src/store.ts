@@ -495,6 +495,8 @@ export interface Thread {
   delivered: number;
   /** Only from getThread(). */
   delivered_ids?: string[];
+  /** Only from getThread(): the delivered messages, oldest delivery first. */
+  delivered_messages?: { id: string; inbox_id: string; type: string; key: string | null; delivered_at: Date | null }[];
   created_at: Date;
   updated_at: Date;
 }
@@ -519,7 +521,12 @@ const THREAD_COLS = `
 const DELIVERED_IDS = `,
   COALESCE((SELECT jsonb_agg(tm.message_id ORDER BY tm.delivered_at, tm.assigned_at)
             FROM loopway.thread_messages tm WHERE tm.thread_id = t.id AND tm.state = 'delivered'),
-           '[]'::jsonb) AS delivered_ids`;
+           '[]'::jsonb) AS delivered_ids,
+  COALESCE((SELECT jsonb_agg(jsonb_build_object('id', m.id, 'inbox_id', m.inbox_id, 'type', m.ce_type,
+                                                'key', tm.subject, 'delivered_at', tm.delivered_at)
+                             ORDER BY tm.delivered_at, tm.assigned_at)
+            FROM loopway.thread_messages tm JOIN loopway.messages m ON m.id = tm.message_id
+            WHERE tm.thread_id = t.id AND tm.state = 'delivered'), '[]'::jsonb) AS delivered_messages`;
 
 /** The runner's live lease on bot $1 with token $2: the condition assign makes inside its own statement. */
 const LEASED = `b.id = $1 AND b.deleted_at IS NULL AND b.lock_token = $2 AND b.locked_until > now()`;
