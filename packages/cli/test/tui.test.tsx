@@ -2,16 +2,16 @@ import { render } from "ink-testing-library";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Bot } from "../src/client.js";
-import type { Session } from "../src/threads/store.js";
-import { transcriptLines } from "../src/threads/transcript.js";
-import { ThreadsTui, type Snapshot } from "../src/threads/tui.js";
+import type { Session } from "../src/bots/store.js";
+import { transcriptLines } from "../src/bots/transcript.js";
+import { ThreadsTui, type Snapshot } from "../src/bots/tui.js";
 
 const KEYS = { up: "\u001B[A", down: "\u001B[B", right: "\u001B[C", left: "\u001B[D", enter: "\r", tab: "\t" };
 
 const session = (keys: string[], status: Session["status"], updated_at: string): Session => ({
   bot_id: "bot",
   keys,
-  events: [],
+  messages: [],
   waiting: [],
   status,
   started: true,

@@ -1,22 +1,26 @@
 import { randomUUID } from "node:crypto";
-import type { Event } from "../client.js";
+import type { Message } from "../client.js";
 import { editSession, findSession, type Sessions } from "./store.js";
 
 interface GithubPayload {
   number?: number;
-  issue?: { number?: number };
+  issue?: { number?: number; labels?: { name?: string }[] };
   pull_request?: { number?: number; body?: string | null };
   repository?: { full_name?: string };
+  check_run?: { pull_requests?: { number?: number }[] };
+  check_suite?: { pull_requests?: { number?: number }[] };
+  workflow_run?: { pull_requests?: { number?: number }[] };
 }
 
 /**
- * Which thread an event belongs to: `key` is its issue or PR (`owner/repo#number`), and `refs` are
- * the issues a PR body closes ("Closes #12"). Events with no issue or PR (e.g. push) have no key.
+ * Which thread a message belongs to: `key` is its issue or PR (`owner/repo#number`), and `refs` are
+ * the issues a PR body closes ("Closes #12"). Messages with no issue or PR (e.g. push) have no key.
  */
-export function threadKeys(e: Event): { key?: string; refs: string[] } {
+export function threadKeys(e: Message): { key?: string; refs: string[] } {
   const d = (e.event.data ?? {}) as GithubPayload;
   const repo = d.repository?.full_name;
-  const n = d.pull_request?.number ?? d.issue?.number ?? d.number;
+  const ci = d.check_run ?? d.check_suite ?? d.workflow_run;
+  const n = d.pull_request?.number ?? d.issue?.number ?? d.number ?? ci?.pull_requests?.[0]?.number;
   if (!repo || typeof n !== "number") return { refs: [] };
   const body = d.pull_request?.body ?? "";
   const refs = [...body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi)].map(
@@ -32,16 +36,27 @@ export function threadKeys(e: Event): { key?: string; refs: string[] } {
  * 2. It's a PR that closes a known issue ("Closes #N") → that issue's session, and the PR joins it.
  * 3. Otherwise → a new session.
  *
+ * CI messages with no PR (a run on main) belong to no thread and get no session. Neither do messages
+ * for an issue labeled `future` that has no session yet: it's recorded, not to be worked on. Removing
+ * the label lets the next message for the issue start a session.
+ *
  * New sessions and links are added to `sessions` in place, for the caller to save.
  */
-export function route(sessions: Sessions, botId: string, e: Event): { session: string; key?: string } {
+export function route(sessions: Sessions, botId: string, e: Message): { session?: string; key?: string } {
   const { key, refs } = threadKeys(e);
+  if (!key && /^com\.github\.(check_run|check_suite|workflow_run)\./.test(e.event.type)) return {};
   let id = key ? findSession(sessions, botId, key) : undefined;
   if (!id && key) {
     id = refs.map((r) => findSession(sessions, botId, r)).find(Boolean);
     if (id) editSession(sessions, id).keys.push(key);
   }
+  if (!id && isFuture(e)) return {};
   return { session: id ?? newSession(sessions, botId, key), key };
+}
+
+function isFuture(e: Message): boolean {
+  const d = (e.event.data ?? {}) as GithubPayload;
+  return !!d.issue?.labels?.some((l) => l.name === "future");
 }
 
 function newSession(sessions: Sessions, botId: string, key: string | undefined): string {
@@ -50,7 +65,7 @@ function newSession(sessions: Sessions, botId: string, key: string | undefined):
   sessions[id] = {
     bot_id: botId,
     keys: key ? [key] : [],
-    events: [],
+    messages: [],
     waiting: [],
     status: "active",
     started: false,

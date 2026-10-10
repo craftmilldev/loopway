@@ -2,7 +2,7 @@
 
 - **Stack:** TypeScript + [Hono](https://hono.dev), zero-config on Vercel.
 - **DB:** Postgres everywhere. Locally [PGlite](https://pglite.dev) (embedded, no server); on Vercel, [Neon](https://neon.tech) via `DATABASE_URL`. Same SQL on both.
-- **Data types:** `User` → owns `Inbox`es → which receive `Event`s; a `Bot` reads the events of one or more inboxes.
+- **Data types:** `User` → owns `Inbox`es → which receive `Message`s; a `Bot` reads the messages of one or more inboxes.
 - **Sources:** `github`, `granola`, `loopway`, `vercel` (more can be added in `packages/web/src/sources/`, see [Adding a source](#adding-a-source)).
 - **Packages:** npm workspaces — [`packages/web`](../packages/web) (the server) and [`packages/cli`](../packages/cli) (the `loopway` command, a client of the [API](api.md)).
 
@@ -27,7 +27,7 @@ To receive real GitHub webhooks locally, expose the port (e.g. `cloudflared tunn
 ## Deploy (Vercel + Neon)
 
 1. In Neon → Connect, copy both connection strings: the **direct** one and the **pooled** one (host contains `-pooler`).
-2. Run migrations once from your machine against the direct URL: `DATABASE_URL='postgresql://...' npm run db:migrate`
+2. Run migrations once from your machine against the direct URL: `DATABASE_URL='postgresql://...' npm run db:migrate`. Or put the direct URL in `packages/web/.env.production` (gitignored; `db:migrate` reads it ahead of `.env`), which also makes `npm run update` migrate prod
 3. In Vercel, import the repo, set **Root Directory** to `packages/web`, and set env vars: `DATABASE_URL_POOLED` (the pooled URL), `DATABASE_URL` (the direct URL), `TOKEN_SECRET` (signs session tokens; `openssl rand -hex 32`), and optionally `PUBLIC_BASE_URL`. The server uses `DATABASE_URL_POOLED` when it's set. Craftmill's own deployment also sets `SOURCE_REQUEST_URL` and `SOURCE_REQUEST_TOKEN` (the webhook URL and inbox token of its `source-requests` loopway inbox); without them the dashboard doesn't offer source requests.
 4. Deploy. Vercel picks up `packages/web/src/index.ts` as a Hono app automatically, and runs `npm run build` to bundle the web UI into `packages/web/public/`. The app serves `app.js` and `app.css` itself, since Vercel's CDN only serves the files in `public/` that are committed.
 5. Create users with `loopway login` pointed at your deployment (`loopway config` sets the URL).
@@ -36,7 +36,7 @@ Tables live in a `loopway` schema (not `public`) with RLS enabled and no policie
 
 ## Web UI
 
-The same Hono app serves a small web UI: `/` (how to use loopway), `/login` (same email-code flow as the CLI; the session token is kept in `localStorage`), `/dashboard` (your inboxes and a create form; where source requests are on, its Source list ends with "Something else…", which asks for a new source type instead) and `/dashboard/<inbox>` (events, newest first, expandable JSON, hide-processed toggle, and, for sources whose sender makes the secret, like Vercel and Granola, a form to paste it). `GET /api` is a bare health check.
+The same Hono app serves a small web UI: `/` (how to use loopway), `/login` (same email-code flow as the CLI; the session token is kept in `localStorage`), `/dashboard` (your inboxes and a create form; where source requests are on, its Source list ends with "Something else…", which asks for a new source type instead) and `/dashboard/<inbox>` (messages, newest first, expandable JSON, hide-processed toggle, and, for sources whose sender makes the secret, like Vercel and Granola, a form to paste it). `GET /api` is a bare health check.
 
 The pages are a React app in `packages/web/client/`. The homepage copy is markdown in [`packages/web/content/home.md`](../packages/web/content/home.md). `npm run build -w @loopway/web` bundles the app with esbuild into `packages/web/public/` (git-ignored); `npm run dev` rebuilds it on change and serves it.
 
@@ -57,11 +57,11 @@ packages/web/
 packages/cli/
   src/index.ts          `loopway` entry: error handling + exit codes
   src/program.ts        commands and flags (commander)
-  src/commands/         auth, inboxes (incl. the create TUI, @clack/prompts), events, bots, threads
+  src/commands/         auth, inboxes (incl. the create TUI, @clack/prompts), messages, bots, bots-run (`loopway bots run`)
   src/client.ts         typed API client
   src/config.ts         ~/.loopway/config.json
   src/mcp.ts            minimal MCP server (HTTP, localhost) the bots dispatcher serves to its sessions
-  src/threads/          `loopway bots run`: dispatcher.ts (lease, read, assign, deliver), kinds.ts (bot kind → route + prompt),
+  src/bots/             `loopway bots run`: dispatcher.ts (lease, read, assign, deliver), kinds.ts (bot kind → route + prompt),
                         routing.ts (github-threads: message → session), store.ts (~/.loopway/threads.json + its lock),
                         tools.ts (MCP link/end), agent.ts (claude -p),
                         tui.tsx (the Ink TUI), transcript.ts (stream-json log → readable lines)

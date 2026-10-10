@@ -1,7 +1,7 @@
 import type { Bot, LoopwayClient } from "../client.js";
 import { authedClient, UsageError, type Context } from "../context.js";
 import { ago, bold, dim, fields, json, table } from "../format.js";
-import { BOT_KINDS } from "../threads/kinds.js";
+import { BOT_KINDS } from "../bots/kinds.js";
 import { resolveInbox } from "./inboxes.js";
 
 interface JsonOpt {
@@ -71,6 +71,19 @@ export async function deleteBot(ctx: Context, ref: string) {
   const id = await resolveBot(client, ref);
   await client.deleteBot(id);
   ctx.out(`Deleted bot ${id}.`);
+}
+
+/** `loopway bots release <bot> --force`: drops the lease a runner left behind when it died. */
+export async function releaseBot(ctx: Context, ref: string, opts: { force?: boolean }) {
+  if (!opts.force) {
+    throw new UsageError(
+      "Pass --force to drop the lease. A `loopway bots run` still holding it loses the bot to the next runner.",
+    );
+  }
+  const client = await authedClient(ctx);
+  const id = await resolveBot(client, ref);
+  await client.forceReleaseBot(id);
+  ctx.out(`Released the lease on bot ${id}; the next \`loopway bots run\` can take it.`);
 }
 
 /** What the bot would read next: messages after its cursor, oldest first. */

@@ -8,7 +8,7 @@ describe("github webhooks", () => {
     const inbox = await newInbox(key);
     const res = await sendGithub(inbox, "pull_request", prPayload(7), { delivery: "d-1" });
     expect(res.status).toBe(202);
-    const list = await call("GET", `/inboxes/${inbox.id}/events`, { key });
+    const list = await call("GET", `/inboxes/${inbox.id}/messages`, { key });
     const e = list.body.data[0];
     expect(e.event).toMatchObject({
       specversion: "1.0",
@@ -27,7 +27,7 @@ describe("github webhooks", () => {
     const inbox = await newInbox(key);
     const res = await sendGithub(inbox, "push", { ref: "refs/heads/main", repository: { url: "u" } }, { form: true });
     expect(res.status).toBe(202);
-    const e = (await call("GET", `/inboxes/${inbox.id}/events`, { key })).body.data[0];
+    const e = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data[0];
     expect(e.event.type).toBe("com.github.push");
     expect(e.event.subject).toBe("refs/heads/main");
   });
@@ -50,6 +50,6 @@ describe("github webhooks", () => {
     const filtered = await sendGithub(inbox, "push", { ref: "x" });
     expect(filtered.status).toBe(422);
     expect((await filtered.json()).error.message).toBe('event "push" not enabled for this inbox');
-    expect((await call("GET", `/inboxes/${inbox.id}/events`, { key })).body.data).toHaveLength(1);
+    expect((await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data).toHaveLength(1);
   });
 });

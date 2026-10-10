@@ -59,7 +59,7 @@ describe("vercel webhooks", () => {
     const inbox = await vercelInbox(key, { secret: VERCEL_SECRET });
     const body = deployment("deployment.error", "evt_1");
     expect((await sendVercel(inbox.id, body)).status).toBe(202);
-    const e = (await call("GET", `/inboxes/${inbox.id}/events`, { key })).body.data[0];
+    const e = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data[0];
     expect(e.event).toMatchObject({
       specversion: "1.0",
       id: "evt_1",
@@ -117,7 +117,7 @@ describe("vercel webhooks", () => {
     for (const [type, payload, source, subject] of cases) {
       const id = type === "something.new" ? "evt_new" : randomUUID();
       expect((await sendVercel(inbox.id, { id, type, createdAt: Date.now(), payload })).status).toBe(202);
-      const e = (await call("GET", `/inboxes/${inbox.id}/events?type=com.vercel.${type}`, { key })).body.data[0];
+      const e = (await call("GET", `/inboxes/${inbox.id}/messages?type=com.vercel.${type}`, { key })).body.data[0];
       expect(e.event).toMatchObject({ source, subject });
     }
   });
@@ -133,6 +133,6 @@ describe("vercel webhooks", () => {
     const filtered = await sendVercel(inbox.id, deployment("deployment.created"));
     expect(filtered.status).toBe(422);
     expect((await filtered.json()).error.message).toBe('event "deployment.created" not enabled for this inbox');
-    expect((await call("GET", `/inboxes/${inbox.id}/events`, { key })).body.data).toHaveLength(1);
+    expect((await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data).toHaveLength(1);
   });
 });

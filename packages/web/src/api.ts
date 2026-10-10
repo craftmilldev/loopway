@@ -7,7 +7,7 @@ import { isUuid, LOGIN_CODE_RE, normalizeLoginCode, uuidv7 } from "./ids.js";
 import { BOT_MODELS } from "./models.js";
 import { sources } from "./sources/index.js";
 import * as store from "./store.js";
-import type { EventRow, Inbox, User } from "./store.js";
+import type { MessageRow, Inbox, User } from "./store.js";
 import { signSessionToken, verifyToken } from "./tokens.js";
 import { createWeb } from "./ui.js";
 
@@ -40,7 +40,10 @@ export function createApi(opts: ApiOptions) {
     if (err instanceof ZodError) {
       return c.json({ error: { code: "invalid_request", message: "Invalid request", details: err.issues } }, 400);
     }
-    if (err instanceof ApiError) return c.json({ error: { code: err.code, message: err.message } }, err.status);
+    if (err instanceof ApiError) {
+      const details = err.details === undefined ? {} : { details: err.details };
+      return c.json({ error: { code: err.code, message: err.message, ...details } }, err.status);
+    }
     if (err instanceof HTTPException)
       return c.json({ error: { code: "http_error", message: err.message } }, err.status);
     console.error(err);
@@ -82,7 +85,7 @@ export function createApi(opts: ApiOptions) {
     );
     if (result.kind === "rejected") throw new ApiError(result.status, "rejected", result.message);
     if (result.kind === "ignored") return c.json({ ignored: true, reason: result.reason }, 200);
-    const { id, duplicate } = await store.insertEvent(c.var.db, inbox.id, result.event);
+    const { id, duplicate } = await store.insertMessage(c.var.db, inbox.id, result.event);
     return c.json({ id, duplicate }, duplicate ? 200 : 202);
   });
 
@@ -212,32 +215,83 @@ export function createApi(opts: ApiOptions) {
     return c.body(null, 204);
   });
 
-  // Events
+  // Messages
 
-  authed.get("/inboxes/:inboxId/events", async (c) => {
+  authed.get("/inboxes/:inboxId/messages", async (c) => {
     const inbox = await ownedInbox(c);
     const q = z
       .object({
         type: z.string().min(1).optional(),
-        cursor: z.string().refine(isUuid, "cursor must be an event id").optional(),
+        cursor: z.string().refine(isUuid, "cursor must be a message id").optional(),
         limit: z.coerce.number().int().min(1).max(100).default(50),
         order: z.enum(["asc", "desc"]).default("asc"),
       })
       .parse(c.req.query());
-    const { events, nextCursor } = await store.listEvents(c.var.db, inbox.id, {
+    const { messages, nextCursor } = await store.listMessages(c.var.db, inbox.id, {
       type: q.type,
       after: q.cursor,
       limit: q.limit,
       order: q.order,
     });
-    return c.json({ data: events.map((e) => serializeEvent(e)), next_cursor: nextCursor });
+    return c.json({ data: messages.map((e) => serializeMessage(e)), next_cursor: nextCursor });
   });
 
+  const runnerId = z
+    .string()
+    .refine(isUuid, "must be a runner id")
+    .transform((s) => s.toLowerCase());
   const ttlBody = z.object({ ttl_seconds: z.number().int().min(1).max(MAX_TTL).default(DEFAULT_TTL) });
 
-  authed.get("/inboxes/:inboxId/events/:eventId", async (c) => {
+  authed.get("/inboxes/:inboxId/messages/:messageId", async (c) => {
     const inbox = await ownedInbox(c);
-    return c.json(serializeEvent(await existingEvent(c, inbox)));
+    return c.json(serializeMessage(await existingMessage(c, inbox)));
+  });
+
+  // Runners
+
+  authed.get("/runners", async (c) => {
+    const rows = await store.listRunners(c.var.db, c.var.user.id);
+    return c.json({ data: rows.map(serializeRunner) });
+  });
+
+  // The CLI makes the id and calls this on startup; it is safe to repeat.
+  authed.post("/runners", async (c) => {
+    const input = z.object({ id: runnerId, name: z.string().min(1).max(200) }).parse(await jsonBody(c));
+    const runner = await store.upsertRunner(c.var.db, c.var.user.id, input.id, input.name);
+    if (!runner) throw new ApiError(409, "runner_exists", "That runner id belongs to another user");
+    return c.json(serializeRunner(runner));
+  });
+
+  // One process at a time uses a runner id: it leases the runner while it runs, and thread writes need the lease.
+  authed.post("/runners/:runnerId/lease", async (c) => {
+    const runner = await routeRunner(c);
+    const input = ttlBody.extend({ lease_token: z.string().optional() }).parse(await jsonBody(c));
+    const row = await store.leaseRunner(
+      c.var.db,
+      c.var.user.id,
+      runner.id,
+      input.ttl_seconds,
+      input.lease_token ?? null,
+    );
+    if (!row) {
+      const until = iso(runner.locked_until);
+      throw new ApiError(409, "runner_leased", `Runner is leased until ${until} by another process`, {
+        expires_at: until,
+      });
+    }
+    return c.json({ lease: { token: row.lock_token, expires_at: iso(row.locked_until) } });
+  });
+
+  authed.post("/runners/:runnerId/release", async (c) => {
+    const runner = await routeRunner(c);
+    const { lease_token, force } = z
+      .object({ lease_token: z.string().min(1).optional(), force: z.boolean().optional() })
+      .parse(await jsonBody(c));
+    if (!force && !lease_token)
+      throw new ApiError(400, "invalid_request", "Pass lease_token, or force: true to drop whoever's lease");
+    if (!(await store.releaseRunner(c.var.db, c.var.user.id, runner.id, force ? null : lease_token!)))
+      throw new ApiError(409, "runner_lease_mismatch", "lease_token is not the runner's live lease");
+    return c.body(null, 204);
   });
 
   // Bots
@@ -297,16 +351,27 @@ export function createApi(opts: ApiOptions) {
 
   authed.post("/bots/:botId/lease", async (c) => {
     const bot = await ownedBot(c);
-    const input = ttlBody.extend({ lease_token: z.string().optional() }).parse(await jsonBody(c));
-    const row = await store.leaseBot(c.var.db, bot.id, input.ttl_seconds, input.lease_token ?? null);
-    if (!row) throw new ApiError(409, "leased", `Bot is leased until ${iso(bot.locked_until)} by another runner`);
+    const input = ttlBody
+      .extend({ lease_token: z.string().optional(), runner_id: runnerId.optional() })
+      .parse(await jsonBody(c));
+    if (input.runner_id) await ownedRunner(c, input.runner_id);
+    const row = await store.leaseBot(c.var.db, bot.id, input.ttl_seconds, input.lease_token ?? null, input.runner_id);
+    if (!row) {
+      const until = iso(bot.locked_until);
+      throw new ApiError(409, "leased", `Bot is leased until ${until} by another runner`, { expires_at: until });
+    }
     return c.json({ lease: { token: row.lock_token, expires_at: iso(row.locked_until) } });
   });
 
   authed.post("/bots/:botId/release", async (c) => {
     const bot = await ownedBot(c);
-    const { lease_token } = z.object({ lease_token: z.string().min(1) }).parse(await jsonBody(c));
-    if (!(await store.releaseBot(c.var.db, bot.id, lease_token))) throw leaseMismatch(bot);
+    const { lease_token, force } = z
+      .object({ lease_token: z.string().min(1).optional(), force: z.boolean().optional() })
+      .parse(await jsonBody(c));
+    if (force) await store.forceReleaseBot(c.var.db, bot.id);
+    else if (!lease_token)
+      throw new ApiError(400, "invalid_request", "Pass lease_token, or force: true to drop whoever's lease");
+    else if (!(await store.releaseBot(c.var.db, bot.id, lease_token))) throw leaseMismatch(bot);
     return c.body(null, 204);
   });
 
@@ -324,7 +389,181 @@ export function createApi(opts: ApiOptions) {
     const bot = await ownedBot(c);
     const q = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(c.req.query());
     const rows = await store.botMessages(c.var.db, bot.id, q.limit);
-    return c.json({ data: rows.map((e) => serializeEvent(e)) });
+    return c.json({ data: rows.map((e) => serializeMessage(e)) });
+  });
+
+  // Threads. A thread belongs to the runner that claimed it; writing it needs that runner's live lease.
+
+  const leaseToken = z.string().min(1);
+  const uuid = z
+    .string()
+    .refine(isUuid, "must be a uuid")
+    .transform((s) => s.toLowerCase());
+  const threadSubjects = z.array(z.string().min(1).max(500)).max(100);
+
+  authed.get("/bots/:botId/threads", async (c) => {
+    const bot = await ownedBot(c);
+    const q = z.object({ status: z.enum(["active", "ended", "all"]).default("active") }).parse(c.req.query());
+    const rows = await store.listThreads(c.var.db, bot.id, q.status);
+    return c.json({ data: rows.map((t) => serializeThread(t)) });
+  });
+
+  authed.get("/bots/:botId/threads/:threadId", async (c) => {
+    const bot = await ownedBot(c);
+    return c.json(serializeThread(await existingThread(c, bot)));
+  });
+
+  authed.post("/bots/:botId/threads/:threadId/claim", async (c) => {
+    const bot = await ownedBot(c);
+    const thread = await existingThread(c, bot);
+    const { lease_token } = z.object({ lease_token: leaseToken }).parse(await jsonBody(c));
+    const runner = await liveRunner(c, lease_token);
+    if (thread.runner_id && thread.runner_id !== runner.id) throw threadOwned(thread);
+    const claimed = await store.claimThread(c.var.db, c.var.user.id, bot.id, thread.id, lease_token);
+    if (!claimed) throw runnerNotLeased();
+    return c.json(serializeThread(claimed));
+  });
+
+  // The manual move, for when the thread's runner is gone: the thread has no owner until a runner claims it.
+  authed.post("/bots/:botId/threads/:threadId/release", async (c) => {
+    const bot = await ownedBot(c);
+    const thread = await existingThread(c, bot);
+    await store.releaseThread(c.var.db, bot.id, thread.id);
+    return c.json(serializeThread((await store.getThread(c.var.db, bot.id, thread.id))!));
+  });
+
+  authed.post("/bots/:botId/assign", async (c) => {
+    const bot = await ownedBot(c);
+    const input = z
+      .object({
+        lease_token: leaseToken,
+        cursor: z.number().int().min(0),
+        assignments: z
+          .array(
+            z.object({
+              message_id: uuid,
+              thread_id: uuid,
+              add_subjects: threadSubjects.optional(),
+              subject: z.string().min(1).max(500).optional(),
+            }),
+          )
+          .max(100),
+      })
+      .parse(await jsonBody(c));
+    requireLease(bot, input.lease_token);
+
+    const assignments = input.assignments as store.Assignment[];
+    const threadIds = [...new Set(assignments.map((a) => a.thread_id))];
+    const bots = await store.threadBots(c.var.db, threadIds);
+    const foreign = threadIds.filter((id) => bots.has(id) && bots.get(id) !== bot.id);
+    if (foreign.length)
+      throw new ApiError(409, "thread_exists", `Thread id(s) belong to another bot: ${foreign.join(", ")}`);
+
+    await checkSubjects(
+      c,
+      bot,
+      assignments.flatMap((a) => (a.add_subjects ?? []).map((subject) => ({ subject, threadId: a.thread_id }))),
+    );
+
+    const messageIds = [...new Set(assignments.map((a) => a.message_id))];
+    const known = await store.botMessageIds(c.var.db, bot.id, messageIds);
+    const unknown = messageIds.filter((id) => !known.has(id));
+    if (unknown.length)
+      throw new ApiError(400, "invalid_request", `Not messages in the bot's inboxes: ${unknown.join(", ")}`);
+
+    const done = await store.assignMessages(c.var.db, bot.id, input.lease_token, input.cursor, assignments);
+    if (!done) throw leaseMismatch(bot);
+    return c.json({ assigned: done.assigned });
+  });
+
+  authed.patch("/bots/:botId/threads/:threadId", async (c) => {
+    const bot = await ownedBot(c);
+    const thread = await existingThread(c, bot);
+    const input = z
+      .object({
+        lease_token: leaseToken,
+        status: z.enum(["active", "ended"]).optional(),
+        started: z.boolean().optional(),
+        interrupted: z.boolean().optional(),
+        limited: z.boolean().optional(),
+        add_subjects: threadSubjects.optional(),
+      })
+      .parse(await jsonBody(c));
+    await requireOwner(c, thread, input.lease_token);
+    await checkSubjects(
+      c,
+      bot,
+      (input.add_subjects ?? []).map((subject) => ({ subject, threadId: thread.id })),
+    );
+
+    const { lease_token, add_subjects, ...fields } = input;
+    if (!(await store.patchThread(c.var.db, bot.id, lease_token, thread.id, { ...fields, addSubjects: add_subjects })))
+      throw runnerNotLeased();
+    return c.json(serializeThread((await store.getThread(c.var.db, bot.id, thread.id))!));
+  });
+
+  authed.post("/bots/:botId/threads/:threadId/deliver", async (c) => {
+    const bot = await ownedBot(c);
+    const thread = await existingThread(c, bot);
+    const { lease_token } = z.object({ lease_token: leaseToken }).parse(await jsonBody(c));
+    await requireOwner(c, thread, lease_token);
+    const messages = await store.deliverThread(c.var.db, bot.id, lease_token, thread.id);
+    if (!messages) throw runnerNotLeased();
+    return c.json({ data: messages });
+  });
+
+  authed.post("/bots/:botId/threads/:threadId/finish", async (c) => {
+    const bot = await ownedBot(c);
+    const thread = await existingThread(c, bot);
+    const { lease_token, requeue } = z
+      .object({ lease_token: leaseToken, requeue: z.boolean().optional() })
+      .parse(await jsonBody(c));
+    await requireOwner(c, thread, lease_token);
+    const done = await store.finishThread(c.var.db, bot.id, lease_token, thread.id, requeue ?? false);
+    if (!done) throw runnerNotLeased();
+    return c.json({ moved: done.moved });
+  });
+
+  // Takes no lease, so a runner can be going while sessions are imported. `runner_id` makes that runner the owner.
+  authed.post("/bots/:botId/threads", async (c) => {
+    const bot = await ownedBot(c);
+    const input = z
+      .object({
+        id: uuid,
+        subjects: threadSubjects,
+        status: z.enum(["active", "ended"]),
+        started: z.boolean(),
+        interrupted: z.boolean().optional(),
+        limited: z.boolean().optional(),
+        runner_id: runnerId.optional(),
+        messages: z
+          .array(
+            z.object({ id: uuid, state: z.enum(["waiting", "inflight", "delivered"]), subject: z.string().optional() }),
+          )
+          .max(10_000),
+      })
+      .parse(await jsonBody(c));
+    if (input.runner_id) await ownedRunner(c, input.runner_id);
+    if ((await store.threadBots(c.var.db, [input.id])).size)
+      throw new ApiError(409, "thread_exists", `Thread ${input.id} already exists`);
+    await checkSubjects(
+      c,
+      bot,
+      input.subjects.map((subject) => ({ subject, threadId: input.id })),
+    );
+    const { messages } = await store.importThread(c.var.db, bot, {
+      ...(input as store.ImportedThread),
+      runnerId: input.runner_id,
+      interrupted: input.interrupted ?? false,
+      limited: input.limited ?? false,
+    });
+    return c.json(
+      {
+        thread: serializeThread((await store.getThread(c.var.db, bot.id, input.id))!),
+        skipped: input.messages.length - messages,
+      },
+      201,
+    );
   });
 
   app.route("/", authed);
@@ -337,6 +576,60 @@ export function createApi(opts: ApiOptions) {
     const bot = isUuid(id) ? await store.getBot(c.var.db, id, c.var.user.id) : undefined;
     if (!bot) throw new ApiError(404, "not_found", "Bot not found");
     return bot;
+  }
+
+  /** The runner must be the user's; using it counts as seeing it. */
+  async function ownedRunner(c: Context<Env>, id: string): Promise<store.Runner> {
+    const runner = await store.getRunner(c.var.db, c.var.user.id, id);
+    if (!runner) throw new ApiError(404, "not_found", "Runner not found; register it with POST /runners");
+    await store.touchRunner(c.var.db, runner.id);
+    return runner;
+  }
+
+  /** The runner in the path, if it's the user's. */
+  async function routeRunner(c: Context<Env>): Promise<store.Runner> {
+    const id = c.req.param("runnerId") ?? "";
+    const runner = isUuid(id) ? await store.getRunner(c.var.db, c.var.user.id, id.toLowerCase()) : undefined;
+    if (!runner) throw new ApiError(404, "not_found", "Runner not found; register it with POST /runners");
+    return runner;
+  }
+
+  /** The runner holding the live lease `token`: 409 if there is none. */
+  async function liveRunner(c: Context<Env>, token: string): Promise<store.Runner> {
+    const runner = await store.runnerByToken(c.var.db, c.var.user.id, token);
+    if (!runner) throw runnerNotLeased();
+    return runner;
+  }
+
+  /** Fails fast, with the 409s the write's own check would give, unless `token` is the live lease of the thread's owner. */
+  async function requireOwner(c: Context<Env>, thread: store.Thread, token: string) {
+    const runner = await liveRunner(c, token);
+    if (!thread.runner_id)
+      throw new ApiError(409, "thread_unclaimed", "Claim the thread with POST .../claim before writing it");
+    if (thread.runner_id !== runner.id) throw threadOwned(thread);
+  }
+
+  async function existingThread(c: Context<Env>, bot: store.Bot): Promise<store.Thread> {
+    const id = c.req.param("threadId") ?? "";
+    const thread = isUuid(id) ? await store.getThread(c.var.db, bot.id, id.toLowerCase()) : undefined;
+    if (!thread) throw new ApiError(404, "not_found", "Thread not found");
+    return thread;
+  }
+
+  /** 409 if a subject is already on another of the bot's threads, or the batch wants it on two. */
+  async function checkSubjects(c: Context<Env>, bot: store.Bot, wanted: { subject: string; threadId: string }[]) {
+    if (!wanted.length) return;
+    const holders = await store.subjectHolders(c.var.db, bot.id, [...new Set(wanted.map((w) => w.subject))]);
+    const claimed = new Map(holders);
+    for (const { subject, threadId } of wanted) {
+      const holder = claimed.get(subject);
+      if (holder && holder !== threadId)
+        throw new ApiError(409, "subject_taken", `Subject ${subject} already belongs to thread ${holder}`, {
+          subject,
+          thread_id: holder,
+        });
+      claimed.set(subject, threadId);
+    }
   }
 
   /** The ids, deduped, once they're all the user's inboxes. */
@@ -382,6 +675,7 @@ export class ApiError extends Error {
     public status: 400 | 401 | 403 | 404 | 409 | 415 | 422 | 500 | 502,
     public code: string,
     message: string,
+    public details?: unknown,
   ) {
     super(message);
   }
@@ -403,10 +697,10 @@ async function jsonBody(c: Context): Promise<unknown> {
   }
 }
 
-async function existingEvent(c: Context<Env>, inbox: Inbox): Promise<EventRow> {
-  const id = c.req.param("eventId") ?? "";
-  const row = isUuid(id) ? await store.getEvent(c.var.db, inbox.id, id) : undefined;
-  if (!row) throw new ApiError(404, "not_found", "Event not found");
+async function existingMessage(c: Context<Env>, inbox: Inbox): Promise<MessageRow> {
+  const id = c.req.param("messageId") ?? "";
+  const row = isUuid(id) ? await store.getMessage(c.var.db, inbox.id, id) : undefined;
+  if (!row) throw new ApiError(404, "not_found", "Message not found");
   return row;
 }
 
@@ -416,11 +710,56 @@ function leaseMismatch(b: store.Bot): ApiError {
   return new ApiError(409, "lease_mismatch", "lease_token is not the bot's live lease");
 }
 
+function runnerNotLeased(): ApiError {
+  return new ApiError(409, "runner_not_leased", "lease_token is not a live runner lease");
+}
+
+function threadOwned(t: store.Thread): ApiError {
+  return new ApiError(409, "thread_owned", "The thread belongs to another runner", { runner_id: t.runner_id });
+}
+
+function serializeRunner(r: store.Runner) {
+  return {
+    id: r.id,
+    name: r.name,
+    created_at: iso(r.created_at),
+    last_seen_at: iso(r.last_seen_at),
+    leased_until: r.locked_until && new Date(r.locked_until) > new Date() ? iso(r.locked_until) : null,
+    bots: r.bots,
+    threads: r.threads,
+  };
+}
+
+/** Fails fast with the same 409s the write's own lease check would give. */
+function requireLease(b: store.Bot, token: string) {
+  if (!b.lock_token || b.lock_token !== token || !b.locked_until || new Date(b.locked_until) <= new Date())
+    throw leaseMismatch(b);
+}
+
+function serializeThread(t: store.Thread) {
+  return {
+    id: t.id,
+    bot_id: t.bot_id,
+    status: t.status,
+    started: t.started,
+    interrupted: t.interrupted,
+    limited: t.limited,
+    runner_id: t.runner_id,
+    subjects: t.subjects,
+    waiting: t.waiting,
+    inflight: t.inflight,
+    delivered: t.delivered,
+    ...(t.delivered_ids ? { delivered_ids: t.delivered_ids } : {}),
+    created_at: iso(t.created_at),
+    updated_at: iso(t.updated_at),
+  };
+}
+
 function serializeUser(u: User) {
   return { id: u.id, name: u.name, email: u.email, created_at: iso(u.created_at) };
 }
 
-function serializeEvent(e: EventRow) {
+function serializeMessage(e: MessageRow) {
   return {
     id: e.id,
     inbox_id: e.inbox_id,

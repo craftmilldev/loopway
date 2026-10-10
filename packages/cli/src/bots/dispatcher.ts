@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
-import { ApiError, type Bot, type Event, type Lease, type LoopwayClient } from "../client.js";
+import { ApiError, type Bot, type Message, type Lease, type LoopwayClient } from "../client.js";
 import { loadGithubBot } from "../config.js";
 import type { Context } from "../context.js";
-import { dim } from "../format.js";
+import { clock, dim } from "../format.js";
 import { startMcpServer, type McpServer } from "../mcp.js";
 import { spawnClaude, type RunAgent, type RunOutcome } from "./agent.js";
 import { botEnv } from "./github.js";
@@ -24,14 +24,30 @@ export interface ThreadsOptions {
   interval?: number;
   /** How long each bot lease lasts; it's renewed every tick. */
   ttl?: number;
+  /** This machine's runner id (see ensureRunner), recorded on the leases it takes. */
+  runnerId?: string;
 }
 
-export const DEFAULTS = { max: 3, interval: 5, ttl: 3600 };
+/**
+ * The lease TTL is short on purpose: the bots of a runner that died without releasing them (killed,
+ * crashed, power lost) come free in well under a minute instead of blocking the next runner.
+ */
+/** API-error retries per session before giving up, and the first backoff, which doubles each time. */
+export const API_ERROR_RETRIES = 3;
+export const API_ERROR_BACKOFF_MS = 60_000;
+
+export const DEFAULTS = { max: 3, interval: 5, ttl: 30 };
+
+/** A bot another runner holds the lease on. */
+export interface SkippedBot extends Bot {
+  /** When that lease expires, if the server said. */
+  leased_until?: string;
+}
 
 /** What a dispatcher is doing right now, for the TUI. */
 export interface DispatcherState {
   /** The bots this runner holds a lease on, and the ones it skipped because another runner holds theirs. */
-  bots: { held: Bot[]; skipped: Bot[] };
+  bots: { held: Bot[]; skipped: SkippedBot[] };
   /** Messages assigned to a session but not delivered yet, oldest first. */
   waiting: WaitingMessage[];
   /** The sessions of this runner's bots. */
@@ -51,7 +67,7 @@ export interface DispatcherState {
  * then starts or resumes, in the background, every session that has waiting messages and no run in
  * flight, as far as --max allows.
  *
- * Delivered messages are context for the session, not tasks it has to mark done; the inbox's events
+ * Delivered messages are context for the session, not tasks it has to mark done; the inbox's messages
  * are left alone. Sessions talk back through the MCP tools in tools.ts, and `end` is what finishes
  * a thread.
  */
@@ -60,15 +76,23 @@ export class Dispatcher {
   private readonly running = new Map<string, Promise<void>>();
   /** Bot id → the lease this runner holds. */
   private readonly leases = new Map<string, Lease>();
-  /** Bots skipped last tick because another runner holds their lease. */
-  private readonly skipped = new Set<string>();
+  /** Bots skipped last tick because another runner holds their lease → when that lease expires, if known. */
+  private readonly skipped = new Map<string, string | undefined>();
+  /** Bots whose sessions this runner has already checked for runs cut off by a previous runner. */
+  private readonly reconciled = new Set<string>();
+  private closing?: Promise<void>;
   private readonly max: number;
   private readonly ttl: number;
+  private readonly runnerId?: string;
+  /** This process's lease on its runner, so no other process uses the same runner id. */
+  private runnerLease?: Lease;
   private readonly runAgent: RunAgent;
   private readonly dir: string;
   private queued = 0;
   /** While a run says the account hit its usage limit: when the limit resets (ms), until which nothing is delivered. */
   private limitedUntil = 0;
+  /** Session id → consecutive API-error retries so far, and when the next one may start (ms). */
+  private readonly errored = new Map<string, { retries: number; after: number }>();
   /** Whether a run has exited since the last tick started, and who to tell when one does. */
   private freed = false;
   private onFreed?: () => void;
@@ -89,7 +113,14 @@ export class Dispatcher {
     const gh = await loadGithubBot(ctx.configDir, ctx.env);
     const env = gh ? botEnv(ctx.env, gh) : ctx.env;
     const mcp = await startMcpServer("loopway", sessionTools(ctx.configDir));
-    return new Dispatcher(ctx, client, bots, kinds, prompts, opts, mcp, env);
+    const dispatcher = new Dispatcher(ctx, client, bots, kinds, prompts, opts, mcp, env);
+    try {
+      await dispatcher.leaseRunner();
+    } catch (err) {
+      await mcp.close();
+      throw err;
+    }
+    return dispatcher;
   }
 
   private constructor(
@@ -105,15 +136,23 @@ export class Dispatcher {
   ) {
     this.max = opts.max ?? DEFAULTS.max;
     this.ttl = opts.ttl ?? DEFAULTS.ttl;
+    this.runnerId = opts.runnerId;
     this.runAgent = ctx.runAgent ?? spawnClaude;
     this.dir = ctx.configDir;
   }
 
   async tick(): Promise<void> {
     this.freed = false;
+    await this.leaseRunner();
     for (const bot of this.bots) {
       try {
-        if (await this.lease(bot)) await this.poll(bot);
+        if (await this.lease(bot)) {
+          if (!this.reconciled.has(bot.id)) {
+            await this.reconcile(bot);
+            this.reconciled.add(bot.id);
+          }
+          await this.poll(bot);
+        }
       } catch (err) {
         // One bot's trouble (a flaky network, say) shouldn't stop the others; try again next tick.
         this.ctx.out(`error: bot ${bot.name}: ${err instanceof Error ? err.message : String(err)}`);
@@ -133,7 +172,9 @@ export class Dispatcher {
     return {
       bots: {
         held: this.bots.filter((b) => this.leases.has(b.id)),
-        skipped: this.bots.filter((b) => this.skipped.has(b.id)),
+        skipped: this.bots
+          .filter((b) => this.skipped.has(b.id))
+          .map((b) => ({ ...b, leased_until: this.skipped.get(b.id) })),
       },
       waiting,
       sessions,
@@ -157,14 +198,42 @@ export class Dispatcher {
     while (this.running.size) await Promise.all(this.running.values());
   }
 
-  /** Releases the bot leases, so the next runner needn't wait out the TTL, and stops the MCP server. */
-  async close(): Promise<void> {
+  /**
+   * Releases the bot leases, so the next runner needn't wait out the TTL, and stops the MCP server.
+   * Closing again, as a second Ctrl-C does, joins the close in progress.
+   */
+  close(): Promise<void> {
+    return (this.closing ??= this.doClose());
+  }
+
+  private async doClose(): Promise<void> {
     for (const [id, lease] of this.leases) {
       // A lease that expired or was taken over is gone already; nothing to do about it on the way out.
       await this.client.releaseBot(id, lease.token).catch(() => {});
       this.leases.delete(id);
     }
+    if (this.runnerId && this.runnerLease)
+      await this.client.releaseRunner(this.runnerId, this.runnerLease.token).catch(() => {});
     await this.mcp.close();
+  }
+
+  /** Takes or renews the lease on this machine's runner. Fails if another process holds it. */
+  private async leaseRunner(): Promise<void> {
+    if (!this.runnerId) return;
+    try {
+      const { lease } = await this.client.leaseRunner(this.runnerId, {
+        ttl_seconds: this.ttl,
+        lease_token: this.runnerLease?.token,
+      });
+      this.runnerLease = lease;
+    } catch (err) {
+      if (!(err instanceof ApiError && err.code === "runner_leased")) throw err;
+      const until = leasedUntil(err);
+      throw new Error(
+        `This machine's runner is already in use by another \`loopway bots run\`${until ? ` (its lease lasts until ${clock(until)})` : ""}. Stop that one, or wait for its lease to end.`,
+        { cause: err },
+      );
+    }
   }
 
   /** Takes or renews the bot's lease. False, with a log line the first time, if another runner holds it. */
@@ -173,6 +242,7 @@ export class Dispatcher {
       const { lease } = await this.client.leaseBot(bot.id, {
         ttl_seconds: this.ttl,
         lease_token: this.leases.get(bot.id)?.token,
+        runner_id: this.runnerId,
       });
       this.leases.set(bot.id, lease);
       if (this.skipped.delete(bot.id)) this.ctx.out(`bot ${bot.name}: lease taken`);
@@ -180,12 +250,51 @@ export class Dispatcher {
     } catch (err) {
       if (!(err instanceof ApiError && err.code === "leased")) throw err;
       this.leases.delete(bot.id);
+      const until = leasedUntil(err);
       if (!this.skipped.has(bot.id)) {
-        this.skipped.add(bot.id);
-        this.ctx.out(`bot ${bot.name} is leased by another runner; skipping it until that lease ends.`);
+        const when = until ? ` until ${clock(until)}` : "";
+        this.ctx.out(`bot ${bot.name} is leased by another runner${when}; skipping it until that lease ends.`);
       }
+      this.skipped.set(bot.id, until);
       return false;
     }
+  }
+
+  /**
+   * Picks up sessions a previous runner left mid-run (it died, was restarted, or the machine slept).
+   * The session exists in Claude Code once its log has an `init` record, so it's marked started; the
+   * messages it was handed but never finished go back to waiting, or, for runs from before those were
+   * recorded, the session is told to carry on. Done once per bot, when this runner first leases it,
+   * so no run of this runner is in flight.
+   */
+  private async reconcile(bot: Bot): Promise<void> {
+    const logs = new Map<string, string>();
+    for (const [id, s] of Object.entries(await loadSessions(this.dir))) {
+      if (s.bot_id === bot.id && s.status === "active") logs.set(id, await this.readLog(id));
+    }
+    const repaired = await withSessions(this.dir, (sessions) => {
+      let n = 0;
+      for (const [id, log] of logs) {
+        const s = sessions[id];
+        if (!s || !log) continue;
+        const last = log.trimEnd().split("\n").at(-1) ?? "";
+        const cutOff = !last.includes('"type":"result"');
+        const started = !s.started && log.includes('"subtype":"init"');
+        const inflight = s.inflight?.length ? s.inflight : undefined;
+        if (!started && !(cutOff && (inflight || !s.waiting.length))) continue;
+        editSession(sessions, id);
+        if (started) s.started = true;
+        if (inflight) {
+          const ids = new Set(inflight.map((m) => m.id));
+          s.messages = s.messages.filter((e) => !ids.has(e));
+          s.waiting.unshift(...inflight);
+          delete s.inflight;
+        } else if (cutOff && !s.waiting.length) s.interrupted = true;
+        n++;
+      }
+      return n;
+    });
+    if (repaired) this.ctx.out(dim(`Bot ${bot.name}: picked up ${repaired} session(s) a previous runner cut off.`));
   }
 
   /** Reads the bot's messages until there are none, assigning each page to sessions and moving the cursor past it. */
@@ -202,13 +311,14 @@ export class Dispatcher {
    * Gives each message to a session, as a waiting message. Messages already assigned (the last run
    * died between saving and moving the cursor) are skipped.
    */
-  private assign(bot: Bot, messages: Event[]): Promise<void> {
+  private assign(bot: Bot, messages: Message[]): Promise<void> {
     const kind = this.kinds.get(bot.id)!;
     return withSessions(this.dir, (sessions) => {
-      const known = new Set(Object.values(sessions).flatMap((s) => [...s.events, ...s.waiting.map((m) => m.id)]));
+      const known = new Set(Object.values(sessions).flatMap((s) => [...s.messages, ...s.waiting.map((m) => m.id)]));
       for (const e of messages) {
         if (known.has(e.id)) continue;
         const { session, key } = kind.route(sessions, bot.id, e);
+        if (!session) continue;
         editSession(sessions, session).waiting.push({ id: e.id, inbox_id: e.inbox_id, type: e.event.type, key });
       }
     });
@@ -229,7 +339,11 @@ export class Dispatcher {
     const { deliveries, held } = await withSessions(this.dir, (sessions) => {
       // A session the limit stopped is ready too, with nothing new to deliver; ordering puts it first.
       const ready = Object.keys(sessions)
-        .filter((id) => (sessions[id]!.waiting.length || sessions[id]!.limited) && !running.has(id))
+        .filter(
+          (id) =>
+            (sessions[id]!.waiting.length || sessions[id]!.limited || sessions[id]!.interrupted) && !running.has(id),
+        )
+        .filter((id) => (this.errored.get(id)?.after ?? 0) <= Date.now())
         .filter((id) => this.prompts.has(sessions[id]!.bot_id))
         .sort((a, b) => (sessions[a]!.waiting[0]?.id ?? "").localeCompare(sessions[b]!.waiting[0]?.id ?? ""));
       const deliveries = new Map<string, { session: Session; messages: WaitingMessage[] }>();
@@ -237,10 +351,12 @@ export class Dispatcher {
         if (running.size + deliveries.size >= this.max) break;
         const s = editSession(sessions, id);
         const messages = s.waiting.splice(0);
-        s.events.push(...messages.map((m) => m.id));
+        s.messages.push(...messages.map((m) => m.id));
         s.status = "active";
+        s.inflight = messages;
         deliveries.set(id, { session: { ...s }, messages });
         delete s.limited;
+        delete s.interrupted;
       }
       return { deliveries, held: ready.length - deliveries.size };
     });
@@ -257,43 +373,61 @@ export class Dispatcher {
   private async run(id: string, session: Session, messages: WaitingMessage[]): Promise<void> {
     const short = id.slice(0, 8);
     const count = `${messages.length} message${messages.length === 1 ? "" : "s"}`;
-    const what = `${session.keys.join(", ") || "new thread"} (${session.limited ? `after the usage limit, ${count}` : count})`;
+    const after = session.limited ? "after the usage limit, " : session.interrupted ? "after an interruption, " : "";
+    const what = `${session.keys.join(", ") || "new thread"} (${after}${count})`;
     this.ctx.out(`${session.started ? "resumed" : "started"} ${short} for ${what}`);
 
     const prompt = this.prompts.get(session.bot_id)!;
     const parts = [
       !session.started && prompt,
       session.limited && RESUME_AFTER_LIMIT,
+      session.interrupted && RESUME_AFTER_INTERRUPT,
       messages.length > 0 && describeMessages(messages),
     ];
     const message = parts.filter((p): p is string => typeof p === "string").join("\n\n");
-    let outcome: RunOutcome;
-    try {
-      outcome = await this.runAgent({
+    const attempt = (resume: boolean) =>
+      this.runAgent({
         sessionId: id,
-        resume: session.started,
+        resume,
         message,
         model: this.bots.find((b) => b.id === session.bot_id)!.model,
         logPath: sessionLogPath(this.dir, id),
         mcpUrl: this.mcp.urlFor(id),
         env: this.env,
+        // The session exists from here on, even if this run is cut off before it finishes.
+        onStarted: () => {
+          withSessions(this.dir, (sessions) => void (editSession(sessions, id).started = true)).catch(() => {});
+        },
       });
+    let outcome: RunOutcome;
+    try {
+      outcome = await attempt(session.started);
+      // A session an earlier run created but we never recorded: pick it up instead of failing.
+      if (!session.started && outcome.code !== 0 && (await this.readLog(id)).slice(-2000).includes("already in use")) {
+        outcome = await attempt(true);
+      }
     } catch (err) {
       outcome = { code: -1, delivered: false };
       this.ctx.out(`error: ${short} failed to start: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    const { code, delivered, limitedUntil } = outcome;
+    const { code, delivered, limitedUntil, apiError } = outcome;
+    // The usage limit has its own wait; an API error gets a backoff per session, and a cap so a permanent one can't loop.
+    const prior = this.errored.get(id)?.retries ?? 0;
+    const retry = !limitedUntil && !!apiError && prior < API_ERROR_RETRIES;
+    const requeue = !!limitedUntil || retry;
     const ended = await withSessions(this.dir, (sessions) => {
       const s = editSession(sessions, id);
       s.started = true;
-      if (limitedUntil && delivered) {
-        // The messages reached the session before the limit cut the run short: resume it once the limit resets.
-        s.limited = true;
-      } else if (limitedUntil) {
-        // They didn't: deliver them again once the limit resets.
+      delete s.inflight;
+      if (requeue && delivered) {
+        // The messages reached the session before the run was cut short: resume it once the wait is over.
+        if (limitedUntil) s.limited = true;
+        else s.interrupted = true;
+      } else if (requeue) {
+        // They didn't: deliver them again once the wait is over.
         const ids = new Set(messages.map((m) => m.id));
-        s.events = s.events.filter((e) => !ids.has(e));
+        s.messages = s.messages.filter((e) => !ids.has(e));
         s.waiting.unshift(...messages);
       }
       return s.status === "ended";
@@ -301,7 +435,18 @@ export class Dispatcher {
     if (limitedUntil) {
       this.limitedUntil = Math.max(this.limitedUntil, limitedUntil);
       this.ctx.out(`${short} hit the usage limit; retrying sessions after ${new Date(limitedUntil).toLocaleString()}`);
-    } else this.ctx.out(`${short} ${ended ? "ended" : "finished"} (exit ${code})`);
+    } else if (retry) {
+      const wait = API_ERROR_BACKOFF_MS * 2 ** prior;
+      this.errored.set(id, { retries: prior + 1, after: Date.now() + wait });
+      this.ctx.out(
+        `${short} hit an API error (${apiError}); retry ${prior + 1}/${API_ERROR_RETRIES} after ${new Date(Date.now() + wait).toLocaleString()}`,
+      );
+    } else {
+      this.errored.delete(id);
+      if (apiError)
+        this.ctx.out(`${short} hit an API error (${apiError}); giving up after ${API_ERROR_RETRIES} retries`);
+      this.ctx.out(`${short} ${ended ? "ended" : "finished"} (exit ${code})`);
+    }
     this.running.delete(id);
     this.freed = true;
     this.onFreed?.();
@@ -315,12 +460,21 @@ export class Dispatcher {
   }
 }
 
+/** When the lease a 409 `leased` ran into expires, if the server said. */
+function leasedUntil(err: ApiError): string | undefined {
+  const details = err.details as { expires_at?: unknown } | undefined;
+  return typeof details?.expires_at === "string" ? details.expires_at : undefined;
+}
+
+const RESUME_AFTER_INTERRUPT =
+  "Your last run was cut off before it finished (the runner stopped, or the API failed). Carry on from wherever you got to, and check the thread's latest messages on GitHub for anything you missed.";
+
 const RESUME_AFTER_LIMIT =
   "Your last run stopped because the account hit its usage limit. The limit has reset: carry on with the messages you were given, from wherever you got to.";
 
 function describeMessages(messages: WaitingMessage[]): string {
   const lines = messages.map(
-    (m) => `- ${m.id}  ${m.type}  ${m.key ?? ""}  (read: loopway events get ${m.inbox_id} ${m.id} --data)`,
+    (m) => `- ${m.id}  ${m.type}  ${m.key ?? ""}  (read: loopway messages get ${m.inbox_id} ${m.id} --data)`,
   );
   return `New messages for this thread:\n${lines.join("\n")}`;
 }
