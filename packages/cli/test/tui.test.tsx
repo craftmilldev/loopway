@@ -1,20 +1,29 @@
 import { render } from "ink-testing-library";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Bot } from "../src/client.js";
-import type { Session } from "../src/bots/store.js";
+import type { Bot, Thread } from "../src/client.js";
 import { transcriptLines } from "../src/bots/transcript.js";
 import { ThreadsTui, type Snapshot } from "../src/bots/tui.js";
 
 const KEYS = { up: "\u001B[A", down: "\u001B[B", right: "\u001B[C", left: "\u001B[D", enter: "\r", tab: "\t" };
 
-const session = (keys: string[], status: Session["status"], updated_at: string): Session => ({
+const thread = (
+  subjects: string[],
+  status: Thread["status"],
+  updated_at: string,
+  runner_id: string | null = "me",
+): Thread => ({
+  id: "",
   bot_id: "bot",
-  keys,
-  messages: [],
-  waiting: [],
   status,
   started: true,
+  interrupted: false,
+  limited: false,
+  runner_id,
+  subjects,
+  waiting: [],
+  inflight: [],
+  delivered: 0,
   created_at: updated_at,
   updated_at,
 });
@@ -23,13 +32,15 @@ const bot = (name: string) => ({ id: name, name, kind: "github-threads", inbox_i
 
 const snapshot: Snapshot = {
   bots: { held: [bot("dev")], skipped: [bot("ci")] },
-  waiting: [{ id: "e1", inbox_id: "in", type: "com.github.push", key: "a/b#9" }],
-  sessions: {
-    "aaaaaaaa-1": session(["a/b#1"], "active", "2026-01-01T00:00:03Z"),
-    "bbbbbbbb-2": session(["a/b#2", "a/b#3"], "active", "2026-01-01T00:00:02Z"),
-    "cccccccc-3": session(["a/b#4"], "ended", "2026-01-01T00:00:01Z"),
-    "dddddddd-4": session(["a/b#5"], "ended", "2026-01-01T00:00:04Z"),
+  waiting: [{ id: "e1", inbox_id: "in", type: "com.github.push", subject: "a/b#9" }],
+  threads: {
+    "aaaaaaaa-1": thread(["a/b#1"], "active", "2026-01-01T00:00:03Z"),
+    "bbbbbbbb-2": thread(["a/b#2", "a/b#3"], "active", "2026-01-01T00:00:02Z"),
+    "cccccccc-3": thread(["a/b#4"], "ended", "2026-01-01T00:00:01Z"),
+    "dddddddd-4": thread(["a/b#5"], "ended", "2026-01-01T00:00:04Z", "laptop-id"),
   },
+  runnerId: "me",
+  runners: { me: "desk", "laptop-id": "laptop" },
   running: new Set(["aaaaaaaa-1"]),
   message: "started aaaaaaaa for a/b#1 (1 event)",
 };
@@ -95,6 +106,7 @@ describe("ThreadsTui", () => {
       "Waiting (1)",
       "Done (2)",
       "started aaaaaaaa",
+      "on laptop",
     ])
       expect(f).toContain(s);
     // Each section in order, done sessions newest first, and the first session selected.
@@ -133,13 +145,20 @@ describe("ThreadsTui", () => {
   });
 
   it("scrolls long lists inside the screen", async () => {
-    const sessions = Object.fromEntries(
+    const threads = Object.fromEntries(
       Array.from({ length: 200 }, (_, i) => [
         `s${String(i).padStart(3, "0")}`,
-        session([`a/b#${i}`], "ended", `2026-01-01T00:${String(i % 60).padStart(2, "0")}:00Z`),
+        thread([`a/b#${i}`], "ended", `2026-01-01T00:${String(i % 60).padStart(2, "0")}:00Z`),
       ]),
     );
-    const { frame, press } = await show({ bots: { held: [], skipped: [] }, waiting: [], sessions, running: new Set() });
+    const { frame, press } = await show({
+      bots: { held: [], skipped: [] },
+      waiting: [],
+      threads,
+      runnerId: "me",
+      runners: {},
+      running: new Set(),
+    });
     const rows = frame().split("\n").length;
     expect(rows).toBeLessThan(200);
     for (let i = 0; i < 60; i++) await press(KEYS.down);

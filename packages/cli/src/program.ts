@@ -1,6 +1,6 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import { clearConfig, configure, login, whoami } from "./commands/auth.js";
-import { importBotThreads, listBotThreads, releaseBotThread } from "./commands/botThreads.js";
+import { listBotThreads, releaseBotThread } from "./commands/botThreads.js";
 import { botMessages, createBot, deleteBot, listBots, releaseBot, showBot, updateBot } from "./commands/bots.js";
 import { getMessage, listMessages } from "./commands/messages.js";
 import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
@@ -202,14 +202,6 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .addOption(new Option("--status <status>", "which threads (default active)").choices(["active", "ended", "all"]))
     .addOption(jsonOpt())
     .action((ref, opts) => listBotThreads(ctx, ref, opts));
-
-  botThreads
-    .command("import")
-    .description(
-      "upload the sessions in ~/.loopway/threads.json the server doesn't have yet, owned by this machine (threads.json is left alone)",
-    )
-    .option("--bot <bot>", "only this bot's sessions (id or name; default all your bots)")
-    .action((opts) => importBotThreads(ctx, opts));
 
   botThreads
     .command("release")

@@ -9,7 +9,8 @@ import { createUser } from "@loopway/web/store";
 import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { LoopwayClient, type Bot } from "../src/client.js";
+import { LoopwayClient, type Bot, type Message } from "../src/client.js";
+import { route } from "../src/bots/routing.js";
 import { LIMIT_FALLBACK_MS, LimitWatch, threadPrompt, type AgentRun, type RunOutcome } from "../src/bots/agent.js";
 import { API_ERROR_BACKOFF_MS, Dispatcher } from "../src/bots/dispatcher.js";
 import { defaultTtl } from "../src/commands/bots-run.js";
@@ -18,7 +19,6 @@ import { botEnv } from "../src/bots/github.js";
 import { UsageError, type Context } from "../src/context.js";
 import { createProgram } from "../src/program.js";
 import { ensureRunner } from "../src/bots/runner.js";
-import { withSessions } from "../src/bots/store.js";
 
 const API = "https://loopway.test";
 const SECRET = "test-secret";
@@ -398,60 +398,6 @@ describe("bots", () => {
       /No inbox with id or name "zzz"/,
     );
   });
-
-  it("imports threads.json sessions as server threads, once, and lists them", async () => {
-    await configured();
-    const inbox = await inboxWithEvents(3);
-    const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.id);
-    expect(await run("bots", "threads", "dev")).toBe("No active threads.");
-    const [m1, m2, m3] = (await runJson("messages", "list", inbox.id, "--order", "asc")).data.map((m: any) => m.id);
-    const type = "com.github.pull_request.opened";
-
-    const [live, done, strange] = [randomUUID(), randomUUID(), randomUUID()];
-    const now = new Date().toISOString();
-    const base = { bot_id: bot.id, started: true, created_at: now, updated_at: now };
-    const sessions = {
-      [live]: {
-        ...base,
-        keys: ["a/b#1", "a/b#2"],
-        status: "active",
-        messages: [m1],
-        waiting: [{ id: m3, inbox_id: inbox.id, type, key: "a/b#2" }],
-        inflight: [{ id: m2, inbox_id: inbox.id, type, key: "a/b#1" }],
-        interrupted: true,
-      },
-      [done]: { ...base, keys: ["a/b#9"], status: "ended", messages: [randomUUID()], waiting: [] },
-      // A session of another bot, and one whose key the first already holds.
-      [randomUUID()]: { ...base, bot_id: randomUUID(), keys: ["a/b#7"], status: "active", messages: [], waiting: [] },
-      [strange]: { ...base, keys: ["a/b#1"], status: "active", messages: [], waiting: [] },
-    };
-    await writeFile(join(configDir, "threads.json"), JSON.stringify(sessions));
-
-    const out = await run("bots", "threads", "import");
-    expect(out).toContain(`Skipped ${strange}`);
-    expect(out).toMatch(/Imported 2 thread\(s\); 0 already on the server/);
-    expect(JSON.parse(await readFile(join(configDir, "threads.json"), "utf8"))).toEqual(sessions);
-
-    const threads = await runJson("bots", "threads", "dev", "--status", "all");
-    expect(threads.map((t: any) => t.id).sort()).toEqual([live, done].sort());
-    expect(threads.find((t: any) => t.id === live)).toMatchObject({
-      status: "active",
-      subjects: ["a/b#1", "a/b#2"],
-      interrupted: true,
-      delivered: 1,
-      waiting: [{ id: m3, subject: "a/b#2" }],
-      inflight: [{ id: m2, subject: "a/b#1" }],
-    });
-    expect(await run("bots", "threads", "dev")).toMatch(
-      new RegExp(`${live}\\s+active\\s+a/b#1, a/b#2\\s+\\S+\\s+1\\s+1\\s+1`),
-    );
-    expect(await runJson("bots", "threads", "dev", "--status", "ended")).toHaveLength(1);
-
-    // Again: the two are already there; the odd one is retried and skipped again.
-    const again = await run("bots", "threads", "import", "--bot", "dev");
-    expect(again).toMatch(/Imported 0 thread\(s\); 2 already on the server/);
-    expect(await runJson("bots", "threads", "dev", "--status", "all")).toHaveLength(2);
-  });
 });
 
 describe("runners", () => {
@@ -493,22 +439,23 @@ describe("runners", () => {
     await second.close();
   });
 
-  it("owns the threads it imports, and a released thread has no owner", async () => {
-    await configured();
+  it("lists a thread's runner, and a released thread has no owner", async () => {
+    const key = await configured();
+    const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
     const inbox = await inboxWithEvents(0);
     const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.id);
+    const runner = await ensureRunner(configDir, client);
     const id = randomUUID();
-    const now = new Date().toISOString();
-    const session = { bot_id: bot.id, keys: ["a/b#1"], messages: [], waiting: [], status: "active", started: true };
-    await writeFile(
-      join(configDir, "threads.json"),
-      JSON.stringify({ [id]: { ...session, created_at: now, updated_at: now } }),
-    );
-
-    await run("bots", "threads", "import");
-    const runner = (await runJson("runners"))[0];
+    await client.importThread(bot.id, {
+      id,
+      subjects: ["a/b#1"],
+      status: "active",
+      started: true,
+      messages: [],
+      runner_id: runner.id,
+    });
     expect((await runJson("bots", "threads", "dev"))[0].runner_id).toBe(runner.id);
-    expect(runner.threads).toBe(1);
+    expect((await runJson("runners"))[0].threads).toBe(1);
     expect(await run("bots", "threads", "dev")).toContain(runner.name);
 
     expect(await run("bots", "threads", "release", "dev", id)).toMatch(/Released thread/);
@@ -527,7 +474,13 @@ describe("threads", () => {
     pull_request: { number: n, body },
     repository,
   });
-  const sessions = async () => JSON.parse(await readFile(join(configDir, "threads.json"), "utf8"));
+  /** A bot's threads on the server, by id. */
+  const sessions_ = async (botId: string) =>
+    new Map<string, any>((await runJson("bots", "threads", botId, "--status", "all")).map((t: any) => [t.id, t]));
+
+  /** The bot's threads on the server, by id. */
+  const sessions = async (bot = "dev1") =>
+    Object.fromEntries((await runJson("bots", "threads", bot, "--status", "all")).map((t: any) => [t.id, t]));
   const closers: (() => Promise<void>)[] = [];
   const ctxOf = (out: string[]): Context => ({
     configDir,
@@ -568,17 +521,18 @@ describe("threads", () => {
       runAgent: (r) => new Promise((resolve) => (runs.push(r), busy.push(resolve))),
     };
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
-    const d = await Dispatcher.start(ctx, client, bots, { max, ttl: 60 });
+    const runner = await ensureRunner(configDir, client);
+    const d = await Dispatcher.start(ctx, client, bots, { max, ttl: 60, runnerId: runner.id });
     const finish = async (outcome: RunOutcome = { code: 0, delivered: true }) => (
       busy.splice(0).forEach((f) => f(outcome)),
       await d.idle()
     );
-    // Let runs still in flight write threads.json before the config dir is removed.
+    // Let runs still in flight finish before the test ends.
     closers.push(async () => (await finish(), await d.close()));
     const list = async () => (await runJson("messages", "list", boxes[0]!.id, "--all")).data;
     const cursor = async (bot = bots[0]!) => (await runJson("bots", "show", bot.id)).cursor;
     const newest = async () => Math.max(...(await list()).map((e: any) => e.seq));
-    return { inbox: boxes[0]!, bots, bot: bots[0]!, client, runs, out, d, finish, list, cursor, newest };
+    return { inbox: boxes[0]!, bots, bot: bots[0]!, client, runner, runs, out, d, finish, list, cursor, newest };
   }
 
   /** Calls one of the dispatcher's MCP methods the way Claude Code would. */
@@ -615,7 +569,11 @@ describe("threads", () => {
     expect(runs).toHaveLength(1);
     expect((await sessions())[first!.sessionId].waiting).toHaveLength(1);
     await finish();
-    expect((await sessions())[first!.sessionId]).toMatchObject({ keys: ["a/b#1"], status: "active", started: true });
+    expect((await sessions())[first!.sessionId]).toMatchObject({
+      subjects: ["a/b#1"],
+      status: "active",
+      started: true,
+    });
 
     await d.tick(); // the comment that arrived while busy
     expect(runs[1]).toMatchObject({ sessionId: first!.sessionId, resume: true });
@@ -628,7 +586,7 @@ describe("threads", () => {
     await d.tick();
     expect(runs[2]!.sessionId).toBe(first!.sessionId);
     await finish();
-    expect((await sessions())[first!.sessionId].keys).toEqual(["a/b#1", "a/b#2"]);
+    expect((await sessions())[first!.sessionId].subjects).toEqual(["a/b#1", "a/b#2"]);
 
     // A close event alone doesn't end the thread; the session decides, through its end tool.
     await send(inbox, "pull_request", pull("closed", 2));
@@ -645,7 +603,7 @@ describe("threads", () => {
     expect((await sessions())[first!.sessionId].status).toBe("active");
   });
 
-  it("moves the cursor past what it assigned and records the messages on the session", async () => {
+  it("moves the cursor past what it assigned and records the messages on the thread", async () => {
     const { inbox, runs, d, finish, list, cursor, newest, bot } = await setup(3);
     await send(inbox, "issues", issue("opened", 1));
     await d.tick();
@@ -658,13 +616,19 @@ describe("threads", () => {
     // Later ticks read nothing new, and the session keeps its record.
     await d.tick();
     expect(runs).toHaveLength(1);
-    expect((await sessions())[id]).toMatchObject({ bot_id: bot.id, messages: [delivered.id], waiting: [] });
+    expect(((await runJson("bots", "threads", "dev1", "--status", "all")) as any[])[0]).toMatchObject({
+      id,
+      bot_id: bot.id,
+      delivered: 1,
+      waiting: [],
+    });
 
     // Messages that come back (the cursor didn't move after they were assigned) are skipped.
     await db.query(`UPDATE loopway.bots SET cursor = cursor - 1 WHERE id = $1`, [bot.id]);
     await d.tick();
     expect(runs).toHaveLength(1);
-    expect((await sessions())[id]).toMatchObject({ messages: [delivered.id], waiting: [] });
+    expect((await sessions())[id]).toMatchObject({ delivered: 1, waiting: [] });
+    expect(Object.keys(await sessions())).toEqual([id]);
     expect(await cursor()).toBe(await newest());
   });
 
@@ -681,11 +645,11 @@ describe("threads", () => {
     const state = await d.state();
     expect(state.bots.held.map((b) => b.name)).toEqual(["dev1"]);
     expect(state.waiting).toEqual([
-      { id: (await list()).at(-1).id, inbox_id: inbox.id, type: "com.github.issues.opened", key: "a/b#3" },
+      { id: (await list()).at(-1).id, inbox_id: inbox.id, type: "com.github.issues.opened", subject: "a/b#3" },
     ]);
     expect([...state.running].sort()).toEqual(
-      Object.keys(state.sessions)
-        .filter((id) => !state.sessions[id]!.waiting.length)
+      Object.keys(state.threads)
+        .filter((id) => !state.threads[id]!.waiting.length)
         .sort(),
     );
 
@@ -734,9 +698,9 @@ describe("threads", () => {
     expect(runs).toHaveLength(1);
     const state = await d.state();
     expect(state.running.size).toBe(0);
-    expect(state.waiting.map((m) => m.key)).toEqual(["a/b#2", "a/b#1"]);
-    expect(state.sessions[first!.sessionId]!.messages).toEqual(delivered);
-    expect(state.sessions[first!.sessionId]!.limited).toBe(true);
+    expect(state.waiting.map((m) => m.subject)).toEqual(["a/b#2", "a/b#1"]);
+    expect(state.threads[first!.sessionId]!.delivered).toBe(delivered.length);
+    expect(state.threads[first!.sessionId]!.limited).toBe(true);
 
     // Once it resets, the session is told to carry on, with the comment that arrived meanwhile.
     await new Promise((r) => setTimeout(r, 350));
@@ -751,7 +715,7 @@ describe("threads", () => {
     for (const id of delivered) expect(retry.message).not.toContain(id);
     const after = await d.state();
     expect(after.waiting).toEqual([]);
-    expect(after.sessions[first!.sessionId]!.limited).toBeUndefined();
+    expect(after.threads[first!.sessionId]!.limited).toBe(false);
     await finish();
 
     // A session the limit stopped with nothing new for it is resumed on its own, with just the note.
@@ -784,8 +748,8 @@ describe("threads", () => {
     expect(runs).toHaveLength(1);
     const state = await d.state();
     expect(state.running.size).toBe(0);
-    expect(state.waiting.map((m) => m.key)).toEqual(["a/b#1", "a/b#2"]);
-    expect(state.sessions[first!.sessionId]!.messages).toEqual([]);
+    expect(state.waiting.map((m) => m.subject)).toEqual(["a/b#1", "a/b#2"]);
+    expect(state.threads[first!.sessionId]!.delivered).toBe(0);
 
     // Once it resets, the session is resumed with the same messages, and the new thread starts too.
     await new Promise((r) => setTimeout(r, 350));
@@ -844,7 +808,7 @@ describe("threads", () => {
     // The first run took its messages, then the network dropped: nothing starts until the backoff passes.
     await finish({ code: 0, delivered: true, apiError: error });
     expect(out.join("\n")).toMatch(/hit an API error .*ENOTFOUND.*retry 1\/3/);
-    expect((await d.state()).sessions[first!.sessionId]!.interrupted).toBe(true);
+    expect((await d.state()).threads[first!.sessionId]!.interrupted).toBe(true);
     await d.tick();
     expect(runs).toHaveLength(1);
 
@@ -858,7 +822,7 @@ describe("threads", () => {
       expect(out.join("\n")).toMatch(/resumed \w+ for a\/b#1 \(after an interruption, 0 messages\)/);
       expect(runs[1]!.resume).toBe(true);
       expect(runs[1]!.message).toMatch(/^Your last run was cut off before it finished/);
-      expect((await d.state()).sessions[first!.sessionId]!.interrupted).toBeUndefined();
+      expect((await d.state()).threads[first!.sessionId]!.interrupted).toBe(false);
 
       await finish({ code: 0, delivered: true, apiError: error });
       expect(out.join("\n")).toMatch(/retry 2\/3/);
@@ -874,7 +838,7 @@ describe("threads", () => {
       // The cap: the fourth failure in a row is not retried.
       await finish({ code: 0, delivered: true, apiError: error });
       expect(out.join("\n")).toMatch(/giving up after 3 retries/);
-      expect((await d.state()).sessions[first!.sessionId]!.interrupted).toBeUndefined();
+      expect((await d.state()).threads[first!.sessionId]!.interrupted).toBe(false);
       skew += 100 * API_ERROR_BACKOFF_MS;
       await d.tick();
       expect(runs).toHaveLength(4);
@@ -888,7 +852,7 @@ describe("threads", () => {
     await send(inbox, "issues", issue("opened", 1));
     await d.tick();
     await finish({ code: 0, delivered: false, apiError: "API Error: offline" });
-    expect((await d.state()).waiting.map((m) => m.key)).toEqual(["a/b#1"]);
+    expect((await d.state()).waiting.map((m) => m.subject)).toEqual(["a/b#1"]);
     const real = Date.now;
     vi.spyOn(Date, "now").mockImplementation(() => real() + API_ERROR_BACKOFF_MS + 1000);
     try {
@@ -935,12 +899,71 @@ describe("threads", () => {
     // Both cursors moved: assignment doesn't wait on --max.
     expect(await cursor(bots[0])).toBeGreaterThan(bots[0]!.cursor);
     expect(await cursor(bots[1])).toBeGreaterThan(bots[1]!.cursor);
-    expect(new Set(Object.values(await sessions()).map((s: any) => s.bot_id))).toEqual(new Set(bots.map((x) => x.id)));
+    expect(Object.keys(await sessions("dev1"))).toHaveLength(1);
+    expect(Object.keys(await sessions("dev2"))).toHaveLength(1);
 
     await finish();
     await d.tick();
     expect(runs).toHaveLength(2);
     expect(runs[1]!.message).toContain(`loopway messages get ${b.id} `);
+  });
+
+  it("route: own subject first, then the first closed issue a thread holds; adds only subjects nobody holds", () => {
+    const message = (n: number, body: string) =>
+      ({
+        id: randomUUID(),
+        inbox_id: "in",
+        seq: 1,
+        received_at: "",
+        event: {
+          type: "com.github.pull_request.opened",
+          data: { number: n, pull_request: { number: n, body }, repository },
+        },
+      }) as unknown as Message;
+    const held = new Map([
+      ["a/b#1", "t1"],
+      ["a/b#2", "t2"],
+    ]);
+
+    // Its own PR is held: that thread wins over the issues it closes; the unheld closed issue is added.
+    expect(route(held, message(1, "Closes #2 and fixes #3"))).toEqual({
+      thread_id: "t1",
+      add_subjects: ["a/b#3"],
+      key: "a/b#1",
+    });
+    // Otherwise the first closed issue a thread holds; the PR joins it, and what t1 holds stays on t1.
+    expect(route(held, message(9, "Closes #5, closes #2, closes #1"))).toEqual({
+      thread_id: "t2",
+      add_subjects: ["a/b#9", "a/b#5"],
+      key: "a/b#9",
+    });
+    // Nothing held: a new thread with every subject.
+    const fresh = route(held, message(7, "Closes #8"))!;
+    expect(fresh).toMatchObject({ add_subjects: ["a/b#7", "a/b#8"], key: "a/b#7" });
+    expect(["t1", "t2"]).not.toContain(fresh.thread_id);
+  });
+
+  it("leaves threads owned by another runner alone, and shows them as on that runner", async () => {
+    const { inbox, bot, client, runs, d } = await setup(3);
+    const other = await client.registerRunner({ id: randomUUID(), name: "desktop" });
+    await client.importThread(bot.id, {
+      id: randomUUID(),
+      subjects: ["a/b#1"],
+      status: "active",
+      started: true,
+      messages: [],
+      runner_id: other.id,
+    });
+    await send(inbox, "issue_comment", comment(1));
+    await d.tick();
+    // The message is assigned to their thread, and this runner doesn't deliver it.
+    expect(runs).toHaveLength(0);
+    const state = await d.state();
+    expect(state.waiting).toEqual([]);
+    expect(Object.values(state.threads)).toMatchObject([
+      { runner_id: other.id, waiting: [{ type: expect.any(String) }] },
+    ]);
+    expect(state.runners[other.id]).toBe("desktop");
   });
 
   it("ignores issues labeled future that have no session, but not ones already being worked", async () => {
@@ -951,7 +974,7 @@ describe("threads", () => {
     await send(inbox, "issues", issue("opened", 2));
     await d.tick();
     expect(runs).toHaveLength(1);
-    expect(Object.values(await sessions()).map((s: any) => s.keys)).toEqual([["a/b#2"]]);
+    expect(Object.values(await sessions()).map((s: any) => s.subjects)).toEqual([["a/b#2"]]);
     expect(await cursor()).toBe(await newest());
 
     // A label added mid-work doesn't cut off a thread that already has a session.
@@ -996,7 +1019,8 @@ describe("threads", () => {
     expect(defaultTtl(10)).toBe(60);
     expect(defaultTtl(1)).toBe(30);
     const { bot, client, d } = await setup(3);
-    const other = await Dispatcher.start(ctxOf([]), client, [bot]);
+    const second = await client.registerRunner({ id: randomUUID(), name: "other" });
+    const other = await Dispatcher.start(ctxOf([]), client, [bot], { runnerId: second.id });
     closers.push(() => other.close());
     const before = Date.now();
     await other.tick();
@@ -1015,46 +1039,108 @@ describe("threads", () => {
     expect((await d.state()).bots).toMatchObject({ held: [{ name: "dev1" }], skipped: [] });
   });
 
-  it("adopts sessions from before bots, by the bot that reads their inbox", async () => {
+  /** A threads.json session of `bot`, in the shape `bots run` used to write. */
+  const legacy = (bot: Bot, o: Record<string, unknown> = {}) => ({
+    bot_id: bot.id,
+    keys: ["a/b#1"],
+    messages: [],
+    waiting: [],
+    status: "active",
+    started: true,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    ...o,
+  });
+
+  it("imports threads.json at startup, refreshes the threads it owns, and never reads it again", async () => {
     const key = await configured();
     const inbox = await runJson("inbox", "create", "--name", "gh", "--source", "github");
-    const old = {
-      inbox_id: inbox.id,
-      keys: ["a/b#1"],
-      events: ["e1"],
+    const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.id);
+    for (let i = 1; i <= 3; i++) await send(inbox, "issues", issue("opened", i));
+    const [m1, m2, m3] = (await runJson("messages", "list", inbox.id, "--order", "asc")).data.map((m: any) => m.id);
+    const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
+    const runner = await ensureRunner(configDir, client);
+    const type = "com.github.issues.opened";
+
+    // A thread an earlier `bots threads import` left on the server, which `bots run` has moved on since.
+    const [stale, fresh, theirs, adopted] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+    await client.importThread(bot.id, {
+      id: stale,
+      subjects: ["a/b#1"],
+      status: "active",
+      started: false,
+      messages: [{ id: m1, state: "waiting" }],
+      runner_id: runner.id,
+    });
+    const other = await client.registerRunner({ id: randomUUID(), name: "desktop" });
+    await client.importThread(bot.id, {
+      id: theirs,
+      subjects: ["a/b#9"],
       status: "active",
       started: true,
-      created_at: "2026-01-01T00:00:00Z",
-      updated_at: "2026-01-01T00:00:00Z",
+      messages: [],
+      runner_id: other.id,
+    });
+    const file = {
+      [stale]: legacy(bot, {
+        keys: ["a/b#1", "a/b#2"],
+        status: "ended",
+        messages: [m1],
+        inflight: [{ id: m2, inbox_id: inbox.id, type, key: "a/b#2" }],
+        interrupted: true,
+      }),
+      [fresh]: legacy(bot, { keys: ["a/b#3"], waiting: [{ id: m3, inbox_id: inbox.id, type, key: "a/b#3" }] }),
+      // One the server has under another runner stays as it is there; a session of another bot isn't ours.
+      [theirs]: legacy(bot, { keys: ["a/b#9", "a/b#8"] }),
+      [randomUUID()]: legacy(bot, { bot_id: randomUUID(), keys: ["a/b#7"] }),
+      // From before bots: it names an inbox, and the bot reading it adopts it.
+      [adopted]: { ...legacy(bot, { keys: ["a/b#4"], events: ["e1"] }), bot_id: undefined, inbox_id: inbox.id },
     };
-    await writeFile(
-      join(configDir, "threads.json"),
-      JSON.stringify({ "old-session": old, other: { ...old, inbox_id: "x" } }),
-    );
-    const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.id);
-    const runs: AgentRun[] = [];
-    const out: string[] = [];
-    const ctx: Context = {
-      configDir,
-      env: {},
-      interactive: false,
-      out: (t) => out.push(t),
-      fetch: apiFetch,
-      runAgent: async (r) => (runs.push(r), { code: 0, delivered: true }),
-    };
-    const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
-    const d = await Dispatcher.start(ctx, client, [bot], { max: 3, ttl: 60 });
-    closers.push(() => d.close());
-    expect(out[0]).toMatch(/Adopted 1 session/);
-    expect((await sessions())["old-session"]).toMatchObject({ bot_id: bot.id, waiting: [], messages: ["e1"] });
-    expect((await sessions())["old-session"].inbox_id).toBeUndefined();
-    expect((await sessions()).other).toMatchObject({ inbox_id: "x" });
+    await writeFile(join(configDir, "threads.json"), JSON.stringify(file));
 
-    // A comment on its issue resumes the adopted session.
-    await send(inbox, "issue_comment", comment(1));
-    await d.tick();
-    await d.idle();
-    expect(runs[0]).toMatchObject({ sessionId: "old-session", resume: true });
+    const out: string[] = [];
+    const ctx: Context = { ...ctxOf(out), runAgent: async () => ({ code: 0, delivered: true }) };
+    const d = await Dispatcher.start(ctx, client, [bot], { max: 3, ttl: 60, runnerId: runner.id });
+    closers.push(() => d.close());
+    expect(out.join("\n")).toMatch(/Imported 3 thread\(s\) from threads.json/);
+    await expect(stat(join(configDir, "threads.json"))).rejects.toThrow();
+    expect(JSON.parse(await readFile(join(configDir, "threads.json.imported"), "utf8"))).toEqual(
+      JSON.parse(JSON.stringify(file)),
+    );
+
+    const threads = await sessions_(bot.id);
+    expect(threads.get(stale)).toMatchObject({
+      status: "ended",
+      started: true,
+      interrupted: true,
+      subjects: ["a/b#1", "a/b#2"],
+      delivered: 1,
+      waiting: [],
+      inflight: [{ id: m2, subject: "a/b#2" }],
+      runner_id: runner.id,
+    });
+    expect(threads.get(fresh)).toMatchObject({ waiting: [{ id: m3, subject: "a/b#3" }], runner_id: runner.id });
+    expect(threads.get(theirs)).toMatchObject({ subjects: ["a/b#9"], runner_id: other.id });
+    expect(threads.get(adopted)).toMatchObject({ subjects: ["a/b#4"], delivered: 0 });
+    expect(threads.size).toBe(4);
+  });
+
+  it("stops with a UsageError, leaving threads.json in place, when the import fails", async () => {
+    const key = await configured();
+    const inbox = await runJson("inbox", "create", "--name", "gh", "--source", "github");
+    const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.id);
+    const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
+    const runner = await ensureRunner(configDir, client);
+    // Two sessions holding one subject: the server refuses the second.
+    const file = { [randomUUID()]: legacy(bot), [randomUUID()]: legacy(bot) };
+    await writeFile(join(configDir, "threads.json"), JSON.stringify(file));
+
+    const refused = await Dispatcher.start(ctxOf([]), client, [bot], { runnerId: runner.id }).catch((e) => e);
+    expect(refused).toBeInstanceOf(UsageError);
+    expect(refused.message).toMatch(/Couldn't import .* from threads.json.*already belongs to thread/);
+    expect(JSON.parse(await readFile(join(configDir, "threads.json"), "utf8"))).toEqual(file);
+    // The runner lease was given back, so starting again works.
+    await client.forceReleaseRunner(runner.id);
   });
 
   it("picks up a run a previous runner left cut off, and marks sessions started on init", async () => {
@@ -1063,6 +1149,7 @@ describe("threads", () => {
     await d.tick();
     const id = runs[0]!.sessionId;
     expect((await sessions())[id]).toMatchObject({ started: false, inflight: [{ type: expect.any(String) }] });
+    const runnerId = (await runJson("runners"))[0].id;
 
     // Claude Code created the session, then the runner died before the run produced a result.
     let started = 0;
@@ -1075,6 +1162,7 @@ describe("threads", () => {
       `{"type":"system","subtype":"init"}\n{"type":"assistant","message":{}}\n`,
     );
     await run("bots", "release", bot.id, "--force");
+    await client.forceReleaseRunner(runnerId);
 
     const runs2: AgentRun[] = [];
     const ctx: Context = {
@@ -1085,7 +1173,7 @@ describe("threads", () => {
       fetch: apiFetch,
       runAgent: async (r) => (runs2.push(r), { code: 0, delivered: true }),
     };
-    const d2 = await Dispatcher.start(ctx, client, [bot], { max: 3, ttl: 60 });
+    const d2 = await Dispatcher.start(ctx, client, [bot], { max: 3, ttl: 60, runnerId });
     closers.push(() => d2.close());
     await d2.tick();
     await d2.idle();
@@ -1093,7 +1181,7 @@ describe("threads", () => {
     expect(runs2[0]).toMatchObject({ sessionId: id, resume: true });
     expect(runs2[0]!.message).toContain("New messages for this thread");
     expect((await sessions())[id]).toMatchObject({ started: true, waiting: [] });
-    expect((await sessions())[id].inflight).toBeUndefined();
+    expect((await sessions())[id].inflight).toEqual([]);
     await finish();
   });
 
@@ -1111,7 +1199,7 @@ describe("threads", () => {
     await mcp(url, "tools/call", { name: "link", arguments: { number: 3, repo: "c/d" } });
     expect((await mcp(url, "tools/call", { name: "link", arguments: { number: "x" } })).isError).toBe(true);
     await finish();
-    expect((await sessions())[runs[0]!.sessionId].keys).toEqual(["a/b#5", "a/b#9", "c/d#3"]);
+    expect((await sessions())[runs[0]!.sessionId].subjects).toEqual(["a/b#5", "a/b#9", "c/d#3"]);
 
     // A comment on the linked PR now resumes the session instead of starting a new one.
     await send(inbox, "issue_comment", comment(9));
@@ -1130,6 +1218,8 @@ describe("threads", () => {
       LOOPWAY_GITHUB_NAME: "loopway-bot",
       LOOPWAY_GITHUB_EMAIL: "2+loopway-bot@users.noreply.github.com",
     };
+    // A second user on the same machine needs a runner of their own.
+    await rm(join(configDir, "runner.json"));
     const { inbox, runs, d } = await setup(3, bot);
     await send(inbox, "issues", issue("opened", 2));
     await d.tick();
@@ -1151,26 +1241,5 @@ describe("threads", () => {
   it("says how to create a bot when there is none to run", async () => {
     await configured();
     expect(await run("bots", "run", "--no-tui")).toMatch(/No bots to run.*loopway bots create.*--kind github-threads/);
-  });
-
-  it("serializes threads.json writes through its lock file", async () => {
-    await Promise.all(
-      Array.from({ length: 20 }, (_, i) =>
-        withSessions(configDir, (s) => {
-          s[`s${i}`] = {
-            bot_id: "x",
-            keys: [],
-            messages: [],
-            waiting: [],
-            status: "active",
-            started: false,
-            created_at: "",
-            updated_at: "",
-          };
-        }),
-      ),
-    );
-    expect(Object.keys(await sessions())).toHaveLength(20);
-    await expect(stat(join(configDir, "threads.json.lock"))).rejects.toThrow();
   });
 });

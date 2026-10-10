@@ -1,3 +1,8 @@
+import { join } from "node:path";
+
+/** Where a thread's transcript goes: ~/.loopway/threads/<thread>.log */
+export const sessionLogPath = (dir: string, threadId: string) => join(dir, "threads", `${threadId}.log`);
+
 /** One line of a session transcript as the TUI shows it. */
 export interface TranscriptLine {
   text: string;

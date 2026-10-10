@@ -801,3 +801,54 @@ export async function importThread(db: Db, bot: Bot, t: ImportedThread): Promise
   );
   return row!;
 }
+
+/**
+ * Refreshes a thread the runner owns from an import: its status, flags, subjects and message states take the import's
+ * values. Messages the import doesn't list are left as they are; ones that exist, are the user's and aren't assigned to
+ * another thread are added or updated. Undefined if the bot has no such thread owned by `runnerId`.
+ */
+export async function refreshThread(db: Db, bot: Bot, t: ImportedThread): Promise<{ messages: number } | undefined> {
+  const [row] = await db.query<{ ok: number; messages: number }>(
+    `WITH t AS (
+       UPDATE loopway.threads t SET status = $4, started = $5::boolean, interrupted = $6::boolean, limited = $7::boolean,
+              updated_at = now()
+       WHERE t.id = $1::uuid AND t.bot_id = $2::uuid AND t.runner_id = $10::uuid RETURNING t.id
+     ),
+     dropped AS (
+       DELETE FROM loopway.thread_subjects k USING t
+       WHERE k.thread_id = t.id AND k.subject NOT IN ${jsonStrings("$8")}
+     ),
+     new_subjects AS (
+       INSERT INTO loopway.thread_subjects (thread_id, bot_id, subject)
+       SELECT t.id, $2::uuid, k.value FROM t, ${jsonStrings("$8")} AS k
+       ON CONFLICT DO NOTHING
+     ),
+     msgs AS (
+       INSERT INTO loopway.thread_messages (thread_id, bot_id, message_id, state, subject, delivered_at)
+       SELECT DISTINCT ON (m.id) t.id, $2::uuid, m.id, x.state, x.subject, CASE WHEN x.state = 'delivered' THEN now() END
+       FROM t, jsonb_to_recordset($9::jsonb) AS x(id uuid, state text, subject text)
+       JOIN loopway.messages m ON m.id = x.id
+       JOIN loopway.inboxes i ON i.id = m.inbox_id AND i.user_id = $3::uuid
+       ON CONFLICT (bot_id, message_id) DO UPDATE SET
+         state = EXCLUDED.state,
+         subject = COALESCE(EXCLUDED.subject, loopway.thread_messages.subject),
+         delivered_at = CASE WHEN EXCLUDED.state = 'delivered' THEN COALESCE(loopway.thread_messages.delivered_at, now()) END
+       WHERE loopway.thread_messages.thread_id = EXCLUDED.thread_id
+       RETURNING message_id
+     )
+     SELECT (SELECT count(*) FROM t)::int AS ok, (SELECT count(*) FROM msgs)::int AS messages`,
+    [
+      t.id,
+      bot.id,
+      bot.user_id,
+      t.status,
+      t.started,
+      t.interrupted,
+      t.limited,
+      t.subjects,
+      t.messages,
+      t.runnerId ?? null,
+    ],
+  );
+  return row!.ok ? { messages: row!.messages } : undefined;
+}
