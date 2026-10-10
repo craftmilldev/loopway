@@ -32,6 +32,8 @@ To receive real GitHub webhooks locally, expose the port (e.g. `cloudflared tunn
 4. Deploy. Vercel picks up `packages/web/src/index.ts` as a Hono app automatically, and runs `npm run build` to bundle the web UI into `packages/web/public/`. The app serves `app.js` and `app.css` itself, since Vercel's CDN only serves the files in `public/` that are committed.
 5. Create users with `loopway login` pointed at your deployment (`loopway config` sets the URL).
 
+Optionally set `POSTHOG_API_KEY` (and `POSTHOG_HOST` for EU or self-hosted PostHog) to send product metrics; without a key nothing is sent. The CLI reads the same two variables, and stays silent when `DO_NOT_TRACK` or `LOOPWAY_TELEMETRY=0` is set. Events: web `webhook_received` (by source and outcome), `api_error` (by code), `login_requested`, `signed_up`, `logged_in`, `inbox_created`; CLI `cli_command`, `cli_error`, `bot_session_stopped` (by how it stopped). The CLI identifies an install by a random id in `~/.loopway/install-id`.
+
 Tables live in a `loopway` schema (not `public`) with RLS enabled and no policies, so a Data API (Neon's is opt-in) can't reach them.
 
 ## Web UI

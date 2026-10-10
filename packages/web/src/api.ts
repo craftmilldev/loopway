@@ -4,6 +4,7 @@ import { z, ZodError } from "zod";
 import type { Db } from "./db/index.js";
 import { consoleSender, type SendEmail } from "./email.js";
 import { isUuid, LOGIN_CODE_RE, normalizeLoginCode, uuidv7 } from "./ids.js";
+import { ANONYMOUS, noopMetrics, type Metrics } from "./metrics.js";
 import { BOT_MODELS } from "./models.js";
 import { sources } from "./sources/index.js";
 import * as store from "./store.js";
@@ -26,6 +27,8 @@ export interface ApiOptions {
   sourceRequests?: { url: string; token: string };
   /** Sends source requests. Defaults to the global fetch. */
   fetch?: typeof fetch;
+  /** Product metrics. Defaults to recording nothing. */
+  metrics?: Metrics;
 }
 
 type Env = { Variables: { db: Db; user: User } };
@@ -35,18 +38,33 @@ const MAX_TTL = 12 * 60 * 60;
 
 export function createApi(opts: ApiOptions) {
   const app = new Hono<Env>();
+  const metrics = opts.metrics ?? noopMetrics;
 
-  app.onError((err, c) => {
+  // Every error response is counted by its code, so the metrics show where requests stop.
+  const failed = (c: Context<Env>, code: string, status: number) =>
+    metrics.capture("api_error", c.get("user")?.id ?? ANONYMOUS, {
+      code,
+      status,
+      method: c.req.method,
+      route: c.req.routePath,
+    });
+
+  app.onError(async (err, c) => {
     if (err instanceof ZodError) {
+      await failed(c, "invalid_request", 400);
       return c.json({ error: { code: "invalid_request", message: "Invalid request", details: err.issues } }, 400);
     }
     if (err instanceof ApiError) {
+      await failed(c, err.code, err.status);
       const details = err.details === undefined ? {} : { details: err.details };
       return c.json({ error: { code: err.code, message: err.message, ...details } }, err.status);
     }
-    if (err instanceof HTTPException)
+    if (err instanceof HTTPException) {
+      await failed(c, "http_error", err.status);
       return c.json({ error: { code: "http_error", message: err.message } }, err.status);
+    }
     console.error(err);
+    await failed(c, "internal", 500);
     return c.json({ error: { code: "internal", message: "Internal server error" } }, 500);
   });
   app.notFound((c) => c.json({ error: { code: "not_found", message: "Route not found" } }, 404));
@@ -73,6 +91,8 @@ export function createApi(opts: ApiOptions) {
     if (!inbox) throw new ApiError(404, "not_found", "Inbox not found");
     const source = sources.get(inbox.source_type);
     if (!source) throw new ApiError(500, "internal", `Unknown source type ${inbox.source_type}`);
+    const received = (outcome: string, extra?: Record<string, unknown>) =>
+      metrics.capture("webhook_received", inbox.user_id, { source_type: inbox.source_type, outcome, ...extra });
 
     const result = await source.receive(
       {
@@ -83,9 +103,16 @@ export function createApi(opts: ApiOptions) {
       },
       inbox.config,
     );
-    if (result.kind === "rejected") throw new ApiError(result.status, "rejected", result.message);
-    if (result.kind === "ignored") return c.json({ ignored: true, reason: result.reason }, 200);
+    if (result.kind === "rejected") {
+      await received("rejected", { status: result.status });
+      throw new ApiError(result.status, "rejected", result.message);
+    }
+    if (result.kind === "ignored") {
+      await received("ignored", { reason: result.reason });
+      return c.json({ ignored: true, reason: result.reason }, 200);
+    }
     const { id, duplicate } = await store.insertMessage(c.var.db, inbox.id, result.event);
+    await received(duplicate ? "duplicate" : "accepted");
     return c.json({ id, duplicate }, duplicate ? 200 : 202);
   });
 
@@ -96,6 +123,7 @@ export function createApi(opts: ApiOptions) {
   app.post("/auth/login", async (c) => {
     const { email } = z.object({ email: z.string().trim().email().max(320) }).parse(await jsonBody(c));
     const login = await store.createLoginCode(c.var.db, email);
+    await metrics.capture("login_requested", ANONYMOUS, { sent: !!login.code });
     if (login.code) {
       await (opts.sendEmail ?? consoleSender)({
         to: login.email,
@@ -115,6 +143,7 @@ export function createApi(opts: ApiOptions) {
       .parse(await jsonBody(c));
     const result = await store.redeemLoginCode(c.var.db, input.email, input.code);
     if (!result) throw new ApiError(401, "invalid_code", "That code is invalid or has expired");
+    await metrics.capture(result.created ? "signed_up" : "logged_in", result.user.id);
     const { token, expiresAt } = signSessionToken(result.user.id, opts.tokenSecret);
     return c.json(
       { token, expires_at: expiresAt.toISOString(), user: serializeUser(result.user), created: result.created },
@@ -188,6 +217,7 @@ export function createApi(opts: ApiOptions) {
       sourceType: source.type,
       config: source.parseConfig(input.config),
     });
+    await metrics.capture("inbox_created", c.var.user.id, { source_type: inbox.source_type });
     return c.json(serializeInbox(c, inbox), 201);
   });
 

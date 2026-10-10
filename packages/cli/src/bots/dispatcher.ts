@@ -481,6 +481,24 @@ export class Dispatcher {
       // The messages stay inflight; the next runner to start picks them up (see reconcile).
       this.ctx.out(`error: ${short} couldn't record its run: ${err instanceof Error ? err.message : String(err)}`);
     }
+    // Why the session stopped, so the metrics show how often each stop happens.
+    const stop = limitedUntil
+      ? "usage_limit"
+      : retry
+        ? "api_error_retry"
+        : apiError
+          ? "api_error_gave_up"
+          : code !== 0
+            ? "failed"
+            : ended
+              ? "ended"
+              : "finished";
+    void this.ctx.metrics?.capture("bot_session_stopped", {
+      stop,
+      exit_code: code,
+      resumed: thread.started,
+      messages: messages.length,
+    });
     if (limitedUntil) {
       this.limitedUntil = Math.max(this.limitedUntil, limitedUntil);
       this.ctx.out(`${short} hit the usage limit; retrying sessions after ${new Date(limitedUntil).toLocaleString()}`);
