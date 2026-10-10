@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PostHog } from "posthog-node";
+import { loadConfig } from "./config.js";
 
 /** Product metrics. Sends nothing unless POSTHOG_API_KEY is set, or if DO_NOT_TRACK / LOOPWAY_TELEMETRY=0 is. */
 export interface Metrics {
@@ -11,7 +12,17 @@ export interface Metrics {
 
 export const noopMetrics: Metrics = { capture: async () => {} };
 
-/** The random id that stands for this install in events: ~/.loopway/install-id, made on first use. */
+/** The user id inside a session token (its `sub`), as the server uses it. Not verified: it only labels events. */
+export function tokenUserId(token: string | undefined): string | undefined {
+  try {
+    const sub = (JSON.parse(Buffer.from(token?.split(".")[1] ?? "", "base64url").toString()) as { sub?: unknown }).sub;
+    return typeof sub === "string" && sub ? sub : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The random id that stands for this install before anyone is logged in: ~/.loopway/install-id, made on first use. */
 export async function installId(dir: string): Promise<string> {
   const path = join(dir, "install-id");
   try {
@@ -36,7 +47,8 @@ export function createMetrics(dir: string, env: NodeJS.ProcessEnv = process.env)
     async capture(event, properties) {
       try {
         await client.captureImmediate({
-          distinctId: await installId(dir),
+          // The logged-in user, like the web side; the install until someone logs in.
+          distinctId: tokenUserId((await loadConfig(dir, env)).api_key) ?? (await installId(dir)),
           event,
           properties: { ...properties, app: "cli" },
         });
