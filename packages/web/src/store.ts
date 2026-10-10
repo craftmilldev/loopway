@@ -805,50 +805,44 @@ export async function importThread(db: Db, bot: Bot, t: ImportedThread): Promise
 /**
  * Refreshes a thread the runner owns from an import: its status, flags, subjects and message states take the import's
  * values. Messages the import doesn't list are left as they are; ones that exist, are the user's and aren't assigned to
- * another thread are added or updated. Undefined if the bot has no such thread owned by `runnerId`.
+ * another thread are added or updated. Undefined if the bot has no such thread owned by `t.runnerId`.
+ *
+ * Several small statements rather than one, since an import is a one-off from the thread's own runner and can simply
+ * be run again if it stops halfway.
  */
 export async function refreshThread(db: Db, bot: Bot, t: ImportedThread): Promise<{ messages: number } | undefined> {
-  const [row] = await db.query<{ ok: number; messages: number }>(
-    `WITH t AS (
-       UPDATE loopway.threads t SET status = $4, started = $5::boolean, interrupted = $6::boolean, limited = $7::boolean,
-              updated_at = now()
-       WHERE t.id = $1::uuid AND t.bot_id = $2::uuid AND t.runner_id = $10::uuid RETURNING t.id
-     ),
-     dropped AS (
-       DELETE FROM loopway.thread_subjects k USING t
-       WHERE k.thread_id = t.id AND k.subject NOT IN ${jsonStrings("$8")}
-     ),
-     new_subjects AS (
-       INSERT INTO loopway.thread_subjects (thread_id, bot_id, subject)
-       SELECT t.id, $2::uuid, k.value FROM t, ${jsonStrings("$8")} AS k
-       ON CONFLICT DO NOTHING
-     ),
-     msgs AS (
-       INSERT INTO loopway.thread_messages (thread_id, bot_id, message_id, state, subject, delivered_at)
-       SELECT DISTINCT ON (m.id) t.id, $2::uuid, m.id, x.state, x.subject, CASE WHEN x.state = 'delivered' THEN now() END
-       FROM t, jsonb_to_recordset($9::jsonb) AS x(id uuid, state text, subject text)
-       JOIN loopway.messages m ON m.id = x.id
-       JOIN loopway.inboxes i ON i.id = m.inbox_id AND i.user_id = $3::uuid
-       ON CONFLICT (bot_id, message_id) DO UPDATE SET
-         state = EXCLUDED.state,
-         subject = COALESCE(EXCLUDED.subject, loopway.thread_messages.subject),
-         delivered_at = CASE WHEN EXCLUDED.state = 'delivered' THEN COALESCE(loopway.thread_messages.delivered_at, now()) END
-       WHERE loopway.thread_messages.thread_id = EXCLUDED.thread_id
-       RETURNING message_id
-     )
-     SELECT (SELECT count(*) FROM t)::int AS ok, (SELECT count(*) FROM msgs)::int AS messages`,
-    [
-      t.id,
-      bot.id,
-      bot.user_id,
-      t.status,
-      t.started,
-      t.interrupted,
-      t.limited,
-      t.subjects,
-      t.messages,
-      t.runnerId ?? null,
-    ],
+  const updated = await db.query(
+    `UPDATE loopway.threads SET status = $3, started = $4::boolean, interrupted = $5::boolean, limited = $6::boolean,
+            updated_at = now()
+     WHERE id = $1::uuid AND bot_id = $2::uuid AND runner_id = $7::uuid RETURNING id`,
+    [t.id, bot.id, t.status, t.started, t.interrupted, t.limited, t.runnerId ?? null],
   );
-  return row!.ok ? { messages: row!.messages } : undefined;
+  if (!updated.length) return undefined;
+
+  await db.query(
+    `DELETE FROM loopway.thread_subjects WHERE thread_id = $1::uuid AND subject NOT IN ${jsonStrings("$2")}`,
+    [t.id, t.subjects],
+  );
+  await db.query(
+    `INSERT INTO loopway.thread_subjects (thread_id, bot_id, subject)
+     SELECT $1::uuid, $2::uuid, value FROM ${jsonStrings("$3")} AS k(value) ON CONFLICT DO NOTHING`,
+    [t.id, bot.id, t.subjects],
+  );
+
+  // A message another thread has is skipped (the WHERE on the conflict), as in importThread.
+  const msgs = await db.query(
+    `INSERT INTO loopway.thread_messages (thread_id, bot_id, message_id, state, subject, delivered_at)
+     SELECT DISTINCT ON (m.id) $1::uuid, $2::uuid, m.id, x.state, x.subject, CASE WHEN x.state = 'delivered' THEN now() END
+     FROM jsonb_to_recordset($4::jsonb) AS x(id uuid, state text, subject text)
+     JOIN loopway.messages m ON m.id = x.id
+     JOIN loopway.inboxes i ON i.id = m.inbox_id AND i.user_id = $3::uuid
+     ON CONFLICT (bot_id, message_id) DO UPDATE SET
+       state = EXCLUDED.state,
+       subject = COALESCE(EXCLUDED.subject, loopway.thread_messages.subject),
+       delivered_at = CASE WHEN EXCLUDED.state = 'delivered' THEN COALESCE(loopway.thread_messages.delivered_at, now()) END
+     WHERE loopway.thread_messages.thread_id = EXCLUDED.thread_id
+     RETURNING message_id`,
+    [t.id, bot.id, bot.user_id, t.messages],
+  );
+  return { messages: msgs.length };
 }
