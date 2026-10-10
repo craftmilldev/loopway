@@ -6,7 +6,7 @@ loopway is a place to build bots and work alongside them. It accepts webhooks fr
 - A **message** is a stored delivery: the CloudEvent, when it arrived, and its place in arrival order. Nothing is marked done.
 - A **bot** reads the messages of one or more inboxes in arrival order and keeps a cursor, so it knows where it left off. `loopway bots run` turns GitHub issues and PRs into Claude Code sessions that pick up comments and reviews as they come in.
 
-It runs on Vercel at [loopway.craftmill.dev](https://loopway.craftmill.dev), with a small web UI for logging in, creating inboxes and reading messages.
+It runs on Vercel at [loopway.craftmill.dev](https://loopway.craftmill.dev), with a small web UI for logging in, creating inboxes and bots, and seeing runners, threads and messages.
 
 - [`docs/sources/`](docs/sources/): one page per source ([github](docs/sources/github.md), [vercel](docs/sources/vercel.md), [granola](docs/sources/granola.md), [loopway](docs/sources/loopway.md)): its config, how to connect it, and how its deliveries map to CloudEvents.
 - [`docs/api.md`](docs/api.md): the HTTP API and the webhook ingestion rules.

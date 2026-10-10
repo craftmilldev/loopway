@@ -458,3 +458,30 @@ details.message pre {
 [hidden] {
   display: none !important;
 }
+.page-head.section {
+  margin-top: 48px;
+}
+.read-marker {
+  margin: 8px 0;
+  padding: 4px 0;
+  border-top: 2px solid var(--ink-900);
+  font-family: var(--font-type);
+  font-size: 0.75rem;
+  color: var(--ink-400);
+}
+.badge {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--rule-hair);
+  font-family: var(--font-type);
+  font-size: 0.6875rem;
+  color: var(--ink-400);
+}
+.list .actions {
+  margin-top: 8px;
+}
+.mono {
+  font-family: var(--font-type);
+  font-size: 0.75rem;
+  word-break: break-all;
+}

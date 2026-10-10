@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Layout, UserNav } from "./layout.js";
+import { useEffect, useState, type FormEvent } from "react";
+import { DashNav, Layout } from "./layout.js";
 import * as lw from "./lw.js";
 
 export interface Inbox {
@@ -12,39 +12,102 @@ export interface Inbox {
 
 export function Dashboard() {
   const me = lw.useMe();
-  const [inboxes, setInboxes] = useState<Inbox[] | null>(null);
-  const [creating, setCreating] = useState(false);
+  const ready = !!me;
+  const bots = lw.useList<lw.Bot>("/bots", ready);
+  const runners = lw.useList<lw.Runner>("/runners", ready);
+  const inboxes = lw.useList<Inbox>("/inboxes", ready);
+  const [creatingInbox, setCreatingInbox] = useState(false);
+  const [creatingBot, setCreatingBot] = useState(false);
+  const [active, setActive] = useState<Record<string, number>>({});
 
-  const load = useCallback(async () => {
-    const r = await lw.api("/inboxes");
-    if (!r.ok) return lw.expired(r);
-    setInboxes(((await r.json()) as { data: Inbox[] }).data);
-  }, []);
-
+  // Each bot's active threads, for the count. One request per bot.
   useEffect(() => {
-    if (me) void load();
-  }, [me, load]);
+    for (const b of bots.data ?? []) {
+      void lw.api(`/bots/${b.id}/threads?status=active`).then(async (r) => {
+        if (!r.ok) return;
+        const count = ((await r.json()) as { data: unknown[] }).data.length;
+        setActive((a) => ({ ...a, [b.id]: count }));
+      });
+    }
+  }, [bots.data]);
+
+  const runnerName = (id: string | null) => runners.data?.find((r) => r.id === id)?.name;
 
   return (
-    <Layout title="Inboxes · loopway" nav={<UserNav me={me} />}>
-      <div className="page-head">
-        <h1>Inboxes</h1>
-        <button className="btn btn-md" type="button" onClick={() => setCreating(!creating)}>
-          New inbox
+    <Layout title="Dashboard · loopway" nav={<DashNav me={me} />}>
+      <div className="page-head" id="bots">
+        <h1>Bots</h1>
+        <button className="btn btn-md" type="button" onClick={() => setCreatingBot(!creatingBot)}>
+          New bot
         </button>
       </div>
-      {creating && (
-        <CreateInbox
+      {creatingBot && (
+        <CreateBot
+          inboxes={inboxes.data ?? []}
           onCreated={() => {
-            setCreating(false);
-            void load();
+            setCreatingBot(false);
+            void bots.reload();
           }}
         />
       )}
       <ul className="list">
-        {inboxes?.map((i) => (
+        {bots.data?.map((b) => (
+          <li key={b.id}>
+            <a className="title" href={"/dashboard/bots/" + b.id}>
+              {b.name}
+            </a>
+            <div className="meta">
+              {b.kind} · {b.inbox_ids.map((i) => inboxes.data?.find((x) => x.id === i)?.name ?? i).join(", ")} ·{" "}
+              {active[b.id] ?? "…"} active threads
+            </div>
+            <div className="meta">{leaseText(b, runnerName(b.runner_id))}</div>
+          </li>
+        ))}
+      </ul>
+      {bots.data?.length === 0 && (
+        <p className="muted" style={{ marginTop: 24 }}>
+          No bots yet.
+        </p>
+      )}
+
+      <div className="page-head section" id="runners">
+        <h1>Runners</h1>
+      </div>
+      <ul className="list">
+        {runners.data?.map((r) => (
+          <li key={r.id}>
+            <span className="title">{r.name}</span>
+            <div className="meta">
+              {r.leased_until ? "online" : "offline"} · last seen {lw.when(r.last_seen_at)} · {r.bots.length} bots held
+              · {r.threads} threads owned
+            </div>
+          </li>
+        ))}
+      </ul>
+      {runners.data?.length === 0 && (
+        <p className="muted" style={{ marginTop: 24 }}>
+          No runners yet. Run <code>loopway bots run</code> on a machine.
+        </p>
+      )}
+
+      <div className="page-head section" id="inboxes">
+        <h1>Inboxes</h1>
+        <button className="btn btn-md" type="button" onClick={() => setCreatingInbox(!creatingInbox)}>
+          New inbox
+        </button>
+      </div>
+      {creatingInbox && (
+        <CreateInbox
+          onCreated={() => {
+            setCreatingInbox(false);
+            void inboxes.reload();
+          }}
+        />
+      )}
+      <ul className="list">
+        {inboxes.data?.map((i) => (
           <li key={i.id}>
-            <a className="title" href={"/dashboard/" + i.id}>
+            <a className="title" href={"/dashboard/inboxes/" + i.id}>
               {i.name}
             </a>
             <div className="meta">
@@ -53,12 +116,81 @@ export function Dashboard() {
           </li>
         ))}
       </ul>
-      {inboxes?.length === 0 && (
+      {inboxes.data?.length === 0 && (
         <p className="muted" style={{ marginTop: 24 }}>
           No inboxes yet.
         </p>
       )}
     </Layout>
+  );
+}
+
+/** Who holds the bot, in words. */
+export function leaseText(b: lw.Bot, runner: string | undefined) {
+  if (!b.leased_until) return "not running";
+  return `running on ${runner ?? "a runner"} until ${lw.when(b.leased_until)}`;
+}
+
+function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: () => void }) {
+  const [name, setName] = useState("");
+  const [kind, setKind] = useState(lw.BOT_KINDS[0]!);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+
+  function toggle(id: string, on: boolean) {
+    const next = new Set(checked);
+    if (on) next.add(id);
+    else next.delete(id);
+    setChecked(next);
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!checked.size) return setError("Pick at least one inbox.");
+    const r = await lw.api("/bots", { method: "POST", body: { name, kind, inbox_ids: [...checked] } });
+    if (r.status === 401) return lw.expired(r);
+    if (!r.ok) return setError(await lw.message(r));
+    onCreated();
+  }
+
+  return (
+    <form className="panel" onSubmit={(e) => void submit(e)}>
+      <div className="field">
+        <label htmlFor="bot-name">Name</label>
+        <div className="input-wrap">
+          <input id="bot-name" required maxLength={200} value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+      </div>
+      <div className="field">
+        <label htmlFor="bot-kind">Kind</label>
+        <div className="input-wrap">
+          <select id="bot-kind" value={kind} onChange={(e) => setKind(e.target.value)}>
+            {lw.BOT_KINDS.map((k) => (
+              <option key={k}>{k}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className="field">
+        <label>Inboxes</label>
+        <div className="checks">
+          {inboxes.map((i) => (
+            <label key={i.id} className="check">
+              <input type="checkbox" checked={checked.has(i.id)} onChange={(e) => toggle(i.id, e.target.checked)} />{" "}
+              {i.name}
+            </label>
+          ))}
+        </div>
+        <p className="hint">The bot reads the messages of every inbox it has.</p>
+      </div>
+      <div className="form-actions">
+        <button className="btn" type="submit">
+          Create bot
+        </button>
+      </div>
+      {error && <p className="error">{error}</p>}
+    </form>
   );
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 // Talks to the JSON API on the same origin with the session token kept in localStorage.
 
@@ -106,3 +106,88 @@ export function useMe() {
   }, []);
   return me;
 }
+
+/** A bot as `GET /bots` describes it. `leased_until` is null when no runner holds it. */
+export interface Bot {
+  id: string;
+  name: string;
+  kind: string;
+  inbox_ids: string[];
+  cursor: number;
+  runner_id: string | null;
+  leased_until: string | null;
+}
+
+/** A runner as `GET /runners` describes it. `leased_until` is null when it is offline. */
+export interface Runner {
+  id: string;
+  name: string;
+  last_seen_at: string;
+  leased_until: string | null;
+  bots: unknown[];
+  threads: number;
+}
+
+export interface ThreadMessage {
+  id: string;
+  inbox_id: string;
+  type: string;
+  subject: string | null;
+}
+
+export interface Thread {
+  id: string;
+  bot_id: string;
+  status: "active" | "ended";
+  started: boolean;
+  interrupted: boolean;
+  limited: boolean;
+  runner_id: string | null;
+  subjects: string[];
+  waiting: ThreadMessage[];
+  inflight: ThreadMessage[];
+  delivered: number;
+  /** Only from `GET /bots/:id/threads/:tid`. */
+  delivered_messages?: {
+    id: string;
+    inbox_id: string;
+    type: string;
+    key: string | null;
+    delivered_at: string | null;
+  }[];
+  updated_at: string;
+}
+
+/** GETs `path` once `ready`, and again whenever the returned `reload` is called. Null while loading or missing. */
+export function useGet<T>(path: string | null, ready: boolean) {
+  const [data, setData] = useState<T | null>(null);
+  const [missing, setMissing] = useState(false);
+  const reload = useCallback(async () => {
+    if (!path) return;
+    const r = await api(path);
+    if (r.status === 404) return setMissing(true);
+    if (!r.ok) return expired(r);
+    setData((await r.json()) as T);
+  }, [path]);
+  useEffect(() => {
+    if (ready) void reload();
+  }, [ready, reload]);
+  return { data, missing, reload };
+}
+
+/** The `data` of a list endpoint. */
+export function useList<T>(path: string | null, ready: boolean) {
+  const { data, ...rest } = useGet<{ data: T[] }>(path, ready);
+  return { data: data?.data ?? null, ...rest };
+}
+
+export const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "never");
+
+/** A GitHub link for a subject that looks like `owner/repo#N`, else null. */
+export function subjectUrl(subject: string) {
+  const m = subject.match(/^([\w.-]+\/[\w.-]+)#(\d+)$/);
+  return m ? `https://github.com/${m[1]}/issues/${m[2]}` : null;
+}
+
+/** The kinds of bot the CLI can run (packages/cli/src/bots/kinds.ts). */
+export const BOT_KINDS = ["github-threads"];

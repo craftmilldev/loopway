@@ -736,6 +736,7 @@ function serializeThread(t: store.Thread) {
     inflight: t.inflight,
     delivered: t.delivered,
     ...(t.delivered_ids ? { delivered_ids: t.delivered_ids } : {}),
+    ...(t.delivered_messages ? { delivered_messages: t.delivered_messages } : {}),
     created_at: iso(t.created_at),
     updated_at: iso(t.updated_at),
   };
@@ -762,6 +763,8 @@ function serializeBot(b: store.Bot) {
     kind: b.kind,
     inbox_ids: b.inbox_ids,
     cursor: Number(b.cursor),
+    runner_id: b.runner_id,
+    leased_until: b.locked_until && new Date(b.locked_until) > new Date() ? iso(b.locked_until) : null,
     created_at: iso(b.created_at),
   };
 }
