@@ -3,7 +3,7 @@
 - **Stack:** TypeScript + [Hono](https://hono.dev), zero-config on Vercel.
 - **DB:** Postgres everywhere. Locally [PGlite](https://pglite.dev) (embedded, no server); on Vercel, [Neon](https://neon.tech) via `DATABASE_URL`. Same SQL on both.
 - **Data types:** `User` → owns `Inbox`es → which receive `Message`s; a `Bot` reads the messages of one or more inboxes.
-- **Sources:** `github`, `granola`, `loopway`, `vercel` (more can be added in `packages/web/src/sources/`, see [Adding a source](#adding-a-source)).
+- **Sources:** `github`, `granola`, `linear`, `loopway`, `vercel` (more can be added in `packages/web/src/sources/`, see [Adding a source](#adding-a-source)).
 - **Packages:** npm workspaces — [`packages/web`](../packages/web) (the server) and [`packages/cli`](../packages/cli) (the `loopway` command, a client of the [API](api.md)).
 
 ## Run locally
@@ -36,7 +36,7 @@ Tables live in a `loopway` schema (not `public`) with RLS enabled and no policie
 
 ## Web UI
 
-The same Hono app serves a small web UI: `/` (how to use loopway), `/login` (same email-code flow as the CLI; the session token is kept in `localStorage`), `/dashboard` (your bots with a create form and where each is running, your runners, and your inboxes with a create form; where source requests are on, the inbox form's Source list ends with "Something else…", which asks for a new source type instead), `/dashboard/inboxes/<inbox>` (messages with their `seq`, newest first, expandable JSON, a marker where each bot reading the inbox has read up to, and, for sources whose sender makes the secret, like Vercel and Granola, a form to paste it; `/dashboard/<inbox>` redirects there), `/dashboard/bots/<bot>` (kind, inboxes, cursor and lease holder; rename, change inboxes or delete the bot; its threads with owner and message counts, and a Release button for threads whose runner is offline) and `/dashboard/bots/<bot>/threads/<thread>` (subjects, flags, owner, and the waiting, inflight and delivered messages). The dashboard only reads threads and runners; transcripts stay on the runner. `GET /api` is a bare health check.
+The same Hono app serves a small web UI: `/` (how to use loopway), `/login` (same email-code flow as the CLI; the session token is kept in `localStorage`), `/dashboard` (your bots with a create form and where each is running, your runners, and your inboxes with a create form; where source requests are on, the inbox form's Source list ends with "Something else…", which asks for a new source type instead), `/dashboard/inboxes/<inbox>` (messages with their `seq`, newest first, expandable JSON, a marker where each bot reading the inbox has read up to, and, for sources whose sender makes the secret, like Vercel, Linear and Granola, a form to paste it; `/dashboard/<inbox>` redirects there), `/dashboard/bots/<bot>` (kind, inboxes, cursor and lease holder; rename, change inboxes or delete the bot; its threads with owner and message counts, and a Release button for threads whose runner is offline) and `/dashboard/bots/<bot>/threads/<thread>` (subjects, flags, owner, and the waiting, inflight and delivered messages). The dashboard only reads threads and runners; transcripts stay on the runner. `GET /api` is a bare health check.
 
 The pages are a React app in `packages/web/client/`. The homepage copy is markdown in [`packages/web/content/home.md`](../packages/web/content/home.md). `npm run build -w @loopway/web` bundles the app with esbuild into `packages/web/public/` (git-ignored); `npm run dev` rebuilds it on change and serves it.
 
@@ -49,7 +49,7 @@ packages/web/
   src/ui.ts             web UI: home, /login, /dashboard (HTML + vanilla JS + styles)
   src/store.ts          all SQL
   src/db/               driver adapter (PGlite | postgres.js) + migrations
-  src/sources/          one file per source adapter (github.ts, granola.ts, vercel.ts); index.ts registers them in a SourceRegistry
+  src/sources/          one file per source adapter (github.ts, granola.ts, linear.ts, vercel.ts); index.ts registers them in a SourceRegistry
   src/cloudevents.ts    CloudEvent type + validation
   scripts/              dev server, migrate
   test/api.test.ts      end-to-end tests (TEST_DATABASE_URL=... to run against real Postgres)

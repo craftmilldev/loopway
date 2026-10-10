@@ -26,7 +26,7 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 | `PATCH /inboxes/:id` `{name?, config?}`        | Update. Config merges onto existing (secret kept unless given).                                                                                                                                                             |
 | `DELETE /inboxes/:id`                          | Deletes the inbox and its messages.                                                                                                                                                                                           |
 
-Each source's `config`, how to connect it in the sender, and how its deliveries map to CloudEvents are in `docs/sources/`: [github](sources/github.md), [vercel](sources/vercel.md), [granola](sources/granola.md) and [loopway](sources/loopway.md).
+Each source's `config`, how to connect it in the sender, and how its deliveries map to CloudEvents are in `docs/sources/`: [github](sources/github.md), [vercel](sources/vercel.md), [linear](sources/linear.md), [granola](sources/granola.md) and [loopway](sources/loopway.md).
 
 ## Webhook ingestion
 
