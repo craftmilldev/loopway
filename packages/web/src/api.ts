@@ -524,65 +524,6 @@ export function createApi(opts: ApiOptions) {
     return c.json({ moved: done.moved });
   });
 
-  // Takes no lease, so a runner can be going while sessions are imported. `runner_id` makes that runner the owner.
-  // With `refresh`, a thread that exists and is owned by `runner_id` is brought up to date from the import instead of 409ing.
-  authed.post("/bots/:botId/threads", async (c) => {
-    const bot = await ownedBot(c);
-    const input = z
-      .object({
-        id: uuid,
-        subjects: threadSubjects,
-        status: z.enum(["active", "ended"]),
-        started: z.boolean(),
-        interrupted: z.boolean().optional(),
-        limited: z.boolean().optional(),
-        runner_id: runnerId.optional(),
-        refresh: z.boolean().optional(),
-        messages: z
-          .array(
-            z.object({ id: uuid, state: z.enum(["waiting", "inflight", "delivered"]), subject: z.string().optional() }),
-          )
-          .max(10_000),
-      })
-      .parse(await jsonBody(c));
-    if (input.runner_id) await ownedRunner(c, input.runner_id);
-    const existing = (await store.threadBots(c.var.db, [input.id])).size > 0;
-    if (existing && !input.refresh) throw new ApiError(409, "thread_exists", `Thread ${input.id} already exists`);
-    await checkSubjects(
-      c,
-      bot,
-      input.subjects.map((subject) => ({ subject, threadId: input.id })),
-    );
-    if (existing) {
-      const thread = await existingThread(c, bot, input.id);
-      if (!input.runner_id || thread.runner_id !== input.runner_id) throw threadOwned(thread);
-      const refreshed = await store.refreshThread(c.var.db, bot, {
-        ...(input as store.ImportedThread),
-        runnerId: input.runner_id,
-        interrupted: input.interrupted ?? false,
-        limited: input.limited ?? false,
-      });
-      if (!refreshed) throw threadOwned(thread);
-      return c.json({
-        thread: serializeThread((await store.getThread(c.var.db, bot.id, input.id))!),
-        skipped: input.messages.length - refreshed.messages,
-      });
-    }
-    const { messages } = await store.importThread(c.var.db, bot, {
-      ...(input as store.ImportedThread),
-      runnerId: input.runner_id,
-      interrupted: input.interrupted ?? false,
-      limited: input.limited ?? false,
-    });
-    return c.json(
-      {
-        thread: serializeThread((await store.getThread(c.var.db, bot.id, input.id))!),
-        skipped: input.messages.length - messages,
-      },
-      201,
-    );
-  });
-
   app.route("/", authed);
   return app;
 

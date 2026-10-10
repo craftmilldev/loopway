@@ -17,7 +17,6 @@ import { startMcpServer, type McpServer } from "../mcp.js";
 import { spawnClaude, type RunAgent, type RunOutcome } from "./agent.js";
 import { botEnv } from "./github.js";
 import { BOT_KINDS, type BotKind } from "./kinds.js";
-import { importLegacyThreads } from "./legacy.js";
 import { sessionTools } from "./tools.js";
 import { sessionLogPath } from "./transcript.js";
 
@@ -106,7 +105,7 @@ export class Dispatcher {
 
   /**
    * `bots` must all be of a kind in BOT_KINDS, and `runnerId` is this machine's runner (see ensureRunner). Takes
-   * the runner's lease, then imports threads.json if there is one (see importLegacyThreads).
+   * the runner's lease.
    */
   static async start(
     ctx: Context,
@@ -137,8 +136,6 @@ export class Dispatcher {
     const dispatcher = (later.dispatcher = new Dispatcher(ctx, client, bots, kinds, prompts, opts, mcp, env));
     try {
       await dispatcher.leaseRunner();
-      const imported = await importLegacyThreads(ctx.configDir, client, bots, opts.runnerId);
-      if (imported) ctx.out(dim(`Imported ${imported} thread(s) from threads.json to the server.`));
     } catch (err) {
       await mcp.close();
       throw err;

@@ -124,20 +124,6 @@ export interface ThreadPatch {
   add_subjects?: string[];
 }
 
-export interface ImportThread {
-  id: string;
-  subjects: string[];
-  status: "active" | "ended";
-  started: boolean;
-  interrupted?: boolean;
-  limited?: boolean;
-  /** The runner that owns the thread: the one whose machine has the session. */
-  runner_id?: string;
-  /** Bring a thread that exists, owned by `runner_id`, up to date from this instead of failing with `thread_exists`. */
-  refresh?: boolean;
-  messages: { id: string; state: "waiting" | "inflight" | "delivered"; subject?: string }[];
-}
-
 export interface Lease {
   token: string;
   expires_at: string;
@@ -355,14 +341,6 @@ export class LoopwayClient {
   finishThread(botId: string, threadId: string, leaseToken: string, opts: { requeue?: boolean } = {}) {
     const path = `/bots/${enc(botId)}/threads/${enc(threadId)}/finish`;
     return this.request<{ moved: number }>("POST", path, { lease_token: leaseToken, ...opts });
-  }
-
-  /**
-   * Creates a thread with this id; 409 `thread_exists` if there is one (unless `refresh` and `runner_id` owns it),
-   * `subject_taken` if another thread has a subject.
-   */
-  importThread(botId: string, input: ImportThread) {
-    return this.request<{ thread: Thread; skipped: number }>("POST", `/bots/${enc(botId)}/threads`, input);
   }
 
   // ---------- transport ----------
