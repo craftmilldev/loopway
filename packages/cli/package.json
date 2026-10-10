@@ -2,6 +2,7 @@
   "name": "@loopway/cli",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Command-line client for the loopway API.",
   "type": "module",
   "engines": {

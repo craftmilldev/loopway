@@ -2,6 +2,7 @@
   "name": "@loopway/web",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "loopway HTTP API: webhook ingestion and the inbox/event API. Deployed to Vercel.",
   "type": "module",
   "engines": {
