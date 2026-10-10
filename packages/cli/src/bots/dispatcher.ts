@@ -35,6 +35,13 @@ export interface ThreadsOptions {
 /** API-error retries per session before giving up, and the first backoff, which doubles each time. */
 export const API_ERROR_RETRIES = 3;
 export const API_ERROR_BACKOFF_MS = 60_000;
+/** Network errors (offline, DNS) aren't capped, since they clear on their own; their backoff stops doubling here. */
+export const NETWORK_ERROR_MAX_BACKOFF_MS = 10 * 60_000;
+
+/** Whether an API error says the machine couldn't reach the API, rather than the API failing. */
+export function isNetworkError(error: string): boolean {
+  return /Can't reach the API server|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH/.test(error);
+}
 
 export const DEFAULTS = { max: 3, interval: 5, ttl: 30 };
 
@@ -463,7 +470,7 @@ export class Dispatcher {
     const { code, delivered, limitedUntil, apiError } = outcome;
     // The usage limit has its own wait; an API error gets a backoff per thread, and a cap so a permanent one can't loop.
     const prior = this.errored.get(id)?.retries ?? 0;
-    const retry = !limitedUntil && !!apiError && prior < API_ERROR_RETRIES;
+    const retry = !limitedUntil && !!apiError && (isNetworkError(apiError) || prior < API_ERROR_RETRIES);
     const requeue = !!limitedUntil || retry;
     let ended = false;
     try {
@@ -481,10 +488,12 @@ export class Dispatcher {
       this.limitedUntil = Math.max(this.limitedUntil, limitedUntil);
       this.ctx.out(`${short} hit the usage limit; retrying sessions after ${new Date(limitedUntil).toLocaleString()}`);
     } else if (retry) {
-      const wait = API_ERROR_BACKOFF_MS * 2 ** prior;
+      const network = isNetworkError(apiError!);
+      const wait = Math.min(API_ERROR_BACKOFF_MS * 2 ** prior, network ? NETWORK_ERROR_MAX_BACKOFF_MS : Infinity);
       this.errored.set(id, { retries: prior + 1, after: Date.now() + wait });
+      const of = network ? "" : `/${API_ERROR_RETRIES}`;
       this.ctx.out(
-        `${short} hit an API error (${apiError}); retry ${prior + 1}/${API_ERROR_RETRIES} after ${new Date(Date.now() + wait).toLocaleString()}`,
+        `${short} hit an API error (${apiError}); retry ${prior + 1}${of} after ${new Date(Date.now() + wait).toLocaleString()}`,
       );
     } else {
       this.errored.delete(id);

@@ -12,7 +12,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { LoopwayClient, type Bot, type Message } from "../src/client.js";
 import { route } from "../src/bots/routing.js";
 import { LIMIT_FALLBACK_MS, LimitWatch, threadPrompt, type AgentRun, type RunOutcome } from "../src/bots/agent.js";
-import { API_ERROR_BACKOFF_MS, Dispatcher } from "../src/bots/dispatcher.js";
+import { API_ERROR_BACKOFF_MS, Dispatcher, NETWORK_ERROR_MAX_BACKOFF_MS } from "../src/bots/dispatcher.js";
 import { defaultTtl } from "../src/commands/bots-run.js";
 import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
 import { botEnv } from "../src/bots/github.js";
@@ -876,11 +876,11 @@ describe("threads", () => {
     await send(inbox, "issues", issue("opened", 1));
     await d.tick();
     const [first] = runs;
-    const error = "API Error: Can't reach the API server (ENOTFOUND)";
+    const error = "API Error: Overloaded";
 
     // The first run took its messages, then the network dropped: nothing starts until the backoff passes.
     await finish({ code: 0, delivered: true, apiError: error });
-    expect(out.join("\n")).toMatch(/hit an API error .*ENOTFOUND.*retry 1\/3/);
+    expect(out.join("\n")).toMatch(/hit an API error .*Overloaded.*retry 1\/3/);
     expect((await d.state()).threads[first!.sessionId]!.interrupted).toBe(true);
     await d.tick();
     expect(runs).toHaveLength(1);
@@ -915,6 +915,29 @@ describe("threads", () => {
       skew += 100 * API_ERROR_BACKOFF_MS;
       await d.tick();
       expect(runs).toHaveLength(4);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("keeps retrying a network error, with the backoff capped", async () => {
+    const { inbox, runs, out, d, finish } = await setup(3);
+    await send(inbox, "issues", issue("opened", 1));
+    await d.tick();
+    const error = "API Error: Can't reach the API server — check your internet or DNS (ENOTFOUND)";
+    const real = Date.now;
+    let skew = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => real() + skew);
+    try {
+      // Well past the retry cap of other errors, and every wait after it is the capped one.
+      for (let i = 1; i <= 6; i++) {
+        await finish({ code: 0, delivered: true, apiError: error });
+        expect(out.join("\n")).toMatch(new RegExp(`retry ${i} after`));
+        expect(out.join("\n")).not.toMatch(/giving up/);
+        skew += NETWORK_ERROR_MAX_BACKOFF_MS + 1000;
+        await d.tick();
+        expect(runs).toHaveLength(i + 1);
+      }
     } finally {
       vi.restoreAllMocks();
     }
