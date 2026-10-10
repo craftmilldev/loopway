@@ -31,15 +31,15 @@ async function setup(count = 3) {
 }
 
 describe("thread assignment", () => {
-  it("creates threads, keys and waiting messages, and advances the cursor, in one go", async () => {
+  it("creates threads, subjects and waiting messages, and advances the cursor, in one go", async () => {
     const { key, base, bot, messages, assign, thread } = await setup();
     const t1 = randomUUID();
     const t2 = randomUUID();
     const r = await assign(
       [
-        { message_id: messages[0]!.id, thread_id: t1, add_keys: ["o/r#1"], key: "o/r#1" },
+        { message_id: messages[0]!.id, thread_id: t1, add_subjects: ["o/r#1"], subject: "o/r#1" },
         { message_id: messages[1]!.id, thread_id: t1 },
-        { message_id: messages[2]!.id, thread_id: t2, add_keys: ["o/r#2", "o/r#3"] },
+        { message_id: messages[2]!.id, thread_id: t2, add_subjects: ["o/r#2", "o/r#3"] },
       ],
       { cursor: 42 },
     );
@@ -52,15 +52,15 @@ describe("thread assignment", () => {
       bot_id: bot.id,
       status: "active",
       started: false,
-      keys: ["o/r#1"],
+      subjects: ["o/r#1"],
       delivered: 0,
     });
     expect(got.waiting).toEqual([
-      { id: messages[0]!.id, inbox_id: bot.inbox_ids[0], type: "com.github.pull_request.opened", key: "o/r#1" },
-      expect.objectContaining({ id: messages[1]!.id, key: null }),
+      { id: messages[0]!.id, inbox_id: bot.inbox_ids[0], type: "com.github.pull_request.opened", subject: "o/r#1" },
+      expect.objectContaining({ id: messages[1]!.id, subject: null }),
     ]);
     expect(got.delivered_ids).toEqual([]);
-    expect((await thread(t2)).body.keys).toEqual(["o/r#2", "o/r#3"]);
+    expect((await thread(t2)).body.subjects).toEqual(["o/r#2", "o/r#3"]);
 
     const list = (await call("GET", `${base}/threads`, { key })).body.data;
     expect(list.map((t: any) => t.id).sort()).toEqual([t1, t2].sort());
@@ -86,7 +86,7 @@ describe("thread assignment", () => {
   it("changes nothing when the lease is wrong: no threads, no messages, no cursor", async () => {
     const { key, base, bot, messages, assign, lease } = await setup(1);
     const before = (await call("GET", base, { key })).body.cursor;
-    const r = await assign([{ message_id: messages[0]!.id, thread_id: randomUUID(), add_keys: ["a#1"] }], {
+    const r = await assign([{ message_id: messages[0]!.id, thread_id: randomUUID(), add_subjects: ["a#1"] }], {
       cursor: 99,
       token: "nope",
     });
@@ -114,7 +114,7 @@ describe("thread assignment", () => {
     await expect(
       assignMessages(db, bot.id, lease, 77, [
         { message_id: messages[0]!.id, thread_id: randomUUID() },
-        { message_id: messages[0]!.id, thread_id: tid, add_keys: ["a#1"] },
+        { message_id: messages[0]!.id, thread_id: tid, add_subjects: ["a#1"] },
       ]),
     ).rejects.toThrow();
     expect((await call("GET", base, { key })).body.cursor).not.toBe(77);
@@ -131,16 +131,16 @@ describe("thread assignment", () => {
   it("gives a key to one thread per bot", async () => {
     const { key, base, bot, messages, assign } = await setup();
     const t1 = randomUUID();
-    await assign([{ message_id: messages[0]!.id, thread_id: t1, add_keys: ["o/r#1"] }]);
+    await assign([{ message_id: messages[0]!.id, thread_id: t1, add_subjects: ["o/r#1"] }]);
 
-    const clash = await assign([{ message_id: messages[1]!.id, thread_id: randomUUID(), add_keys: ["o/r#1"] }]);
+    const clash = await assign([{ message_id: messages[1]!.id, thread_id: randomUUID(), add_subjects: ["o/r#1"] }]);
     expect(clash.status).toBe(409);
-    expect(clash.body.error).toMatchObject({ code: "key_taken", details: { key: "o/r#1", thread_id: t1 } });
+    expect(clash.body.error).toMatchObject({ code: "subject_taken", details: { subject: "o/r#1", thread_id: t1 } });
     // The same key on the same thread again is fine, and two threads in one batch can't share one.
-    expect((await assign([{ message_id: messages[1]!.id, thread_id: t1, add_keys: ["o/r#1"] }])).status).toBe(200);
+    expect((await assign([{ message_id: messages[1]!.id, thread_id: t1, add_subjects: ["o/r#1"] }])).status).toBe(200);
     const dup = await assign([
-      { message_id: messages[2]!.id, thread_id: randomUUID(), add_keys: ["x#1"] },
-      { message_id: messages[2]!.id, thread_id: randomUUID(), add_keys: ["x#1"] },
+      { message_id: messages[2]!.id, thread_id: randomUUID(), add_subjects: ["x#1"] },
+      { message_id: messages[2]!.id, thread_id: randomUUID(), add_subjects: ["x#1"] },
     ]);
     expect(dup.status).toBe(409);
 
@@ -152,13 +152,16 @@ describe("thread assignment", () => {
       body: {
         lease_token: lease,
         cursor: 0,
-        assignments: [{ message_id: messages[0]!.id, thread_id: randomUUID(), add_keys: ["o/r#1"] }],
+        assignments: [{ message_id: messages[0]!.id, thread_id: randomUUID(), add_subjects: ["o/r#1"] }],
       },
     });
     expect(ok.status).toBe(200);
     // And the database enforces it too.
     await expect(
-      db.query(`INSERT INTO loopway.thread_keys (thread_id, bot_id, key) VALUES ($1, $2, 'o/r#1')`, [t1, bot.id]),
+      db.query(`INSERT INTO loopway.thread_subjects (thread_id, bot_id, subject) VALUES ($1, $2, 'o/r#1')`, [
+        t1,
+        bot.id,
+      ]),
     ).rejects.toThrow();
     expect(base).toBeTruthy();
   });
@@ -174,21 +177,21 @@ describe("thread assignment", () => {
 });
 
 describe("thread writes", () => {
-  it("patches flags, status and keys under the lease", async () => {
+  it("patches flags, status and subjects under the lease", async () => {
     const { key, base, messages, assign, thread, leaseThread } = await setup(2);
     const t = randomUUID();
-    await assign([{ message_id: messages[0]!.id, thread_id: t, add_keys: ["a#1"] }]);
+    await assign([{ message_id: messages[0]!.id, thread_id: t, add_subjects: ["a#1"] }]);
     const lease = await leaseThread(t);
     const patch = (body: object) =>
       call("PATCH", `${base}/threads/${t}`, { key, body: { lease_token: lease, ...body } });
 
-    const r = await patch({ started: true, interrupted: true, add_keys: ["a#2"] });
+    const r = await patch({ started: true, interrupted: true, add_subjects: ["a#2"] });
     expect(r.body).toMatchObject({
       started: true,
       interrupted: true,
       limited: false,
       status: "active",
-      keys: ["a#1", "a#2"],
+      subjects: ["a#1", "a#2"],
     });
     expect((await patch({ status: "ended", interrupted: false })).body).toMatchObject({
       status: "ended",
@@ -208,8 +211,8 @@ describe("thread writes", () => {
       404,
     );
     const t2 = randomUUID();
-    await assign([{ message_id: messages[1]!.id, thread_id: t2, add_keys: ["b#1"] }]);
-    expect((await patch({ add_keys: ["b#1"] })).body.error.code).toBe("key_taken");
+    await assign([{ message_id: messages[1]!.id, thread_id: t2, add_subjects: ["b#1"] }]);
+    expect((await patch({ add_subjects: ["b#1"] })).body.error.code).toBe("subject_taken");
   });
 
   it("delivers waiting messages as inflight, then finishes or requeues them", async () => {
@@ -263,7 +266,7 @@ describe("thread writes", () => {
   it("keeps a bot's threads from other users and other bots", async () => {
     const { key, base, messages, assign, lease } = await setup(1);
     const t = randomUUID();
-    await assign([{ message_id: messages[0]!.id, thread_id: t, add_keys: ["a#1"] }]);
+    await assign([{ message_id: messages[0]!.id, thread_id: t, add_subjects: ["a#1"] }]);
 
     const stranger = await newUser("Other");
     for (const [method, path, body] of [
@@ -273,7 +276,7 @@ describe("thread writes", () => {
       ["PATCH", `${base}/threads/${t}`, { lease_token: lease, status: "ended" }],
       ["POST", `${base}/threads/${t}/deliver`, { lease_token: lease }],
       ["POST", `${base}/threads/${t}/finish`, { lease_token: lease }],
-      ["POST", `${base}/threads`, { id: randomUUID(), keys: [], status: "active", started: false, messages: [] }],
+      ["POST", `${base}/threads`, { id: randomUUID(), subjects: [], status: "active", started: false, messages: [] }],
     ] as const)
       expect((await call(method, path, { key: stranger, body })).status, `${method} ${path}`).toBe(404);
 
@@ -295,20 +298,20 @@ describe("thread writes", () => {
 });
 
 describe("thread import", () => {
-  it("creates a thread with its keys and messages, without a lease", async () => {
+  it("creates a thread with its subjects and messages, without a lease", async () => {
     const { key, base, bot, messages } = await setup(3);
     const id = randomUUID();
     const r = await call("POST", `${base}/threads`, {
       key,
       body: {
         id,
-        keys: ["o/r#1", "o/r#2"],
+        subjects: ["o/r#1", "o/r#2"],
         status: "ended",
         started: true,
         interrupted: true,
         messages: [
           { id: messages[0]!.id, state: "delivered" },
-          { id: messages[1]!.id, state: "inflight", key: "o/r#1" },
+          { id: messages[1]!.id, state: "inflight", subject: "o/r#1" },
           { id: messages[2]!.id, state: "waiting" },
           { id: randomUUID(), state: "delivered" },
         ],
@@ -323,19 +326,19 @@ describe("thread import", () => {
       started: true,
       interrupted: true,
       limited: false,
-      keys: ["o/r#1", "o/r#2"],
+      subjects: ["o/r#1", "o/r#2"],
       delivered: 1,
       delivered_ids: [messages[0]!.id],
-      inflight: [expect.objectContaining({ id: messages[1]!.id, key: "o/r#1" })],
+      inflight: [expect.objectContaining({ id: messages[1]!.id, subject: "o/r#1" })],
       waiting: [expect.objectContaining({ id: messages[2]!.id })],
     });
   });
 
-  it("refuses an id that exists, and keys another thread holds; a re-import creates nothing", async () => {
+  it("refuses an id that exists, and subjects another thread holds; a re-import creates nothing", async () => {
     const { key, base, messages } = await setup(2);
     const body = {
       id: randomUUID(),
-      keys: ["o/r#1"],
+      subjects: ["o/r#1"],
       status: "active",
       started: true,
       messages: [{ id: messages[0]!.id, state: "waiting" }],
@@ -345,7 +348,7 @@ describe("thread import", () => {
     expect(again.status).toBe(409);
     expect(again.body.error.code).toBe("thread_exists");
     const clash = await call("POST", `${base}/threads`, { key, body: { ...body, id: randomUUID(), messages: [] } });
-    expect(clash.body.error.code).toBe("key_taken");
+    expect(clash.body.error.code).toBe("subject_taken");
     expect((await call("GET", `${base}/threads?status=all`, { key })).body.data).toHaveLength(1);
   });
 
@@ -356,7 +359,13 @@ describe("thread import", () => {
     await sendGithub(theirs, "pull_request", prPayload(5));
     const foreign = (await call("GET", `/inboxes/${theirs.id}/messages`, { key: other })).body.data[0];
 
-    const mk = (messages: unknown[]) => ({ id: randomUUID(), keys: [], status: "active", started: false, messages });
+    const mk = (messages: unknown[]) => ({
+      id: randomUUID(),
+      subjects: [],
+      status: "active",
+      started: false,
+      messages,
+    });
     const first = await call("POST", `${base}/threads`, { key, body: mk([{ id: messages[0]!.id, state: "waiting" }]) });
     expect(first.body.skipped).toBe(0);
     const second = await call("POST", `${base}/threads`, {

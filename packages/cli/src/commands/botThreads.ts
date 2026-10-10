@@ -13,11 +13,11 @@ export async function listBotThreads(ctx: Context, ref: string, opts: { status?:
   if (!threads.length) return ctx.out(status === "all" ? "No threads." : `No ${status} threads.`);
   ctx.out(
     table(
-      ["ID", "STATUS", "KEYS", "WAITING", "INFLIGHT", "DELIVERED"],
+      ["ID", "STATUS", "SUBJECTS", "WAITING", "INFLIGHT", "DELIVERED"],
       threads.map((t) => [
         t.id,
         t.status,
-        t.keys.join(", "),
+        t.subjects.join(", "),
         String(t.waiting.length),
         String(t.inflight.length),
         String(t.delivered),
@@ -61,20 +61,21 @@ export async function importBotThreads(ctx: Context, opts: { bot?: string }) {
   ctx.out(`Imported ${imported} thread(s); ${present} already on the server.`);
 }
 
+// threads.json still calls a thread's subjects `keys` (until C2 moves threads to the server).
 function toImport(id: string, s: Session): ImportThread {
   const seen = new Set<string>();
   const messages: ImportThread["messages"] = [];
-  const add = (mid: string, state: ImportThread["messages"][number]["state"], key?: string) => {
+  const add = (mid: string, state: ImportThread["messages"][number]["state"], subject?: string) => {
     if (seen.has(mid)) return;
     seen.add(mid);
-    messages.push({ id: mid, state, ...(key ? { key } : {}) });
+    messages.push({ id: mid, state, ...(subject ? { subject } : {}) });
   };
   for (const m of s.messages) add(m, "delivered");
   for (const m of s.inflight ?? []) add(m.id, "inflight", m.key);
   for (const m of s.waiting) add(m.id, "waiting", m.key);
   return {
     id,
-    keys: s.keys,
+    subjects: s.keys,
     status: s.status,
     started: s.started,
     interrupted: !!s.interrupted,

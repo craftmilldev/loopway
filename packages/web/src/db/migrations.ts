@@ -183,7 +183,9 @@ ALTER SEQUENCE loopway.events_seq_seq RENAME TO messages_seq_seq;
   },
   {
     // Threads (agent sessions) move to the server. A thread belongs to one bot; its id is the Claude session id.
-    // The composite keys make a thread's keys and messages share its bot. thread_messages.state is
+    // A thread's subjects are the things it works on (for GitHub, `owner/repo#number` of its issues and PRs); a
+    // subject belongs to one thread per bot, and assigning a message finds the thread by the message's subjects.
+    // The composite keys make a thread's subjects and messages share its bot. thread_messages.state is
     // waiting (assigned, not handed to a run), inflight (handed to a run that hasn't finished) or delivered.
     version: "008_threads",
     sql: `
@@ -203,22 +205,22 @@ CREATE TABLE loopway.threads (
 
 CREATE INDEX threads_bot_idx ON loopway.threads (bot_id, status);
 
-CREATE TABLE loopway.thread_keys (
+CREATE TABLE loopway.thread_subjects (
   thread_id  uuid NOT NULL,
   bot_id     uuid NOT NULL,
-  key        text NOT NULL,
-  PRIMARY KEY (bot_id, key),
+  subject    text NOT NULL,
+  PRIMARY KEY (bot_id, subject),
   FOREIGN KEY (thread_id, bot_id) REFERENCES loopway.threads(id, bot_id) ON DELETE CASCADE
 );
 
-CREATE INDEX thread_keys_thread_idx ON loopway.thread_keys (thread_id);
+CREATE INDEX thread_subjects_thread_idx ON loopway.thread_subjects (thread_id);
 
 CREATE TABLE loopway.thread_messages (
   thread_id     uuid NOT NULL,
   bot_id        uuid NOT NULL,
   message_id    uuid NOT NULL REFERENCES loopway.messages(id) ON DELETE CASCADE,
   state         text NOT NULL DEFAULT 'waiting' CHECK (state IN ('waiting', 'inflight', 'delivered')),
-  key           text,
+  subject       text,
   assigned_at   timestamptz NOT NULL DEFAULT now(),
   delivered_at  timestamptz,
   UNIQUE (bot_id, message_id),
@@ -229,7 +231,7 @@ CREATE INDEX thread_messages_thread_idx ON loopway.thread_messages (thread_id, s
 
 ALTER TABLE loopway.threads         ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE loopway.thread_keys     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE loopway.thread_subjects ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE loopway.thread_messages ENABLE ROW LEVEL SECURITY;
 `,

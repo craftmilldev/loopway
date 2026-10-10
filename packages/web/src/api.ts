@@ -353,7 +353,7 @@ export function createApi(opts: ApiOptions) {
     .string()
     .refine(isUuid, "must be a uuid")
     .transform((s) => s.toLowerCase());
-  const threadKeys = z.array(z.string().min(1).max(500)).max(100);
+  const threadSubjects = z.array(z.string().min(1).max(500)).max(100);
 
   authed.get("/bots/:botId/threads", async (c) => {
     const bot = await ownedBot(c);
@@ -409,8 +409,8 @@ export function createApi(opts: ApiOptions) {
             z.object({
               message_id: uuid,
               thread_id: uuid,
-              add_keys: threadKeys.optional(),
-              key: z.string().min(1).max(500).optional(),
+              add_subjects: threadSubjects.optional(),
+              subject: z.string().min(1).max(500).optional(),
             }),
           )
           .max(100),
@@ -425,10 +425,10 @@ export function createApi(opts: ApiOptions) {
     if (foreign.length)
       throw new ApiError(409, "thread_exists", `Thread id(s) belong to another bot: ${foreign.join(", ")}`);
 
-    await checkKeys(
+    await checkSubjects(
       c,
       bot,
-      assignments.flatMap((a) => (a.add_keys ?? []).map((key) => ({ key, threadId: a.thread_id }))),
+      assignments.flatMap((a) => (a.add_subjects ?? []).map((subject) => ({ subject, threadId: a.thread_id }))),
     );
 
     const messageIds = [...new Set(assignments.map((a) => a.message_id))];
@@ -452,18 +452,18 @@ export function createApi(opts: ApiOptions) {
         started: z.boolean().optional(),
         interrupted: z.boolean().optional(),
         limited: z.boolean().optional(),
-        add_keys: threadKeys.optional(),
+        add_subjects: threadSubjects.optional(),
       })
       .parse(await jsonBody(c));
     requireThreadLease(thread, input.lease_token);
-    await checkKeys(
+    await checkSubjects(
       c,
       bot,
-      (input.add_keys ?? []).map((key) => ({ key, threadId: thread.id })),
+      (input.add_subjects ?? []).map((subject) => ({ subject, threadId: thread.id })),
     );
 
-    const { lease_token, add_keys, ...fields } = input;
-    if (!(await store.patchThread(c.var.db, bot.id, lease_token, thread.id, { ...fields, addKeys: add_keys })))
+    const { lease_token, add_subjects, ...fields } = input;
+    if (!(await store.patchThread(c.var.db, bot.id, lease_token, thread.id, { ...fields, addSubjects: add_subjects })))
       throw threadLeaseMismatch(thread);
     return c.json(serializeThread((await store.getThread(c.var.db, bot.id, thread.id))!));
   });
@@ -496,24 +496,24 @@ export function createApi(opts: ApiOptions) {
     const input = z
       .object({
         id: uuid,
-        keys: threadKeys,
+        subjects: threadSubjects,
         status: z.enum(["active", "ended"]),
         started: z.boolean(),
         interrupted: z.boolean().optional(),
         limited: z.boolean().optional(),
         messages: z
           .array(
-            z.object({ id: uuid, state: z.enum(["waiting", "inflight", "delivered"]), key: z.string().optional() }),
+            z.object({ id: uuid, state: z.enum(["waiting", "inflight", "delivered"]), subject: z.string().optional() }),
           )
           .max(10_000),
       })
       .parse(await jsonBody(c));
     if ((await store.threadBots(c.var.db, [input.id])).size)
       throw new ApiError(409, "thread_exists", `Thread ${input.id} already exists`);
-    await checkKeys(
+    await checkSubjects(
       c,
       bot,
-      input.keys.map((key) => ({ key, threadId: input.id })),
+      input.subjects.map((subject) => ({ subject, threadId: input.id })),
     );
     const { messages } = await store.importThread(c.var.db, bot, {
       ...(input as store.ImportedThread),
@@ -556,19 +556,19 @@ export function createApi(opts: ApiOptions) {
     return thread;
   }
 
-  /** 409 if a key is already on another of the bot's threads, or the batch wants it on two. */
-  async function checkKeys(c: Context<Env>, bot: store.Bot, wanted: { key: string; threadId: string }[]) {
+  /** 409 if a subject is already on another of the bot's threads, or the batch wants it on two. */
+  async function checkSubjects(c: Context<Env>, bot: store.Bot, wanted: { subject: string; threadId: string }[]) {
     if (!wanted.length) return;
-    const holders = await store.keyHolders(c.var.db, bot.id, [...new Set(wanted.map((w) => w.key))]);
+    const holders = await store.subjectHolders(c.var.db, bot.id, [...new Set(wanted.map((w) => w.subject))]);
     const claimed = new Map(holders);
-    for (const { key, threadId } of wanted) {
-      const holder = claimed.get(key);
+    for (const { subject, threadId } of wanted) {
+      const holder = claimed.get(subject);
       if (holder && holder !== threadId)
-        throw new ApiError(409, "key_taken", `Key ${key} already belongs to thread ${holder}`, {
-          key,
+        throw new ApiError(409, "subject_taken", `Subject ${subject} already belongs to thread ${holder}`, {
+          subject,
           thread_id: holder,
         });
-      claimed.set(key, threadId);
+      claimed.set(subject, threadId);
     }
   }
 
@@ -689,7 +689,7 @@ function serializeThread(t: store.Thread) {
     limited: t.limited,
     runner_id: live ? t.runner_id : null,
     leased_until: live ? iso(t.locked_until) : null,
-    keys: t.keys,
+    subjects: t.subjects,
     waiting: t.waiting,
     inflight: t.inflight,
     delivered: t.delivered,

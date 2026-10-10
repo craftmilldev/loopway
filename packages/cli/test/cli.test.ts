@@ -436,11 +436,11 @@ describe("bots", () => {
     expect(threads.map((t: any) => t.id).sort()).toEqual([live, done].sort());
     expect(threads.find((t: any) => t.id === live)).toMatchObject({
       status: "active",
-      keys: ["a/b#1", "a/b#2"],
+      subjects: ["a/b#1", "a/b#2"],
       interrupted: true,
       delivered: 1,
-      waiting: [{ id: m3, key: "a/b#2" }],
-      inflight: [{ id: m2, key: "a/b#1" }],
+      waiting: [{ id: m3, subject: "a/b#2" }],
+      inflight: [{ id: m2, subject: "a/b#1" }],
     });
     expect(await run("bots", "threads", "dev")).toMatch(new RegExp(`${live}\\s+active\\s+a/b#1, a/b#2\\s+1\\s+1\\s+1`));
     expect(await runJson("bots", "threads", "dev", "--status", "ended")).toHaveLength(1);

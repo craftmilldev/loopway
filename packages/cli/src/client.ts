@@ -81,7 +81,7 @@ export interface ThreadMessage {
   id: string;
   inbox_id: string;
   type: string;
-  key: string | null;
+  subject: string | null;
 }
 
 export interface Thread {
@@ -96,7 +96,7 @@ export interface Thread {
   /** The runner holding the thread's lease, and until when; null when unleased or expired. */
   runner_id: string | null;
   leased_until: string | null;
-  keys: string[];
+  subjects: string[];
   waiting: ThreadMessage[];
   inflight: ThreadMessage[];
   delivered: number;
@@ -109,8 +109,8 @@ export interface Thread {
 export interface Assignment {
   message_id: string;
   thread_id: string;
-  add_keys?: string[];
-  key?: string;
+  add_subjects?: string[];
+  subject?: string;
 }
 
 export interface ThreadPatch {
@@ -118,17 +118,17 @@ export interface ThreadPatch {
   started?: boolean;
   interrupted?: boolean;
   limited?: boolean;
-  add_keys?: string[];
+  add_subjects?: string[];
 }
 
 export interface ImportThread {
   id: string;
-  keys: string[];
+  subjects: string[];
   status: "active" | "ended";
   started: boolean;
   interrupted?: boolean;
   limited?: boolean;
-  messages: { id: string; state: "waiting" | "inflight" | "delivered"; key?: string }[];
+  messages: { id: string; state: "waiting" | "inflight" | "delivered"; subject?: string }[];
 }
 
 export interface Lease {
@@ -297,7 +297,7 @@ export class LoopwayClient {
 
   /**
    * Hands messages to threads (creating the ones the bot doesn't have) as waiting, and moves the cursor to `cursor`,
-   * all or nothing. A message that's already assigned is skipped. 409 `key_taken` if a key is on another thread.
+   * all or nothing. A message that's already assigned is skipped. 409 `subject_taken` if a subject is on another thread.
    */
   assign(botId: string, input: { lease_token: string; cursor: number; assignments: Assignment[] }) {
     return this.request<{ assigned: number }>("POST", `/bots/${enc(botId)}/assign`, input);
@@ -335,7 +335,7 @@ export class LoopwayClient {
     return this.request<{ moved: number }>("POST", path, { lease_token: leaseToken, ...opts });
   }
 
-  /** Creates a thread with this id; 409 `thread_exists` if there is one, `key_taken` if another thread has a key. */
+  /** Creates a thread with this id; 409 `thread_exists` if there is one, `subject_taken` if another thread has a subject. */
   importThread(botId: string, input: ImportThread) {
     return this.request<{ thread: Thread; skipped: number }>("POST", `/bots/${enc(botId)}/threads`, input);
   }
