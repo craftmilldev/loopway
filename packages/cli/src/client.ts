@@ -58,6 +58,8 @@ export interface Bot {
   id: string;
   name: string;
   kind: string;
+  /** The model its sessions run on, as `claude --model` takes it. */
+  model: string;
   inbox_ids: string[];
   /** The `seq` of the last message the bot has read past. */
   cursor: number;
@@ -260,7 +262,7 @@ export class LoopwayClient {
     return (await this.request<{ data: Bot[] }>("GET", "/bots")).data;
   }
 
-  createBot(input: { name: string; kind: string; inbox_ids: string[] }) {
+  createBot(input: { name: string; kind: string; model: string; inbox_ids: string[] }) {
     return this.request<Bot>("POST", "/bots", input);
   }
 
@@ -268,7 +270,7 @@ export class LoopwayClient {
     return this.request<Bot>("GET", `/bots/${enc(botId)}`);
   }
 
-  updateBot(botId: string, input: { name?: string; inbox_ids?: string[] }) {
+  updateBot(botId: string, input: { name?: string; model?: string; inbox_ids?: string[] }) {
     return this.request<Bot>("PATCH", `/bots/${enc(botId)}`, input);
   }
 

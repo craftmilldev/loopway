@@ -6,7 +6,9 @@ import { call, db, newInbox, newUser, prPayload, sendGithub } from "./helpers.js
 async function setup() {
   const key = await newUser();
   const inbox = await newInbox(key);
-  const bot = (await call("POST", "/bots", { key, body: { name: "b", kind: "k", inbox_ids: [inbox.id] } })).body;
+  const bot = (
+    await call("POST", "/bots", { key, body: { name: "b", kind: "k", model: "sonnet", inbox_ids: [inbox.id] } })
+  ).body;
   for (const n of [1, 2]) await sendGithub(inbox, "pull_request", prPayload(n));
   const messages = (await call("GET", `/inboxes/${inbox.id}/messages?order=asc`, { key })).body.data.map(
     (m: { id: string }) => m.id,

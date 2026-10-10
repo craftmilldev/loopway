@@ -391,6 +391,7 @@ export class Dispatcher {
         sessionId: id,
         resume,
         message,
+        model: this.bots.find((b) => b.id === session.bot_id)!.model,
         logPath: sessionLogPath(this.dir, id),
         mcpUrl: this.mcp.urlFor(id),
         env: this.env,

@@ -354,7 +354,18 @@ describe("bots", () => {
   it("create → messages shows only events that arrived after the bot was created", async () => {
     await configured();
     const inbox = await inboxWithEvents(2);
-    const out = await run("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.name);
+    const out = await run(
+      "bots",
+      "create",
+      "--name",
+      "dev",
+      "--kind",
+      "github-threads",
+      "--model",
+      "sonnet",
+      "--inbox",
+      inbox.name,
+    );
     expect(out).toMatch(/Created bot dev/);
     expect(out).toContain(inbox.name);
     expect(await run("bots", "messages", "dev")).toBe("No new messages.");
@@ -371,16 +382,28 @@ describe("bots", () => {
     await configured();
     const a = await inboxWithEvents(0, "a");
     const b = await inboxWithEvents(0, "b");
-    const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", a.id);
+    const bot = await runJson(
+      "bots",
+      "create",
+      "--name",
+      "dev",
+      "--kind",
+      "github-threads",
+      "--model",
+      "sonnet",
+      "--inbox",
+      a.id,
+    );
     expect(bot.inbox_ids).toEqual([a.id]);
 
-    expect(await run("bots", "list")).toMatch(/dev\s+github-threads\s+a/);
+    expect(await run("bots", "list")).toMatch(/dev\s+github-threads\s+sonnet\s+a/);
     expect((await runJson("bots", "show", "dev")).id).toBe(bot.id);
 
     const updated = await runJson("bots", "update", bot.id, "--name", "dev2", "--inbox", "a,b");
     expect(updated.name).toBe("dev2");
     expect(updated.inbox_ids).toEqual([a.id, b.id].sort());
-    await expect(run("bots", "update", "dev2")).rejects.toThrow(/--name or --inbox/);
+    await expect(run("bots", "update", "dev2")).rejects.toThrow(/--name, --model or --inbox/);
+    expect((await runJson("bots", "update", "dev2", "--model", "opus")).model).toBe("opus");
 
     expect(await run("bots", "delete", "dev2")).toMatch(/Deleted bot/);
     expect(await run("bots", "list")).toMatch(/No bots yet/);
@@ -394,15 +417,29 @@ describe("bots", () => {
       /Allowed choices are github-threads/,
     );
     await expect(run("bots", "create", "--name", "x", "--inbox", "a")).rejects.toThrow(/--kind is required/);
-    await expect(run("bots", "create", "--name", "x", "--kind", "github-threads", "--inbox", "zzz")).rejects.toThrow(
-      /No inbox with id or name "zzz"/,
+    await expect(run("bots", "create", "--name", "x", "--kind", "github-threads", "--inbox", "a")).rejects.toThrow(
+      /--model is required/,
     );
+    await expect(
+      run("bots", "create", "--name", "x", "--kind", "github-threads", "--model", "sonnet", "--inbox", "zzz"),
+    ).rejects.toThrow(/No inbox with id or name "zzz"/);
   });
 
   it("imports threads.json sessions as server threads, once, and lists them", async () => {
     await configured();
     const inbox = await inboxWithEvents(3);
-    const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.id);
+    const bot = await runJson(
+      "bots",
+      "create",
+      "--name",
+      "dev",
+      "--kind",
+      "github-threads",
+      "--model",
+      "sonnet",
+      "--inbox",
+      inbox.id,
+    );
     expect(await run("bots", "threads", "dev")).toBe("No active threads.");
     const [m1, m2, m3] = (await runJson("messages", "list", inbox.id, "--order", "asc")).data.map((m: any) => m.id);
     const type = "com.github.pull_request.opened";
@@ -465,7 +502,18 @@ describe("runners", () => {
     expect(JSON.parse(await readFile(join(configDir, "runner.json"), "utf8"))).toEqual({ id: first.id });
 
     const inbox = await inboxWithEvents(0);
-    const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.id);
+    const bot = await runJson(
+      "bots",
+      "create",
+      "--name",
+      "dev",
+      "--kind",
+      "github-threads",
+      "--model",
+      "sonnet",
+      "--inbox",
+      inbox.id,
+    );
     await client.leaseBot(bot.id, { runner_id: first.id });
     expect(await run("runners")).toMatch(new RegExp(`${first.id}\\s+\\S+\\s+dev\\s+0`));
     expect(await runJson("runners")).toMatchObject([{ id: first.id, bots: [{ id: bot.id, name: "dev" }] }]);
@@ -476,7 +524,18 @@ describe("runners", () => {
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
     const runner = await ensureRunner(configDir, client);
     const inbox = await inboxWithEvents(0);
-    const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.id);
+    const bot = await runJson(
+      "bots",
+      "create",
+      "--name",
+      "dev",
+      "--kind",
+      "github-threads",
+      "--model",
+      "sonnet",
+      "--inbox",
+      inbox.id,
+    );
     const ctx: Context = { configDir, env: {}, interactive: false, out: () => {}, fetch: apiFetch };
 
     const first = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id });
@@ -496,7 +555,18 @@ describe("runners", () => {
   it("owns the threads it imports, and a released thread has no owner", async () => {
     await configured();
     const inbox = await inboxWithEvents(0);
-    const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.id);
+    const bot = await runJson(
+      "bots",
+      "create",
+      "--name",
+      "dev",
+      "--kind",
+      "github-threads",
+      "--model",
+      "sonnet",
+      "--inbox",
+      inbox.id,
+    );
     const id = randomUUID();
     const now = new Date().toISOString();
     const session = { bot_id: bot.id, keys: ["a/b#1"], messages: [], waiting: [], status: "active", started: true };
@@ -553,7 +623,20 @@ describe("threads", () => {
     for (let i = 1; i <= inboxes; i++) {
       const inbox = await runJson("inbox", "create", "--name", `gh${i}`, "--source", "github");
       boxes.push(inbox);
-      bots.push(await runJson("bots", "create", "--name", `dev${i}`, "--kind", "github-threads", "--inbox", inbox.id));
+      bots.push(
+        await runJson(
+          "bots",
+          "create",
+          "--name",
+          `dev${i}`,
+          "--kind",
+          "github-threads",
+          "--model",
+          "sonnet",
+          "--inbox",
+          inbox.id,
+        ),
+      );
     }
     const runs: AgentRun[] = [];
     const busy: ((outcome: RunOutcome) => void)[] = [];
@@ -618,6 +701,7 @@ describe("threads", () => {
     expect((await sessions())[first!.sessionId]).toMatchObject({ keys: ["a/b#1"], status: "active", started: true });
 
     await d.tick(); // the comment that arrived while busy
+    expect(runs.map((r) => r.model)).toEqual(runs.map(() => "sonnet"));
     expect(runs[1]).toMatchObject({ sessionId: first!.sessionId, resume: true });
     expect(runs[1]!.message).not.toContain("## 1. Triage");
     expect((await sessions())[first!.sessionId].waiting).toEqual([]);
@@ -1031,7 +1115,18 @@ describe("threads", () => {
       join(configDir, "threads.json"),
       JSON.stringify({ "old-session": old, other: { ...old, inbox_id: "x" } }),
     );
-    const bot = await runJson("bots", "create", "--name", "dev", "--kind", "github-threads", "--inbox", inbox.id);
+    const bot = await runJson(
+      "bots",
+      "create",
+      "--name",
+      "dev",
+      "--kind",
+      "github-threads",
+      "--model",
+      "sonnet",
+      "--inbox",
+      inbox.id,
+    );
     const runs: AgentRun[] = [];
     const out: string[] = [];
     const ctx: Context = {

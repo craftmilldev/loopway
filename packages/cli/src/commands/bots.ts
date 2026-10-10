@@ -16,8 +16,8 @@ export async function listBots(ctx: Context, opts: JsonOpt) {
   const names = await inboxNames(client);
   ctx.out(
     table(
-      ["ID", "NAME", "KIND", "INBOXES", "CREATED"],
-      bots.map((b) => [b.id, b.name, b.kind, inboxList(b, names), dim(ago(b.created_at))]),
+      ["ID", "NAME", "KIND", "MODEL", "INBOXES", "CREATED"],
+      bots.map((b) => [b.id, b.name, b.kind, b.model, inboxList(b, names), dim(ago(b.created_at))]),
     ),
   );
 }
@@ -29,27 +29,37 @@ export async function showBot(ctx: Context, ref: string, opts: JsonOpt) {
   ctx.out(describe(bot, await inboxNames(client)));
 }
 
-export async function createBot(ctx: Context, opts: JsonOpt & { name?: string; kind?: string; inbox?: string[] }) {
+export async function createBot(
+  ctx: Context,
+  opts: JsonOpt & { name?: string; kind?: string; model?: string; inbox?: string[] },
+) {
   if (!opts.name) throw new UsageError("--name is required");
   if (!opts.kind) throw new UsageError(`--kind is required (${Object.keys(BOT_KINDS).join(", ")})`);
+  if (!opts.model) throw new UsageError("--model is required (an alias like sonnet or opus, or a full model id)");
   if (!opts.inbox?.length) throw new UsageError("--inbox is required");
   const client = await authedClient(ctx);
   const bot = await client.createBot({
     name: opts.name,
     kind: opts.kind,
+    model: opts.model,
     inbox_ids: await resolveInboxes(client, opts.inbox),
   });
   if (opts.json) return ctx.out(json(bot));
   ctx.out(`Created bot ${bold(bot.name)} (${bot.id})\n\n${describe(bot, await inboxNames(client))}`);
 }
 
-export async function updateBot(ctx: Context, ref: string, opts: JsonOpt & { name?: string; inbox?: string[] }) {
-  if (!opts.name && !opts.inbox) throw new UsageError("Pass --name or --inbox");
+export async function updateBot(
+  ctx: Context,
+  ref: string,
+  opts: JsonOpt & { name?: string; model?: string; inbox?: string[] },
+) {
+  if (!opts.name && !opts.model && !opts.inbox) throw new UsageError("Pass --name, --model or --inbox");
   if (opts.inbox && !opts.inbox.length) throw new UsageError("--inbox needs at least one inbox");
   const client = await authedClient(ctx);
   const id = await resolveBot(client, ref);
   const bot = await client.updateBot(id, {
     name: opts.name,
+    model: opts.model,
     inbox_ids: opts.inbox && (await resolveInboxes(client, opts.inbox)),
   });
   if (opts.json) return ctx.out(json(bot));
@@ -104,6 +114,7 @@ function describe(bot: Bot, names: Map<string, string>): string {
     fields([
       ["id", bot.id],
       ["kind", bot.kind],
+      ["model", bot.model],
       ["inboxes", inboxList(bot, names)],
       ["cursor", bot.cursor],
       ["created", `${bot.created_at} ${dim(`(${ago(bot.created_at)})`)}`],
