@@ -35,7 +35,17 @@ const BUNDLE = {
 
 export function createWeb() {
   const app = new Hono();
-  for (const path of ["/", "/login", "/dashboard", "/dashboard/:inboxId"]) app.get(path, (c) => c.html(SHELL));
+  const pages = [
+    "/",
+    "/login",
+    "/dashboard",
+    "/dashboard/inboxes/:inboxId",
+    "/dashboard/bots/:botId",
+    "/dashboard/bots/:botId/threads/:threadId",
+  ];
+  for (const path of pages) app.get(path, (c) => c.html(SHELL));
+  // The inbox page used to live at /dashboard/<id>.
+  app.get("/dashboard/:inboxId", (c) => c.redirect("/dashboard/inboxes/" + c.req.param("inboxId")));
   for (const [path, { url, type }] of Object.entries(BUNDLE)) {
     app.get(path, async (c) => {
       const body = await readFile(url).catch(() => undefined);

@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
 import type { Inbox as InboxInfo } from "./dashboard.js";
-import { Layout, UserNav } from "./layout.js";
+import { DashNav, Layout } from "./layout.js";
 import * as lw from "./lw.js";
 
 interface InboxMessage {
   id: string;
   received_at: string;
+  seq: number;
   event: { type: string; subject?: string };
 }
 
@@ -15,6 +16,8 @@ export function Inbox({ id }: { id: string }) {
   const [missing, setMissing] = useState(false);
   const [messages, setMessages] = useState<InboxMessage[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
+  // The bots that read this inbox, and how far each has read.
+  const readers = (lw.useList<lw.Bot>("/bots", !!me).data ?? []).filter((b) => b.inbox_ids.includes(id));
   const source = lw.useSources()?.data.find((s) => s.type === inbox?.source_type);
 
   useEffect(() => {
@@ -46,14 +49,7 @@ export function Inbox({ id }: { id: string }) {
   }, [inbox, load]);
 
   return (
-    <Layout
-      title="Inbox · loopway"
-      nav={
-        <UserNav me={me}>
-          <a href="/dashboard">Inboxes</a>
-        </UserNav>
-      }
-    >
+    <Layout title="Inbox · loopway" nav={<DashNav me={me} />}>
       <div className="page-head">
         <div>
           <h1>{missing ? "Inbox not found" : (inbox?.name ?? "Inbox")}</h1>
@@ -64,15 +60,19 @@ export function Inbox({ id }: { id: string }) {
       </div>
       {inbox && source?.secret.from === "sender" && <SenderSecret inbox={inbox} source={source} onSaved={setInbox} />}
       <div>
-        {messages?.map((e) => (
-          <details key={e.id} className="message">
-            <summary>
-              <span className="type">{e.event.type}</span>
-              <span className="muted">{e.event.subject || ""}</span>
-              <span className="when">{new Date(e.received_at).toLocaleString()}</span>
-            </summary>
-            <pre>{JSON.stringify(e.event, null, 2)}</pre>
-          </details>
+        {messages?.map((e, i) => (
+          <Fragment key={e.id}>
+            <ReadMarkers readers={readers} seq={e.seq} newer={messages[i - 1]?.seq} />
+            <details className="message">
+              <summary>
+                <span className="muted">#{e.seq}</span>
+                <span className="type">{e.event.type}</span>
+                <span className="muted">{e.event.subject || ""}</span>
+                <span className="when">{new Date(e.received_at).toLocaleString()}</span>
+              </summary>
+              <pre>{JSON.stringify(e.event, null, 2)}</pre>
+            </details>
+          </Fragment>
         ))}
       </div>
       {messages?.length === 0 && (
@@ -88,6 +88,21 @@ export function Inbox({ id }: { id: string }) {
         )}
       </div>
     </Layout>
+  );
+}
+
+// A divider above the message a bot has read up to: messages with seq <= its cursor are read, and the list is newest
+// first, so it sits between `newer` (unread) and `seq` (read). A bot that has read everything shown sits at the top.
+function ReadMarkers({ readers, seq, newer }: { readers: lw.Bot[]; seq: number; newer: number | undefined }) {
+  const here = readers.filter((b) => b.cursor >= seq && (newer === undefined || b.cursor < newer));
+  return (
+    <>
+      {here.map((b) => (
+        <div key={b.id} className="read-marker">
+          <a href={"/dashboard/bots/" + b.id}>{b.name}</a> has read up to here (#{b.cursor})
+        </div>
+      ))}
+    </>
   );
 }
 

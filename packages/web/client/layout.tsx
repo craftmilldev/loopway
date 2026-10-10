@@ -35,3 +35,15 @@ export function UserNav({ me, children }: { me: Me | null; children?: ReactNode 
     </>
   );
 }
+
+/** Links to the dashboard's sections. */
+export function DashNav({ me, children }: { me: Me | null; children?: ReactNode }) {
+  return (
+    <UserNav me={me}>
+      {children}
+      <a href="/dashboard#bots">Bots</a>
+      <a href="/dashboard#runners">Runners</a>
+      <a href="/dashboard#inboxes">Inboxes</a>
+    </UserNav>
+  );
+}

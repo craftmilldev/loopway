@@ -6,7 +6,7 @@ loopway is a place to build bots and work alongside them. It accepts webhooks fr
 - A **message** is a stored delivery: the CloudEvent, when it arrived, and its place in arrival order. Nothing is marked done.
 - A **bot** reads the messages of one or more inboxes in arrival order and keeps a cursor, so it knows where it left off. `loopway bots run` turns GitHub issues and PRs into Claude Code sessions that pick up comments and reviews as they come in.
 
-It runs on Vercel at [loopway.craftmill.dev](https://loopway.craftmill.dev), with a small web UI for logging in, creating inboxes and reading messages.
+It runs on Vercel at [loopway.craftmill.dev](https://loopway.craftmill.dev), with a small web UI for logging in, creating inboxes and bots, and seeing runners, threads and messages.
 
 - [`docs/sources/`](docs/sources/): one page per source ([github](docs/sources/github.md), [vercel](docs/sources/vercel.md), [granola](docs/sources/granola.md), [loopway](docs/sources/loopway.md)): its config, how to connect it, and how its deliveries map to CloudEvents.
 - [`docs/api.md`](docs/api.md): the HTTP API and the webhook ingestion rules.
@@ -45,10 +45,10 @@ loopway inbox update <inbox> [--name n] [--events a,b] [--secret s] [--schema fi
 loopway messages list <inbox> [--type 'com.github.pull_request.*'] [--limit 20] [--all]
 loopway messages get  <inbox> <message> [--data]
 
-loopway bots create --name dev --kind github-threads --inbox <inbox>[,<inbox>]
+loopway bots create --name dev --kind github-threads --model sonnet --inbox <inbox>[,<inbox>]
 loopway bots list
 loopway bots show <bot>
-loopway bots update <bot> [--name n] [--inbox a,b]   # --inbox replaces the bot's inboxes
+loopway bots update <bot> [--name n] [--model m] [--inbox a,b]   # --inbox replaces the bot's inboxes
 loopway bots delete <bot>
 loopway bots messages <bot> [--limit 20]            # what the bot would read next
 loopway bots release <bot> --force                  # drop a lease a dead runner left behind

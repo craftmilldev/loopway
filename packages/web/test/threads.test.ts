@@ -7,7 +7,9 @@ import { call, db, newInbox, newUser, prPayload, sendGithub } from "./helpers.js
 async function setup(count = 3) {
   const key = await newUser();
   const inbox = await newInbox(key);
-  const bot = (await call("POST", "/bots", { key, body: { name: "b", kind: "k", inbox_ids: [inbox.id] } })).body;
+  const bot = (
+    await call("POST", "/bots", { key, body: { name: "b", kind: "k", model: "sonnet", inbox_ids: [inbox.id] } })
+  ).body;
   for (let i = 1; i <= count; i++) await sendGithub(inbox, "pull_request", prPayload(i));
   const messages = (await call("GET", `/inboxes/${inbox.id}/messages?order=asc`, { key })).body.data as {
     id: string;
@@ -107,7 +109,9 @@ describe("thread assignment", () => {
 
   it("rolls back everything if the statement fails part-way", async () => {
     const { key, base, bot, messages, lease } = await setup(1);
-    const other = (await call("POST", "/bots", { key, body: { name: "o", kind: "k", inbox_ids: bot.inbox_ids } })).body;
+    const other = (
+      await call("POST", "/bots", { key, body: { name: "o", kind: "k", model: "sonnet", inbox_ids: bot.inbox_ids } })
+    ).body;
     const tid = randomUUID();
     await db.query(
       `INSERT INTO loopway.threads (id, bot_id, user_id) SELECT $1, id, user_id FROM loopway.bots WHERE id = $2`,
@@ -149,7 +153,9 @@ describe("thread assignment", () => {
     expect(dup.status).toBe(409);
 
     // Another bot can use the same key.
-    const other = (await call("POST", "/bots", { key, body: { name: "o", kind: "k", inbox_ids: bot.inbox_ids } })).body;
+    const other = (
+      await call("POST", "/bots", { key, body: { name: "o", kind: "k", model: "sonnet", inbox_ids: bot.inbox_ids } })
+    ).body;
     const lease = (await call("POST", `/bots/${other.id}/lease`, { key, body: {} })).body.lease.token;
     const ok = await call("POST", `/bots/${other.id}/assign`, {
       key,
@@ -248,6 +254,16 @@ describe("thread writes", () => {
     got = (await thread(t)).body;
     expect([got.waiting.length, got.inflight.length, got.delivered]).toEqual([0, 0, 2]);
     expect(got.delivered_ids).toEqual([messages[0]!.id, messages[1]!.id]);
+    expect(got.delivered_messages).toEqual([
+      {
+        id: messages[0]!.id,
+        inbox_id: expect.any(String),
+        type: "com.github.pull_request.opened",
+        key: null,
+        delivered_at: expect.any(String),
+      },
+      expect.objectContaining({ id: messages[1]!.id }),
+    ]);
     expect((await post("finish")).body.moved).toBe(0);
 
     // A message that arrives later waits until the next deliver.
@@ -288,7 +304,7 @@ describe("thread writes", () => {
     const sibling = (
       await call("POST", "/bots", {
         key,
-        body: { name: "s", kind: "k", inbox_ids: (await call("GET", base, { key })).body.inbox_ids },
+        body: { name: "s", kind: "k", model: "sonnet", inbox_ids: (await call("GET", base, { key })).body.inbox_ids },
       })
     ).body;
     const sLease = (await call("POST", `/bots/${sibling.id}/lease`, { key, body: {} })).body.lease.token;

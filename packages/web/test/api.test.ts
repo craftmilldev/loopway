@@ -194,10 +194,21 @@ describe("bots", () => {
     const b = await newInbox(key);
     const created = await call("POST", "/bots", {
       key,
-      body: { name: "dev", kind: "github-threads", inbox_ids: [a.id] },
+      body: { name: "dev", kind: "github-threads", model: "sonnet", inbox_ids: [a.id] },
     });
     expect(created.status).toBe(201);
-    expect(created.body).toMatchObject({ name: "dev", kind: "github-threads", inbox_ids: [a.id], cursor: 0 });
+    const unknown = await call("POST", "/bots", {
+      key,
+      body: { name: "y", kind: "github-threads", model: "sonet", inbox_ids: [a.id] },
+    });
+    expect(unknown.status).toBe(400);
+    expect(created.body).toMatchObject({
+      name: "dev",
+      kind: "github-threads",
+      model: "sonnet",
+      inbox_ids: [a.id],
+      cursor: 0,
+    });
     const id = created.body.id;
 
     expect((await call("GET", "/bots", { key })).body.data.map((x: any) => x.id)).toEqual([id]);
@@ -228,12 +239,19 @@ describe("bots", () => {
     const b = await newUser("b");
     const theirs = await newInbox(b);
     const mine = await newInbox(a);
-    const r = await call("POST", "/bots", { key: a, body: { name: "x", kind: "k", inbox_ids: [theirs.id] } });
+    const r = await call("POST", "/bots", {
+      key: a,
+      body: { name: "x", kind: "k", model: "sonnet", inbox_ids: [theirs.id] },
+    });
     expect(r.status).toBe(400);
     expect(r.body.error.message).toContain(theirs.id);
-    expect((await call("POST", "/bots", { key: a, body: { name: "x", kind: "k", inbox_ids: [] } })).status).toBe(400);
+    expect(
+      (await call("POST", "/bots", { key: a, body: { name: "x", kind: "k", model: "sonnet", inbox_ids: [] } })).status,
+    ).toBe(400);
 
-    const bot = (await call("POST", "/bots", { key: a, body: { name: "x", kind: "k", inbox_ids: [mine.id] } })).body;
+    const bot = (
+      await call("POST", "/bots", { key: a, body: { name: "x", kind: "k", model: "sonnet", inbox_ids: [mine.id] } })
+    ).body;
     expect((await call("PATCH", `/bots/${bot.id}`, { key: a, body: { inbox_ids: [theirs.id] } })).status).toBe(400);
     expect((await call("GET", `/bots/${bot.id}`, { key: b })).status).toBe(404);
     expect((await call("GET", `/bots/${bot.id}/messages`, { key: b })).status).toBe(404);
@@ -257,7 +275,9 @@ describe("bots", () => {
     // Not before[1]: ids made in the same millisecond can sort either way, so the newest is the highest seq.
     const newest = Math.max(...seqs(await call("GET", `/inboxes/${inbox.id}/messages`, { key })));
 
-    const bot = (await call("POST", "/bots", { key, body: { name: "b", kind: "k", inbox_ids: [inbox.id] } })).body;
+    const bot = (
+      await call("POST", "/bots", { key, body: { name: "b", kind: "k", model: "sonnet", inbox_ids: [inbox.id] } })
+    ).body;
     expect(bot.cursor).toBe(newest);
 
     for (let i = 3; i <= 5; i++) await sendGithub(inbox, "pull_request", prPayload(i));
@@ -293,7 +313,9 @@ describe("bot leases", () => {
   it("lease / renew / release, and the cursor only moves forward under the live lease", async () => {
     const key = await newUser();
     const inbox = await newInbox(key);
-    const bot = (await call("POST", "/bots", { key, body: { name: "b", kind: "k", inbox_ids: [inbox.id] } })).body;
+    const bot = (
+      await call("POST", "/bots", { key, body: { name: "b", kind: "k", model: "sonnet", inbox_ids: [inbox.id] } })
+    ).body;
     const base = `/bots/${bot.id}`;
 
     const leased = await call("POST", `${base}/lease`, { key, body: { ttl_seconds: 60 } });
@@ -301,8 +323,10 @@ describe("bot leases", () => {
     const token = leased.body.lease.token;
     expect(token).toMatch(/^lk_/);
     expect(Date.parse(leased.body.lease.expires_at)).toBeGreaterThan(Date.now() + 50_000);
-    // The lease isn't part of the bot.
-    expect((await call("GET", base, { key })).body).not.toHaveProperty("lock_token");
+    // The lease token isn't part of the bot, but whether it's held is.
+    const held = (await call("GET", base, { key })).body;
+    expect(held).not.toHaveProperty("lock_token");
+    expect(held).toMatchObject({ runner_id: null, leased_until: leased.body.lease.expires_at });
 
     // Another runner can't take it; the holder renews and keeps the token.
     const other = await call("POST", `${base}/lease`, { key });
@@ -350,7 +374,9 @@ describe("bot leases", () => {
   it("the lease a dead runner left can be released by force", async () => {
     const key = await newUser();
     const inbox = await newInbox(key);
-    const bot = (await call("POST", "/bots", { key, body: { name: "b", kind: "k", inbox_ids: [inbox.id] } })).body;
+    const bot = (
+      await call("POST", "/bots", { key, body: { name: "b", kind: "k", model: "sonnet", inbox_ids: [inbox.id] } })
+    ).body;
     const base = `/bots/${bot.id}`;
     const dead = (await call("POST", `${base}/lease`, { key, body: { ttl_seconds: 3600 } })).body.lease.token;
     expect((await call("POST", `${base}/lease`, { key })).status).toBe(409);
@@ -367,7 +393,9 @@ describe("bot leases", () => {
   it("expired leases can be taken over", async () => {
     const key = await newUser();
     const inbox = await newInbox(key);
-    const bot = (await call("POST", "/bots", { key, body: { name: "b", kind: "k", inbox_ids: [inbox.id] } })).body;
+    const bot = (
+      await call("POST", "/bots", { key, body: { name: "b", kind: "k", model: "sonnet", inbox_ids: [inbox.id] } })
+    ).body;
     const first = (await call("POST", `/bots/${bot.id}/lease`, { key, body: { ttl_seconds: 1 } })).body.lease.token;
     await db.query(`UPDATE loopway.bots SET locked_until = now() - interval '1 second' WHERE id = $1`, [bot.id]);
     const second = await call("POST", `/bots/${bot.id}/lease`, { key });
@@ -490,13 +518,22 @@ describe("web ui", () => {
   }
 
   it("serves the page shell without auth", async () => {
-    for (const path of ["/", "/login", "/dashboard", `/dashboard/${randomUUID()}`]) {
+    const id = randomUUID();
+    const paths = ["/", "/login", "/dashboard", `/dashboard/inboxes/${id}`, `/dashboard/bots/${id}`];
+    for (const path of [...paths, `/dashboard/bots/${id}/threads/${id}`]) {
       const r = await get(path);
       expect(r.status, path).toBe(200);
       expect(r.type).toContain("text/html");
       expect(r.text).toContain('<script type="module" src="/app.js">');
       expect(r.text).toContain('<link rel="icon" href="/favicon.ico"');
     }
+  });
+
+  it("redirects the old inbox page", async () => {
+    const id = randomUUID();
+    const res = await app.request(`/dashboard/${id}`);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(`/dashboard/inboxes/${id}`);
   });
 
   it("serves the built bundle without auth", async () => {

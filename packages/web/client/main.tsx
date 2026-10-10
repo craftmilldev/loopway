@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { Bot, Thread } from "./bot.js";
 import { Dashboard } from "./dashboard.js";
 import { Home } from "./home.js";
 import { Inbox } from "./inbox.js";
@@ -11,8 +12,13 @@ function page(path: string) {
   if (path === "/") return <Home />;
   if (path === "/login") return <Login />;
   if (path === "/dashboard") return <Dashboard />;
-  const inbox = path.match(/^\/dashboard\/([^/]+)$/);
-  if (inbox) return <Inbox id={decodeURIComponent(inbox[1]!)} />;
+  const part = (m: RegExpMatchArray, i: number) => decodeURIComponent(m[i]!);
+  const inbox = path.match(/^\/dashboard\/inboxes\/([^/]+)$/);
+  if (inbox) return <Inbox id={part(inbox, 1)} />;
+  const thread = path.match(/^\/dashboard\/bots\/([^/]+)\/threads\/([^/]+)$/);
+  if (thread) return <Thread botId={part(thread, 1)} id={part(thread, 2)} />;
+  const bot = path.match(/^\/dashboard\/bots\/([^/]+)$/);
+  if (bot) return <Bot id={part(bot, 1)} />;
   return null;
 }
 

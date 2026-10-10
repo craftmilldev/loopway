@@ -10,6 +10,8 @@ export interface AgentRun {
   sessionId: string;
   resume: boolean;
   message: string;
+  /** The model to run on, as `claude --model` takes it. */
+  model: string;
   logPath: string;
   /** The dispatcher's MCP endpoint for this session (its `link` and `end` tools). */
   mcpUrl: string;
@@ -104,7 +106,8 @@ export const spawnClaude: RunAgent = async (run) => {
     const args = ["-p", run.resume ? "--resume" : "--session-id", run.sessionId];
     // --mcp-config and --allowedTools take several values, so each is followed by another flag.
     args.push("--mcp-config", mcpConfig, "--allowedTools", "mcp__loopway__link", "mcp__loopway__end");
-    args.push("--permission-mode", "auto", "--output-format", "stream-json", "--verbose");
+    // Resumed runs get it too: a session keeps its model only if the flag says so.
+    args.push("--model", run.model, "--permission-mode", "auto", "--output-format", "stream-json", "--verbose");
     // The message goes in as stream-json so Claude Code can echo it back once it's in the session.
     args.push("--input-format", "stream-json", "--replay-user-messages");
     const child = spawn("claude", args, { env: run.env, stdio: ["pipe", "pipe", errFd] });

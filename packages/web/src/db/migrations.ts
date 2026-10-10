@@ -264,4 +264,14 @@ ALTER TABLE loopway.threads ADD COLUMN runner_id uuid REFERENCES loopway.runners
 CREATE INDEX threads_runner_idx ON loopway.threads (runner_id);
 `,
   },
+  {
+    // Which model a bot's sessions run on. Existing bots get sonnet; until now they ran on whatever `claude`
+    // defaulted to, which nobody had chosen.
+    version: "010_bot_model",
+    sql: `
+ALTER TABLE loopway.bots ADD COLUMN model text NOT NULL DEFAULT 'sonnet';
+
+ALTER TABLE loopway.bots ALTER COLUMN model DROP DEFAULT;
+`,
+  },
 ];

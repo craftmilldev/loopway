@@ -211,6 +211,8 @@ export interface Bot {
   user_id: string;
   name: string;
   kind: string;
+  /** The model its sessions run on, as `claude --model` takes it. */
+  model: string;
   /** bigint: the `seq` of the last message the bot has read past. */
   cursor: string | bigint;
   inbox_ids: string[];
@@ -222,7 +224,7 @@ export interface Bot {
 }
 
 const BOT_COLS = `
-  b.id, b.user_id, b.name, b.kind, b.cursor, b.lock_token, b.locked_until, b.runner_id, b.created_at,
+  b.id, b.user_id, b.name, b.kind, b.model, b.cursor, b.lock_token, b.locked_until, b.runner_id, b.created_at,
   COALESCE((SELECT jsonb_agg(bi.inbox_id ORDER BY bi.inbox_id) FROM loopway.bot_inboxes bi WHERE bi.bot_id = b.id),
            '[]'::jsonb) AS inbox_ids`;
 
@@ -238,18 +240,18 @@ const inboxIds = (param: string) => `(SELECT value::uuid FROM jsonb_array_elemen
 /** The inboxes must belong to the user (bot_inboxes' keys enforce it). The cursor starts at their newest message. */
 export async function createBot(
   db: Db,
-  input: { userId: string; name: string; kind: string; inboxIds: string[] },
+  input: { userId: string; name: string; kind: string; model: string; inboxIds: string[] },
 ): Promise<Bot> {
   const id = uuidv7();
   await db.query(
     `WITH b AS (
-       INSERT INTO loopway.bots (id, user_id, name, kind, cursor)
-       VALUES ($1, $2, $3, $4, COALESCE((SELECT max(seq) FROM loopway.messages WHERE inbox_id IN ${inboxIds("$5")}), 0))
+       INSERT INTO loopway.bots (id, user_id, name, kind, model, cursor)
+       VALUES ($1, $2, $3, $4, $6, COALESCE((SELECT max(seq) FROM loopway.messages WHERE inbox_id IN ${inboxIds("$5")}), 0))
        RETURNING id, user_id
      )
      INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id)
      SELECT b.id, ids.value, b.user_id FROM b, ${inboxIds("$5")} AS ids(value)`,
-    [id, input.userId, input.name, input.kind, input.inboxIds],
+    [id, input.userId, input.name, input.kind, input.inboxIds, input.model],
   );
   return (await getBot(db, id))!;
 }
@@ -274,9 +276,13 @@ export async function getBot(db: Db, id: string, userId?: string): Promise<Bot |
 }
 
 /** `inboxIds`, when given, replaces the bot's inboxes. The cursor stays where it is. */
-export async function updateBot(db: Db, bot: Bot, patch: { name?: string; inboxIds?: string[] }): Promise<Bot> {
+export async function updateBot(
+  db: Db,
+  bot: Bot,
+  patch: { name?: string; model?: string; inboxIds?: string[] },
+): Promise<Bot> {
   await db.query(
-    `WITH b AS (UPDATE loopway.bots SET name = COALESCE($2, name) WHERE id = $1 RETURNING id),
+    `WITH b AS (UPDATE loopway.bots SET name = COALESCE($2, name), model = COALESCE($5, model) WHERE id = $1 RETURNING id),
      gone AS (
        DELETE FROM loopway.bot_inboxes
        WHERE bot_id = $1 AND $4::jsonb IS NOT NULL AND inbox_id NOT IN ${inboxIds("$4")}
@@ -284,7 +290,7 @@ export async function updateBot(db: Db, bot: Bot, patch: { name?: string; inboxI
      INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id)
      SELECT $1, ids.value, $3 FROM ${inboxIds("$4")} AS ids(value)
      ON CONFLICT DO NOTHING`,
-    [bot.id, patch.name ?? null, bot.user_id, patch.inboxIds ?? null],
+    [bot.id, patch.name ?? null, bot.user_id, patch.inboxIds ?? null, patch.model ?? null],
   );
   return (await getBot(db, bot.id))!;
 }
@@ -489,6 +495,8 @@ export interface Thread {
   delivered: number;
   /** Only from getThread(). */
   delivered_ids?: string[];
+  /** Only from getThread(): the delivered messages, oldest delivery first. */
+  delivered_messages?: { id: string; inbox_id: string; type: string; key: string | null; delivered_at: Date | null }[];
   created_at: Date;
   updated_at: Date;
 }
@@ -513,7 +521,12 @@ const THREAD_COLS = `
 const DELIVERED_IDS = `,
   COALESCE((SELECT jsonb_agg(tm.message_id ORDER BY tm.delivered_at, tm.assigned_at)
             FROM loopway.thread_messages tm WHERE tm.thread_id = t.id AND tm.state = 'delivered'),
-           '[]'::jsonb) AS delivered_ids`;
+           '[]'::jsonb) AS delivered_ids,
+  COALESCE((SELECT jsonb_agg(jsonb_build_object('id', m.id, 'inbox_id', m.inbox_id, 'type', m.ce_type,
+                                                'key', tm.subject, 'delivered_at', tm.delivered_at)
+                             ORDER BY tm.delivered_at, tm.assigned_at)
+            FROM loopway.thread_messages tm JOIN loopway.messages m ON m.id = tm.message_id
+            WHERE tm.thread_id = t.id AND tm.state = 'delivered'), '[]'::jsonb) AS delivered_messages`;
 
 /** The runner's live lease on bot $1 with token $2: the condition assign makes inside its own statement. */
 const LEASED = `b.id = $1 AND b.deleted_at IS NULL AND b.lock_token = $2 AND b.locked_until > now()`;
