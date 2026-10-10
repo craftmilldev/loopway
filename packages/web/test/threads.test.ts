@@ -372,6 +372,54 @@ describe("thread import", () => {
     expect((await call("GET", `${base}/threads?status=all`, { key })).body.data).toHaveLength(1);
   });
 
+  it("refreshes a thread its runner owns from the import, and refuses anyone else's", async () => {
+    const { key, base, messages, runner } = await setup(3);
+    const id = randomUUID();
+    const body = {
+      id,
+      subjects: ["o/r#1", "o/r#2"],
+      status: "active",
+      started: false,
+      runner_id: runner,
+      messages: [
+        { id: messages[0]!.id, state: "waiting" },
+        { id: messages[1]!.id, state: "waiting" },
+      ],
+    };
+    expect((await call("POST", `${base}/threads`, { key, body })).status).toBe(201);
+
+    const refresh = {
+      ...body,
+      subjects: ["o/r#1", "o/r#3"],
+      status: "ended",
+      started: true,
+      limited: true,
+      refresh: true,
+      messages: [
+        { id: messages[0]!.id, state: "delivered" },
+        { id: messages[2]!.id, state: "inflight" },
+      ],
+    };
+    const r = await call("POST", `${base}/threads`, { key, body: refresh });
+    expect(r.status).toBe(200);
+    expect(r.body.thread).toMatchObject({
+      status: "ended",
+      started: true,
+      limited: true,
+      subjects: ["o/r#1", "o/r#3"],
+      delivered_ids: [messages[0]!.id],
+      inflight: [expect.objectContaining({ id: messages[2]!.id })],
+      waiting: [expect.objectContaining({ id: messages[1]!.id })],
+    });
+
+    const other = randomUUID();
+    await call("POST", "/runners", { key, body: { id: other, name: "desktop" } });
+    const stolen = await call("POST", `${base}/threads`, { key, body: { ...refresh, runner_id: other } });
+    expect(stolen.body.error.code).toBe("thread_owned");
+    const bare = await call("POST", `${base}/threads`, { key, body: { ...refresh, runner_id: undefined } });
+    expect(bare.body.error.code).toBe("thread_owned");
+  });
+
   it("skips messages another thread has, or that belong to someone else", async () => {
     const { key, base, messages } = await setup(1);
     const other = await newUser("Other");

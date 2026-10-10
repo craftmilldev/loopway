@@ -25,12 +25,12 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
   }
   const interval = opts.interval ?? DEFAULTS.interval;
   const runner = await ensureRunner(ctx.configDir, client);
-  opts = { ...opts, ttl: opts.ttl ?? defaultTtl(interval), runnerId: runner.id };
+  const dispatcherOpts = { ...opts, ttl: opts.ttl ?? defaultTtl(interval), runnerId: runner.id };
   const names = bots.map((b) => b.name).join(", ");
   const watching = `Running ${names} every ${interval}s (at most ${opts.max ?? DEFAULTS.max} sessions running at once).`;
 
   if (opts.tui === false || !ctx.interactive) {
-    const dispatcher = await Dispatcher.start(ctx, client, bots, opts);
+    const dispatcher = await Dispatcher.start(ctx, client, bots, dispatcherOpts);
     const release = releaseOnExit(dispatcher);
     ctx.out(`${watching} Ctrl-C to stop.`);
     try {
@@ -43,7 +43,7 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
   // The dispatcher's log lines go to the TUI's status line instead of scrolling under it.
   let message = watching;
   const quiet: Context = { ...ctx, out: (t) => void (message = t) };
-  const dispatcher = await Dispatcher.start(quiet, client, bots, opts);
+  const dispatcher = await Dispatcher.start(quiet, client, bots, dispatcherOpts);
   const release = releaseOnExit(dispatcher);
   void pollForever(quiet, dispatcher, interval);
   try {

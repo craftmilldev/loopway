@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import type { Message } from "../client.js";
-import { editSession, findSession, type Sessions } from "./store.js";
 
 interface GithubPayload {
   number?: number;
@@ -29,48 +28,44 @@ export function threadKeys(e: Message): { key?: string; refs: string[] } {
   return { key: `${repo}#${n}`, refs };
 }
 
+/** Where `route` sends a message: a thread, the subjects to add to it, and the message's own subject for display. */
+export interface Routed {
+  /** An existing thread's id, or a new one's (made here; `assign` creates it). */
+  thread_id: string;
+  add_subjects: string[];
+  key?: string;
+}
+
 /**
- * Decides which of the bot's sessions a message goes to:
+ * Decides which of the bot's threads a message goes to, given who holds each subject (`owner/repo#number` →
+ * thread id). It collects the message's subjects: its own issue or PR, then the issues a PR body closes.
  *
- * 1. Its issue/PR already belongs to a session → that session.
- * 2. It's a PR that closes a known issue ("Closes #N") → that issue's session, and the PR joins it.
- * 3. Otherwise → a new session.
+ * 1. The thread holding the message's own subject wins.
+ * 2. Otherwise the first closed issue, in body order, that a thread holds wins.
+ * 3. Otherwise it's a new thread.
  *
- * CI messages with no PR (a run on main) belong to no thread and get no session. Neither do messages
- * for an issue labeled `future` that has no session yet: it's recorded, not to be worked on. Removing
- * the label lets the next message for the issue start a session.
+ * `add_subjects` is every collected subject no thread holds yet. Ones another thread holds stay there.
  *
- * New sessions and links are added to `sessions` in place, for the caller to save.
+ * CI messages with no PR (a run on main) belong to no thread and get no route. Neither do messages for an
+ * issue labeled `future` that has no thread yet: it's recorded, not to be worked on. Removing the label
+ * lets the next message for the issue start a thread.
+ *
+ * Doesn't change `held`; the caller adds `add_subjects` to it as it assigns, so later messages see them.
  */
-export function route(sessions: Sessions, botId: string, e: Message): { session?: string; key?: string } {
+export function route(held: ReadonlyMap<string, string>, e: Message): Routed | undefined {
   const { key, refs } = threadKeys(e);
-  if (!key && /^com\.github\.(check_run|check_suite|workflow_run)\./.test(e.event.type)) return {};
-  let id = key ? findSession(sessions, botId, key) : undefined;
-  if (!id && key) {
-    id = refs.map((r) => findSession(sessions, botId, r)).find(Boolean);
-    if (id) editSession(sessions, id).keys.push(key);
-  }
-  if (!id && isFuture(e)) return {};
-  return { session: id ?? newSession(sessions, botId, key), key };
+  if (!key && /^com\.github\.(check_run|check_suite|workflow_run)\./.test(e.event.type)) return undefined;
+  const subjects = key ? [key, ...refs] : [];
+  const found = subjects.map((s) => held.get(s)).find(Boolean);
+  if (!found && isFuture(e)) return undefined;
+  return {
+    thread_id: found ?? randomUUID(),
+    add_subjects: [...new Set(subjects)].filter((s) => !held.has(s)),
+    key,
+  };
 }
 
 function isFuture(e: Message): boolean {
   const d = (e.event.data ?? {}) as GithubPayload;
   return !!d.issue?.labels?.some((l) => l.name === "future");
-}
-
-function newSession(sessions: Sessions, botId: string, key: string | undefined): string {
-  const id = randomUUID();
-  const now = new Date().toISOString();
-  sessions[id] = {
-    bot_id: botId,
-    keys: key ? [key] : [],
-    messages: [],
-    waiting: [],
-    status: "active",
-    started: false,
-    created_at: now,
-    updated_at: now,
-  };
-  return id;
 }

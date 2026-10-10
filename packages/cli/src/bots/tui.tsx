@@ -50,16 +50,22 @@ export function ThreadsTui({ load, readLog, refreshMs = 1000 }: TuiProps) {
   return <ListView snap={snap} selected={selected} onSelect={setSelected} onOpen={setOpen} />;
 }
 
-/** Sorts sessions into the three session lists, most recently updated first. */
-export function sessionLists({ sessions, running }: DispatcherState): Record<Section, string[]> {
-  const ids = Object.keys(sessions).sort((a, b) => sessions[b]!.updated_at.localeCompare(sessions[a]!.updated_at));
+/** Sorts threads into the three lists, most recently updated first. */
+export function sessionLists({ threads, running }: DispatcherState): Record<Section, string[]> {
+  const ids = Object.keys(threads).sort((a, b) => threads[b]!.updated_at.localeCompare(threads[a]!.updated_at));
   const lists: Record<Section, string[]> = { working: [], waiting: [], done: [] };
-  for (const id of ids) lists[sectionOf({ sessions, running }, id)].push(id);
+  for (const id of ids) lists[sectionOf({ threads, running }, id)].push(id);
   return lists;
 }
 
-const sectionOf = ({ sessions, running }: Pick<DispatcherState, "sessions" | "running">, id: string): Section =>
-  running.has(id) ? "working" : sessions[id]?.status === "ended" ? "done" : "waiting";
+const sectionOf = ({ threads, running }: Pick<DispatcherState, "threads" | "running">, id: string): Section =>
+  running.has(id) ? "working" : threads[id]?.status === "ended" ? "done" : "waiting";
+
+/** " on <runner>" for a thread another runner owns (its session lives on that machine), "" for this runner's. */
+const owner = ({ threads, runnerId, runners }: DispatcherState, id: string): string => {
+  const runner = threads[id]?.runner_id;
+  return runner && runner !== runnerId ? ` on ${runners[runner] ?? runner.slice(0, 8)}` : "";
+};
 
 interface Row {
   key: string;
@@ -140,7 +146,7 @@ function ListView({ snap, selected, onSelect, onOpen }: ListViewProps) {
 /** Every row of the list view. Waiting messages stop at `waitingMax` so the session lists stay in view. */
 function listRows(snap: Snapshot, lists: Record<Section, string[]>, waitingMax: number): Row[] {
   const rows: Row[] = [{ key: "h-messages", header: `Waiting messages (${snap.waiting.length})` }];
-  for (const m of snap.waiting.slice(0, waitingMax)) rows.push({ key: m.id, label: m.type, meta: m.key ?? "" });
+  for (const m of snap.waiting.slice(0, waitingMax)) rows.push({ key: m.id, label: m.type, meta: m.subject ?? "" });
   const more = snap.waiting.length - waitingMax;
   if (more > 0) rows.push({ key: "more-messages", meta: `… ${more} more` });
   if (!snap.waiting.length) rows.push({ key: "none-messages", meta: "none" });
@@ -148,12 +154,12 @@ function listRows(snap: Snapshot, lists: Record<Section, string[]>, waitingMax: 
   for (const sec of SECTIONS) {
     rows.push({ key: `gap-${sec}` }, { key: `h-${sec}`, header: `${TITLES[sec]} (${lists[sec].length})` });
     for (const id of lists[sec]) {
-      const s = snap.sessions[id]!;
+      const t = snap.threads[id]!;
       rows.push({
         key: id,
         id,
-        label: s.keys.join(", ") || "new thread",
-        meta: `${id.slice(0, 8)}  ${ago(s.updated_at)}`,
+        label: t.subjects.join(", ") || "new thread",
+        meta: `${id.slice(0, 8)}  ${ago(t.updated_at)}${owner(snap, id)}`,
       });
     }
     if (!lists[sec].length) rows.push({ key: `none-${sec}`, meta: "none" });
@@ -209,14 +215,15 @@ function LogView({ id, snap, readLog, refreshMs, onBack }: LogViewProps) {
     else if (key.end) scroll(bottom);
   });
 
-  const session = snap.sessions[id];
+  const thread = snap.threads[id];
   const empty = log === undefined ? "Loading…" : "No transcript yet.";
   return (
     <Box flexDirection="column" height={height}>
       <Text bold wrap="truncate-end">
-        {session?.keys.join(", ") || "new thread"}{" "}
+        {thread?.subjects.join(", ") || "new thread"}{" "}
         <Text dimColor>
           · {id.slice(0, 8)} · {sectionOf(snap, id)}
+          {owner(snap, id)}
         </Text>
       </Text>
       <Box flexDirection="column" height={body} overflow="hidden">
