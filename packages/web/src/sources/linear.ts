@@ -31,21 +31,31 @@ const configInput = z
   })
   .strict();
 
+/** Every resource type Linear can send webhooks for, as the lowercased `type` of the body. */
+const RESOURCES = [
+  "issue",
+  "comment",
+  "issuelabel",
+  "attachment",
+  "reaction",
+  "document",
+  "project",
+  "projectupdate",
+  "initiative",
+  "initiativeupdate",
+  "cycle",
+  "user",
+  "customer",
+  "customerneed",
+  "auditentry",
+];
+const ACTIONS = ["create", "update", "remove"];
+
 export const linear: SourceAdapter<LinearConfig> = {
   type: "linear",
   label: "Linear",
   description: "Linear webhooks, verified with Linear-Signature.",
-  events: [
-    "issue.create",
-    "issue.update",
-    "issue.remove",
-    "comment.create",
-    "comment.update",
-    "comment.remove",
-    "issuelabel.create",
-    "issuelabel.update",
-    "issuelabel.remove",
-  ],
+  events: RESOURCES.flatMap((r) => ACTIONS.map((a) => `${r}.${a}`)),
   // Linear makes the secret when the webhook is added, so it's set afterwards.
   secret: { from: "sender" },
   webhookSettings: "Linear → Settings → API → Webhooks",
