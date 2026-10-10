@@ -1,9 +1,10 @@
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z, ZodError } from "zod";
+import { sendSourceRequest, sourceRequestInput, type SourceRequestTarget } from "../ee/source-requests.js";
 import type { Db } from "./db/index.js";
 import { consoleSender, type SendEmail } from "./email.js";
-import { isUuid, LOGIN_CODE_RE, normalizeLoginCode, uuidv7 } from "./ids.js";
+import { isUuid, LOGIN_CODE_RE, normalizeLoginCode } from "./ids.js";
 import { BOT_MODELS } from "./models.js";
 import { sources } from "./sources/index.js";
 import * as store from "./store.js";
@@ -23,7 +24,7 @@ export interface ApiOptions {
    * The craftmill loopway inbox that requests for new source types go to: its webhook URL and inbox
    * token. Without it, `POST /sources/requests` is a 404 and the web UI doesn't offer requests.
    */
-  sourceRequests?: { url: string; token: string };
+  sourceRequests?: SourceRequestTarget;
   /** Sends source requests. Defaults to the global fetch. */
   fetch?: typeof fetch;
 }
@@ -146,22 +147,8 @@ export function createApi(opts: ApiOptions) {
   authed.post("/sources/requests", async (c) => {
     const target = opts.sourceRequests;
     if (!target) throw new ApiError(404, "not_found", "This deployment doesn't take source requests");
-    const { description } = z.object({ description: z.string().trim().min(1).max(500) }).parse(await jsonBody(c));
-    const r = await (opts.fetch ?? fetch)(target.url, {
-      method: "POST",
-      headers: { authorization: `Bearer ${target.token}`, "content-type": "application/json" },
-      body: JSON.stringify({
-        type: "source.requested",
-        id: uuidv7(),
-        // Only the user's id: it's enough to look them up, and keeps their name and email out of the message.
-        data: { description, user: { id: c.var.user.id } },
-      }),
-    }).catch((err: unknown) => {
-      console.error("source request failed", err);
-      return undefined;
-    });
-    if (!r?.ok) {
-      if (r) console.error(`source request failed: ${r.status} ${await r.text()}`);
+    const { description } = sourceRequestInput.parse(await jsonBody(c));
+    if (!(await sendSourceRequest(target, opts.fetch ?? fetch, { description, userId: c.var.user.id }))) {
       throw new ApiError(502, "upstream", "Couldn't send the request. Try again later.");
     }
     return c.json({ requested: true }, 202);

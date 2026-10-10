@@ -2,6 +2,7 @@
   "name": "loopway",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Webhook ingestion into per-user CloudEvents inboxes, with a lock/claim/ack API for consumers.",
   "type": "module",
   "engines": {

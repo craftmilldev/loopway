@@ -30,7 +30,7 @@ export default defineConfig(
   { files: ["packages/cli/src/program.ts"], rules: { "@typescript-eslint/no-unsafe-argument": "off" } },
   // Tests read JSON responses as `any` all over; checking those types would mean a cast per assertion.
   {
-    files: ["packages/*/test/**"],
+    files: ["packages/*/test/**", "packages/*/ee/test/**"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unsafe-argument": "off",

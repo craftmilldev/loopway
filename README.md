@@ -122,3 +122,7 @@ They're saved as the `github` block in `~/.loopway/config.json`:
 
 The git settings are passed as `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n`, so nothing is written to your git config.
 
+
+## License
+
+loopway is open core. Everything is MIT-licensed (see [`LICENSE`](LICENSE)) except the code under [`packages/web/ee`](packages/web/ee), which is under the loopway Enterprise License ([`packages/web/ee/LICENSE`](packages/web/ee/LICENSE)). Today that is source requests, the dashboard option that lets a user ask for a webhook source loopway doesn't have.
