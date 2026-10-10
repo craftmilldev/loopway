@@ -1,7 +1,7 @@
 import { ApiError, type ImportThread } from "../client.js";
 import { authedClient, type Context } from "../context.js";
 import { dim, json, table } from "../format.js";
-import { adoptSessions, loadSessions, type Session } from "../threads/store.js";
+import { adoptSessions, loadSessions, type Session } from "../bots/store.js";
 import { resolveBot } from "./bots.js";
 
 /** `loopway bots threads <bot>`: the threads the server has for a bot. */

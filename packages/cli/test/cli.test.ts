@@ -10,15 +10,15 @@ import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { LoopwayClient, type Bot } from "../src/client.js";
-import { LIMIT_FALLBACK_MS, LimitWatch, threadPrompt, type AgentRun, type RunOutcome } from "../src/threads/agent.js";
-import { API_ERROR_BACKOFF_MS, Dispatcher } from "../src/threads/dispatcher.js";
-import { defaultTtl } from "../src/commands/threads.js";
+import { LIMIT_FALLBACK_MS, LimitWatch, threadPrompt, type AgentRun, type RunOutcome } from "../src/bots/agent.js";
+import { API_ERROR_BACKOFF_MS, Dispatcher } from "../src/bots/dispatcher.js";
+import { defaultTtl } from "../src/commands/bots-run.js";
 import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
-import { botEnv } from "../src/threads/github.js";
+import { botEnv } from "../src/bots/github.js";
 import type { Context } from "../src/context.js";
 import { createProgram } from "../src/program.js";
-import { ensureRunner } from "../src/threads/runner.js";
-import { withSessions } from "../src/threads/store.js";
+import { ensureRunner } from "../src/bots/runner.js";
+import { withSessions } from "../src/bots/store.js";
 
 const API = "https://loopway.test";
 const SECRET = "test-secret";
@@ -894,6 +894,23 @@ describe("threads", () => {
     await d.tick();
     expect(runs).toHaveLength(2);
     expect(runs[1]!.message).toContain(`loopway messages get ${b.id} `);
+  });
+
+  it("ignores issues labeled future that have no session, but not ones already being worked", async () => {
+    const { inbox, runs, d, cursor, newest } = await setup(3);
+    const labels = [{ name: "future" }];
+    await send(inbox, "issues", { action: "opened", issue: { number: 1, labels }, repository });
+    await send(inbox, "issue_comment", { ...comment(1), issue: { number: 1, labels } });
+    await send(inbox, "issues", issue("opened", 2));
+    await d.tick();
+    expect(runs).toHaveLength(1);
+    expect(Object.values(await sessions()).map((s: any) => s.keys)).toEqual([["a/b#2"]]);
+    expect(await cursor()).toBe(await newest());
+
+    // A label added mid-work doesn't cut off a thread that already has a session.
+    await send(inbox, "issues", { action: "labeled", issue: { number: 2, labels }, repository });
+    await d.tick();
+    expect((await sessions())[runs[0]!.sessionId].waiting).toHaveLength(1);
   });
 
   it("skips a bot leased by another runner, and picks it up once released", async () => {

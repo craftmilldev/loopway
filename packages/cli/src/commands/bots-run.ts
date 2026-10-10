@@ -1,9 +1,9 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { authedClient, type Context } from "../context.js";
-import { DEFAULTS, Dispatcher, type ThreadsOptions } from "../threads/dispatcher.js";
-import { BOT_KINDS } from "../threads/kinds.js";
-import { ensureRunner } from "../threads/runner.js";
-import { showTui } from "../threads/tui.js";
+import { DEFAULTS, Dispatcher, type ThreadsOptions } from "../bots/dispatcher.js";
+import { BOT_KINDS } from "../bots/kinds.js";
+import { ensureRunner } from "../bots/runner.js";
+import { showTui } from "../bots/tui.js";
 
 export interface RunBotsOptions extends ThreadsOptions {
   /** false with --no-tui; the TUI only shows in an interactive terminal either way. */

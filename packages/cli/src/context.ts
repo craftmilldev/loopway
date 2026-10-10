@@ -1,5 +1,5 @@
 import { LoopwayClient } from "./client.js";
-import type { AgentRun, RunOutcome } from "./threads/agent.js";
+import type { AgentRun, RunOutcome } from "./bots/agent.js";
 import { resolveAuth } from "./config.js";
 
 /** Everything a command touches outside its arguments, so tests can swap it out. */
