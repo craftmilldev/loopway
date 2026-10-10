@@ -3,6 +3,7 @@ node_modules/
 dist/
 .env
 .env.local
+.env.production
 .vercel/
 packages/web/public/*
 !packages/web/public/favicon.ico
