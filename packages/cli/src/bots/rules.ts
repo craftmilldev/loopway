@@ -17,9 +17,22 @@ export interface Routed {
  * - `data`: the event's payload, and `event_type`: its type.
  * - In `action` only: `subject` and `related` (what the rule's other expressions produced) and `held` (whether a
  *   thread already holds one of those subjects).
+ * - `regex_all(text, pattern)` and `regex_all(text, pattern, flags)`: the first capture group (or the whole match if
+ *   the pattern has none) of every match of a JavaScript regular expression in the text, as a list of strings.
+ *   `flags` are JavaScript regex flags such as "i" or "m". The rule decides what counts as a match.
  * - Helpers a source defines for rules on its own event types, named `<source>_<helper>` (see RuleSource).
  */
-const base = new Environment({ unlistedVariablesAreDyn: true });
+const base = new Environment({ unlistedVariablesAreDyn: true })
+  .registerFunction("regex_all(string, string): list<string>", (text: string, pattern: string) =>
+    regexAll(text, pattern, ""),
+  )
+  .registerFunction("regex_all(string, string, string): list<string>", (text: string, pattern: string, flags: string) =>
+    regexAll(text, pattern, flags),
+  );
+
+function regexAll(text: string, pattern: string, flags: string): string[] {
+  return [...text.matchAll(new RegExp(pattern, flags.includes("g") ? flags : flags + "g"))].map((m) => m[1] ?? m[0]);
+}
 
 /**
  * A source's contribution to rules: the helpers its event types' rules can call. Each source defines its own in

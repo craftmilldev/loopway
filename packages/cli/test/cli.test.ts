@@ -1044,8 +1044,8 @@ describe("threads", () => {
     });
     // Its own PR is held and no thread holds what it closes: that thread keeps it.
     expect(route(held, message(1, "Closes #3"))).toEqual({ thread_id: "t1", add_subjects: ["a/b#3"], key: "a/b#1" });
-    // Closing keywords in quotes or code are examples, not references.
-    expect(route(held, message(1, 'Adds `closes(text)` for "Closes #2" and\n```\nFixes #2\n```'))).toEqual({
+    // A closing keyword right after a quote or backtick is an example, not a reference.
+    expect(route(held, message(1, 'Adds a rule for "Closes #2" and `Fixes #2`.'))).toEqual({
       thread_id: "t1",
       add_subjects: [],
       key: "a/b#1",
@@ -1060,6 +1060,22 @@ describe("threads", () => {
     const fresh = route(held, message(7, "Closes #8"))!;
     expect(fresh).toMatchObject({ add_subjects: ["a/b#7", "a/b#8"], key: "a/b#7" });
     expect(["t1", "t2"]).not.toContain(fresh.thread_id);
+  });
+
+  it("route: regex_all gives the first group (or the match) of every match, with optional flags", () => {
+    const rules = (related: string) => [{ types: ["x.*"], subject: "'s'", related }];
+    const route = (related: string) =>
+      routeWith(rules(related), new Map(), {
+        id: randomUUID(),
+        inbox_id: "in",
+        seq: 1,
+        received_at: "",
+        event: { type: "x.y", data: { text: "Ab-1 ab-22" } },
+      } as unknown as Message)!.add_subjects;
+    expect(route("regex_all(data.text, 'ab-(\\\\d+)')")).toEqual(["s", "22"]);
+    expect(route("regex_all(data.text, 'ab-(\\\\d+)', 'i')")).toEqual(["s", "1", "22"]);
+    expect(route("regex_all(data.text, '[A-Z]b')")).toEqual(["s", "Ab"]);
+    expect(route("regex_all(data.text, '[A-Z]b', 'i')")).toEqual(["s", "Ab", "ab"]);
   });
 
   it("route: CI joins its PR's thread, a run with no PR and a `future` issue without a thread are dropped", () => {
