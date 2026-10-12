@@ -544,6 +544,20 @@ export function createApi(opts: ApiOptions) {
     return c.json(serializeThread((await store.getThread(c.var.db, bot.id, thread.id))!));
   });
 
+  // The manual repair for a subject that landed on the wrong thread. Needs no lease, like release.
+  authed.post("/bots/:botId/threads/:threadId/move-subject", async (c) => {
+    const bot = await ownedBot(c);
+    const to = await existingThread(c, bot);
+    const { subject } = z.object({ subject: z.string().min(1).max(500) }).parse(await jsonBody(c));
+    const from = (await store.subjectHolders(c.var.db, bot.id, [subject])).get(subject);
+    if (!from) throw new ApiError(404, "not_found", `Subject ${subject} isn't on any of the bot's threads`);
+    if (from === to.id)
+      throw new ApiError(409, "subject_on_thread", `Subject ${subject} is already on thread ${to.id}`);
+    if (!(await store.moveSubject(c.var.db, bot.id, subject, to.id)))
+      throw new ApiError(404, "not_found", `Subject ${subject} isn't on any of the bot's threads`);
+    return c.json(serializeThread((await store.getThread(c.var.db, bot.id, to.id))!));
+  });
+
   authed.post("/bots/:botId/threads/:threadId/deliver", async (c) => {
     const bot = await ownedBot(c);
     const thread = await existingThread(c, bot);

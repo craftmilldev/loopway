@@ -1,6 +1,6 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import { clearConfig, configure, login, whoami } from "./commands/auth.js";
-import { listBotThreads, releaseBotThread } from "./commands/botThreads.js";
+import { listBotThreads, moveBotSubject, releaseBotThread } from "./commands/botThreads.js";
 import { botMessages, createBot, deleteBot, listBots, releaseBot, showBot, updateBot } from "./commands/bots.js";
 import { getMessage, listMessages } from "./commands/messages.js";
 import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
@@ -215,6 +215,14 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .argument("<bot>", "bot id or name")
     .argument("<thread>", "thread id")
     .action((ref, thread) => releaseBotThread(ctx, ref, thread));
+
+  botThreads
+    .command("move")
+    .description("move a subject to another of the bot's threads, with its waiting messages; an ended thread resumes")
+    .argument("<bot>", "bot id or name")
+    .argument("<subject>", "the subject, e.g. owner/repo#12")
+    .argument("<to-thread>", "id of the thread to move it to (the start of it is enough)")
+    .action((ref, subject, to) => moveBotSubject(ctx, ref, subject, to));
 
   bots
     .command("run")

@@ -362,6 +362,14 @@ export class LoopwayClient {
     return this.request<Thread>("POST", `/bots/${enc(botId)}/threads/${enc(threadId)}/release`, {});
   }
 
+  /**
+   * Moves a subject (`owner/repo#number`) to another thread of the bot, with its waiting messages, and resumes the
+   * target if it ended. Needs no lease. 404 if the subject isn't on one of the bot's threads, 409 if it's already there.
+   */
+  moveSubject(botId: string, threadId: string, subject: string) {
+    return this.request<Thread>("POST", `/bots/${enc(botId)}/threads/${enc(threadId)}/move-subject`, { subject });
+  }
+
   patchThread(botId: string, threadId: string, input: ThreadPatch & { lease_token: string }) {
     return this.request<Thread>("PATCH", `/bots/${enc(botId)}/threads/${enc(threadId)}`, input);
   }

@@ -35,3 +35,17 @@ export async function releaseBotThread(ctx: Context, ref: string, threadId: stri
   const thread = await client.releaseThread(await resolveBot(client, ref), threadId);
   ctx.out(`Released thread ${thread.id}; a runner can claim it now.`);
 }
+
+/**
+ * `loopway bots threads move <bot> <subject> <to-thread>`: the repair for a subject on the wrong thread. `to-thread`
+ * may be the start of a thread id. Its waiting messages go with it; a target that ended resumes.
+ */
+export async function moveBotSubject(ctx: Context, ref: string, subject: string, toThread: string) {
+  const client = await authedClient(ctx);
+  const botId = await resolveBot(client, ref);
+  const matches = (await client.listThreads(botId, "all")).filter((t) => t.id.startsWith(toThread.toLowerCase()));
+  if (matches.length !== 1)
+    throw new Error(matches.length ? `"${toThread}" matches ${matches.length} threads` : `No thread "${toThread}"`);
+  const thread = await client.moveSubject(botId, matches[0]!.id, subject);
+  ctx.out(`Moved ${subject} to thread ${thread.id} (${thread.status}).`);
+}

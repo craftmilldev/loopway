@@ -761,6 +761,40 @@ export async function patchThread(
   return row!.n > 0;
 }
 
+/**
+ * One statement: moves `subject` from the thread of bot $1 that holds it to thread $3 of the same bot, takes the
+ * waiting messages for the subject along (inflight and delivered ones stay), and resumes the target if it ended.
+ * False if the bot has no such thread, or the subject isn't on one of its threads.
+ */
+export async function moveSubject(db: Db, botId: string, subject: string, toThreadId: string): Promise<boolean> {
+  const [row] = await db.query<{ n: number }>(
+    `WITH target AS (
+       SELECT id FROM loopway.threads WHERE id = $3::uuid AND bot_id = $1::uuid
+     ),
+     cur AS (
+       SELECT thread_id FROM loopway.thread_subjects WHERE bot_id = $1::uuid AND subject = $2
+     ),
+     moved AS (
+       UPDATE loopway.thread_subjects k SET thread_id = target.id
+       FROM target WHERE k.bot_id = $1::uuid AND k.subject = $2 RETURNING k.subject
+     ),
+     msgs AS (
+       UPDATE loopway.thread_messages tm SET thread_id = target.id
+       FROM target, cur
+       WHERE tm.bot_id = $1::uuid AND tm.thread_id = cur.thread_id AND tm.subject = $2 AND tm.state = 'waiting'
+         AND EXISTS (SELECT 1 FROM moved)
+       RETURNING tm.message_id
+     ),
+     resumed AS (
+       UPDATE loopway.threads t SET status = 'active', updated_at = now()
+       FROM target WHERE t.id = target.id AND EXISTS (SELECT 1 FROM moved) RETURNING t.id
+     )
+     SELECT count(*)::int AS n FROM moved`,
+    [botId, subject, toThreadId],
+  );
+  return row!.n > 0;
+}
+
 /** Moves the thread's waiting messages to inflight and marks it active. Undefined unless `token` is the live lease of the thread's owner. */
 export async function deliverThread(
   db: Db,
