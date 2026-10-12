@@ -1,4 +1,4 @@
-import type { BotRule } from "@loopway/rules";
+import type { BotRule } from "../index.js";
 import { THREAD_PROMPT } from "./github-threads-prompt.js";
 import { GITHUB_THREADS_RULES } from "./github-threads-rules.js";
 

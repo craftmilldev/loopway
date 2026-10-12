@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApi } from "@loopway/web/api";
-import { PRESETS } from "@loopway/web/presets";
+import { PRESETS } from "@loopway/rules/presets";
 import { openDb, type Db } from "@loopway/web/db";
 import { createUser } from "@loopway/web/store";
 import { signSessionToken } from "@loopway/web/tokens";
@@ -440,7 +440,7 @@ describe("bots", () => {
     await inboxWithEvents(0, "a");
     await expect(
       run("bots", "create", "--name", "x", "--preset", "nope", "--model", "sonnet", "--inbox", "a"),
-    ).rejects.toThrow(/Unknown preset "nope"/);
+    ).rejects.toThrow(/Allowed choices are github-threads/);
     await expect(run("bots", "create", "--name", "x", "--inbox", "a")).rejects.toThrow(/--model is required/);
     await expect(run("bots", "create", "--name", "x", "--model", "sonnet", "--inbox", "zzz")).rejects.toThrow(
       /No inbox with id or name "zzz"/,

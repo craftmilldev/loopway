@@ -7,7 +7,6 @@ import type { Db } from "./db/index.js";
 import { consoleSender, type SendEmail } from "./email.js";
 import { ApiError, jsonBody, type Env } from "./http.js";
 import { isUuid, LOGIN_CODE_RE, normalizeLoginCode } from "./ids.js";
-import { PRESETS } from "./presets/index.js";
 import { ANONYMOUS, noopMetrics, type Metrics } from "./metrics.js";
 import { BOT_MODELS } from "./models.js";
 import { createPosthogProxy } from "./posthog-proxy.js";
@@ -356,35 +355,21 @@ export function createApi(opts: ApiOptions) {
     const input = z
       .object({
         name: z.string().min(1).max(200),
-        preset: z.string().optional(),
         model: modelBody,
         inbox_ids: inboxIdsBody,
         prompt: promptBody.optional(),
         rules: rulesBody.optional(),
       })
       .parse(await jsonBody(c));
-    // A preset only fills the first version; a prompt or rules in the request replace its own.
-    const preset = input.preset === undefined ? undefined : PRESETS[input.preset];
-    if (input.preset !== undefined && !preset) {
-      await metrics.capture("bot_preset_rejected", c.var.user.id);
-      throw new ApiError(
-        400,
-        "unknown_preset",
-        `Unknown preset "${input.preset}" (${Object.keys(PRESETS).join(", ")})`,
-      );
-    }
     const bot = await store.createBot(c.var.db, {
       userId: c.var.user.id,
       name: input.name,
       model: input.model,
       inboxIds: await ownedInboxIds(c, input.inbox_ids),
-      prompt: input.prompt ?? preset?.prompt,
-      rules: (await checked(c, input.rules, "create")) ?? preset?.rules,
+      prompt: input.prompt,
+      rules: await checked(c, input.rules, "create"),
     });
-    await metrics.capture("bot_created", c.var.user.id, {
-      preset: input.preset ?? "none",
-      has_version: !!bot.prompt_version,
-    });
+    await metrics.capture("bot_created", c.var.user.id, { has_version: !!bot.prompt_version });
     return c.json(serializeBot(bot), 201);
   });
 

@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import { clientBuild } from "../scripts/client.js";
 import { createApi } from "../src/api.js";
 import { SourceRegistry } from "@loopway/sources";
-import { PRESETS } from "../src/presets/index.js";
 import { sources } from "../src/sources.js";
 import { createUser } from "../src/store.js";
 import { signSessionToken, verifyToken } from "../src/tokens.js";
@@ -118,34 +117,6 @@ describe("bots", () => {
       inboxId,
     ]);
   const seqs = (r: { body: { data: { seq: number }[] } }) => r.body.data.map((e) => e.seq);
-
-  it("starts a bot from a preset, which the bot doesn't remember", async () => {
-    const key = await newUser();
-    const a = await newInbox(key);
-    const preset = await call("POST", "/bots", {
-      key,
-      body: { name: "p", model: "sonnet", inbox_ids: [a.id], preset: "github-threads" },
-    });
-    expect(preset.status).toBe(201);
-    expect(preset.body).not.toHaveProperty("kind");
-    expect(preset.body).not.toHaveProperty("preset");
-    expect(preset.body.prompt_version).toMatchObject({ version: 1, prompt: PRESETS["github-threads"]!.prompt });
-    expect(preset.body.prompt_version.rules).toEqual(PRESETS["github-threads"]!.rules);
-
-    // A prompt in the request replaces the preset's, which still gives the rules.
-    const own = await call("POST", "/bots", {
-      key,
-      body: { name: "o", model: "sonnet", inbox_ids: [a.id], preset: "github-threads", prompt: "mine" },
-    });
-    expect(own.body.prompt_version).toMatchObject({ prompt: "mine", rules: PRESETS["github-threads"]!.rules });
-
-    const unknown = await call("POST", "/bots", {
-      key,
-      body: { name: "u", model: "sonnet", inbox_ids: [a.id], preset: "nope" },
-    });
-    expect(unknown.status).toBe(400);
-    expect(unknown.body.error.code).toBe("unknown_preset");
-  });
 
   it("versions a bot's prompt", async () => {
     const key = await newUser();
