@@ -140,7 +140,7 @@ describe("bots", () => {
     });
     expect(v2.body.rules).toBeNull();
     // Rules are versioned with the prompt, and a version without rules keeps the last ones.
-    const rules = [{ types: ["com.github.*"], subject: "data.id", action: "'attach-once'" }];
+    const rules = [{ types: ["com.github.*"], subject: "data.id", action: "'attach'" }];
     const v3 = await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "three", rules } });
     expect(v3.body).toMatchObject({ version: 3, rules });
     const v4 = await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "four" } });
