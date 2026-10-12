@@ -64,7 +64,7 @@ packages/cli/
   src/config.ts         ~/.loopway/config.json
   src/mcp.ts            minimal MCP server (HTTP, localhost) the bots dispatcher serves to its sessions
   src/bots/             `loopway bots run`: dispatcher.ts (lease, read, assign, deliver), kinds.ts (bot kind → prompt + starting rules),
-                        rules.ts (CEL assign rules: message → thread),
+                        rules.ts (CEL assign rules: message → thread), sources/ (per-source rule helpers + starting rules),
                         tools.ts (MCP link/end), agent.ts (claude -p),
                         tui.tsx (the Ink TUI), transcript.ts (stream-json log → readable lines)
   prompts/thread.md     the prompt every thread session starts with

@@ -1,6 +1,6 @@
 import type { BotRule } from "../client.js";
 import { threadPrompt } from "./agent.js";
-import { GITHUB_THREADS_RULES } from "./rules.js";
+import { GITHUB_THREADS_RULES } from "./sources/github.js";
 
 /** How `loopway bots run` runs a bot of some `kind`. The server stores any kind; the CLI runs these. */
 export interface BotKind {

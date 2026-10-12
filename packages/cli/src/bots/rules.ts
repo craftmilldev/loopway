@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Environment } from "@marcbachmann/cel-js";
 import type { BotRule, Message } from "../client.js";
+import { RULE_SOURCES } from "./sources/index.js";
 
 /** Where `route` sends a message: a thread, the subjects to add to it, and the message's own subject for display. */
 export interface Routed {
@@ -16,28 +17,27 @@ export interface Routed {
  * - `data`: the event's payload, and `event_type`: its type.
  * - In `skip` only: `subject` and `related` (what the rule's other expressions produced) and `held` (whether a
  *   thread already holds one of those subjects).
- * - Helpers a source defines for rules on its own event types, named `<source>_<helper>` (see SOURCES).
+ * - Helpers a source defines for rules on its own event types, named `<source>_<helper>` (see RuleSource).
  */
 const base = new Environment({ unlistedVariablesAreDyn: true });
 
-/** A source's helpers, available to the rules whose type globs all start with its `prefix`. */
-const SOURCES = [
-  {
-    prefix: "com.github.",
-    env: base
-      .clone()
-      // The issue numbers a PR body closes ("Closes #12", "fixes #3"), as a list of strings.
-      .registerFunction("github_closes(dyn): list<string>", (body: unknown) =>
-        typeof body === "string"
-          ? [...body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi)].map((m) => m[1]!)
-          : [],
-      ),
-  },
-];
+/**
+ * A source's contribution to rules: the helpers its event types' rules can call. Each source defines its own in
+ * sources/<source>.ts and is listed in RULE_SOURCES.
+ */
+export interface RuleSource {
+  /** The event type prefix of the source, e.g. "com.github.". */
+  prefix: string;
+  /** Adds the source's helpers, named `<source>_<helper>`, to an environment. */
+  extend(env: Environment): Environment;
+}
+
+/** Each source's environment, for the rules whose type globs all start with its prefix. */
+const sourceEnvs = RULE_SOURCES.map((s) => ({ prefix: s.prefix, env: s.extend(base.clone()) }));
 
 /** The environment a rule runs in: its source's, if all its types are that source's, else the base one. */
 function envFor(rule: BotRule): Environment {
-  return SOURCES.find((s) => rule.types.every((t) => t.startsWith(s.prefix)))?.env ?? base;
+  return sourceEnvs.find((s) => rule.types.every((t) => t.startsWith(s.prefix)))?.env ?? base;
 }
 
 /** Whether an event type matches a rule's glob, where `*` is any run of characters. */
@@ -87,23 +87,3 @@ export function route(rules: readonly BotRule[], held: ReadonlyMap<string, strin
     key,
   };
 }
-
-/** The rules of the `github-threads` bot kind. */
-export const GITHUB_THREADS_RULES: BotRule[] = [
-  // CI runs belong to the PR they ran for; a run with no PR (on main) belongs to no thread.
-  ...(["check_run", "check_suite", "workflow_run"] as const).map((kind) => ({
-    types: [`com.github.${kind}.*`],
-    subject: `has(data.repository) && has(data.${kind}) && has(data.${kind}.pull_requests) && size(data.${kind}.pull_requests) > 0 ? data.repository.full_name + '#' + string(data.${kind}.pull_requests[0].number) : ''`,
-    skip: "subject == ''",
-  })),
-  // Everything else belongs to its issue or PR, and to the issues a PR body closes. An issue labeled `future` is
-  // recorded but not worked on until a message arrives after the label is removed.
-  {
-    types: ["com.github.*"],
-    subject:
-      "has(data.repository) && (has(data.pull_request) || has(data.issue) || has(data.number)) ? data.repository.full_name + '#' + string(has(data.pull_request) ? data.pull_request.number : has(data.issue) ? data.issue.number : data.number) : ''",
-    related:
-      "has(data.repository) && has(data.pull_request) && has(data.pull_request.body) ? github_closes(data.pull_request.body).map(n, data.repository.full_name + '#' + n) : []",
-    skip: "!held && has(data.issue) && has(data.issue.labels) && data.issue.labels.exists(l, l.name == 'future')",
-  },
-];
