@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApi } from "@loopway/web/api";
+import { PRESETS } from "@loopway/web/presets";
 import { openDb, type Db } from "@loopway/web/db";
 import { createUser } from "@loopway/web/store";
 import { signSessionToken } from "@loopway/web/tokens";
@@ -11,8 +12,6 @@ import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { LoopwayClient, type Bot, type Message } from "../src/client.js";
 import { route as routeWith, type BotRule } from "@loopway/rules";
-import { GITHUB_THREADS_RULES } from "../src/bots/defaults/github-threads/rules.js";
-import { threadPrompt } from "../src/bots/defaults/github-threads/index.js";
 import { LIMIT_FALLBACK_MS, LimitWatch, type AgentRun, type RunOutcome } from "../src/bots/agent.js";
 import { API_ERROR_BACKOFF_MS, Dispatcher, NETWORK_ERROR_MAX_BACKOFF_MS } from "../src/bots/dispatcher.js";
 import { defaultTtl } from "../src/commands/bots-run.js";
@@ -21,6 +20,9 @@ import { botEnv } from "../src/bots/github.js";
 import { UsageError, type Context } from "../src/context.js";
 import { createProgram } from "../src/program.js";
 import { ensureRunner } from "../src/bots/runner.js";
+
+const GITHUB_THREADS_RULES = PRESETS["github-threads"]!.rules;
+const threadPrompt = async () => PRESETS["github-threads"]!.prompt;
 
 const API = "https://loopway.test";
 const SECRET = "test-secret";
@@ -369,18 +371,7 @@ describe("bots", () => {
   it("create → messages shows only events that arrived after the bot was created", async () => {
     await configured();
     const inbox = await inboxWithEvents(2);
-    const out = await run(
-      "bots",
-      "create",
-      "--name",
-      "dev",
-      "--kind",
-      "github-threads",
-      "--model",
-      "sonnet",
-      "--inbox",
-      inbox.name,
-    );
+    const out = await run("bots", "create", "--name", "dev", "--model", "sonnet", "--inbox", inbox.name);
     expect(out).toMatch(/Created bot dev/);
     expect(out).toContain(inbox.name);
     expect(await run("bots", "messages", "dev")).toBe("No new messages.");
@@ -397,21 +388,10 @@ describe("bots", () => {
     await configured();
     const a = await inboxWithEvents(0, "a");
     const b = await inboxWithEvents(0, "b");
-    const bot = await runJson(
-      "bots",
-      "create",
-      "--name",
-      "dev",
-      "--kind",
-      "github-threads",
-      "--model",
-      "sonnet",
-      "--inbox",
-      a.id,
-    );
+    const bot = await runJson("bots", "create", "--name", "dev", "--model", "sonnet", "--inbox", a.id);
     expect(bot.inbox_ids).toEqual([a.id]);
 
-    expect(await run("bots", "list")).toMatch(/dev\s+github-threads\s+sonnet\s+a/);
+    expect(await run("bots", "list")).toMatch(/dev\s+sonnet\s+a/);
     expect((await runJson("bots", "show", "dev")).id).toBe(bot.id);
 
     const updated = await runJson("bots", "update", bot.id, "--name", "dev2", "--inbox", "a,b");
@@ -428,18 +408,7 @@ describe("bots", () => {
   it("lists, prints and edits a bot's versions", async () => {
     await configured();
     const a = await runJson("inbox", "create", "--name", "a", "--source", "github");
-    const bot = await runJson(
-      "bots",
-      "create",
-      "--name",
-      "dev",
-      "--kind",
-      "github-threads",
-      "--model",
-      "sonnet",
-      "--inbox",
-      a.id,
-    );
+    const bot = await runJson("bots", "create", "--name", "dev", "--model", "sonnet", "--inbox", a.id);
     expect(await run("bots", "show", "dev", "--prompt")).toBe(await threadPrompt());
     const rules = JSON.parse(await run("bots", "show", "dev", "--rules"));
     expect(rules).toEqual(GITHUB_THREADS_RULES);
@@ -466,19 +435,16 @@ describe("bots", () => {
     expect(await runJson("bots", "versions", "dev")).toHaveLength(3);
   });
 
-  it("checks the kind and inboxes before calling the API", async () => {
+  it("checks the preset, model and inboxes", async () => {
     await configured();
     await inboxWithEvents(0, "a");
-    await expect(run("bots", "create", "--name", "x", "--kind", "nope", "--inbox", "a")).rejects.toThrow(
-      /Allowed choices are github-threads/,
-    );
-    await expect(run("bots", "create", "--name", "x", "--inbox", "a")).rejects.toThrow(/--kind is required/);
-    await expect(run("bots", "create", "--name", "x", "--kind", "github-threads", "--inbox", "a")).rejects.toThrow(
-      /--model is required/,
-    );
     await expect(
-      run("bots", "create", "--name", "x", "--kind", "github-threads", "--model", "sonnet", "--inbox", "zzz"),
-    ).rejects.toThrow(/No inbox with id or name "zzz"/);
+      run("bots", "create", "--name", "x", "--preset", "nope", "--model", "sonnet", "--inbox", "a"),
+    ).rejects.toThrow(/Unknown preset "nope"/);
+    await expect(run("bots", "create", "--name", "x", "--inbox", "a")).rejects.toThrow(/--model is required/);
+    await expect(run("bots", "create", "--name", "x", "--model", "sonnet", "--inbox", "zzz")).rejects.toThrow(
+      /No inbox with id or name "zzz"/,
+    );
   });
 });
 
@@ -493,18 +459,7 @@ describe("runners", () => {
     expect(JSON.parse(await readFile(join(configDir, "runner.json"), "utf8"))).toEqual({ id: first.id });
 
     const inbox = await inboxWithEvents(0);
-    const bot = await runJson(
-      "bots",
-      "create",
-      "--name",
-      "dev",
-      "--kind",
-      "github-threads",
-      "--model",
-      "sonnet",
-      "--inbox",
-      inbox.id,
-    );
+    const bot = await runJson("bots", "create", "--name", "dev", "--model", "sonnet", "--inbox", inbox.id);
     await client.leaseBot(bot.id, { runner_id: first.id });
     expect(await run("runners")).toMatch(new RegExp(`${first.id}\\s+\\S+\\s+dev\\s+0`));
     expect(await runJson("runners")).toMatchObject([{ id: first.id, bots: [{ id: bot.id, name: "dev" }] }]);
@@ -515,18 +470,7 @@ describe("runners", () => {
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
     const runner = await ensureRunner(configDir, client);
     const inbox = await inboxWithEvents(0);
-    const bot = await runJson(
-      "bots",
-      "create",
-      "--name",
-      "dev",
-      "--kind",
-      "github-threads",
-      "--model",
-      "sonnet",
-      "--inbox",
-      inbox.id,
-    );
+    const bot = await runJson("bots", "create", "--name", "dev", "--model", "sonnet", "--inbox", inbox.id);
     const ctx: Context = { configDir, env: {}, interactive: false, out: () => {}, fetch: apiFetch };
 
     const first = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id });
@@ -547,18 +491,7 @@ describe("runners", () => {
     const key = await configured();
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
     const inbox = await inboxWithEvents(1);
-    const bot = await runJson(
-      "bots",
-      "create",
-      "--name",
-      "dev",
-      "--kind",
-      "github-threads",
-      "--model",
-      "sonnet",
-      "--inbox",
-      inbox.id,
-    );
+    const bot = await runJson("bots", "create", "--name", "dev", "--model", "sonnet", "--inbox", inbox.id);
     const runner = await ensureRunner(configDir, client);
     const id = randomUUID();
     const botLease = (await client.leaseBot(bot.id, { runner_id: runner.id })).lease;
@@ -584,18 +517,7 @@ describe("runners", () => {
     const key = await configured();
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
     const inbox = await inboxWithEvents(2);
-    const bot = await runJson(
-      "bots",
-      "create",
-      "--name",
-      "dev",
-      "--kind",
-      "github-threads",
-      "--model",
-      "sonnet",
-      "--inbox",
-      inbox.id,
-    );
+    const bot = await runJson("bots", "create", "--name", "dev", "--model", "sonnet", "--inbox", inbox.id);
     const runner = await ensureRunner(configDir, client);
     const botLease = (await client.leaseBot(bot.id, { runner_id: runner.id })).lease;
     const [m1, m2] = (await client.listMessages(inbox.id)).data;
@@ -658,20 +580,7 @@ describe("threads", () => {
     for (let i = 1; i <= inboxes; i++) {
       const inbox = await runJson("inbox", "create", "--name", `gh${i}`, "--source", "github");
       boxes.push(inbox);
-      bots.push(
-        await runJson(
-          "bots",
-          "create",
-          "--name",
-          `dev${i}`,
-          "--kind",
-          "github-threads",
-          "--model",
-          "sonnet",
-          "--inbox",
-          inbox.id,
-        ),
-      );
+      bots.push(await runJson("bots", "create", "--name", `dev${i}`, "--model", "sonnet", "--inbox", inbox.id));
     }
     const runs: AgentRun[] = [];
     const busy: ((outcome: RunOutcome) => void)[] = [];
@@ -1431,6 +1340,6 @@ describe("threads", () => {
 
   it("says how to create a bot when there is none to run", async () => {
     await configured();
-    expect(await run("bots", "run", "--no-tui")).toMatch(/No bots to run.*loopway bots create.*--kind github-threads/);
+    expect(await run("bots", "run", "--no-tui")).toMatch(/No bots to run.*loopway bots create/);
   });
 });

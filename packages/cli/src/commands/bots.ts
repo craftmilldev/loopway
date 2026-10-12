@@ -2,7 +2,6 @@ import { readFile } from "node:fs/promises";
 import type { Bot, LoopwayClient } from "../client.js";
 import { authedClient, UsageError, type Context } from "../context.js";
 import { ago, bold, dim, fields, json, table } from "../format.js";
-import { BOT_KINDS } from "../bots/kinds.js";
 import { checkRules, type BotRule } from "@loopway/rules";
 import { resolveInbox } from "./inboxes.js";
 
@@ -18,8 +17,8 @@ export async function listBots(ctx: Context, opts: JsonOpt) {
   const names = await inboxNames(client);
   ctx.out(
     table(
-      ["ID", "NAME", "KIND", "MODEL", "INBOXES", "CREATED"],
-      bots.map((b) => [b.id, b.name, b.kind, b.model, inboxList(b, names), dim(ago(b.created_at))]),
+      ["ID", "NAME", "MODEL", "INBOXES", "CREATED"],
+      bots.map((b) => [b.id, b.name, b.model, inboxList(b, names), dim(ago(b.created_at))]),
     ),
   );
 }
@@ -85,20 +84,17 @@ export async function editBot(ctx: Context, ref: string, opts: JsonOpt & { promp
 
 export async function createBot(
   ctx: Context,
-  opts: JsonOpt & { name?: string; kind?: string; model?: string; inbox?: string[] },
+  opts: JsonOpt & { name?: string; preset?: string; model?: string; inbox?: string[] },
 ) {
   if (!opts.name) throw new UsageError("--name is required");
-  if (!opts.kind) throw new UsageError(`--kind is required (${Object.keys(BOT_KINDS).join(", ")})`);
   if (!opts.model) throw new UsageError("--model is required (an alias like sonnet or opus, or a full model id)");
   if (!opts.inbox?.length) throw new UsageError("--inbox is required");
   const client = await authedClient(ctx);
   const bot = await client.createBot({
     name: opts.name,
-    kind: opts.kind,
+    preset: opts.preset,
     model: opts.model,
     inbox_ids: await resolveInboxes(client, opts.inbox),
-    prompt: await BOT_KINDS[opts.kind]?.prompt(),
-    rules: BOT_KINDS[opts.kind]?.rules,
   });
   if (opts.json) return ctx.out(json(bot));
   ctx.out(`Created bot ${bold(bot.name)} (${bot.id})\n\n${describe(bot, await inboxNames(client))}`);
@@ -169,7 +165,6 @@ function describe(bot: Bot, names: Map<string, string>): string {
     bold(bot.name),
     fields([
       ["id", bot.id],
-      ["kind", bot.kind],
       ["model", bot.model],
       ["prompt", bot.prompt_version ? `version ${bot.prompt_version.version}` : "none"],
       ["rules", bot.prompt_version?.rules ? String(bot.prompt_version.rules.length) : "none"],

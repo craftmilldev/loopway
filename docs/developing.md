@@ -38,7 +38,7 @@ Tables live in a `loopway` schema (not `public`) with RLS enabled and no policie
 
 ## Web UI
 
-The same Hono app serves a small web UI: `/` (how to use loopway), `/login` (same email-code flow as the CLI; the session token is kept in `localStorage`), `/dashboard` (your bots with a create form and where each is running, your runners, and your inboxes with a create form; where source requests are on, the inbox form's Source list ends with "Something else…", which asks for a new source type instead), `/dashboard/inboxes/<inbox>` (messages with their `seq`, newest first, expandable JSON, a marker where each bot reading the inbox has read up to, and, for sources whose sender makes the secret, like Vercel, Linear and Granola, a form to paste it; `/dashboard/<inbox>` redirects there), `/dashboard/bots/<bot>` (kind, inboxes, cursor and lease holder; rename, change inboxes or delete the bot; its threads with owner and message counts, and a Release button for threads whose runner is offline) and `/dashboard/bots/<bot>/threads/<thread>` (subjects, flags, owner, and the waiting, inflight and delivered messages). The dashboard only reads threads and runners; transcripts stay on the runner. `GET /api` is a bare health check.
+The same Hono app serves a small web UI: `/` (how to use loopway), `/login` (same email-code flow as the CLI; the session token is kept in `localStorage`), `/dashboard` (your bots with a create form and where each is running, your runners, and your inboxes with a create form; where source requests are on, the inbox form's Source list ends with "Something else…", which asks for a new source type instead), `/dashboard/inboxes/<inbox>` (messages with their `seq`, newest first, expandable JSON, a marker where each bot reading the inbox has read up to, and, for sources whose sender makes the secret, like Vercel, Linear and Granola, a form to paste it; `/dashboard/<inbox>` redirects there), `/dashboard/bots/<bot>` (inboxes, cursor and lease holder; rename, change inboxes or delete the bot; its threads with owner and message counts, and a Release button for threads whose runner is offline) and `/dashboard/bots/<bot>/threads/<thread>` (subjects, flags, owner, and the waiting, inflight and delivered messages). The dashboard only reads threads and runners; transcripts stay on the runner. `GET /api` is a bare health check.
 
 The pages are a React app in `packages/web/client/`. The homepage copy is markdown in [`packages/web/content/home.md`](../packages/web/content/home.md). `npm run build -w @loopway/web` bundles the app with esbuild into `packages/web/public/` (git-ignored); `npm run dev` rebuilds it on change and serves it.
 
@@ -67,11 +67,11 @@ packages/cli/
   src/client.ts         typed API client
   src/config.ts         ~/.loopway/config.json
   src/mcp.ts            minimal MCP server (HTTP, localhost) the bots dispatcher serves to its sessions
-  src/bots/             `loopway bots run`: dispatcher.ts (lease, read, assign, deliver), kinds.ts (bot kind → prompt + starting rules),
+  src/bots/             `loopway bots run`: dispatcher.ts (lease, read, assign, deliver),
                         rules.ts (CEL assign rules: message → thread, with the sources' rule helpers),
                         tools.ts (MCP link/end), agent.ts (claude -p),
                         tui.tsx (the Ink TUI), transcript.ts (stream-json log → readable lines)
-  src/bots/defaults/    default bots: github-threads/ has its prompt and starting rules
+  src/presets/          (in web) bot presets: github-threads has its prompt and starting rules
   test/cli.test.ts      runs commands against the real API app in-process
   test/tui.test.tsx     renders the threads TUI with ink-testing-library
 ```

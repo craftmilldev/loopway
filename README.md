@@ -45,7 +45,7 @@ loopway inbox update <inbox> [--name n] [--events a,b] [--secret s] [--schema fi
 loopway messages list <inbox> [--type 'com.github.pull_request.*'] [--limit 20] [--all]
 loopway messages get  <inbox> <message> [--data]
 
-loopway bots create --name dev --kind github-threads --model sonnet --inbox <inbox>[,<inbox>]
+loopway bots create --name dev --model sonnet --inbox <inbox>[,<inbox>]
 loopway bots list
 loopway bots show <bot>
 loopway bots update <bot> [--name n] [--model m] [--inbox a,b]   # --inbox replaces the bot's inboxes
@@ -62,7 +62,7 @@ loopway bots run [--max 3] [--interval 5] [--ttl <seconds>] [--no-tui]   # run y
 - Every read command takes `--json` for the raw API response.
 - `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`, `--schema file.json` for `loopway` inboxes); without a terminal it runs from flags alone. For sources whose sender makes the secret (`vercel`, `granola`) it doesn't ask for one: add the webhook in the sender, then paste the secret it shows with `loopway inbox update <inbox>` (or on the inbox's dashboard page).
 - Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, plus an optional `github` bot for [bot sessions](#acting-as-a-github-bot), mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `https://loopway.craftmill.dev`.
-- A bot reads messages from one or more inboxes (see [Bots](docs/api.md#bots)). `--kind` must be one this CLI knows how to run: `github-threads`. `loopway bots run` runs them (see [Running bots](#running-bots)).
+- A bot reads messages from one or more inboxes (see [Bots](docs/api.md#bots)). `--preset` (default `github-threads`) picks the template its first prompt and rules come from; the bot doesn't remember it. `loopway bots run` runs them (see [Running bots](#running-bots)).
 
 ### Running bots
 
@@ -70,7 +70,7 @@ loopway bots run [--max 3] [--interval 5] [--ttl <seconds>] [--no-tui]   # run y
 loopway bots run [--max 3] [--interval 5] [--ttl <seconds>] [--no-tui]   # run your bots (q or Ctrl-C to stop)
 ```
 
-`loopway bots run` runs every bot on your account whose kind this CLI knows (`github-threads`), in the current directory. With no bots, it says how to create one and exits. One process runs all your bots, and `--max` is shared across them, since it caps the load on this machine.
+`loopway bots run` runs every bot on your account that has a prompt and rules, in the current directory. With no bots, it says how to create one and exits. One process runs all your bots, and `--max` is shared across them, since it caps the load on this machine.
 
 In a terminal, `loopway bots run` takes over the screen. The header names the bots this runner holds, and any it skipped because another runner holds their lease. Below are four lists: waiting messages (assigned to one of this runner's threads but not delivered yet), working threads (a run in flight), waiting threads (active, waiting for their next message) and done threads (ended, newest first). Threads owned by another runner are listed too, marked "on <runner>"; their sessions live on that machine, so this runner leaves them alone. ↑/↓ moves between sessions, Tab/Shift-Tab jumps between lists, and Enter or → opens a session's transcript, which follows new output until you scroll up (↑/↓, PgUp/PgDn, Home/End). ← goes back to the lists. The dispatcher's latest log line shows at the bottom. Quitting stops the dispatcher and its sessions, as Ctrl-C does. `--no-tui`, or output that isn't a terminal, prints the plain log instead.
 
@@ -85,7 +85,7 @@ In a terminal, `loopway bots run` takes over the screen. The header names the bo
 
 **Usage limits.** When a run stops because the account hit its Claude usage limit (Claude Code reports a rejected `rate_limit_event` with the reset time, then a `result` with `api_error: usage_limit_reached`), the runner delivers nothing to any session until the limit resets, then carries on from its next tick. Messages keep being read and assigned meanwhile. Messages go in as stream-json with `--replay-user-messages`, so the runner sees when Claude Code has taken a message into the session: if the stopped run had taken its messages, the session is resumed with a note to carry on; if not, they go back to waiting and are delivered again. Without a reset time it waits 5 minutes. The hold itself lives in the runner process: a restarted runner retries right away and learns the reset time again if the limit still holds.
 
-A thread is an issue and the PRs linked to it, whose subjects are `owner/repo#number`. Threads live on the server and belong to the runner that claimed them, so `loopway bots threads <bot>` shows what's running, and a runner only delivers to and writes its own (with its runner lease token; see [Threads](docs/api.md#threads)). A thread whose machine is gone stays where it is until `loopway bots threads release` frees it. A new session starts with the bot's prompt, stored in the database with its assign rules as a bot version. Bot kinds live in `packages/cli/src/bots/kinds.ts`, a map from kind to the prompt and rules a new bot starts with; the default `github-threads` bot is in [`packages/cli/src/bots/defaults/github-threads`](packages/cli/src/bots/defaults/github-threads).
+A thread is an issue and the PRs linked to it, whose subjects are `owner/repo#number`. Threads live on the server and belong to the runner that claimed them, so `loopway bots threads <bot>` shows what's running, and a runner only delivers to and writes its own (with its runner lease token; see [Threads](docs/api.md#threads)). A thread whose machine is gone stays where it is until `loopway bots threads release` frees it. A new session starts with the bot's prompt, stored in the database with its assign rules as a bot version. Presets live in `packages/web/src/presets`, a map from name to the prompt and rules a new bot starts with; the default `github-threads` one is [`github-threads-prompt.ts`](packages/web/src/presets/github-threads-prompt.ts) and [`github-threads-rules.ts`](packages/web/src/presets/github-threads-rules.ts).
 
 Sessions talk back to the dispatcher over MCP: it serves a `loopway` server on 127.0.0.1 (one URL per session, passed with `--mcp-config`) with two tools:
 

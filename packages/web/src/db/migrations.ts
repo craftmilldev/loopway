@@ -1,3 +1,9 @@
+import { PRESETS } from "../presets/index.js";
+
+// A text value for a migration's SQL, as hex so nothing in it (a `;` at a line end) can trip the statement splitting.
+const lit = (v: string) => `convert_from(decode('${Buffer.from(v).toString("hex")}', 'hex'), 'UTF8')`;
+const githubThreads = PRESETS["github-threads"]!;
+
 /**
  * Migrations live in TS (not .sql files) so they're bundled into the Vercel function.
  * Append new entries; never edit an applied one.
@@ -304,6 +310,22 @@ ALTER TABLE loopway.bot_versions ADD COLUMN rules jsonb;
     version: "013_unwrap_bot_version_rules",
     sql: `
 UPDATE loopway.bot_versions SET rules = (rules #>> '{}')::jsonb WHERE jsonb_typeof(rules) = 'string';
+`,
+  },
+  {
+    // A bot is its prompt and rules, not a kind. Bots with no version, or one saved before rules, get the
+    // `github-threads` preset's (keeping the prompt they have), which is what `loopway bots run` used to backfill.
+    version: "014_drop_bot_kind",
+    sql: `
+INSERT INTO loopway.bot_versions (bot_id, version, prompt, rules)
+SELECT b.id, COALESCE(v.version, 0) + 1, COALESCE(v.prompt, ${lit(githubThreads.prompt)}), ${lit(JSON.stringify(githubThreads.rules))}::jsonb
+FROM loopway.bots b
+LEFT JOIN LATERAL (
+  SELECT version, prompt, rules FROM loopway.bot_versions WHERE bot_id = b.id ORDER BY version DESC LIMIT 1
+) v ON true
+WHERE v.rules IS NULL;
+
+ALTER TABLE loopway.bots DROP COLUMN kind;
 `,
   },
 ];

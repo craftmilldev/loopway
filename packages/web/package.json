@@ -12,6 +12,7 @@
     ".": "./src/index.ts",
     "./api": "./src/api.ts",
     "./db": "./src/db/index.ts",
+    "./presets": "./src/presets/index.ts",
     "./store": "./src/store.ts",
     "./tokens": "./src/tokens.ts"
   },

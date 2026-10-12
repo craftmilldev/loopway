@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { clientBuild } from "../scripts/client.js";
 import { createApi } from "../src/api.js";
 import { SourceRegistry } from "@loopway/sources";
+import { PRESETS } from "../src/presets/index.js";
 import { sources } from "../src/sources.js";
 import { createUser } from "../src/store.js";
 import { signSessionToken, verifyToken } from "../src/tokens.js";
@@ -118,17 +119,45 @@ describe("bots", () => {
     ]);
   const seqs = (r: { body: { data: { seq: number }[] } }) => r.body.data.map((e) => e.seq);
 
+  it("starts a bot from a preset, which the bot doesn't remember", async () => {
+    const key = await newUser();
+    const a = await newInbox(key);
+    const preset = await call("POST", "/bots", {
+      key,
+      body: { name: "p", model: "sonnet", inbox_ids: [a.id], preset: "github-threads" },
+    });
+    expect(preset.status).toBe(201);
+    expect(preset.body).not.toHaveProperty("kind");
+    expect(preset.body).not.toHaveProperty("preset");
+    expect(preset.body.prompt_version).toMatchObject({ version: 1, prompt: PRESETS["github-threads"]!.prompt });
+    expect(preset.body.prompt_version.rules).toEqual(PRESETS["github-threads"]!.rules);
+
+    // A prompt in the request replaces the preset's, which still gives the rules.
+    const own = await call("POST", "/bots", {
+      key,
+      body: { name: "o", model: "sonnet", inbox_ids: [a.id], preset: "github-threads", prompt: "mine" },
+    });
+    expect(own.body.prompt_version).toMatchObject({ prompt: "mine", rules: PRESETS["github-threads"]!.rules });
+
+    const unknown = await call("POST", "/bots", {
+      key,
+      body: { name: "u", model: "sonnet", inbox_ids: [a.id], preset: "nope" },
+    });
+    expect(unknown.status).toBe(400);
+    expect(unknown.body.error.code).toBe("unknown_preset");
+  });
+
   it("versions a bot's prompt", async () => {
     const key = await newUser();
     const a = await newInbox(key);
     const bare = await call("POST", "/bots", {
       key,
-      body: { name: "bare", kind: "github-threads", model: "sonnet", inbox_ids: [a.id] },
+      body: { name: "bare", model: "sonnet", inbox_ids: [a.id] },
     });
     expect(bare.body.prompt_version).toBeNull();
     const created = await call("POST", "/bots", {
       key,
-      body: { name: "dev", kind: "github-threads", model: "sonnet", inbox_ids: [a.id], prompt: "one" },
+      body: { name: "dev", model: "sonnet", inbox_ids: [a.id], prompt: "one" },
     });
     expect(created.body.prompt_version).toMatchObject({ version: 1, prompt: "one" });
     const id = created.body.id;
@@ -158,7 +187,7 @@ describe("bots", () => {
     expect(rejected.body.error.code).toBe("invalid_rules");
     const badCreate = await call("POST", "/bots", {
       key,
-      body: { name: "bad", kind: "github-threads", model: "sonnet", inbox_ids: [a.id], prompt: "p", rules: bad },
+      body: { name: "bad", model: "sonnet", inbox_ids: [a.id], prompt: "p", rules: bad },
     });
     expect(badCreate.body.error.code).toBe("invalid_rules");
     const other = await newUser();
@@ -184,17 +213,16 @@ describe("bots", () => {
     const b = await newInbox(key);
     const created = await call("POST", "/bots", {
       key,
-      body: { name: "dev", kind: "github-threads", model: "sonnet", inbox_ids: [a.id] },
+      body: { name: "dev", model: "sonnet", inbox_ids: [a.id] },
     });
     expect(created.status).toBe(201);
     const unknown = await call("POST", "/bots", {
       key,
-      body: { name: "y", kind: "github-threads", model: "sonet", inbox_ids: [a.id] },
+      body: { name: "y", model: "sonet", inbox_ids: [a.id] },
     });
     expect(unknown.status).toBe(400);
     expect(created.body).toMatchObject({
       name: "dev",
-      kind: "github-threads",
       model: "sonnet",
       inbox_ids: [a.id],
       cursor: 0,
@@ -231,17 +259,16 @@ describe("bots", () => {
     const mine = await newInbox(a);
     const r = await call("POST", "/bots", {
       key: a,
-      body: { name: "x", kind: "k", model: "sonnet", inbox_ids: [theirs.id] },
+      body: { name: "x", model: "sonnet", inbox_ids: [theirs.id] },
     });
     expect(r.status).toBe(400);
     expect(r.body.error.message).toContain(theirs.id);
-    expect(
-      (await call("POST", "/bots", { key: a, body: { name: "x", kind: "k", model: "sonnet", inbox_ids: [] } })).status,
-    ).toBe(400);
+    expect((await call("POST", "/bots", { key: a, body: { name: "x", model: "sonnet", inbox_ids: [] } })).status).toBe(
+      400,
+    );
 
-    const bot = (
-      await call("POST", "/bots", { key: a, body: { name: "x", kind: "k", model: "sonnet", inbox_ids: [mine.id] } })
-    ).body;
+    const bot = (await call("POST", "/bots", { key: a, body: { name: "x", model: "sonnet", inbox_ids: [mine.id] } }))
+      .body;
     expect((await call("PATCH", `/bots/${bot.id}`, { key: a, body: { inbox_ids: [theirs.id] } })).status).toBe(400);
     expect((await call("GET", `/bots/${bot.id}`, { key: b })).status).toBe(404);
     expect((await call("GET", `/bots/${bot.id}/messages`, { key: b })).status).toBe(404);
@@ -265,9 +292,8 @@ describe("bots", () => {
     // Not before[1]: ids made in the same millisecond can sort either way, so the newest is the highest seq.
     const newest = Math.max(...seqs(await call("GET", `/inboxes/${inbox.id}/messages`, { key })));
 
-    const bot = (
-      await call("POST", "/bots", { key, body: { name: "b", kind: "k", model: "sonnet", inbox_ids: [inbox.id] } })
-    ).body;
+    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [inbox.id] } }))
+      .body;
     expect(bot.cursor).toBe(newest);
 
     for (let i = 3; i <= 5; i++) await sendGithub(inbox, "pull_request", prPayload(i));
@@ -303,9 +329,8 @@ describe("bot leases", () => {
   it("lease / renew / release, and the cursor only moves forward under the live lease", async () => {
     const key = await newUser();
     const inbox = await newInbox(key);
-    const bot = (
-      await call("POST", "/bots", { key, body: { name: "b", kind: "k", model: "sonnet", inbox_ids: [inbox.id] } })
-    ).body;
+    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [inbox.id] } }))
+      .body;
     const base = `/bots/${bot.id}`;
 
     const leased = await call("POST", `${base}/lease`, { key, body: { ttl_seconds: 60 } });
@@ -364,9 +389,8 @@ describe("bot leases", () => {
   it("the lease a dead runner left can be released by force", async () => {
     const key = await newUser();
     const inbox = await newInbox(key);
-    const bot = (
-      await call("POST", "/bots", { key, body: { name: "b", kind: "k", model: "sonnet", inbox_ids: [inbox.id] } })
-    ).body;
+    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [inbox.id] } }))
+      .body;
     const base = `/bots/${bot.id}`;
     const dead = (await call("POST", `${base}/lease`, { key, body: { ttl_seconds: 3600 } })).body.lease.token;
     expect((await call("POST", `${base}/lease`, { key })).status).toBe(409);
@@ -383,9 +407,8 @@ describe("bot leases", () => {
   it("expired leases can be taken over", async () => {
     const key = await newUser();
     const inbox = await newInbox(key);
-    const bot = (
-      await call("POST", "/bots", { key, body: { name: "b", kind: "k", model: "sonnet", inbox_ids: [inbox.id] } })
-    ).body;
+    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [inbox.id] } }))
+      .body;
     const first = (await call("POST", `/bots/${bot.id}/lease`, { key, body: { ttl_seconds: 1 } })).body.lease.token;
     await db.query(`UPDATE loopway.bots SET locked_until = now() - interval '1 second' WHERE id = $1`, [bot.id]);
     const second = await call("POST", `/bots/${bot.id}/lease`, { key });

@@ -132,7 +132,6 @@ export interface BotVersion {
 export interface Bot {
   id: string;
   name: string;
-  kind: string;
   prompt_version: BotVersion | null;
   inbox_ids: string[];
   cursor: number;
@@ -211,8 +210,8 @@ export function subjectUrl(subject: string) {
   return m ? `https://github.com/${m[1]}/issues/${m[2]}` : null;
 }
 
-/** The kinds of bot the CLI can run (packages/cli/src/bots/kinds.ts). */
-export const BOT_KINDS = ["github-threads"];
+/** The presets a new bot can start from (src/presets/index.ts). */
+export const BOT_PRESETS = ["github-threads"];
 
 /** The models a bot may run on (src/models.ts): aliases for the latest of a family, then full ids to pin one. */
 export const BOT_MODELS = [

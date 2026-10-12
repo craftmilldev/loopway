@@ -86,7 +86,7 @@ A bot reads the messages of one or more of your inboxes, in `seq` order, and kee
 
 |                                                    |                                                                                                                                                                                                 |
 | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /bots` `{name, kind, model, inbox_ids}`             | Create. `model` is one of the aliases or ids in `packages/web/src/models.ts` (`sonnet`, `opus`, `claude-sonnet-5-5`, ...), else `400`; every session the bot runs uses it. `kind` is any string; the CLI only accepts kinds it can run (`github-threads`). The `cursor` starts at the newest message in its inboxes, so a new bot doesn't replay history.         |
+| `POST /bots` `{name, model, inbox_ids, preset?}`        | Create. `model` is one of the aliases or ids in `packages/web/src/models.ts` (`sonnet`, `opus`, `claude-sonnet-5-5`, ...), else `400`; every session the bot runs uses it. `preset` (`github-threads`, else `400` `unknown_preset`) fills the first prompt and rules, which a `prompt` or `rules` in the request replace; the bot doesn't remember it. The `cursor` starts at the newest message in its inboxes, so a new bot doesn't replay history.         |
 | `GET /bots`                                        | List yours.                                                                                                                                                                                     |
 | `GET /bots/:id`                                    | One bot.                                                                                                                                                                                        |
 | `PATCH /bots/:id` `{name?, model?, inbox_ids?}`            | Update. `inbox_ids` replaces the bot's inboxes; the cursor stays where it is.                                                                                                                   |
@@ -96,7 +96,7 @@ A bot reads the messages of one or more of your inboxes, in `seq` order, and kee
 | `POST /bots/:id/release` `{lease_token?, force?}`  | Drop the lease, so the next runner needn't wait out the TTL. `409 lease_mismatch` if the token isn't the live lease, `409 not_leased` if there is none. `force: true` drops whoever's lease, no token needed: for a runner that died without releasing. |
 | `POST /bots/:id/cursor` `{seq, lease_token}`       | Move the cursor forward to `seq`; it never moves backwards. Returns the bot. `409` if the token isn't the live lease.                                                                          |
 
-`inbox_ids` must be your inboxes. Bot shape: `{id, name, kind, model, inbox_ids, cursor, created_at}`; the lease is never part of it.
+`inbox_ids` must be your inboxes. Bot shape: `{id, name, model, inbox_ids, cursor, created_at}`; the lease is never part of it.
 
 Two webhooks landing at once can commit out of `seq` order, and a cursor that had moved past the later one would skip the earlier. So `messages` stops at the first message received in the last few seconds, giving inserts still in flight time to land.
 
