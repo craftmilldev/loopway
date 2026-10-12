@@ -23,6 +23,10 @@ export interface ApiOptions extends EeOptions {
   sendEmail?: SendEmail;
   /** PostHog cloud region the /ingest proxy forwards to. Defaults to "us". */
   posthogRegion?: "us" | "eu";
+  /** PostHog project key the browser UI reports to through /ingest. Unset, the UI sends no metrics. */
+  posthogKey?: string;
+  /** PostHog's UI host (the toolbar needs it behind a proxy). Defaults to the region's, https://us.posthog.com. */
+  posthogUiHost?: string;
   /** Signs session tokens (JWTs). */
   tokenSecret: string;
   /** Product metrics. Defaults to recording nothing. */
@@ -75,7 +79,14 @@ export function createApi(opts: ApiOptions) {
 
   // ---------- Public ----------
 
-  app.route("/", createWeb());
+  app.route(
+    "/",
+    createWeb({
+      posthogKey: opts.posthogKey,
+      posthogUiHost:
+        opts.posthogUiHost ?? (opts.posthogRegion === "eu" ? "https://eu.posthog.com" : "https://us.posthog.com"),
+    }),
+  );
 
   app.get("/api", (c) => c.json({ ok: true }));
 
