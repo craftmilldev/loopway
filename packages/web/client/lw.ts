@@ -211,6 +211,18 @@ export function subjectUrl(subject: string) {
   return m ? `https://github.com/${m[1]}/issues/${m[2]}` : null;
 }
 
+/** The models a bot may run on (src/models.ts): aliases for the latest of a family, then full ids to pin one. */
+export const BOT_MODELS = [
+  "sonnet",
+  "opus",
+  "fable",
+  "haiku",
+  "claude-fable-5-1",
+  "claude-opus-5-5",
+  "claude-sonnet-5-5",
+  "claude-haiku-5-5",
+];
+
 /** A starting point for a new bot (GET /presets). */
 export interface Preset {
   kind: string;

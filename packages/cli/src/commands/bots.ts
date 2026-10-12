@@ -1,9 +1,8 @@
 import { readFile } from "node:fs/promises";
-import type { Bot, BotRule, LoopwayClient } from "../client.js";
+import type { Bot, LoopwayClient } from "../client.js";
 import { authedClient, UsageError, type Context } from "../context.js";
 import { ago, bold, dim, fields, json, table } from "../format.js";
-import { PRESETS } from "@loopway/rules";
-import { checkRules } from "@loopway/rules";
+import { checkRules, PRESETS, type BotRule } from "@loopway/rules";
 import { resolveInbox } from "./inboxes.js";
 
 interface JsonOpt {

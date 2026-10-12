@@ -207,8 +207,6 @@ export async function getMessage(db: Db, inboxId: string, messageId: string): Pr
 
 // ---------- Bots ----------
 
-export type { BotRule };
-
 export interface BotVersion {
   version: number;
   prompt: string;

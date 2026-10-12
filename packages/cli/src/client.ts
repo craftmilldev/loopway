@@ -2,8 +2,6 @@
 
 import type { BotRule } from "@loopway/rules";
 
-export type { BotRule };
-
 export interface User {
   id: string;
   name: string;
