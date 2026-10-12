@@ -1,9 +1,7 @@
 import { createHmac } from "node:crypto";
 import { z } from "zod";
-import { makeCloudEvent } from "./cloudevents.js";
-import { safeEqual } from "./ids.js";
 import { get, str, type Payload } from "./payload.js";
-import type { SourceAdapter } from "./types.js";
+import type { SourceAdapter, SourceDeps } from "./types.js";
 
 /**
  * Linear webhooks → CloudEvents. Linear sends `{action, type, data, url, createdAt, organizationId, webhookId, ...}`
@@ -51,7 +49,7 @@ const RESOURCES = [
 ];
 const ACTIONS = ["create", "update", "remove"];
 
-export const linear: SourceAdapter<LinearConfig> = {
+export const linear = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter<LinearConfig> => ({
   type: "linear",
   label: "Linear",
   description: "Linear webhooks, verified with Linear-Signature.",
@@ -135,7 +133,7 @@ export const linear: SourceAdapter<LinearConfig> = {
       }),
     };
   },
-};
+});
 
 function toIso(v: unknown): string | undefined {
   if (typeof v !== "string" && typeof v !== "number") return undefined;

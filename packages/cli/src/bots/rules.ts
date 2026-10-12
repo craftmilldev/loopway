@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Environment } from "@marcbachmann/cel-js";
 import type { BotRule, Message } from "../client.js";
-import { sources } from "@loopway/sources";
+import { ruleSources } from "@loopway/sources";
 
 /** Where `route` sends a message: a thread, the subjects to add to it, and the message's own subject for display. */
 export interface Routed {
@@ -22,7 +22,7 @@ export interface Routed {
 const base = new Environment({ unlistedVariablesAreDyn: true });
 
 /** Each source's environment, for the rules whose type globs all start with its prefix. */
-const sourceEnvs = sources.ruleSources().map((s) => ({ prefix: s.prefix, env: s.extend(base.clone()) }));
+const sourceEnvs = ruleSources.map((s) => ({ prefix: s.prefix, env: s.extend(base.clone()) }));
 
 /** The environment a rule runs in: its source's, if all its types are that source's, else the base one. */
 function envFor(rule: BotRule): Environment {

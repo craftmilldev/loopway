@@ -1,8 +1,6 @@
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import { z } from "zod";
-import { makeCloudEvent } from "./cloudevents.js";
-import { newSecret, safeEqual, uuidv7 } from "./ids.js";
-import type { SourceAdapter } from "./types.js";
+import type { SourceAdapter, SourceDeps } from "./types.js";
 
 /**
  * Messages bots post to each other's inboxes. The body is `{type, id, data}`, checked against the
@@ -76,7 +74,12 @@ const configInput = z
   })
   .strict();
 
-export const loopway: SourceAdapter<LoopwayConfig> = {
+export const loopway = ({
+  newSecret,
+  safeEqual,
+  uuidv7,
+  makeCloudEvent,
+}: SourceDeps): SourceAdapter<LoopwayConfig> => ({
   type: "loopway",
   label: "Loopway",
   description: "Messages from your own bots and backends, checked against the inbox's JSON Schema.",
@@ -158,4 +161,4 @@ export const loopway: SourceAdapter<LoopwayConfig> = {
       }),
     };
   },
-};
+});

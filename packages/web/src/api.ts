@@ -9,7 +9,7 @@ import { isUuid, LOGIN_CODE_RE, normalizeLoginCode } from "./ids.js";
 import { ANONYMOUS, noopMetrics, type Metrics } from "./metrics.js";
 import { BOT_MODELS } from "./models.js";
 import { createPosthogProxy } from "./posthog-proxy.js";
-import { sources } from "@loopway/sources";
+import { sources } from "./sources.js";
 import * as store from "./store.js";
 import type { MessageRow, Inbox, User } from "./store.js";
 import { signSessionToken, verifyToken } from "./tokens.js";

@@ -1,17 +1,6 @@
-/** CloudEvents v1.0, structured-mode JSON representation. https://github.com/cloudevents/spec */
-export interface CloudEvent {
-  specversion: "1.0";
-  id: string;
-  source: string;
-  type: string;
-  subject?: string;
-  time?: string;
-  datacontenttype?: string;
-  dataschema?: string;
-  data?: unknown;
-  /** Extension attributes: lowercase a-z0-9, max 20 chars. */
-  [extension: string]: unknown;
-}
+import type { CloudEvent } from "@loopway/sources";
+
+export type { CloudEvent };
 
 const EXT_NAME = /^[a-z0-9]{1,20}$/;
 

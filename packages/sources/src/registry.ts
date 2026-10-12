@@ -1,4 +1,4 @@
-import type { SourceAdapter, SourceRules } from "./types.js";
+import type { SourceAdapter } from "./types.js";
 
 /** Looks up source adapters by type. Callers go through this and never name a source themselves. */
 export class SourceRegistry {
@@ -20,11 +20,6 @@ export class SourceRegistry {
 
   types(): string[] {
     return [...this.byType.keys()];
-  }
-
-  /** The rule helpers of every source that defines some. */
-  ruleSources(): SourceRules[] {
-    return [...this.byType.values()].flatMap((s) => (s.rules ? [s.rules] : []));
   }
 
   /** What clients need to build a create form or prompt for each source (`GET /sources`). */
