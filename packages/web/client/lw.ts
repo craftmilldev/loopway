@@ -211,5 +211,9 @@ export function subjectUrl(subject: string) {
   return m ? `https://github.com/${m[1]}/issues/${m[2]}` : null;
 }
 
-/** The kinds of bot the CLI can run (packages/cli/src/bots/kinds.ts). */
-export const BOT_KINDS = ["github-threads"];
+/** A starting point for a new bot (GET /presets). */
+export interface Preset {
+  kind: string;
+  label: string;
+  description: string;
+}

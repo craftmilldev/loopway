@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useSourceRequest } from "../ee/client/source-request.js";
 import { DashNav, Layout } from "./layout.js";
 import * as lw from "./lw.js";
+import { track } from "./metrics.js";
 
 export interface Inbox {
   id: string;
@@ -134,9 +135,13 @@ export function leaseText(b: lw.Bot, runner: string | undefined) {
 
 function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: () => void }) {
   const [name, setName] = useState("");
-  const [kind, setKind] = useState(lw.BOT_KINDS[0]!);
+  const presets = lw.useList<lw.Preset>("/presets", true);
+  const [picked, setPicked] = useState("");
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+
+  // The first preset is picked until the user picks another.
+  const preset = presets.data?.find((p) => p.kind === picked) ?? presets.data?.[0];
 
   function toggle(id: string, on: boolean) {
     const next = new Set(checked);
@@ -148,8 +153,12 @@ function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: () => 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!checked.size) return setError("Pick at least one inbox.");
-    const r = await lw.api("/bots", { method: "POST", body: { name, kind, inbox_ids: [...checked] } });
+    if (!preset) return setError("Pick a preset.");
+    if (!checked.size) {
+      track("bot_create_no_inbox");
+      return setError("Pick at least one inbox.");
+    }
+    const r = await lw.api("/bots", { method: "POST", body: { name, kind: preset.kind, inbox_ids: [...checked] } });
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) return setError(await lw.message(r));
     onCreated();
@@ -164,14 +173,17 @@ function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: () => 
         </div>
       </div>
       <div className="field">
-        <label htmlFor="bot-kind">Kind</label>
+        <label htmlFor="bot-kind">Preset</label>
         <div className="input-wrap">
-          <select id="bot-kind" value={kind} onChange={(e) => setKind(e.target.value)}>
-            {lw.BOT_KINDS.map((k) => (
-              <option key={k}>{k}</option>
+          <select id="bot-kind" value={preset?.kind ?? ""} onChange={(e) => setPicked(e.target.value)}>
+            {presets.data?.map((p) => (
+              <option key={p.kind} value={p.kind}>
+                {p.label}
+              </option>
             ))}
           </select>
         </div>
+        {preset && <p className="hint">{preset.description}</p>}
       </div>
       <div className="field">
         <label>Inboxes</label>

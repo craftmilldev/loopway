@@ -17,7 +17,7 @@ import { clock, dim } from "../format.js";
 import { startMcpServer, type McpServer } from "../mcp.js";
 import { spawnClaude, type RunAgent, type RunOutcome } from "./agent.js";
 import { botEnv } from "./github.js";
-import { BOT_KINDS } from "./kinds.js";
+import { PRESETS } from "@loopway/rules";
 import { checkRules, route } from "@loopway/rules";
 import { sessionTools } from "./tools.js";
 import { sessionLogPath } from "./transcript.js";
@@ -115,7 +115,7 @@ export class Dispatcher {
   private onFreed?: () => void;
 
   /**
-   * `bots` must all be of a kind in BOT_KINDS and have a prompt version with rules, and `runnerId` is this machine's runner
+   * `bots` must all be of a kind in PRESETS and have a prompt version with rules, and `runnerId` is this machine's runner
    * (see ensureRunner). Takes the runner's lease.
    */
   static async start(
@@ -127,7 +127,7 @@ export class Dispatcher {
     const rules = new Map<string, BotRule[]>();
     const prompts = new Map<string, string>();
     for (const bot of bots) {
-      if (!BOT_KINDS[bot.kind]) throw new Error(`Bot ${bot.name} has kind ${bot.kind}, which this CLI can't run.`);
+      if (!PRESETS[bot.kind]) throw new Error(`Bot ${bot.name} has kind ${bot.kind}, which this CLI can't run.`);
       if (!bot.prompt_version?.rules) throw new Error(`Bot ${bot.name} has no prompt version with rules.`);
       checkRules(bot.prompt_version.rules);
       rules.set(bot.id, bot.prompt_version.rules);

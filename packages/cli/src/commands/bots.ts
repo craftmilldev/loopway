@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import type { Bot, BotRule, LoopwayClient } from "../client.js";
 import { authedClient, UsageError, type Context } from "../context.js";
 import { ago, bold, dim, fields, json, table } from "../format.js";
-import { BOT_KINDS } from "../bots/kinds.js";
+import { PRESETS } from "@loopway/rules";
 import { checkRules } from "@loopway/rules";
 import { resolveInbox } from "./inboxes.js";
 
@@ -88,7 +88,7 @@ export async function createBot(
   opts: JsonOpt & { name?: string; kind?: string; model?: string; inbox?: string[] },
 ) {
   if (!opts.name) throw new UsageError("--name is required");
-  if (!opts.kind) throw new UsageError(`--kind is required (${Object.keys(BOT_KINDS).join(", ")})`);
+  if (!opts.kind) throw new UsageError(`--kind is required (${Object.keys(PRESETS).join(", ")})`);
   if (!opts.model) throw new UsageError("--model is required (an alias like sonnet or opus, or a full model id)");
   if (!opts.inbox?.length) throw new UsageError("--inbox is required");
   const client = await authedClient(ctx);
@@ -97,8 +97,8 @@ export async function createBot(
     kind: opts.kind,
     model: opts.model,
     inbox_ids: await resolveInboxes(client, opts.inbox),
-    prompt: await BOT_KINDS[opts.kind]?.prompt(),
-    rules: BOT_KINDS[opts.kind]?.rules,
+    prompt: PRESETS[opts.kind]?.prompt,
+    rules: PRESETS[opts.kind]?.rules,
   });
   if (opts.json) return ctx.out(json(bot));
   ctx.out(`Created bot ${bold(bot.name)} (${bot.id})\n\n${describe(bot, await inboxNames(client))}`);

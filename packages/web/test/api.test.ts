@@ -4,6 +4,7 @@ import { build } from "esbuild";
 import { describe, expect, it } from "vitest";
 import { clientBuild } from "../scripts/client.js";
 import { createApi } from "../src/api.js";
+import { PRESETS } from "@loopway/rules";
 import { SourceRegistry } from "@loopway/sources";
 import { sources } from "../src/sources.js";
 import { createUser } from "../src/store.js";
@@ -118,12 +119,32 @@ describe("bots", () => {
     ]);
   const seqs = (r: { body: { data: { seq: number }[] } }) => r.body.data.map((e) => e.seq);
 
+  it("lists presets and creates a bot from one", async () => {
+    const key = await newUser();
+    const a = await newInbox(key);
+    const presets = await call("GET", "/presets", { key });
+    expect(presets.body.data).toEqual([
+      { kind: "github-threads", label: expect.any(String), description: expect.any(String) },
+    ]);
+    const body = { name: "dev", kind: "github-threads", model: "sonnet", inbox_ids: [a.id] };
+    const created = await call("POST", "/bots", { key, body });
+    expect(created.status).toBe(201);
+    expect(created.body.prompt_version).toMatchObject({
+      version: 1,
+      prompt: PRESETS["github-threads"]!.prompt,
+      rules: PRESETS["github-threads"]!.rules,
+    });
+    // A prompt of its own means the preset isn't used.
+    const own = await call("POST", "/bots", { key, body: { ...body, name: "own", prompt: "mine" } });
+    expect(own.body.prompt_version).toMatchObject({ prompt: "mine", rules: null });
+  });
+
   it("versions a bot's prompt", async () => {
     const key = await newUser();
     const a = await newInbox(key);
     const bare = await call("POST", "/bots", {
       key,
-      body: { name: "bare", kind: "github-threads", model: "sonnet", inbox_ids: [a.id] },
+      body: { name: "bare", kind: "k", model: "sonnet", inbox_ids: [a.id] },
     });
     expect(bare.body.prompt_version).toBeNull();
     const created = await call("POST", "/bots", {
