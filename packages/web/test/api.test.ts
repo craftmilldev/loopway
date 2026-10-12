@@ -138,11 +138,21 @@ describe("bots", () => {
       version: 2,
       prompt: "two",
     });
+    expect(v2.body.rules).toBeNull();
+    // Rules are versioned with the prompt, and a version without rules keeps the last ones.
+    const rules = [{ types: ["com.github.*"], subject: "data.id", skip: "false" }];
+    const v3 = await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "three", rules } });
+    expect(v3.body).toMatchObject({ version: 3, rules });
+    const v4 = await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "four" } });
+    expect(v4.body).toMatchObject({ version: 4, rules });
+    expect(
+      (await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "x", rules: [{ types: [] }] } })).status,
+    ).toBe(400);
     expect((await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "" } })).status).toBe(400);
     const other = await newUser();
     expect((await call("POST", `/bots/${id}/versions`, { key: other, body: { prompt: "x" } })).status).toBe(404);
     const rows = await db.query(`SELECT version FROM loopway.bot_versions WHERE bot_id = $1 ORDER BY version`, [id]);
-    expect(rows).toEqual([{ version: 1 }, { version: 2 }]);
+    expect(rows).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
   });
 
   it("creates, lists, updates and deletes bots over the user's inboxes", async () => {

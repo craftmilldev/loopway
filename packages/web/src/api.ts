@@ -320,6 +320,18 @@ export function createApi(opts: ApiOptions) {
 
   const promptBody = z.string().min(1).max(100_000);
 
+  const expression = z.string().min(1).max(2_000);
+  const rulesBody = z
+    .array(
+      z.strictObject({
+        types: z.array(z.string().min(1).max(200)).min(1).max(50),
+        subject: expression.optional(),
+        related: expression.optional(),
+        skip: expression.optional(),
+      }),
+    )
+    .max(100);
+
   authed.get("/bots", async (c) => {
     const rows = await store.listBots(c.var.db, c.var.user.id);
     return c.json({ data: rows.map(serializeBot) });
@@ -333,6 +345,7 @@ export function createApi(opts: ApiOptions) {
         model: modelBody,
         inbox_ids: inboxIdsBody,
         prompt: promptBody.optional(),
+        rules: rulesBody.optional(),
       })
       .parse(await jsonBody(c));
     const bot = await store.createBot(c.var.db, {
@@ -342,6 +355,7 @@ export function createApi(opts: ApiOptions) {
       model: input.model,
       inboxIds: await ownedInboxIds(c, input.inbox_ids),
       prompt: input.prompt,
+      rules: input.rules,
     });
     return c.json(serializeBot(bot), 201);
   });
@@ -367,8 +381,8 @@ export function createApi(opts: ApiOptions) {
 
   authed.post("/bots/:botId/versions", async (c) => {
     const bot = await ownedBot(c);
-    const input = z.object({ prompt: promptBody }).parse(await jsonBody(c));
-    return c.json(await store.addBotVersion(c.var.db, bot.id, input.prompt), 201);
+    const input = z.object({ prompt: promptBody, rules: rulesBody.optional() }).parse(await jsonBody(c));
+    return c.json(await store.addBotVersion(c.var.db, bot.id, input.prompt, input.rules), 201);
   });
 
   authed.delete("/bots/:botId", async (c) => {
