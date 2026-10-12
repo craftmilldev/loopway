@@ -15,7 +15,7 @@ export interface Routed {
  * The CEL environment rules run in. It is plain CEL plus this small API:
  *
  * - `data`: the event's payload, and `event_type`: its type.
- * - In `skip` only: `subject` and `related` (what the rule's other expressions produced) and `held` (whether a
+ * - In `action` only: `subject` and `related` (what the rule's other expressions produced) and `held` (whether a
  *   thread already holds one of those subjects).
  * - Helpers a source defines for rules on its own event types, named `<source>_<helper>` (see RuleSource).
  */
@@ -49,7 +49,7 @@ function matches(glob: string, type: string): boolean {
 /** Throws if a rule's expressions don't parse, so a bad version fails when the bot starts, not on its first message. */
 export function checkRules(rules: BotRule[]): void {
   for (const rule of rules)
-    for (const field of ["subject", "related", "skip"] as const)
+    for (const field of ["subject", "related", "action"] as const)
       if (rule[field] !== undefined) envFor(rule).parse(rule[field]);
 }
 
@@ -57,11 +57,14 @@ export function checkRules(rules: BotRule[]): void {
  * Decides which of the bot's threads a message goes to, given who holds each subject (`owner/repo#number` →
  * thread id) and the bot's rules. The first rule with a type glob matching the message applies; a message no rule
  * matches is dropped. The rule's `subject` is the message's own subject ("" for none), its `related` the other
- * subjects it names, and its `skip` drops the message.
+ * subjects it names. Its `action` says what to do with what that finds: `attach-once` (the default) or `skip`.
  *
+ * `attach-once`:
  * 1. The thread holding the message's own subject wins.
  * 2. Otherwise the first related subject, in order, that a thread holds wins.
  * 3. Otherwise it's a new thread.
+ *
+ * `skip` drops the message.
  *
  * `add_subjects` is every collected subject no thread holds yet. Ones another thread holds stay there.
  *
@@ -76,11 +79,12 @@ export function route(rules: readonly BotRule[], held: ReadonlyMap<string, strin
   const related = rule.related !== undefined ? (env.evaluate(rule.related, vars) as string[]) : [];
   const subjects = key ? [key, ...related] : [];
   const found = subjects.map((s) => held.get(s)).find(Boolean);
-  if (
-    rule.skip !== undefined &&
-    env.evaluate(rule.skip, { ...vars, subject: key ?? "", related, held: !!found }) === true
-  )
-    return undefined;
+  const action =
+    rule.action === undefined
+      ? "attach-once"
+      : (env.evaluate(rule.action, { ...vars, subject: key ?? "", related, held: !!found }) as string);
+  if (action === "skip") return undefined;
+  if (action !== "attach-once") throw new Error(`Unknown rule action "${action}"; use "attach-once" or "skip".`);
   return {
     thread_id: found ?? randomUUID(),
     add_subjects: [...new Set(subjects)].filter((s) => !held.has(s)),

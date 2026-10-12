@@ -327,7 +327,7 @@ export function createApi(opts: ApiOptions) {
         types: z.array(z.string().min(1).max(200)).min(1).max(50),
         subject: expression.optional(),
         related: expression.optional(),
-        skip: expression.optional(),
+        action: expression.optional(),
       }),
     )
     .max(100);

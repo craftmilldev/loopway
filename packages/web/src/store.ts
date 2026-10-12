@@ -208,13 +208,13 @@ export async function getMessage(db: Db, inboxId: string, messageId: string): Pr
 
 /**
  * One assign rule: the first whose type globs match a message applies, and its CEL expressions give the message's
- * own subject, its related subjects and whether to skip it. The server stores them; the runner evaluates them.
+ * own subject, its related subjects and what to do with them. The server stores them; the runner evaluates them.
  */
 export interface BotRule {
   types: string[];
   subject?: string;
   related?: string;
-  skip?: string;
+  action?: string;
 }
 
 export interface BotVersion {
