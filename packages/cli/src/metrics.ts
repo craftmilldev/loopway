@@ -41,14 +41,17 @@ export function createMetrics(dir: string, env: NodeJS.ProcessEnv = process.env)
   const apiKey = env.POSTHOG_API_KEY;
   const optedOut = (env.DO_NOT_TRACK && env.DO_NOT_TRACK !== "0") || env.LOOPWAY_TELEMETRY === "0";
   if (!apiKey || optedOut) return noopMetrics;
-  const client = new PostHog(apiKey, { host: env.POSTHOG_HOST || undefined });
+  let client: PostHog | undefined;
   return {
     // Sent right away, not batched: the CLI exits as soon as its command is done.
     async capture(event, properties) {
       try {
+        // The host comes from config.json (or POSTHOG_HOST), defaulting to PostHog US cloud.
+        const { api_key, posthog_host } = await loadConfig(dir, env);
+        client ??= new PostHog(apiKey, { host: posthog_host });
         await client.captureImmediate({
           // The logged-in user, like the web side; the install until someone logs in.
-          distinctId: tokenUserId((await loadConfig(dir, env)).api_key) ?? (await installId(dir)),
+          distinctId: tokenUserId(api_key) ?? (await installId(dir)),
           event,
           properties: { ...properties, app: "cli" },
         });
