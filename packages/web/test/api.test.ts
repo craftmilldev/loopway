@@ -118,12 +118,34 @@ describe("bots", () => {
     ]);
   const seqs = (r: { body: { data: { seq: number }[] } }) => r.body.data.map((e) => e.seq);
 
+  it("lists the presets and starts a bot of a preset's kind with its prompt and rules", async () => {
+    const key = await newUser();
+    const a = await newInbox(key);
+    expect((await call("GET", "/presets")).status).toBe(401);
+    const presets = (await call("GET", "/presets", { key })).body.data;
+    expect(presets.map((p: any) => p.id)).toEqual(["github-threads"]);
+    expect(presets[0]).toMatchObject({ label: expect.any(String), description: expect.any(String) });
+
+    const bot = await call("POST", "/bots", {
+      key,
+      body: { name: "dev", kind: "github-threads", model: "sonnet", inbox_ids: [a.id] },
+    });
+    expect(bot.body.prompt_version).toMatchObject({ version: 1, prompt: presets[0].prompt, rules: presets[0].rules });
+
+    // A prompt of its own replaces the preset's; so does asking for no preset at all.
+    const own = await call("POST", "/bots", {
+      key,
+      body: { name: "own", kind: "github-threads", model: "sonnet", inbox_ids: [a.id], prompt: "Mine." },
+    });
+    expect(own.body.prompt_version).toMatchObject({ prompt: "Mine.", rules: null });
+  });
+
   it("versions a bot's prompt", async () => {
     const key = await newUser();
     const a = await newInbox(key);
     const bare = await call("POST", "/bots", {
       key,
-      body: { name: "bare", kind: "github-threads", model: "sonnet", inbox_ids: [a.id] },
+      body: { name: "bare", kind: "custom", model: "sonnet", inbox_ids: [a.id] },
     });
     expect(bare.body.prompt_version).toBeNull();
     const created = await call("POST", "/bots", {

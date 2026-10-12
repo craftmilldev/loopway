@@ -11,8 +11,7 @@ import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { LoopwayClient, type Bot, type BotRule, type Message } from "../src/client.js";
 import { route as routeWith } from "../src/bots/rules.js";
-import { GITHUB_THREADS_RULES } from "../src/bots/defaults/github-threads/rules.js";
-import { threadPrompt } from "../src/bots/defaults/github-threads/index.js";
+import { preset } from "@loopway/rules";
 import { LIMIT_FALLBACK_MS, LimitWatch, type AgentRun, type RunOutcome } from "../src/bots/agent.js";
 import { API_ERROR_BACKOFF_MS, Dispatcher, NETWORK_ERROR_MAX_BACKOFF_MS } from "../src/bots/dispatcher.js";
 import { defaultTtl } from "../src/commands/bots-run.js";
@@ -440,9 +439,9 @@ describe("bots", () => {
       "--inbox",
       a.id,
     );
-    expect(await run("bots", "show", "dev", "--prompt")).toBe(await threadPrompt());
+    expect(await run("bots", "show", "dev", "--prompt")).toBe(preset("github-threads")!.prompt);
     const rules = JSON.parse(await run("bots", "show", "dev", "--rules"));
-    expect(rules).toEqual(GITHUB_THREADS_RULES);
+    expect(rules).toEqual(preset("github-threads")!.rules);
 
     // A new prompt keeps the rules; new rules keep the prompt.
     const promptFile = join(configDir, "prompt.md");
@@ -1098,7 +1097,8 @@ describe("threads", () => {
   });
 
   it("route: own subject first, then the first closed issue a thread holds; adds only subjects nobody holds", () => {
-    const route = (held: ReadonlyMap<string, string>, m: Message) => routeWith(GITHUB_THREADS_RULES, held, m);
+    const route = (held: ReadonlyMap<string, string>, m: Message) =>
+      routeWith(preset("github-threads")!.rules, held, m);
     const message = (n: number, body: string) =>
       ({
         id: randomUUID(),
@@ -1157,7 +1157,7 @@ describe("threads", () => {
 
   it("route: CI joins its PR's thread, a run with no PR and a `future` issue without a thread are dropped", () => {
     const route = (held: ReadonlyMap<string, string>, type: string, data: unknown) =>
-      routeWith(GITHUB_THREADS_RULES, held, {
+      routeWith(preset("github-threads")!.rules, held, {
         id: randomUUID(),
         inbox_id: "in",
         seq: 1,
@@ -1426,7 +1426,7 @@ describe("threads", () => {
   });
 
   it("loads the default bot's session prompt", async () => {
-    const prompt = await threadPrompt();
+    const prompt = preset("github-threads")!.prompt;
     expect(prompt).toContain("You are a loopway thread session");
     expect(prompt).toContain("loopway messages get <inbox> <message> --data");
     expect(prompt).not.toContain("{{");

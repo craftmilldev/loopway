@@ -1,4 +1,4 @@
-import { checkRules } from "@loopway/rules";
+import { checkRules, preset, PRESETS } from "@loopway/rules";
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z, ZodError } from "zod";
@@ -348,6 +348,9 @@ export function createApi(opts: ApiOptions) {
     return rules;
   }
 
+  // The presets a bot can be made from.
+  authed.get("/presets", (c) => c.json({ data: PRESETS }));
+
   authed.get("/bots", async (c) => {
     const rows = await store.listBots(c.var.db, c.var.user.id);
     return c.json({ data: rows.map(serializeBot) });
@@ -370,8 +373,9 @@ export function createApi(opts: ApiOptions) {
       kind: input.kind,
       model: input.model,
       inboxIds: await ownedInboxIds(c, input.inbox_ids),
-      prompt: input.prompt,
-      rules: parsedRules(input.rules),
+      // A bot of a preset's kind starts with the preset's prompt and rules unless it brings its own.
+      prompt: input.prompt ?? preset(input.kind)?.prompt,
+      rules: parsedRules(input.rules ?? (input.prompt === undefined ? preset(input.kind)?.rules : undefined)),
     });
     return c.json(serializeBot(bot), 201);
   });

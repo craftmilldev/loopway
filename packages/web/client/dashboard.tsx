@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useSourceRequest } from "../ee/client/source-request.js";
 import { DashNav, Layout } from "./layout.js";
 import * as lw from "./lw.js";
+import { BOT_MODELS } from "../src/models.js";
 
 export interface Inbox {
   id: string;
@@ -134,7 +135,9 @@ export function leaseText(b: lw.Bot, runner: string | undefined) {
 
 function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: () => void }) {
   const [name, setName] = useState("");
-  const [kind, setKind] = useState(lw.BOT_KINDS[0]!);
+  const presets = lw.useList<lw.Preset>("/presets", true);
+  const [kind, setKind] = useState<string | null>(null);
+  const [model, setModel] = useState("sonnet");
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
@@ -145,11 +148,17 @@ function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: () => 
     setChecked(next);
   }
 
+  const preset = presets.data?.find((x) => x.id === kind) ?? presets.data?.[0];
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!preset) return setError("Pick a preset.");
     if (!checked.size) return setError("Pick at least one inbox.");
-    const r = await lw.api("/bots", { method: "POST", body: { name, kind, inbox_ids: [...checked] } });
+    const r = await lw.api("/bots", {
+      method: "POST",
+      body: { name, kind: preset.id, model, inbox_ids: [...checked] },
+    });
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) return setError(await lw.message(r));
     onCreated();
@@ -164,11 +173,24 @@ function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: () => 
         </div>
       </div>
       <div className="field">
-        <label htmlFor="bot-kind">Kind</label>
+        <label htmlFor="bot-kind">Preset</label>
         <div className="input-wrap">
-          <select id="bot-kind" value={kind} onChange={(e) => setKind(e.target.value)}>
-            {lw.BOT_KINDS.map((k) => (
-              <option key={k}>{k}</option>
+          <select id="bot-kind" value={preset?.id ?? ""} onChange={(e) => setKind(e.target.value)}>
+            {presets.data?.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        {preset && <p className="hint">{preset.description} You can edit its prompt and rules once the bot exists.</p>}
+      </div>
+      <div className="field">
+        <label htmlFor="bot-model">Model</label>
+        <div className="input-wrap">
+          <select id="bot-model" value={model} onChange={(e) => setModel(e.target.value)}>
+            {BOT_MODELS.map((m) => (
+              <option key={m}>{m}</option>
             ))}
           </select>
         </div>

@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { Environment } from "@marcbachmann/cel-js";
 
+export { PRESETS, preset, type Preset } from "./presets.js";
+
 /**
  * One assign rule of a bot. The first rule with a type glob matching a message applies; each field is a CEL
  * expression over the message: `subject` gives the message's own subject ("" for none), `related` the subjects it
