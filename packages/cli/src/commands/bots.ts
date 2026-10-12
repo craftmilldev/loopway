@@ -96,8 +96,6 @@ export async function createBot(
     kind: opts.kind,
     model: opts.model,
     inbox_ids: await resolveInboxes(client, opts.inbox),
-    prompt: PRESETS[opts.kind]?.prompt,
-    rules: PRESETS[opts.kind]?.rules,
   });
   if (opts.json) return ctx.out(json(bot));
   ctx.out(`Created bot ${bold(bot.name)} (${bot.id})\n\n${describe(bot, await inboxNames(client))}`);

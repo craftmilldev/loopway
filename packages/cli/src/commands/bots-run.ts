@@ -13,21 +13,13 @@ export interface RunBotsOptions extends ThreadsOptions {
 /** `loopway bots run`: run every bot on the account, handing each message to its thread's session, forever. */
 export async function runBots(ctx: Context, opts: RunBotsOptions) {
   const client = await authedClient(ctx);
-  const all = await client.listBots();
-  const bots = all.filter((b) => b.kind in PRESETS);
-  for (const b of all) if (!(b.kind in PRESETS)) ctx.out(`Skipping bot ${b.name}: this CLI can't run kind ${b.kind}.`);
+  const bots = await client.listBots();
   if (!bots.length) {
     ctx.out(
       `No bots to run. Create one with \`loopway bots create --name <name> --kind ${Object.keys(PRESETS).join("|")} --inbox <inbox>\`.`,
     );
     return;
   }
-  // Bots made before prompts or rules were stored get their kind's as a new version, keeping the prompt they have.
-  for (const b of bots)
-    if (!b.prompt_version?.rules) {
-      const kind = PRESETS[b.kind]!;
-      b.prompt_version = await client.addBotVersion(b.id, b.prompt_version?.prompt ?? kind.prompt, kind.rules);
-    }
   const interval = opts.interval ?? DEFAULTS.interval;
   const runner = await ensureRunner(ctx.configDir, client);
   const dispatcherOpts = { ...opts, ttl: opts.ttl ?? defaultTtl(interval), runnerId: runner.id };
