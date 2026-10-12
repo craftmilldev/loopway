@@ -11,21 +11,20 @@ export interface Routed {
 }
 
 /**
- * The CEL environment rules run in. Expressions see `event_type` and `data` (the event's payload), plus
- * `closes(body)`, which lists the issue numbers a PR body closes ("Closes #12", "fixes #3"). `skip` also sees the
- * `subject` and `related` the rule produced, and `held`: whether a thread already holds one of those subjects.
+ * The CEL environment rules run in. It is plain CEL plus this small API:
+ *
+ * - `data`: the event's payload, and `event_type`: its type.
+ * - `closes(body)`: the issue numbers a PR body closes ("Closes #12", "fixes #3"), as a list of strings.
+ * - In `skip` only: `subject` and `related` (what the rule's other expressions produced) and `held` (whether a
+ *   thread already holds one of those subjects).
  */
-const env = new Environment({ unlistedVariablesAreDyn: true })
-  .registerFunction("closes(dyn): list<string>", (body: unknown) =>
+const env = new Environment({ unlistedVariablesAreDyn: true }).registerFunction(
+  "closes(dyn): list<string>",
+  (body: unknown) =>
     typeof body === "string"
       ? [...body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi)].map((m) => m[1]!)
       : [],
-  )
-  .registerVariable("event_type", "string")
-  .registerVariable("data", "dyn")
-  .registerVariable("subject", "string")
-  .registerVariable("related", "list<string>")
-  .registerVariable("held", "bool");
+);
 
 /** Whether an event type matches a rule's glob, where `*` is any run of characters. */
 function matches(glob: string, type: string): boolean {
