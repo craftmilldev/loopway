@@ -16,6 +16,7 @@ app.route(
     getDb,
     tokenSecret,
     metrics: createMetrics(),
+    posthogKey: process.env.POSTHOG_API_KEY || undefined,
     posthogRegion: process.env.POSTHOG_REGION === "eu" ? "eu" : "us",
     publicBaseUrl: process.env.PUBLIC_BASE_URL || undefined,
     sourceRequests:

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import { identify, reset } from "./metrics.js";
 
 // Talks to the JSON API on the same origin with the session token kept in localStorage.
 
 const KEY = "loopway_token";
 
 export interface Me {
+  id: string;
   email: string | null;
   name: string;
 }
@@ -61,6 +63,7 @@ export function expired(r: Response) {
 }
 
 export function logout() {
+  reset();
   clear();
   location.replace("/login");
 }
@@ -101,7 +104,9 @@ export function useMe() {
       .catch(() => null)
       .then(async (r) => {
         if (!r || !r.ok) return r && expired(r);
-        setMe((await r.json()) as Me);
+        const me = (await r.json()) as Me;
+        identify(me.id, { email: me.email, name: me.name });
+        setMe(me);
       });
   }, []);
   return me;

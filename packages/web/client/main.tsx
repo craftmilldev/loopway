@@ -4,6 +4,7 @@ import { Dashboard } from "./dashboard.js";
 import { Home } from "./home.js";
 import { Inbox } from "./inbox.js";
 import { Login } from "./login.js";
+import { startMetrics } from "./metrics.js";
 import "./styles.css";
 
 // One bundle for every page. The server sends the same HTML shell for each route (src/ui.ts) and links between
@@ -22,4 +23,5 @@ function page(path: string) {
   return null;
 }
 
+startMetrics();
 createRoot(document.getElementById("root")!).render(page(location.pathname));

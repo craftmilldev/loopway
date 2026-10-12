@@ -34,6 +34,13 @@ describe("metrics", () => {
     expect(events.at(-1)).toMatchObject({ event: "api_error", properties: { code: "not_found", status: 404 } });
   });
 
+  it("gives the browser the PostHog key only when one is set", async () => {
+    const without = await (await app.request("/dashboard")).text();
+    expect(without).not.toContain("posthog-key");
+    const keyed = createApi({ getDb: async () => db, tokenSecret: "test-secret", posthogKey: "phc_test" });
+    expect(await (await keyed.request("/dashboard")).text()).toContain('<meta name="posthog-key" content="phc_test">');
+  });
+
   it("records nothing without a PostHog key", () => {
     expect(createMetrics({})).toBe(noopMetrics);
   });
