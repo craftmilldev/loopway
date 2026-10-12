@@ -9,7 +9,7 @@ export const defaultConfigDir = () => join(homedir(), ".loopway");
 export interface Config {
   api_url: string;
   api_key: string;
-  /** Where product metrics go; PostHog US cloud when unset. Set it for EU (https://eu.i.posthog.com) or self-hosted. */
+  /** Where product metrics go; the API's /ingest proxy when unset. Set it to send straight to PostHog (https://us.i.posthog.com), EU or self-hosted. */
   posthog_host?: string;
   /** The GitHub bot `loopway bots run` sessions act as. Set by `loopway config`; `login` keeps it. */
   github?: GithubBot;
@@ -24,7 +24,7 @@ export interface GithubBot {
 }
 
 /** Used for anything neither the environment nor config.json sets. */
-const DEFAULTS = { api_url: "https://loopway.craftmill.dev", posthog_host: "https://us.i.posthog.com" };
+const DEFAULTS = { api_url: "https://loopway.craftmill.dev" };
 
 export const configPath = (dir: string) => join(dir, "config.json");
 
@@ -37,10 +37,12 @@ export async function loadConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ api_url: string; api_key?: string; posthog_host: string }> {
   const file = await readConfig(dir);
+  const api_url = env.LOOPWAY_API_URL || file?.api_url || DEFAULTS.api_url;
   return {
-    api_url: env.LOOPWAY_API_URL || file?.api_url || DEFAULTS.api_url,
+    api_url,
     api_key: env.LOOPWAY_API_KEY || file?.api_key,
-    posthog_host: env.POSTHOG_HOST || file?.posthog_host || DEFAULTS.posthog_host,
+    // Metrics go through the API's PostHog reverse proxy unless pointed elsewhere.
+    posthog_host: env.POSTHOG_HOST || file?.posthog_host || `${api_url}/ingest`,
   };
 }
 
