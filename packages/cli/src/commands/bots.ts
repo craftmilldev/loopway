@@ -1,7 +1,9 @@
-import type { Bot, LoopwayClient } from "../client.js";
+import { readFile } from "node:fs/promises";
+import type { Bot, BotRule, LoopwayClient } from "../client.js";
 import { authedClient, UsageError, type Context } from "../context.js";
 import { ago, bold, dim, fields, json, table } from "../format.js";
 import { BOT_KINDS } from "../bots/kinds.js";
+import { checkRules } from "../bots/rules.js";
 import { resolveInbox } from "./inboxes.js";
 
 interface JsonOpt {
@@ -22,11 +24,63 @@ export async function listBots(ctx: Context, opts: JsonOpt) {
   );
 }
 
-export async function showBot(ctx: Context, ref: string, opts: JsonOpt) {
+export async function showBot(ctx: Context, ref: string, opts: JsonOpt & { prompt?: boolean; rules?: boolean }) {
   const client = await authedClient(ctx);
   const bot = await client.getBot(await resolveBot(client, ref));
+  if (opts.prompt || opts.rules) {
+    const version = bot.prompt_version;
+    if (!version) throw new UsageError(`Bot ${bot.name} has no version yet.`);
+    if (opts.prompt && opts.rules) throw new UsageError("Pass --prompt or --rules, not both.");
+    return ctx.out(opts.prompt ? version.prompt : json(version.rules ?? []));
+  }
   if (opts.json) return ctx.out(json(bot));
   ctx.out(describe(bot, await inboxNames(client)));
+}
+
+/** `loopway bots versions <bot>`: every saved version of the bot's prompt and rules, newest first. */
+export async function botVersions(ctx: Context, ref: string, opts: JsonOpt) {
+  const client = await authedClient(ctx);
+  const versions = await client.listBotVersions(await resolveBot(client, ref));
+  if (opts.json) return ctx.out(json(versions));
+  if (!versions.length) return ctx.out("No versions yet.");
+  ctx.out(
+    table(
+      ["VERSION", "RULES", "PROMPT", "SAVED"],
+      versions.map((v) => [
+        String(v.version),
+        v.rules ? String(v.rules.length) : "none",
+        `${v.prompt.length} chars`,
+        dim(ago(v.created_at)),
+      ]),
+    ),
+  );
+}
+
+/**
+ * `loopway bots edit <bot>`: saves a new version with the prompt and/or rules read from files. What isn't given
+ * carries over from the current version. The rules are checked before saving, so a bad edit is caught here.
+ */
+export async function editBot(ctx: Context, ref: string, opts: JsonOpt & { promptFile?: string; rulesFile?: string }) {
+  if (!opts.promptFile && !opts.rulesFile) throw new UsageError("Pass --prompt-file or --rules-file");
+  const client = await authedClient(ctx);
+  const bot = await client.getBot(await resolveBot(client, ref));
+  const prompt = opts.promptFile ? (await readFile(opts.promptFile, "utf8")).trimEnd() : bot.prompt_version?.prompt;
+  if (!prompt) throw new UsageError(`Bot ${bot.name} has no prompt yet; pass --prompt-file.`);
+  let rules: BotRule[] | undefined;
+  if (opts.rulesFile) {
+    const text = await readFile(opts.rulesFile, "utf8");
+    try {
+      rules = JSON.parse(text) as BotRule[];
+      checkRules(rules);
+    } catch (err) {
+      throw new UsageError(`${opts.rulesFile}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  const version = await client.addBotVersion(bot.id, prompt, rules);
+  if (opts.json) return ctx.out(json(version));
+  ctx.out(
+    `Saved version ${version.version} of bot ${bold(bot.name)}. A running \`loopway bots run\` picks it up on its next poll.`,
+  );
 }
 
 export async function createBot(

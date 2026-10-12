@@ -284,6 +284,11 @@ export class LoopwayClient {
     return this.request<Bot>("POST", "/bots", input);
   }
 
+  /** Every version of the bot, newest first. */
+  async listBotVersions(botId: string) {
+    return (await this.request<{ data: BotVersion[] }>("GET", `/bots/${enc(botId)}/versions`)).data;
+  }
+
   /** Saves a new version for the bot; it becomes the bot's current one. Without `rules` it keeps the current ones. */
   addBotVersion(botId: string, prompt: string, rules?: BotRule[]) {
     return this.request<BotVersion>("POST", `/bots/${enc(botId)}/versions`, { prompt, rules });

@@ -343,6 +343,14 @@ export async function addBotVersion(db: Db, botId: string, prompt: string, rules
   return row!.prompt_version;
 }
 
+/** Every version of the bot, newest first. */
+export async function listBotVersions(db: Db, botId: string): Promise<BotVersion[]> {
+  return db.query<BotVersion>(
+    `SELECT version, prompt, rules, created_at FROM loopway.bot_versions WHERE bot_id = $1 ORDER BY version DESC`,
+    [botId],
+  );
+}
+
 export async function deleteBot(db: Db, id: string): Promise<void> {
   await db.query(`UPDATE loopway.bots SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`, [id]);
 }

@@ -1,7 +1,17 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import { clearConfig, configure, login, whoami } from "./commands/auth.js";
 import { listBotThreads, moveBotSubject, releaseBotThread } from "./commands/botThreads.js";
-import { botMessages, createBot, deleteBot, listBots, releaseBot, showBot, updateBot } from "./commands/bots.js";
+import {
+  botMessages,
+  botVersions,
+  createBot,
+  editBot,
+  deleteBot,
+  listBots,
+  releaseBot,
+  showBot,
+  updateBot,
+} from "./commands/bots.js";
 import { getMessage, listMessages } from "./commands/messages.js";
 import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
 import { listRunners } from "./commands/runners.js";
@@ -166,8 +176,26 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .command("show")
     .description("show a bot, its inboxes and its cursor")
     .argument("<bot>", "bot id or name")
+    .option("--prompt", "print the bot's current prompt instead")
+    .option("--rules", "print the bot's current assign rules (JSON) instead")
     .addOption(jsonOpt())
     .action((ref, opts) => showBot(ctx, ref, opts));
+
+  bots
+    .command("versions")
+    .description("list the saved versions of a bot's prompt and rules, newest first")
+    .argument("<bot>", "bot id or name")
+    .addOption(jsonOpt())
+    .action((ref, opts) => botVersions(ctx, ref, opts));
+
+  bots
+    .command("edit")
+    .description("save a new version of a bot's prompt and/or rules, read from files; a running bot picks it up")
+    .argument("<bot>", "bot id or name")
+    .option("--prompt-file <path>", "the new prompt (Markdown)")
+    .option("--rules-file <path>", "the new assign rules (JSON, as `bots show --rules` prints them)")
+    .addOption(jsonOpt())
+    .action((ref, opts) => editBot(ctx, ref, opts));
 
   bots
     .command("update")

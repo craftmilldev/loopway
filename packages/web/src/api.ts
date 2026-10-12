@@ -379,6 +379,12 @@ export function createApi(opts: ApiOptions) {
     return c.json(serializeBot(updated));
   });
 
+  authed.get("/bots/:botId/versions", async (c) => {
+    const bot = await ownedBot(c);
+    const rows = await store.listBotVersions(c.var.db, bot.id);
+    return c.json({ data: rows.map((v) => ({ ...v, created_at: iso(v.created_at) })) });
+  });
+
   authed.post("/bots/:botId/versions", async (c) => {
     const bot = await ownedBot(c);
     const input = z.object({ prompt: promptBody, rules: rulesBody.optional() }).parse(await jsonBody(c));
