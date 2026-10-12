@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { PRESETS } from "@loopway/rules/presets";
+import { PRESETS } from "@loopway/presets";
 import { useSourceRequest } from "../ee/client/source-request.js";
 import { DashNav, Layout } from "./layout.js";
 import * as lw from "./lw.js";

@@ -3,7 +3,7 @@ import type { Bot, LoopwayClient } from "../client.js";
 import { authedClient, UsageError, type Context } from "../context.js";
 import { ago, bold, dim, fields, json, table } from "../format.js";
 import { checkRules, type BotRule } from "@loopway/rules";
-import { PRESETS } from "@loopway/rules/presets";
+import { PRESETS } from "@loopway/presets";
 import { resolveInbox } from "./inboxes.js";
 
 interface JsonOpt {

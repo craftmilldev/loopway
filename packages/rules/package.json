@@ -12,10 +12,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    },
-    "./presets": {
-      "types": "./dist/presets/index.d.ts",
-      "default": "./dist/presets/index.js"
     }
   },
   "files": [

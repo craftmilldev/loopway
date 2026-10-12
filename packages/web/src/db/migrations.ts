@@ -1,4 +1,4 @@
-import { PRESETS } from "@loopway/rules/presets";
+import { PRESETS } from "@loopway/presets";
 
 // A text value for a migration's SQL, as hex so nothing in it (a `;` at a line end) can trip the statement splitting.
 const lit = (v: string) => `convert_from(decode('${Buffer.from(v).toString("hex")}', 'hex'), 'UTF8')`;

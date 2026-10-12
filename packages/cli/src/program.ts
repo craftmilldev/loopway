@@ -17,7 +17,7 @@ import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox
 import { listRunners } from "./commands/runners.js";
 import { runBots } from "./commands/bots-run.js";
 import type { Context } from "./context.js";
-import { PRESETS } from "@loopway/rules/presets";
+import { PRESETS } from "@loopway/presets";
 
 export function createProgram(ctx: Context): Command {
   const program = new Command("loopway")

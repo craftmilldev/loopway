@@ -10,12 +10,13 @@
   },
   "workspaces": [
     "packages/rules",
+    "packages/presets",
     "packages/sources",
     "packages/web",
     "packages/cli"
   ],
   "scripts": {
-    "postinstall": "npm run build -w @loopway/sources -w @loopway/rules",
+    "postinstall": "npm run build -w @loopway/sources -w @loopway/rules -w @loopway/presets",
     "dev": "npm run dev -w @loopway/web",
     "start": "npm run start -w @loopway/web",
     "db:migrate": "npm run db:migrate -w @loopway/web",

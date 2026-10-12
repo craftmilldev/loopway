@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApi } from "@loopway/web/api";
-import { PRESETS } from "@loopway/rules/presets";
+import { PRESETS } from "@loopway/presets";
 import { openDb, type Db } from "@loopway/web/db";
 import { createUser } from "@loopway/web/store";
 import { signSessionToken } from "@loopway/web/tokens";
