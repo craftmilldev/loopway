@@ -14,7 +14,7 @@ app.route(
   createApi({
     getDb,
     tokenSecret,
-    posthogRegion: process.env.POSTHOG_HOST?.includes("eu.") ? "eu" : "us",
+    posthogRegion: process.env.POSTHOG_REGION === "eu" ? "eu" : "us",
     publicBaseUrl: process.env.PUBLIC_BASE_URL || undefined,
     sourceRequests:
       process.env.SOURCE_REQUEST_URL && process.env.SOURCE_REQUEST_TOKEN
