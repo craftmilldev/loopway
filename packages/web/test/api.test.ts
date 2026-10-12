@@ -154,6 +154,17 @@ describe("bots", () => {
     expect((await call("POST", `/bots/${id}/versions`, { key: other, body: { prompt: "x" } })).status).toBe(404);
     const rows = await db.query(`SELECT version FROM loopway.bot_versions WHERE bot_id = $1 ORDER BY version`, [id]);
     expect(rows).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
+
+    // They list newest first, for the owner only.
+    const listed = await call("GET", `/bots/${id}/versions`, { key });
+    expect(listed.body.data.map((v: any) => [v.version, v.prompt])).toEqual([
+      [4, "four"],
+      [3, "three"],
+      [2, "two"],
+      [1, "one"],
+    ]);
+    expect(listed.body.data[0].created_at).toMatch(/^\d{4}-/);
+    expect((await call("GET", `/bots/${id}/versions`, { key: other })).status).toBe(404);
   });
 
   it("creates, lists, updates and deletes bots over the user's inboxes", async () => {

@@ -425,6 +425,47 @@ describe("bots", () => {
     await expect(run("bots", "show", "dev2")).rejects.toThrow(/No bot with id or name "dev2"/);
   });
 
+  it("lists, prints and edits a bot's versions", async () => {
+    await configured();
+    const a = await runJson("inbox", "create", "--name", "a", "--source", "github");
+    const bot = await runJson(
+      "bots",
+      "create",
+      "--name",
+      "dev",
+      "--kind",
+      "github-threads",
+      "--model",
+      "sonnet",
+      "--inbox",
+      a.id,
+    );
+    expect(await run("bots", "show", "dev", "--prompt")).toBe(await threadPrompt());
+    const rules = JSON.parse(await run("bots", "show", "dev", "--rules"));
+    expect(rules).toEqual(GITHUB_THREADS_RULES);
+
+    // A new prompt keeps the rules; new rules keep the prompt.
+    const promptFile = join(configDir, "prompt.md");
+    await writeFile(promptFile, "Be brief.\n");
+    expect(await run("bots", "edit", "dev", "--prompt-file", promptFile)).toMatch(/Saved version 2/);
+    expect(await run("bots", "show", bot.id, "--prompt")).toBe("Be brief.");
+    expect(JSON.parse(await run("bots", "show", "dev", "--rules"))).toEqual(rules);
+    const rulesFile = join(configDir, "rules.json");
+    await writeFile(rulesFile, JSON.stringify([{ types: ["*"], subject: "data.id" }]));
+    expect((await runJson("bots", "edit", "dev", "--rules-file", rulesFile)).version).toBe(3);
+    expect(await run("bots", "show", "dev", "--prompt")).toBe("Be brief.");
+
+    const versions = await runJson("bots", "versions", "dev");
+    expect(versions.map((v: any) => v.version)).toEqual([3, 2, 1]);
+    expect(await run("bots", "versions", "dev")).toMatch(/VERSION.*\n3\s+1\s+/);
+
+    // Rules that don't parse, or no files at all, are refused before anything is saved.
+    await writeFile(rulesFile, JSON.stringify([{ types: ["*"], subject: "data.(" }]));
+    await expect(run("bots", "edit", "dev", "--rules-file", rulesFile)).rejects.toThrow(/rules\.json/);
+    await expect(run("bots", "edit", "dev")).rejects.toThrow(/--prompt-file or --rules-file/);
+    expect(await runJson("bots", "versions", "dev")).toHaveLength(3);
+  });
+
   it("checks the kind and inboxes before calling the API", async () => {
     await configured();
     await inboxWithEvents(0, "a");
@@ -537,6 +578,45 @@ describe("runners", () => {
     expect(await run("bots", "threads", "release", "dev", id)).toMatch(/Released thread/);
     expect((await runJson("bots", "threads", "dev"))[0].runner_id).toBeNull();
     expect(await run("bots", "threads", "dev")).toMatch(/none/);
+  });
+
+  it("moves a subject to another thread, matching the thread by the start of its id", async () => {
+    const key = await configured();
+    const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
+    const inbox = await inboxWithEvents(2);
+    const bot = await runJson(
+      "bots",
+      "create",
+      "--name",
+      "dev",
+      "--kind",
+      "github-threads",
+      "--model",
+      "sonnet",
+      "--inbox",
+      inbox.id,
+    );
+    const runner = await ensureRunner(configDir, client);
+    const botLease = (await client.leaseBot(bot.id, { runner_id: runner.id })).lease;
+    const [m1, m2] = (await client.listMessages(inbox.id)).data;
+    const [a, b] = [randomUUID(), randomUUID()];
+    await client.assign(bot.id, {
+      lease_token: botLease.token,
+      cursor: m2!.seq,
+      assignments: [
+        { message_id: m1!.id, thread_id: a, add_subjects: ["a/b#1"] },
+        { message_id: m2!.id, thread_id: b, add_subjects: ["a/b#2"] },
+      ],
+    });
+    await client.releaseBot(bot.id, botLease.token);
+
+    expect(await run("bots", "threads", "move", "dev", "a/b#1", a.slice(0, 8), b.slice(0, 8))).toMatch(
+      /Moved a\/b#1 to thread/,
+    );
+    const threads = await runJson("bots", "threads", "dev");
+    expect(threads.find((t: any) => t.id === b).subjects).toEqual(["a/b#1", "a/b#2"]);
+    expect(threads.find((t: any) => t.id === a).subjects).toEqual([]);
+    await expect(run("bots", "threads", "move", "dev", "a/b#1", a, "zzzz")).rejects.toThrow(/No thread/);
   });
 });
 
@@ -1093,6 +1173,35 @@ describe("threads", () => {
       thread_id: "t2",
     });
     expect(() => go([rule("a", "'nope'")])).toThrow(/Unknown rule action/);
+  });
+
+  it("picks up a new version of the bot's prompt and rules, and ignores one whose rules don't parse", async () => {
+    const { inbox, bot, client, runs, out, d, finish } = await setup(3);
+    const current = await client.getBot(bot.id);
+    const version = () => current.prompt_version!.version;
+
+    await client.addBotVersion(bot.id, "Be brief.");
+    await send(inbox, "issues", issue("opened", 1));
+    await d.tick();
+    expect(out).toContain(`bot dev1: now on version ${version() + 1}`);
+    expect(runs[0]!.message).toContain("Be brief.");
+    await finish();
+
+    // Rules whose expressions don't parse are reported once, and the version before keeps running.
+    await client.addBotVersion(bot.id, "Broken.", [{ types: ["*"], subject: "data.(" }]);
+    await send(inbox, "issues", issue("opened", 2));
+    await d.tick();
+    await d.tick();
+    expect(out.filter((l) => l.startsWith("bot dev1: ignoring version"))).toHaveLength(1);
+    expect(runs).toHaveLength(2);
+    expect(runs[1]!.message).toContain("Be brief.");
+
+    // Rules that route everything to one subject: the next two issues share a thread.
+    await client.addBotVersion(bot.id, "Same thread.", [{ types: ["*"], subject: '"one"' }]);
+    await send(inbox, "issues", issue("opened", 3));
+    await send(inbox, "issues", issue("opened", 4));
+    await d.tick();
+    expect((await client.listThreads(bot.id, "all")).filter((t) => t.subjects.includes("one"))).toHaveLength(1);
   });
 
   it("leaves threads owned by another runner alone, and shows them as on that runner", async () => {
