@@ -54,6 +54,13 @@ export interface Message {
   event: CloudEvent;
 }
 
+/** One saved revision of a bot's prompt. */
+export interface BotVersion {
+  version: number;
+  prompt: string;
+  created_at: string;
+}
+
 export interface Bot {
   id: string;
   name: string;
@@ -61,6 +68,8 @@ export interface Bot {
   /** The model its sessions run on, as `claude --model` takes it. */
   model: string;
   inbox_ids: string[];
+  /** The bot's newest prompt version; null if it has none yet. */
+  prompt_version: BotVersion | null;
   /** The `seq` of the last message the bot has read past. */
   cursor: number;
   created_at: string;
@@ -250,8 +259,13 @@ export class LoopwayClient {
     return (await this.request<{ data: Bot[] }>("GET", "/bots")).data;
   }
 
-  createBot(input: { name: string; kind: string; model: string; inbox_ids: string[] }) {
+  createBot(input: { name: string; kind: string; model: string; inbox_ids: string[]; prompt?: string }) {
     return this.request<Bot>("POST", "/bots", input);
+  }
+
+  /** Saves a new prompt version for the bot; it becomes the bot's current one. */
+  addBotVersion(botId: string, prompt: string) {
+    return this.request<BotVersion>("POST", `/bots/${enc(botId)}/versions`, { prompt });
   }
 
   getBot(botId: string) {

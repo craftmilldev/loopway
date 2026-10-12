@@ -1,6 +1,7 @@
 import { LoopwayClient } from "./client.js";
 import type { AgentRun, RunOutcome } from "./bots/agent.js";
 import { resolveAuth } from "./config.js";
+import type { Metrics } from "./metrics.js";
 
 /** Everything a command touches outside its arguments, so tests can swap it out. */
 export interface Context {
@@ -14,6 +15,8 @@ export interface Context {
   fetch?: typeof fetch;
   /** Runs one `loopway bots run` agent turn; defaults to headless `claude -p`. */
   runAgent?: (run: AgentRun) => Promise<RunOutcome>;
+  /** Product metrics; records nothing when unset. */
+  metrics?: Metrics;
 }
 
 export async function authedClient(ctx: Context): Promise<LoopwayClient> {

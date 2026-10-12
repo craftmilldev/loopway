@@ -43,6 +43,7 @@ export async function createBot(
     kind: opts.kind,
     model: opts.model,
     inbox_ids: await resolveInboxes(client, opts.inbox),
+    prompt: await BOT_KINDS[opts.kind]?.prompt(),
   });
   if (opts.json) return ctx.out(json(bot));
   ctx.out(`Created bot ${bold(bot.name)} (${bot.id})\n\n${describe(bot, await inboxNames(client))}`);
@@ -115,6 +116,7 @@ function describe(bot: Bot, names: Map<string, string>): string {
       ["id", bot.id],
       ["kind", bot.kind],
       ["model", bot.model],
+      ["prompt", bot.prompt_version ? `version ${bot.prompt_version.version}` : "none"],
       ["inboxes", inboxList(bot, names)],
       ["cursor", bot.cursor],
       ["created", `${bot.created_at} ${dim(`(${ago(bot.created_at)})`)}`],

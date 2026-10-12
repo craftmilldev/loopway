@@ -23,6 +23,9 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     );
     return;
   }
+  // Bots made before prompts were stored get their kind's prompt as version 1.
+  for (const b of bots)
+    if (!b.prompt_version) b.prompt_version = await client.addBotVersion(b.id, await BOT_KINDS[b.kind]!.prompt());
   const interval = opts.interval ?? DEFAULTS.interval;
   const runner = await ensureRunner(ctx.configDir, client);
   const dispatcherOpts = { ...opts, ttl: opts.ttl ?? defaultTtl(interval), runnerId: runner.id };

@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { createApi } from "./api.js";
 import { getDb } from "./db/index.js";
 import { consoleSender, resendSender } from "./email.js";
+import { createMetrics } from "./metrics.js";
 
 const app = new Hono();
 
@@ -14,6 +15,7 @@ app.route(
   createApi({
     getDb,
     tokenSecret,
+    metrics: createMetrics(),
     posthogRegion: process.env.POSTHOG_REGION === "eu" ? "eu" : "us",
     publicBaseUrl: process.env.PUBLIC_BASE_URL || undefined,
     sourceRequests:
