@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Environment } from "@marcbachmann/cel-js";
 import type { BotRule, Message } from "../client.js";
-import { createSources, NO_DEPS } from "@loopway/sources";
 
 /** Where `route` sends a message: a thread, the subjects to add to it, and the message's own subject for display. */
 export interface Routed {
@@ -17,18 +16,20 @@ export interface Routed {
  * - `data`: the event's payload, and `event_type`: its type.
  * - In `action` only: `subject` and `related` (what the rule's other expressions produced) and `held` (whether a
  *   thread already holds one of those subjects).
- * - Helpers a source defines for rules on its own event types, named `<source>_<helper>` (see `rules` on SourceAdapter in @loopway/sources).
+ * - `regex_all(text, pattern)` and `regex_all(text, pattern, flags)`: the first capture group (or the whole match if
+ *   the pattern has none) of every match of a JavaScript regular expression in the text, as a list of strings.
+ *   `flags` are JavaScript regex flags such as "i" or "m". The rule decides what counts as a match.
  */
-const base = new Environment({ unlistedVariablesAreDyn: true });
+const base = new Environment({ unlistedVariablesAreDyn: true })
+  .registerFunction("regex_all(string, string): list<string>", (text: string, pattern: string) =>
+    regexAll(text, pattern, ""),
+  )
+  .registerFunction("regex_all(string, string, string): list<string>", (text: string, pattern: string, flags: string) =>
+    regexAll(text, pattern, flags),
+  );
 
-/** Each source's environment, for the rules whose type globs all start with its prefix. */
-const sourceEnvs = createSources(NO_DEPS)
-  .rules()
-  .map(([prefix, extend]) => ({ prefix, env: extend(base.clone()) }));
-
-/** The environment a rule runs in: its source's, if all its types are that source's, else the base one. */
-function envFor(rule: BotRule): Environment {
-  return sourceEnvs.find((s) => rule.types.every((t) => t.startsWith(s.prefix)))?.env ?? base;
+function regexAll(text: string, pattern: string, flags: string): string[] {
+  return [...text.matchAll(new RegExp(pattern, flags.includes("g") ? flags : flags + "g"))].map((m) => m[1] ?? m[0]);
 }
 
 /** Whether an event type matches a rule's glob, where `*` is any run of characters. */
@@ -43,7 +44,7 @@ export function checkRules(rules: BotRule[]): void {
     throw new Error("Rules must be a list of rules, each with a list of types.");
   for (const rule of rules)
     for (const field of ["subject", "related", "action"] as const)
-      if (rule[field] !== undefined) envFor(rule).parse(rule[field]);
+      if (rule[field] !== undefined) base.parse(rule[field]);
 }
 
 /**
@@ -64,15 +65,14 @@ export function route(rules: readonly BotRule[], held: ReadonlyMap<string, strin
   const vars = { event_type: e.event.type, data: e.event.data ?? {} };
   for (const rule of rules) {
     if (!rule.types.some((t) => matches(t, e.event.type))) continue;
-    const env = envFor(rule);
-    const key = (rule.subject !== undefined && (env.evaluate(rule.subject, vars) as string)) || undefined;
-    const related = rule.related !== undefined ? (env.evaluate(rule.related, vars) as string[]) : [];
+    const key = (rule.subject !== undefined && (base.evaluate(rule.subject, vars) as string)) || undefined;
+    const related = rule.related !== undefined ? (base.evaluate(rule.related, vars) as string[]) : [];
     const subjects = key ? [key, ...related] : [];
     const found = subjects.map((s) => held.get(s)).find(Boolean);
     const action =
       rule.action === undefined
         ? "attach"
-        : (env.evaluate(rule.action, { ...vars, subject: key ?? "", related, held: !!found }) as string);
+        : (base.evaluate(rule.action, { ...vars, subject: key ?? "", related, held: !!found }) as string);
     if (action === "skip") continue;
     if (action !== "attach") throw new Error(`Unknown rule action "${action}"; use "attach" or "skip".`);
     return {

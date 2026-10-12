@@ -16,7 +16,7 @@ export const GITHUB_THREADS_RULES: BotRule[] = [
     subject:
       "has(data.repository) && (has(data.pull_request) || has(data.issue) || has(data.number)) ? data.repository.full_name + '#' + string(has(data.pull_request) ? data.pull_request.number : has(data.issue) ? data.issue.number : data.number) : ''",
     related:
-      "has(data.repository) && has(data.pull_request) && has(data.pull_request.body) ? github_closes(data.pull_request.body).map(n, data.repository.full_name + '#' + n) : []",
+      "has(data.repository) && has(data.pull_request) && has(data.pull_request.body) ? regex_all(data.pull_request.body, '(?<![\"\\'`])\\\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\\\\s+#(\\\\d+)\\\\b', 'i').map(n, data.repository.full_name + '#' + n) : []",
     action:
       "has(data.check_run) || has(data.check_suite) || has(data.workflow_run) || (!held && has(data.issue) && has(data.issue.labels) && data.issue.labels.exists(l, l.name == 'future')) ? 'skip' : 'attach'",
   },

@@ -174,16 +174,6 @@ export const github = ({ newSecret, safeEqual, makeCloudEvent }: SourceDeps): So
     };
   },
 
-  rules: {
-    "com.github.": (env) =>
-      // github_closes(body): the issue numbers a PR body closes ("Closes #12", "fixes #3"), as a list of strings.
-      env.registerFunction("github_closes(dyn): list<string>", (body: unknown) =>
-        typeof body === "string"
-          ? [...body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi)].map((m) => m[1]!)
-          : [],
-      ),
-  },
-
   receive({ headers, rawBody, receivedAt }, config) {
     const event = headers.get("x-github-event");
     if (!event) return { kind: "rejected", status: 400, message: "Missing X-GitHub-Event header" };

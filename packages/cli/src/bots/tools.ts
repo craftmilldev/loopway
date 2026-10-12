@@ -13,7 +13,7 @@ export function sessionTools(api: ThreadApi): McpTool[] {
     {
       name: "link",
       description:
-        "Send an issue or PR's events to this session. Call it right after you open a PR, with the PR number, so reviews and comments on it come to you.",
+        "Have this thread track one more subject, so its events come to this session. A subject another thread already holds can't be linked.",
       inputSchema: {
         type: "object",
         properties: {

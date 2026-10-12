@@ -10,25 +10,5 @@ import { vercel } from "./vercel.js";
 export const createSources = (deps: SourceDeps) =>
   new SourceRegistry([github(deps), granola(deps), linear(deps), loopway(deps), vercel(deps)]);
 
-/** Deps for callers that only read what a source declares (e.g. its rule helpers); using any of them throws. */
-export const NO_DEPS: SourceDeps = {
-  newSecret: unavailable,
-  uuidv7: unavailable,
-  safeEqual: unavailable,
-  makeCloudEvent: unavailable,
-};
-
-function unavailable(): never {
-  throw new Error("These sources were created without deps; they can't receive webhooks or make secrets.");
-}
-
 export { SourceRegistry } from "./registry.js";
-export type {
-  SourceAdapter,
-  SourceDeps,
-  SourceRules,
-  CloudEvent,
-  IncomingWebhook,
-  ReceiveResult,
-  SecretOrigin,
-} from "./types.js";
+export type { SourceAdapter, SourceDeps, CloudEvent, IncomingWebhook, ReceiveResult, SecretOrigin } from "./types.js";

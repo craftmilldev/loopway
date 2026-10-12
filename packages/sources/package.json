@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
-  "description": "Webhook sources shared by the web API and the CLI: each source's webhook adapter and its rule helpers.",
+  "description": "Webhook sources shared by the web API and the CLI: each source's webhook adapter.",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -19,11 +19,10 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@marcbachmann/cel-js": "^8.0.0",
     "ajv": "^8.20.0",
     "zod": "^4.6.5"
   },
