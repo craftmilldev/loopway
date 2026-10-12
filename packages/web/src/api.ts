@@ -7,6 +7,7 @@ import { consoleSender, type SendEmail } from "./email.js";
 import { ApiError, jsonBody, type Env } from "./http.js";
 import { isUuid, LOGIN_CODE_RE, normalizeLoginCode } from "./ids.js";
 import { BOT_MODELS } from "./models.js";
+import { createPosthogProxy } from "./posthog-proxy.js";
 import { sources } from "./sources/index.js";
 import * as store from "./store.js";
 import type { MessageRow, Inbox, User } from "./store.js";
@@ -19,6 +20,8 @@ export interface ApiOptions extends EeOptions {
   publicBaseUrl?: string;
   /** Delivers login codes. Defaults to printing them to the console. */
   sendEmail?: SendEmail;
+  /** PostHog cloud region the /ingest proxy forwards to. Defaults to "us". */
+  posthogRegion?: "us" | "eu";
   /** Signs session tokens (JWTs). */
   tokenSecret: string;
 }
@@ -43,6 +46,9 @@ export function createApi(opts: ApiOptions) {
     return c.json({ error: { code: "internal", message: "Internal server error" } }, 500);
   });
   app.notFound((c) => c.json({ error: { code: "not_found", message: "Route not found" } }, 404));
+
+  // Registered before the db middleware: forwarding analytics needs no database.
+  app.route("/", createPosthogProxy({ region: opts.posthogRegion }));
 
   app.use(async (c, next) => {
     c.set("db", await opts.getDb());
