@@ -342,7 +342,7 @@ describe("thread writes", () => {
   });
 
   it("won't move a subject to another bot's thread", async () => {
-    const { key, base, messages, assign } = await setup(1);
+    const { key, messages, assign } = await setup(1);
     const t1 = randomUUID();
     await assign([{ message_id: messages[0]!.id, thread_id: t1, add_subjects: ["o/r#1"] }]);
     const sibling = (
