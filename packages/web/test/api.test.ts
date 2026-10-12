@@ -150,6 +150,7 @@ describe("bots", () => {
       (await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "x", rules: [{ types: [] }] } })).status,
     ).toBe(400);
     expect((await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "" } })).status).toBe(400);
+    expect((await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "x", rules: [] } })).status).toBe(400);
     // Rules that don't parse are rejected on save, on versions and on create.
     const bad = [{ types: ["x"], subject: "data.(" }];
     const rejected = await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "x", rules: bad } });

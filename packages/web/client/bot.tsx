@@ -215,6 +215,10 @@ function Versions({
   function submit(e: FormEvent) {
     e.preventDefault();
     const parsed = fromDrafts(rules);
+    if (!parsed.length) {
+      track("bot_rules_missing");
+      return setError("Add at least one rule.");
+    }
     const empty = parsed.findIndex((r) => !r.types.length);
     if (empty >= 0) {
       track("bot_rule_missing_types");
