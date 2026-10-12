@@ -338,7 +338,7 @@ export async function addBotVersion(db: Db, botId: string, prompt: string, rules
             COALESCE($3::jsonb, (SELECT p.rules FROM loopway.bot_versions p WHERE p.bot_id = $1 ORDER BY p.version DESC LIMIT 1))
      FROM loopway.bot_versions WHERE bot_id = $1
      RETURNING jsonb_build_object('version', version, 'prompt', prompt, 'rules', rules, 'created_at', created_at) AS prompt_version`,
-    [botId, prompt, rules === undefined ? null : JSON.stringify(rules)],
+    [botId, prompt, rules ?? null],
   );
   return row!.prompt_version;
 }

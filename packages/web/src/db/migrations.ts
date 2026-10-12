@@ -299,4 +299,11 @@ ALTER TABLE loopway.bot_versions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE loopway.bot_versions ADD COLUMN rules jsonb;
 `,
   },
+  {
+    // 012's first writes passed the rules pre-stringified, which postgres.js stores as a JSON string. Unwrap them.
+    version: "013_unwrap_bot_version_rules",
+    sql: `
+UPDATE loopway.bot_versions SET rules = (rules #>> '{}')::jsonb WHERE jsonb_typeof(rules) = 'string';
+`,
+  },
 ];

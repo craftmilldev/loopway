@@ -48,6 +48,8 @@ function matches(glob: string, type: string): boolean {
 
 /** Throws if a rule's expressions don't parse, so a bad version fails when the bot starts, not on its first message. */
 export function checkRules(rules: BotRule[]): void {
+  if (!Array.isArray(rules) || !rules.every((r) => Array.isArray(r?.types)))
+    throw new Error("Rules must be a list of rules, each with a list of types.");
   for (const rule of rules)
     for (const field of ["subject", "related", "action"] as const)
       if (rule[field] !== undefined) envFor(rule).parse(rule[field]);
