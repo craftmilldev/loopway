@@ -4,7 +4,7 @@ import { build } from "esbuild";
 import { describe, expect, it } from "vitest";
 import { clientBuild } from "../scripts/client.js";
 import { createApi } from "../src/api.js";
-import { sources, SourceRegistry } from "../src/sources/index.js";
+import { sources, SourceRegistry } from "@loopway/sources";
 import { createUser } from "../src/store.js";
 import { signSessionToken, verifyToken } from "../src/tokens.js";
 import { app, call, db, newInbox, newUser, prPayload, SECRET, sendGithub } from "./helpers.js";

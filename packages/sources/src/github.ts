@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { z } from "zod";
-import { makeCloudEvent } from "../cloudevents.js";
-import { newSecret, safeEqual } from "../ids.js";
+import { makeCloudEvent } from "./cloudevents.js";
+import { newSecret, safeEqual } from "./ids.js";
 import { get, str, type Payload } from "./payload.js";
 import type { SourceAdapter } from "./types.js";
 
@@ -174,6 +174,17 @@ export const github: SourceAdapter<GithubConfig> = {
       secret: config.secret,
       events: config.events.includes("*") ? "Send me everything" : config.events,
     };
+  },
+
+  rules: {
+    prefix: "com.github.",
+    extend: (env) =>
+      // github_closes(body): the issue numbers a PR body closes ("Closes #12", "fixes #3"), as a list of strings.
+      env.registerFunction("github_closes(dyn): list<string>", (body: unknown) =>
+        typeof body === "string"
+          ? [...body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi)].map((m) => m[1]!)
+          : [],
+      ),
   },
 
   receive({ headers, rawBody, receivedAt }, config) {

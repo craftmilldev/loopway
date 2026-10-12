@@ -9,4 +9,6 @@ import { vercel } from "./vercel.js";
 export const sources = new SourceRegistry([github, granola, linear, loopway, vercel]);
 
 export { SourceRegistry } from "./registry.js";
-export type { SourceAdapter, IncomingWebhook, ReceiveResult, SecretOrigin } from "./types.js";
+export type { SourceAdapter, SourceRules, IncomingWebhook, ReceiveResult, SecretOrigin } from "./types.js";
+export { makeCloudEvent, type CloudEvent } from "./cloudevents.js";
+export { newSecret, safeEqual, uuidv7 } from "./ids.js";

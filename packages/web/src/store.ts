@@ -1,4 +1,4 @@
-import type { CloudEvent } from "./cloudevents.js";
+import type { CloudEvent } from "@loopway/sources";
 import type { Db } from "./db/index.js";
 import { newLockToken, newLoginCode, normalizeLoginCode, safeEqual, sha256, uuidv7 } from "./ids.js";
 

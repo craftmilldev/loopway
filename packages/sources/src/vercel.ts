@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { z } from "zod";
-import { makeCloudEvent } from "../cloudevents.js";
-import { safeEqual } from "../ids.js";
+import { makeCloudEvent } from "./cloudevents.js";
+import { safeEqual } from "./ids.js";
 import { get, str, type Payload } from "./payload.js";
 import type { SourceAdapter } from "./types.js";
 

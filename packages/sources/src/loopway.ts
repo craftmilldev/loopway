@@ -1,7 +1,7 @@
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import { z } from "zod";
-import { makeCloudEvent } from "../cloudevents.js";
-import { newSecret, safeEqual, uuidv7 } from "../ids.js";
+import { makeCloudEvent } from "./cloudevents.js";
+import { newSecret, safeEqual, uuidv7 } from "./ids.js";
 import type { SourceAdapter } from "./types.js";
 
 /**
