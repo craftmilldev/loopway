@@ -13,7 +13,7 @@ export function sessionTools(api: ThreadApi): McpTool[] {
     {
       name: "link",
       description:
-        "Send an issue or PR's events to this session. Use it for a PR that has no \"Closes #N\" in its body, with the PR number, so reviews and comments on it come to you. Don't link a PR that closes its own issue: it already goes to that issue's thread, and linking it here would pull it away. A subject another thread holds can't be linked.",
+        "Have this thread track one more subject, so its events come to this session. A subject another thread already holds can't be linked.",
       inputSchema: {
         type: "object",
         properties: {
