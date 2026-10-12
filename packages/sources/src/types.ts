@@ -1,5 +1,3 @@
-import type { Environment } from "@marcbachmann/cel-js";
-
 /** CloudEvents v1.0, structured-mode JSON representation. https://github.com/cloudevents/spec */
 export interface CloudEvent {
   specversion: "1.0";
@@ -53,14 +51,7 @@ export type ReceiveResult =
 export type SecretOrigin = { from: "loopway"; minLength: number } | { from: "sender" };
 
 /**
- * A source's contribution to bot rules: for each event type prefix it owns (e.g. "com.github."), a function that
- * adds its helpers, named `<source>_<helper>`, to a CEL environment.
- */
-export type SourceRules = Record<string, (env: Environment) => Environment>;
-
-/**
- * A source type defines how an inbox is configured, how a raw webhook becomes a CloudEvent, and
- * optionally the helpers bot rules can call on its events.
+ * A source type defines how an inbox is configured and how a raw webhook becomes a CloudEvent.
  * Add a new one by implementing this and registering it in ./index.ts. The API, the CLI and the
  * dashboard only read what's here, so nothing else needs to change.
  */
@@ -80,7 +71,5 @@ export interface SourceAdapter<Config = unknown> {
   publicConfig(config: Config): unknown;
   /** Setup hints shown on inbox responses (e.g. which content type to pick in GitHub). */
   setup?(config: Config, webhookUrl: string): Record<string, unknown>;
-  /** Helpers for bot rules on this source's event types. */
-  rules?: SourceRules;
   receive(req: IncomingWebhook, config: Config): ReceiveResult | Promise<ReceiveResult>;
 }
