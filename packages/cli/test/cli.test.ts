@@ -1035,10 +1035,19 @@ describe("threads", () => {
       ["a/b#2", "t2"],
     ]);
 
-    // Its own PR is held: that thread wins over the issues it closes; the unheld closed issue is added.
+    // The thread of an issue it closes wins over the thread holding its own PR (a session linked it); the unheld
+    // closed issue is added, and the PR stays where it is.
     expect(route(held, message(1, "Closes #2 and fixes #3"))).toEqual({
-      thread_id: "t1",
+      thread_id: "t2",
       add_subjects: ["a/b#3"],
+      key: "a/b#1",
+    });
+    // Its own PR is held and no thread holds what it closes: that thread keeps it.
+    expect(route(held, message(1, "Closes #3"))).toEqual({ thread_id: "t1", add_subjects: ["a/b#3"], key: "a/b#1" });
+    // Closing keywords in quotes or code are examples, not references.
+    expect(route(held, message(1, 'Adds `closes(text)` for "Closes #2" and\n```\nFixes #2\n```'))).toEqual({
+      thread_id: "t1",
+      add_subjects: [],
       key: "a/b#1",
     });
     // Otherwise the first closed issue a thread holds; the PR joins it, and what t1 holds stays on t1.

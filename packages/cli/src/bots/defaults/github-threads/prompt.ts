@@ -47,7 +47,8 @@ thread, and \`end\` tells it this thread's work is finished.
 
 - Commit, push, and open the PR with \`gh pr create\`. The body should say what changed and any
   deploy steps, such as env vars or migrations. Add \`Closes #<N>\`.
-- Right away, call the \`link\` tool with the PR number so the PR's events come to you.
+- The \`Closes #<N>\` line sends the PR's events to the thread of issue #<N>, so don't \`link\` the PR. Call
+  \`link\` only for a PR that closes nothing, so its events still come to you.
 
 ## 5. Follow-up messages
 
