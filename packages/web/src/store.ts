@@ -216,6 +216,8 @@ export interface Bot {
   /** bigint: the `seq` of the last message the bot has read past. */
   cursor: string | bigint;
   inbox_ids: string[];
+  /** The bot's newest prompt version; null for a bot that has none yet. */
+  prompt_version: { version: number; prompt: string; created_at: string } | null;
   /** The runner's lease: see leaseBot(). runner_id is who holds it, if the lease asked to say. */
   lock_token: string | null;
   locked_until: Date | null;
@@ -226,7 +228,9 @@ export interface Bot {
 const BOT_COLS = `
   b.id, b.user_id, b.name, b.kind, b.model, b.cursor, b.lock_token, b.locked_until, b.runner_id, b.created_at,
   COALESCE((SELECT jsonb_agg(bi.inbox_id ORDER BY bi.inbox_id) FROM loopway.bot_inboxes bi WHERE bi.bot_id = b.id),
-           '[]'::jsonb) AS inbox_ids`;
+           '[]'::jsonb) AS inbox_ids,
+  (SELECT jsonb_build_object('version', v.version, 'prompt', v.prompt, 'created_at', v.created_at)
+   FROM loopway.bot_versions v WHERE v.bot_id = b.id ORDER BY v.version DESC LIMIT 1) AS prompt_version`;
 
 /**
  * Messages that commit out of seq order (two webhooks landing at once) would be skipped by a cursor that had
@@ -240,7 +244,7 @@ const inboxIds = (param: string) => `(SELECT value::uuid FROM jsonb_array_elemen
 /** The inboxes must belong to the user (bot_inboxes' keys enforce it). The cursor starts at their newest message. */
 export async function createBot(
   db: Db,
-  input: { userId: string; name: string; kind: string; model: string; inboxIds: string[] },
+  input: { userId: string; name: string; kind: string; model: string; inboxIds: string[]; prompt?: string },
 ): Promise<Bot> {
   const id = uuidv7();
   await db.query(
@@ -253,6 +257,7 @@ export async function createBot(
      SELECT b.id, ids.value, b.user_id FROM b, ${inboxIds("$5")} AS ids(value)`,
     [id, input.userId, input.name, input.kind, input.inboxIds, input.model],
   );
+  if (input.prompt !== undefined) await addBotVersion(db, id, input.prompt);
   return (await getBot(db, id))!;
 }
 
@@ -293,6 +298,17 @@ export async function updateBot(
     [bot.id, patch.name ?? null, bot.user_id, patch.inboxIds ?? null, patch.model ?? null],
   );
   return (await getBot(db, bot.id))!;
+}
+
+/** Appends a prompt version to the bot and returns it; versions are never changed after. */
+export async function addBotVersion(db: Db, botId: string, prompt: string): Promise<NonNullable<Bot["prompt_version"]>> {
+  const [row] = await db.query<{ prompt_version: NonNullable<Bot["prompt_version"]> }>(
+    `INSERT INTO loopway.bot_versions (bot_id, version, prompt)
+     SELECT $1, COALESCE(max(version), 0) + 1, $2 FROM loopway.bot_versions WHERE bot_id = $1
+     RETURNING jsonb_build_object('version', version, 'prompt', prompt, 'created_at', created_at) AS prompt_version`,
+    [botId, prompt],
+  );
+  return row!.prompt_version;
 }
 
 export async function deleteBot(db: Db, id: string): Promise<void> {
