@@ -17,7 +17,7 @@ import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox
 import { listRunners } from "./commands/runners.js";
 import { runBots } from "./commands/bots-run.js";
 import type { Context } from "./context.js";
-import { BOT_KINDS } from "./bots/kinds.js";
+import { PRESETS } from "@loopway/presets";
 
 export function createProgram(ctx: Context): Command {
   const program = new Command("loopway")
@@ -159,7 +159,9 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .command("create")
     .description("create a bot that reads the given inboxes, starting from their newest message")
     .option("--name <name>", "bot name")
-    .addOption(new Option("--kind <kind>", "what the bot does").choices(Object.keys(BOT_KINDS)))
+    .addOption(
+      new Option("--preset <preset>", "template for the bot's first prompt and rules").choices(Object.keys(PRESETS)),
+    )
     .option("--model <model>", "model its sessions run on: an alias (sonnet, opus) or a full model id")
     .addOption(inboxesOpt("comma-separated inbox ids or names"))
     .addOption(jsonOpt())

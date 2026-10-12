@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { PRESETS } from "@loopway/presets";
 import { useSourceRequest } from "../ee/client/source-request.js";
 import { DashNav, Layout } from "./layout.js";
 import * as lw from "./lw.js";
@@ -58,7 +59,7 @@ export function Dashboard() {
               {b.name}
             </a>
             <div className="meta">
-              {b.kind} · {b.inbox_ids.map((i) => inboxes.data?.find((x) => x.id === i)?.name ?? i).join(", ")} ·{" "}
+              {b.inbox_ids.map((i) => inboxes.data?.find((x) => x.id === i)?.name ?? i).join(", ")} ·{" "}
               {active[b.id] ?? "…"} active threads
             </div>
             <div className="meta">{leaseText(b, runnerName(b.runner_id))}</div>
@@ -134,7 +135,7 @@ export function leaseText(b: lw.Bot, runner: string | undefined) {
 
 function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: () => void }) {
   const [name, setName] = useState("");
-  const [kind, setKind] = useState(lw.BOT_KINDS[0]!);
+  const [preset, setPreset] = useState(Object.keys(PRESETS)[0]!);
   const [model, setModel] = useState(lw.BOT_MODELS[0]!);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -150,7 +151,10 @@ function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: () => 
     e.preventDefault();
     setError(null);
     if (!checked.size) return setError("Pick at least one inbox.");
-    const r = await lw.api("/bots", { method: "POST", body: { name, kind, model, inbox_ids: [...checked] } });
+    const r = await lw.api("/bots", {
+      method: "POST",
+      body: { name, ...PRESETS[preset]!, model, inbox_ids: [...checked] },
+    });
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) return setError(await lw.message(r));
     onCreated();
@@ -165,10 +169,10 @@ function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: () => 
         </div>
       </div>
       <div className="field">
-        <label htmlFor="bot-kind">Kind</label>
+        <label htmlFor="bot-preset">Start from</label>
         <div className="input-wrap">
-          <select id="bot-kind" value={kind} onChange={(e) => setKind(e.target.value)}>
-            {lw.BOT_KINDS.map((k) => (
+          <select id="bot-preset" value={preset} onChange={(e) => setPreset(e.target.value)}>
+            {Object.keys(PRESETS).map((k) => (
               <option key={k}>{k}</option>
             ))}
           </select>

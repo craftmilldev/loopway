@@ -68,7 +68,6 @@ export interface BotVersion {
 export interface Bot {
   id: string;
   name: string;
-  kind: string;
   /** The model its sessions run on, as `claude --model` takes it. */
   model: string;
   inbox_ids: string[];
@@ -263,14 +262,7 @@ export class LoopwayClient {
     return (await this.request<{ data: Bot[] }>("GET", "/bots")).data;
   }
 
-  createBot(input: {
-    name: string;
-    kind: string;
-    model: string;
-    inbox_ids: string[];
-    prompt?: string;
-    rules?: BotRule[];
-  }) {
+  createBot(input: { name: string; model: string; inbox_ids: string[]; prompt?: string; rules?: BotRule[] }) {
     return this.request<Bot>("POST", "/bots", input);
   }
 

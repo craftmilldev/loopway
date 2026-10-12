@@ -355,7 +355,6 @@ export function createApi(opts: ApiOptions) {
     const input = z
       .object({
         name: z.string().min(1).max(200),
-        kind: z.string().min(1).max(100),
         model: modelBody,
         inbox_ids: inboxIdsBody,
         prompt: promptBody.optional(),
@@ -365,12 +364,12 @@ export function createApi(opts: ApiOptions) {
     const bot = await store.createBot(c.var.db, {
       userId: c.var.user.id,
       name: input.name,
-      kind: input.kind,
       model: input.model,
       inboxIds: await ownedInboxIds(c, input.inbox_ids),
       prompt: input.prompt,
       rules: await checked(c, input.rules, "create"),
     });
+    await metrics.capture("bot_created", c.var.user.id, { has_version: !!bot.prompt_version });
     return c.json(serializeBot(bot), 201);
   });
 
@@ -787,7 +786,6 @@ function serializeBot(b: store.Bot) {
   return {
     id: b.id,
     name: b.name,
-    kind: b.kind,
     model: b.model,
     inbox_ids: b.inbox_ids,
     prompt_version: b.prompt_version,
