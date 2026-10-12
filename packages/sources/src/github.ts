@@ -175,8 +175,7 @@ export const github = ({ newSecret, safeEqual, makeCloudEvent }: SourceDeps): So
   },
 
   rules: {
-    prefix: "com.github.",
-    extend: (env) =>
+    "com.github.": (env) =>
       // github_closes(body): the issue numbers a PR body closes ("Closes #12", "fixes #3"), as a list of strings.
       env.registerFunction("github_closes(dyn): list<string>", (body: unknown) =>
         typeof body === "string"

@@ -52,13 +52,11 @@ export type ReceiveResult =
  */
 export type SecretOrigin = { from: "loopway"; minLength: number } | { from: "sender" };
 
-/** A source's contribution to bot rules: the helpers its event types' rules can call. */
-export interface SourceRules {
-  /** The event type prefix of the source, e.g. "com.github.". */
-  prefix: string;
-  /** Adds the source's helpers, named `<source>_<helper>`, to a CEL environment. */
-  extend(env: Environment): Environment;
-}
+/**
+ * A source's contribution to bot rules: for each event type prefix it owns (e.g. "com.github."), a function that
+ * adds its helpers, named `<source>_<helper>`, to a CEL environment.
+ */
+export type SourceRules = Record<string, (env: Environment) => Environment>;
 
 /**
  * A source type defines how an inbox is configured, how a raw webhook becomes a CloudEvent, and

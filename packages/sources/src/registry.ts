@@ -1,4 +1,5 @@
-import type { SourceAdapter, SourceRules } from "./types.js";
+import type { Environment } from "@marcbachmann/cel-js";
+import type { SourceAdapter } from "./types.js";
 
 /** Looks up source adapters by type. Callers go through this and never name a source themselves. */
 export class SourceRegistry {
@@ -22,9 +23,9 @@ export class SourceRegistry {
     return [...this.byType.keys()];
   }
 
-  /** The rule helpers of every source that defines some. */
-  ruleSources(): SourceRules[] {
-    return [...this.byType.values()].flatMap((s) => (s.rules ? [s.rules] : []));
+  /** The rule helpers of every source that defines some, by event type prefix. */
+  rules(): [prefix: string, extend: (env: Environment) => Environment][] {
+    return [...this.byType.values()].flatMap((s) => Object.entries(s.rules ?? {}));
   }
 
   /** What clients need to build a create form or prompt for each source (`GET /sources`). */
