@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z, ZodError } from "zod";
+import { checkRules } from "@loopway/rules";
 import { eeRoutes, type EeOptions } from "../ee/routes.js";
 import type { Db } from "./db/index.js";
 import { consoleSender, type SendEmail } from "./email.js";
@@ -330,7 +331,20 @@ export function createApi(opts: ApiOptions) {
         action: expression.optional(),
       }),
     )
+    .min(1)
     .max(100);
+
+  /** Rejects rules whose expressions don't parse, so a bad edit fails on save and not on a runner. */
+  async function checked(c: Context<Env>, rules: z.infer<typeof rulesBody> | undefined, action: "create" | "version") {
+    if (!rules) return rules;
+    try {
+      checkRules(rules);
+    } catch (err) {
+      await metrics.capture("bot_rules_rejected", c.var.user.id, { action });
+      throw new ApiError(400, "invalid_rules", err instanceof Error ? err.message : String(err));
+    }
+    return rules;
+  }
 
   authed.get("/bots", async (c) => {
     const rows = await store.listBots(c.var.db, c.var.user.id);
@@ -355,7 +369,7 @@ export function createApi(opts: ApiOptions) {
       model: input.model,
       inboxIds: await ownedInboxIds(c, input.inbox_ids),
       prompt: input.prompt,
-      rules: input.rules,
+      rules: await checked(c, input.rules, "create"),
     });
     return c.json(serializeBot(bot), 201);
   });
@@ -388,7 +402,9 @@ export function createApi(opts: ApiOptions) {
   authed.post("/bots/:botId/versions", async (c) => {
     const bot = await ownedBot(c);
     const input = z.object({ prompt: promptBody, rules: rulesBody.optional() }).parse(await jsonBody(c));
-    return c.json(await store.addBotVersion(c.var.db, bot.id, input.prompt, input.rules), 201);
+    const version = await store.addBotVersion(c.var.db, bot.id, input.prompt, await checked(c, input.rules, "version"));
+    await metrics.capture("bot_version_saved", c.var.user.id, { with_rules: !!input.rules });
+    return c.json(version, 201);
   });
 
   authed.delete("/bots/:botId", async (c) => {

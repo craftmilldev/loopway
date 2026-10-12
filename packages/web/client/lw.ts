@@ -113,10 +113,27 @@ export function useMe() {
 }
 
 /** A bot as `GET /bots` describes it. `leased_until` is null when no runner holds it. */
+/** One assign rule of a bot (see @loopway/rules). */
+export interface BotRule {
+  types: string[];
+  subject?: string;
+  related?: string;
+  action?: string;
+}
+
+/** One saved revision of a bot's prompt and rules. Rules are null for versions saved before bots had them. */
+export interface BotVersion {
+  version: number;
+  prompt: string;
+  rules: BotRule[] | null;
+  created_at: string;
+}
+
 export interface Bot {
   id: string;
   name: string;
   kind: string;
+  prompt_version: BotVersion | null;
   inbox_ids: string[];
   cursor: number;
   runner_id: string | null;
@@ -196,3 +213,15 @@ export function subjectUrl(subject: string) {
 
 /** The kinds of bot the CLI can run (packages/cli/src/bots/kinds.ts). */
 export const BOT_KINDS = ["github-threads"];
+
+/** The models a bot may run on (src/models.ts): aliases for the latest of a family, then full ids to pin one. */
+export const BOT_MODELS = [
+  "sonnet",
+  "opus",
+  "fable",
+  "haiku",
+  "claude-fable-5-1",
+  "claude-opus-5-5",
+  "claude-sonnet-5-5",
+  "claude-haiku-5-5",
+];

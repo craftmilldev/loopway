@@ -1,4 +1,4 @@
-import type { BotRule } from "../client.js";
+import type { BotRule } from "@loopway/rules";
 import { githubThreads } from "./defaults/github-threads/index.js";
 
 /** How `loopway bots run` runs a bot of some `kind`. The server stores any kind; the CLI runs these. */

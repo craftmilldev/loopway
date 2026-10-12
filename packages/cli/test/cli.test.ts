@@ -9,8 +9,8 @@ import { createUser } from "@loopway/web/store";
 import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { LoopwayClient, type Bot, type BotRule, type Message } from "../src/client.js";
-import { route as routeWith } from "../src/bots/rules.js";
+import { LoopwayClient, type Bot, type Message } from "../src/client.js";
+import { route as routeWith, type BotRule } from "@loopway/rules";
 import { GITHUB_THREADS_RULES } from "../src/bots/defaults/github-threads/rules.js";
 import { threadPrompt } from "../src/bots/defaults/github-threads/index.js";
 import { LIMIT_FALLBACK_MS, LimitWatch, type AgentRun, type RunOutcome } from "../src/bots/agent.js";
@@ -1183,7 +1183,7 @@ describe("threads", () => {
   it("route: skip moves on to the next rule, attach stops", () => {
     const msg = { id: randomUUID(), inbox_id: "in", seq: 1, received_at: "", event: { type: "x.y", data: {} } };
     const held = new Map([["b", "t2"]]);
-    const go = (rules: BotRule[]) => routeWith(rules, held, msg as unknown as Message);
+    const go = (rules: BotRule[]) => routeWith(rules, held, msg);
     const rule = (subject: string, action?: string) => ({ types: ["x.*"], subject: `'${subject}'`, action });
     // skip falls through; a message nothing attaches is dropped.
     expect(go([rule("a", "'skip'")])).toBeUndefined();
@@ -1209,8 +1209,14 @@ describe("threads", () => {
     expect(runs[0]!.message).toContain("Be brief.");
     await finish();
 
-    // Rules whose expressions don't parse are reported once, and the version before keeps running.
-    await client.addBotVersion(bot.id, "Broken.", [{ types: ["*"], subject: "data.(" }]);
+    // The server rejects rules that don't parse.
+    await expect(client.addBotVersion(bot.id, "Broken.", [{ types: ["*"], subject: "data.(" }])).rejects.toThrow();
+    // One saved before it checked is reported once, and the version before keeps running.
+    await db.query(
+      `INSERT INTO loopway.bot_versions (bot_id, version, prompt, rules)
+       SELECT bot_id, max(version) + 1, 'Broken.', $2::jsonb FROM loopway.bot_versions WHERE bot_id = $1 GROUP BY bot_id`,
+      [bot.id, JSON.stringify([{ types: ["*"], subject: "data.(" }])],
+    );
     await send(inbox, "issues", issue("opened", 2));
     await d.tick();
     await d.tick();

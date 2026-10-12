@@ -1,6 +1,22 @@
 import { randomUUID } from "node:crypto";
 import { Environment } from "@marcbachmann/cel-js";
-import type { BotRule, Message } from "../client.js";
+
+/**
+ * One assign rule of a bot. The first rule with a type glob matching a message applies; each field is a CEL
+ * expression over the message (see `route`): `subject` gives the message's own subject ("" for none), `related`
+ * the subjects it also names, and `action` what to do with what they find (`attach`, the default, or `skip`).
+ */
+export interface BotRule {
+  types: string[];
+  subject?: string;
+  related?: string;
+  action?: string;
+}
+
+/** What `route` reads of a message: its CloudEvent's type and payload. */
+export interface RoutableMessage {
+  event: { type: string; data?: unknown };
+}
 
 /** Where `route` sends a message: a thread, the subjects to add to it, and the message's own subject for display. */
 export interface Routed {
@@ -61,7 +77,11 @@ export function checkRules(rules: BotRule[]): void {
  *
  * Doesn't change `held`; the caller adds `add_subjects` to it as it assigns, so later messages see them.
  */
-export function route(rules: readonly BotRule[], held: ReadonlyMap<string, string>, e: Message): Routed | undefined {
+export function route(
+  rules: readonly BotRule[],
+  held: ReadonlyMap<string, string>,
+  e: RoutableMessage,
+): Routed | undefined {
   const vars = { event_type: e.event.type, data: e.event.data ?? {} };
   for (const rule of rules) {
     if (!rule.types.some((t) => matches(t, e.event.type))) continue;

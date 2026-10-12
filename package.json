@@ -9,12 +9,13 @@
     "node": ">=22"
   },
   "workspaces": [
+    "packages/rules",
     "packages/sources",
     "packages/web",
     "packages/cli"
   ],
   "scripts": {
-    "postinstall": "npm run build -w @loopway/sources",
+    "postinstall": "npm run build -w @loopway/sources -w @loopway/rules",
     "dev": "npm run dev -w @loopway/web",
     "start": "npm run start -w @loopway/web",
     "db:migrate": "npm run db:migrate -w @loopway/web",

@@ -24,6 +24,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@loopway/rules": "*",
     "@loopway/sources": "*",
     "@electric-sql/pglite": "^0.5.8",
     "ajv": "^8.20.0",
