@@ -343,6 +343,14 @@ export async function addBotVersion(db: Db, botId: string, prompt: string, rules
   return row!.prompt_version;
 }
 
+/** Every version of the bot, newest first. */
+export async function listBotVersions(db: Db, botId: string): Promise<BotVersion[]> {
+  return db.query<BotVersion>(
+    `SELECT version, prompt, rules, created_at FROM loopway.bot_versions WHERE bot_id = $1 ORDER BY version DESC`,
+    [botId],
+  );
+}
+
 export async function deleteBot(db: Db, id: string): Promise<void> {
   await db.query(`UPDATE loopway.bots SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`, [id]);
 }
@@ -757,6 +765,43 @@ export async function patchThread(
       patch.limited ?? null,
       patch.addSubjects ?? [],
     ],
+  );
+  return row!.n > 0;
+}
+
+/**
+ * One statement: moves `subject` from thread $3 to thread $4 of bot $1, takes the waiting messages for the subject
+ * along (inflight and delivered ones stay), and resumes the target if it ended. False unless both are the bot's
+ * threads and the subject is on the first.
+ */
+export async function moveSubject(
+  db: Db,
+  botId: string,
+  subject: string,
+  fromThreadId: string,
+  toThreadId: string,
+): Promise<boolean> {
+  const [row] = await db.query<{ n: number }>(
+    `WITH target AS (
+       SELECT id FROM loopway.threads WHERE id = $4::uuid AND bot_id = $1::uuid
+     ),
+     moved AS (
+       UPDATE loopway.thread_subjects k SET thread_id = target.id
+       FROM target WHERE k.bot_id = $1::uuid AND k.subject = $2 AND k.thread_id = $3::uuid RETURNING k.subject
+     ),
+     msgs AS (
+       UPDATE loopway.thread_messages tm SET thread_id = target.id
+       FROM target
+       WHERE tm.bot_id = $1::uuid AND tm.thread_id = $3::uuid AND tm.subject = $2 AND tm.state = 'waiting'
+         AND EXISTS (SELECT 1 FROM moved)
+       RETURNING tm.message_id
+     ),
+     resumed AS (
+       UPDATE loopway.threads t SET status = 'active', updated_at = now()
+       FROM target WHERE t.id = target.id AND EXISTS (SELECT 1 FROM moved) RETURNING t.id
+     )
+     SELECT count(*)::int AS n FROM moved`,
+    [botId, subject, fromThreadId, toThreadId],
   );
   return row!.n > 0;
 }

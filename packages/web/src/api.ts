@@ -9,7 +9,7 @@ import { isUuid, LOGIN_CODE_RE, normalizeLoginCode } from "./ids.js";
 import { ANONYMOUS, noopMetrics, type Metrics } from "./metrics.js";
 import { BOT_MODELS } from "./models.js";
 import { createPosthogProxy } from "./posthog-proxy.js";
-import { sources } from "./sources/index.js";
+import { sources } from "./sources.js";
 import * as store from "./store.js";
 import type { MessageRow, Inbox, User } from "./store.js";
 import { signSessionToken, verifyToken } from "./tokens.js";
@@ -379,6 +379,12 @@ export function createApi(opts: ApiOptions) {
     return c.json(serializeBot(updated));
   });
 
+  authed.get("/bots/:botId/versions", async (c) => {
+    const bot = await ownedBot(c);
+    const rows = await store.listBotVersions(c.var.db, bot.id);
+    return c.json({ data: rows.map((v) => ({ ...v, created_at: iso(v.created_at) })) });
+  });
+
   authed.post("/bots/:botId/versions", async (c) => {
     const bot = await ownedBot(c);
     const input = z.object({ prompt: promptBody, rules: rulesBody.optional() }).parse(await jsonBody(c));
@@ -542,6 +548,18 @@ export function createApi(opts: ApiOptions) {
     if (!(await store.patchThread(c.var.db, bot.id, lease_token, thread.id, { ...fields, addSubjects: add_subjects })))
       throw runnerNotLeased();
     return c.json(serializeThread((await store.getThread(c.var.db, bot.id, thread.id))!));
+  });
+
+  // The manual repair for a subject that landed on the wrong thread: from this thread to `to_thread_id`. Needs no lease, like release.
+  authed.post("/bots/:botId/threads/:threadId/move-subject", async (c) => {
+    const bot = await ownedBot(c);
+    const from = await existingThread(c, bot);
+    const input = z.object({ subject: z.string().min(1).max(500), to_thread_id: uuid }).parse(await jsonBody(c));
+    const to = await existingThread(c, bot, input.to_thread_id);
+    if (to.id === from.id) throw new ApiError(400, "invalid_request", "The subject is already on that thread");
+    if (!(await store.moveSubject(c.var.db, bot.id, input.subject, from.id, to.id)))
+      throw new ApiError(404, "not_found", `Subject ${input.subject} isn't on thread ${from.id}`);
+    return c.json(serializeThread((await store.getThread(c.var.db, bot.id, to.id))!));
   });
 
   authed.post("/bots/:botId/threads/:threadId/deliver", async (c) => {

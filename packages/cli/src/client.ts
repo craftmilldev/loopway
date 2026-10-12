@@ -284,6 +284,11 @@ export class LoopwayClient {
     return this.request<Bot>("POST", "/bots", input);
   }
 
+  /** Every version of the bot, newest first. */
+  async listBotVersions(botId: string) {
+    return (await this.request<{ data: BotVersion[] }>("GET", `/bots/${enc(botId)}/versions`)).data;
+  }
+
   /** Saves a new version for the bot; it becomes the bot's current one. Without `rules` it keeps the current ones. */
   addBotVersion(botId: string, prompt: string, rules?: BotRule[]) {
     return this.request<BotVersion>("POST", `/bots/${enc(botId)}/versions`, { prompt, rules });
@@ -360,6 +365,15 @@ export class LoopwayClient {
   /** Gives the thread up so a runner can claim it: for when its runner is gone. Needs no lease. */
   releaseThread(botId: string, threadId: string) {
     return this.request<Thread>("POST", `/bots/${enc(botId)}/threads/${enc(threadId)}/release`, {});
+  }
+
+  /**
+   * Moves a subject (`owner/repo#number`) from one thread of the bot to another, with its waiting messages, and
+   * resumes the target if it ended. Needs no lease. 404 if the subject isn't on `fromThreadId` or a thread isn't the bot's.
+   */
+  moveSubject(botId: string, subject: string, fromThreadId: string, toThreadId: string) {
+    const path = `/bots/${enc(botId)}/threads/${enc(fromThreadId)}/move-subject`;
+    return this.request<Thread>("POST", path, { subject, to_thread_id: toThreadId });
   }
 
   patchThread(botId: string, threadId: string, input: ThreadPatch & { lease_token: string }) {

@@ -106,6 +106,8 @@ export class Dispatcher {
   private queued = 0;
   /** While a run says the account hit its usage limit: when the limit resets (ms), until which nothing is delivered. */
   private limitedUntil = 0;
+  /** Bot id → the newest version that was ignored because its rules don't parse. */
+  private readonly rejected = new Map<string, number>();
   /** Thread id → consecutive API-error retries so far, and when the next one may start (ms). */
   private readonly errored = new Map<string, { retries: number; after: number }>();
   /** Whether a run has exited since the last tick started, and who to tell when one does. */
@@ -177,6 +179,7 @@ export class Dispatcher {
     for (const bot of this.bots) {
       try {
         if (await this.lease(bot)) {
+          await this.refreshVersion(bot);
           if (!this.reconciled.has(bot.id)) {
             await this.reconcile(bot);
             this.reconciled.add(bot.id);
@@ -189,6 +192,31 @@ export class Dispatcher {
       }
     }
     await this.deliverAll();
+  }
+
+  /**
+   * Switches the bot to its newest version when it has a new one: its rules route the messages from now on, and its
+   * prompt starts the threads that start from now on. A version whose rules don't parse is reported once and ignored,
+   * so the previous one keeps running.
+   */
+  private async refreshVersion(bot: Bot): Promise<void> {
+    const version = (await this.client.getBot(bot.id)).prompt_version;
+    if (!version || version.version === bot.prompt_version?.version || version.version === this.rejected.get(bot.id))
+      return;
+    try {
+      if (!version.rules) throw new Error("it has no rules");
+      checkRules(version.rules);
+    } catch (err) {
+      this.rejected.set(bot.id, version.version);
+      this.ctx.out(
+        `bot ${bot.name}: ignoring version ${version.version}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+    this.rules.set(bot.id, version.rules);
+    this.prompts.set(bot.id, version.prompt);
+    bot.prompt_version = version;
+    this.ctx.out(`bot ${bot.name}: now on version ${version.version}`);
   }
 
   /** The threads of this runner's bots, and the messages waiting on this runner's, as of now. */

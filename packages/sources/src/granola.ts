@@ -1,8 +1,6 @@
 import { createHmac } from "node:crypto";
 import { z } from "zod";
-import { makeCloudEvent } from "../cloudevents.js";
-import { safeEqual } from "../ids.js";
-import type { SourceAdapter } from "./types.js";
+import type { SourceAdapter, SourceDeps } from "./types.js";
 
 /**
  * Granola webhooks → CloudEvents. Granola signs with the Standard Webhooks scheme:
@@ -41,7 +39,7 @@ const configInput = z
   })
   .strict();
 
-export const granola: SourceAdapter<GranolaConfig> = {
+export const granola = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter<GranolaConfig> => ({
   type: "granola",
   label: "Granola",
   description: "Granola note webhooks (Business/Enterprise plans), verified with the webhook-signature header.",
@@ -132,4 +130,4 @@ export const granola: SourceAdapter<GranolaConfig> = {
       }),
     };
   },
-};
+});

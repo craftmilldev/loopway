@@ -3,7 +3,7 @@
 - **Stack:** TypeScript + [Hono](https://hono.dev), zero-config on Vercel.
 - **DB:** Postgres everywhere. Locally [PGlite](https://pglite.dev) (embedded, no server); on Vercel, [Neon](https://neon.tech) via `DATABASE_URL`. Same SQL on both.
 - **Data types:** `User` → owns `Inbox`es → which receive `Message`s; a `Bot` reads the messages of one or more inboxes.
-- **Sources:** `github`, `granola`, `linear`, `loopway`, `vercel` (more can be added in `packages/web/src/sources/`, see [Adding a source](#adding-a-source)).
+- **Sources:** `github`, `granola`, `linear`, `loopway`, `vercel` (more can be added in `packages/sources/src/`, see [Adding a source](#adding-a-source)).
 - **Packages:** npm workspaces — [`packages/web`](../packages/web) (the server) and [`packages/cli`](../packages/cli) (the `loopway` command, a client of the [API](api.md)).
 
 ## Run locally
@@ -45,14 +45,18 @@ The pages are a React app in `packages/web/client/`. The homepage copy is markdo
 ## Layout
 
 ```
+packages/sources/
+  src/                  one file per source (github.ts, granola.ts, linear.ts, vercel.ts): its webhook adapter, a function of the
+                        SourceDeps (ids, secrets, CloudEvent validation) the host injects, and optionally its rule helpers;
+                        index.ts registers them (createSources)
 packages/web/
+  src/sources.ts        the sources, wired to the server's real SourceDeps
+  src/cloudevents.ts    CloudEvent validation
   src/index.ts          Vercel entry (default-exports the Hono app)
   src/api.ts            routes, auth, serialization
   src/ui.ts             web UI: home, /login, /dashboard (HTML + vanilla JS + styles)
   src/store.ts          all SQL
   src/db/               driver adapter (PGlite | postgres.js) + migrations
-  src/sources/          one file per source adapter (github.ts, granola.ts, linear.ts, vercel.ts); index.ts registers them in a SourceRegistry
-  src/cloudevents.ts    CloudEvent type + validation
   scripts/              dev server, migrate
   test/api.test.ts      end-to-end tests (TEST_DATABASE_URL=... to run against real Postgres)
   test/sources/         one webhook test file per source
@@ -64,7 +68,7 @@ packages/cli/
   src/config.ts         ~/.loopway/config.json
   src/mcp.ts            minimal MCP server (HTTP, localhost) the bots dispatcher serves to its sessions
   src/bots/             `loopway bots run`: dispatcher.ts (lease, read, assign, deliver), kinds.ts (bot kind → prompt + starting rules),
-                        rules.ts (CEL assign rules: message → thread), sources/ (per-source rule helpers + starting rules),
+                        rules.ts (CEL assign rules: message → thread, with the sources' rule helpers),
                         tools.ts (MCP link/end), agent.ts (claude -p),
                         tui.tsx (the Ink TUI), transcript.ts (stream-json log → readable lines)
   src/bots/defaults/    default bots: github-threads/ has its prompt and starting rules
@@ -74,10 +78,11 @@ packages/cli/
 
 ### Adding a source
 
-1. Add `packages/web/src/sources/<type>.ts` implementing `SourceAdapter` (`types.ts`):
+1. Add `packages/sources/src/<type>.ts` exporting a function from `SourceDeps` to a `SourceAdapter` (`types.ts`); use the injected `newSecret`, `uuidv7`, `safeEqual` and `makeCloudEvent` rather than importing your own:
    - what clients show: `label`, `description`, common `events`, `secret` (`{from: "loopway", minLength}` if loopway makes it, `{from: "sender"}` if the sender shows one after the webhook is added) and `webhookSettings`
+   - optional `rules`: the CEL helpers (`<type>_<helper>`) bot rules can call on its event types
    - `parseConfig` (validate + defaults), `publicConfig`, optional `setup`, and `receive(headers, rawBody) → event | ignored | rejected`
-2. Add it to the list in `packages/web/src/sources/index.ts`.
+2. Add it to `createSources` in `packages/sources/src/index.ts`.
 3. Add `packages/web/test/sources/<type>.test.ts` (`test/helpers.ts` gives it an app and database) and write `docs/sources/<type>.md` (config, setup in the sender, delivery rules, CloudEvent mapping) like the [existing ones](sources/).
 
 Nothing else names a source: the API, `loopway inbox create` and the dashboard build their forms from `GET /sources`, and the inbox page offers a secret form for any `sender` source.

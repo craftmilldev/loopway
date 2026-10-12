@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Environment } from "@marcbachmann/cel-js";
 import type { BotRule, Message } from "../client.js";
-import { RULE_SOURCES } from "./sources/index.js";
+import { createSources, NO_DEPS } from "@loopway/sources";
 
 /** Where `route` sends a message: a thread, the subjects to add to it, and the message's own subject for display. */
 export interface Routed {
@@ -20,7 +20,8 @@ export interface Routed {
  * - `regex_all(text, pattern)` and `regex_all(text, pattern, flags)`: the first capture group (or the whole match if
  *   the pattern has none) of every match of a JavaScript regular expression in the text, as a list of strings.
  *   `flags` are JavaScript regex flags such as "i" or "m". The rule decides what counts as a match.
- * - Helpers a source defines for rules on its own event types, named `<source>_<helper>` (see RuleSource).
+ * - Helpers a source defines for rules on its own event types, named `<source>_<helper>` (see `rules` on
+ *   SourceAdapter in @loopway/sources).
  */
 const base = new Environment({ unlistedVariablesAreDyn: true })
   .registerFunction("regex_all(string, string): list<string>", (text: string, pattern: string) =>
@@ -34,19 +35,10 @@ function regexAll(text: string, pattern: string, flags: string): string[] {
   return [...text.matchAll(new RegExp(pattern, flags.includes("g") ? flags : flags + "g"))].map((m) => m[1] ?? m[0]);
 }
 
-/**
- * A source's contribution to rules: the helpers its event types' rules can call. Each source defines its own in
- * sources/<source>.ts and is listed in RULE_SOURCES.
- */
-export interface RuleSource {
-  /** The event type prefix of the source, e.g. "com.github.". */
-  prefix: string;
-  /** Adds the source's helpers, named `<source>_<helper>`, to an environment. */
-  extend(env: Environment): Environment;
-}
-
 /** Each source's environment, for the rules whose type globs all start with its prefix. */
-const sourceEnvs = RULE_SOURCES.map((s) => ({ prefix: s.prefix, env: s.extend(base.clone()) }));
+const sourceEnvs = createSources(NO_DEPS)
+  .rules()
+  .map(([prefix, extend]) => ({ prefix, env: extend(base.clone()) }));
 
 /** The environment a rule runs in: its source's, if all its types are that source's, else the base one. */
 function envFor(rule: BotRule): Environment {

@@ -315,4 +315,44 @@ describe("thread writes", () => {
         .status,
     ).toBe(404);
   });
+  it("moves a subject and its waiting messages to another thread, and resumes an ended target", async () => {
+    const { key, base, messages, assign, thread, leaseThread } = await setup(3);
+    const [t1, t2] = [randomUUID(), randomUUID()];
+    await assign([
+      { message_id: messages[0]!.id, thread_id: t1, add_subjects: ["o/r#1"], subject: "o/r#1" },
+      { message_id: messages[1]!.id, thread_id: t1, add_subjects: ["o/r#2"], subject: "o/r#2" },
+      { message_id: messages[2]!.id, thread_id: t2, add_subjects: ["o/r#3"], subject: "o/r#3" },
+    ]);
+    const lease = await leaseThread(t2);
+    await call("PATCH", `${base}/threads/${t2}`, { key, body: { lease_token: lease, status: "ended" } });
+
+    const move = (from: string, to: string, subject: string) =>
+      call("POST", `${base}/threads/${from}/move-subject`, { key, body: { subject, to_thread_id: to } });
+    const moved = await move(t1, t2, "o/r#1");
+    expect(moved.status).toBe(200);
+    expect(moved.body).toMatchObject({ id: t2, status: "active", subjects: ["o/r#1", "o/r#3"] });
+    expect(moved.body.waiting.map((m: any) => m.id).sort()).toEqual([messages[0]!.id, messages[2]!.id].sort());
+    const old = (await thread(t1)).body;
+    expect(old.subjects).toEqual(["o/r#2"]);
+    expect(old.waiting.map((m: any) => m.id)).toEqual([messages[1]!.id]);
+
+    expect((await move(t1, t2, "o/r#1")).status).toBe(404);
+    expect((await move(t1, t1, "o/r#2")).status).toBe(400);
+    expect((await move(t1, t2, "o/r#9")).status).toBe(404);
+    expect((await move(t1, randomUUID(), "o/r#2")).status).toBe(404);
+  });
+
+  it("won't move a subject to another bot's thread", async () => {
+    const { key, messages, assign } = await setup(1);
+    const t1 = randomUUID();
+    await assign([{ message_id: messages[0]!.id, thread_id: t1, add_subjects: ["o/r#1"] }]);
+    const sibling = (
+      await call("POST", "/bots", { key, body: { name: "s", kind: "k", model: "sonnet", inbox_ids: [] } })
+    ).body;
+    const r = await call("POST", `/bots/${sibling.id}/threads/${t1}/move-subject`, {
+      key,
+      body: { subject: "o/r#1", to_thread_id: randomUUID() },
+    });
+    expect(r.status).toBe(404);
+  });
 });

@@ -1,4 +1,34 @@
-import type { CloudEvent } from "../cloudevents.js";
+import type { Environment } from "@marcbachmann/cel-js";
+
+/** CloudEvents v1.0, structured-mode JSON representation. https://github.com/cloudevents/spec */
+export interface CloudEvent {
+  specversion: "1.0";
+  id: string;
+  source: string;
+  type: string;
+  subject?: string;
+  time?: string;
+  datacontenttype?: string;
+  dataschema?: string;
+  data?: unknown;
+  /** Extension attributes: lowercase a-z0-9, max 20 chars. */
+  [extension: string]: unknown;
+}
+
+/**
+ * What sources need from their host but don't own: ids, secrets, signature comparison and CloudEvent
+ * validation. The host passes them in, so tests can pin them and get the same output every time.
+ */
+export interface SourceDeps {
+  /** A fresh webhook signing secret. */
+  newSecret: () => string;
+  /** A time-ordered UUID for the given time. */
+  uuidv7: (now?: number) => string;
+  /** Constant-time string comparison. */
+  safeEqual: (a: string, b: string) => boolean;
+  /** Validates the required attributes and drops empty ones. Throws on an invalid event. */
+  makeCloudEvent: (e: CloudEvent) => CloudEvent;
+}
 
 export interface IncomingWebhook {
   headers: Headers;
@@ -23,7 +53,14 @@ export type ReceiveResult =
 export type SecretOrigin = { from: "loopway"; minLength: number } | { from: "sender" };
 
 /**
- * A source type defines how an inbox is configured and how a raw webhook becomes a CloudEvent.
+ * A source's contribution to bot rules: for each event type prefix it owns (e.g. "com.github."), a function that
+ * adds its helpers, named `<source>_<helper>`, to a CEL environment.
+ */
+export type SourceRules = Record<string, (env: Environment) => Environment>;
+
+/**
+ * A source type defines how an inbox is configured, how a raw webhook becomes a CloudEvent, and
+ * optionally the helpers bot rules can call on its events.
  * Add a new one by implementing this and registering it in ./index.ts. The API, the CLI and the
  * dashboard only read what's here, so nothing else needs to change.
  */
@@ -43,5 +80,7 @@ export interface SourceAdapter<Config = unknown> {
   publicConfig(config: Config): unknown;
   /** Setup hints shown on inbox responses (e.g. which content type to pick in GitHub). */
   setup?(config: Config, webhookUrl: string): Record<string, unknown>;
+  /** Helpers for bot rules on this source's event types. */
+  rules?: SourceRules;
   receive(req: IncomingWebhook, config: Config): ReceiveResult | Promise<ReceiveResult>;
 }

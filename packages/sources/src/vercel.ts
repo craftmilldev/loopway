@@ -1,9 +1,7 @@
 import { createHmac } from "node:crypto";
 import { z } from "zod";
-import { makeCloudEvent } from "../cloudevents.js";
-import { safeEqual } from "../ids.js";
 import { get, str, type Payload } from "./payload.js";
-import type { SourceAdapter } from "./types.js";
+import type { SourceAdapter, SourceDeps } from "./types.js";
 
 /**
  * Vercel webhooks → CloudEvents. Vercel sends `{id, type, createdAt, region, payload}`:
@@ -77,7 +75,7 @@ const TEAM_PATHS = ["team.id", "teamId", "newTeamId"];
 
 const API = "https://api.vercel.com";
 
-export const vercel: SourceAdapter<VercelConfig> = {
+export const vercel = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter<VercelConfig> => ({
   type: "vercel",
   label: "Vercel",
   description: "Vercel account/integration webhooks, verified with X-Vercel-Signature.",
@@ -168,7 +166,7 @@ export const vercel: SourceAdapter<VercelConfig> = {
       }),
     };
   },
-};
+});
 
 /** Vercel documents createdAt as both a millisecond timestamp and an ISO string. */
 function toIso(v: unknown): string | undefined {
