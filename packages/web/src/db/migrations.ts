@@ -1,9 +1,3 @@
-import { PRESETS } from "@loopway/presets";
-
-// A text value for a migration's SQL, as hex so nothing in it (a `;` at a line end) can trip the statement splitting.
-const lit = (v: string) => `convert_from(decode('${Buffer.from(v).toString("hex")}', 'hex'), 'UTF8')`;
-const githubThreads = PRESETS["github-threads"]!;
-
 /**
  * Migrations live in TS (not .sql files) so they're bundled into the Vercel function.
  * Append new entries; never edit an applied one.
@@ -313,15 +307,9 @@ UPDATE loopway.bot_versions SET rules = (rules #>> '{}')::jsonb WHERE jsonb_type
 `,
   },
   {
-    // A bot is its prompt and rules, not a kind. Bots with no version get the `github-threads` preset's, which is what
-    // `loopway bots run` used to backfill.
+    // A bot is its prompt and rules, not a kind.
     version: "014_drop_bot_kind",
     sql: `
-INSERT INTO loopway.bot_versions (bot_id, version, prompt, rules)
-SELECT b.id, 1, ${lit(githubThreads.prompt)}, ${lit(JSON.stringify(githubThreads.rules))}::jsonb
-FROM loopway.bots b
-WHERE NOT EXISTS (SELECT 1 FROM loopway.bot_versions v WHERE v.bot_id = b.id);
-
 ALTER TABLE loopway.bots DROP COLUMN kind;
 `,
   },
