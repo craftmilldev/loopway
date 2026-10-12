@@ -3,7 +3,6 @@ import {
   ApiError,
   type Assignment,
   type Bot,
-  type BotRule,
   type Lease,
   type LoopwayClient,
   type Message,
@@ -18,7 +17,7 @@ import { startMcpServer, type McpServer } from "../mcp.js";
 import { spawnClaude, type RunAgent, type RunOutcome } from "./agent.js";
 import { botEnv } from "./github.js";
 import { BOT_KINDS } from "./kinds.js";
-import { checkRules, route } from "@loopway/rules";
+import { checkRules, route, type BotRule } from "@loopway/rules";
 import { sessionTools } from "./tools.js";
 import { sessionLogPath } from "./transcript.js";
 

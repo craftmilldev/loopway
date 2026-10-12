@@ -1,4 +1,4 @@
-import type { BotRule } from "../../../client.js";
+import type { BotRule } from "@loopway/rules";
 
 /** The assign rules of the default `github-threads` bot. They use the helpers of the GitHub source. */
 export const GITHUB_THREADS_RULES: BotRule[] = [
