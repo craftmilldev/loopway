@@ -21,6 +21,10 @@ Credentials are stored in ~/.loopway/config.json by \`loopway login\`.
 LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     );
 
+  program.hook("preAction", async (_, action) => {
+    await ctx.metrics?.capture("cli_command", { command: action.name() });
+  });
+
   const jsonOpt = () => new Option("--json", "print raw JSON");
 
   // ---------- auth ----------

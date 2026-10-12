@@ -148,13 +148,27 @@ describe("auth", () => {
   });
 
   it("loadConfig: env over config.json over defaults; trailing slashes dropped on save", async () => {
-    expect(await loadConfig(configDir, {})).toEqual({ api_url: "https://loopway.craftmill.dev", api_key: undefined });
+    const us = "https://us.i.posthog.com";
+    expect(await loadConfig(configDir, {})).toEqual({
+      api_url: "https://loopway.craftmill.dev",
+      api_key: undefined,
+      posthog_host: us,
+    });
     await writeConfig(configDir, { api_url: "https://file.test/", api_key: "lw_file" });
-    expect(await loadConfig(configDir, {})).toEqual({ api_url: "https://file.test", api_key: "lw_file" });
+    expect(await loadConfig(configDir, {})).toEqual({
+      api_url: "https://file.test",
+      api_key: "lw_file",
+      posthog_host: us,
+    });
     expect(await loadConfig(configDir, { LOOPWAY_API_URL: "https://env.test", LOOPWAY_API_KEY: "lw_env" })).toEqual({
       api_url: "https://env.test",
       api_key: "lw_env",
+      posthog_host: us,
     });
+    // The metrics host lives in config.json (which login and config keep), and POSTHOG_HOST overrides it.
+    await writeConfig(configDir, { api_url: "https://file.test", posthog_host: "https://eu.i.posthog.com" });
+    expect((await loadConfig(configDir, {})).posthog_host).toBe("https://eu.i.posthog.com");
+    expect((await loadConfig(configDir, { POSTHOG_HOST: "https://ph.test" })).posthog_host).toBe("https://ph.test");
   });
 
   it("loadGithubBot: env over config.json; all three or none; config and login keep it", async () => {

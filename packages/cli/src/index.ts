@@ -3,18 +3,25 @@ import { ApiError } from "./client.js";
 import { defaultConfigDir, NotLoggedInError } from "./config.js";
 import { CancelledError, UsageError } from "./context.js";
 import { red } from "./format.js";
+import { createMetrics } from "./metrics.js";
 import { createProgram } from "./program.js";
 
+const configDir = defaultConfigDir();
+const metrics = createMetrics(configDir);
 const program = createProgram({
-  configDir: defaultConfigDir(),
+  configDir,
   env: process.env,
   interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
   out: (text) => process.stdout.write(text + "\n"),
+  metrics,
 });
 
 try {
   await program.parseAsync();
 } catch (err) {
+  // Counted by kind, so the metrics show where commands stop.
+  const kind = err instanceof ApiError ? `api:${err.code}` : err instanceof Error ? err.constructor.name : "unknown";
+  await metrics.capture("cli_error", { kind });
   if (err instanceof CancelledError) process.exit(130);
   if (err instanceof ApiError) {
     console.error(

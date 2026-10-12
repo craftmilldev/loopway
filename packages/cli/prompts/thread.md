@@ -28,6 +28,12 @@ thread, and `end` tells it this thread's work is finished.
   EnterWorktree (`path`: `.claude/worktrees/issue-<N>-<slug>`) before touching code.
 - Read the surrounding code and match its style. Implement what the issue asks and
   nothing more; don't add tables, abstractions or features it didn't ask for.
+- Metrics instrumentation is key. Every feature or change should record PostHog product metrics
+  for what users do with it and, above all, for each place it can stop or fail (a rejected input,
+  an error code, a give-up), so we can see how often each happens. Use the existing `metrics`
+  modules in `packages/web/src/metrics.ts` and `packages/cli/src/metrics.ts`; they're no-ops
+  without `POSTHOG_API_KEY`. Name events for the outcome, keep properties low-cardinality, and
+  never put emails, tokens or message contents in them. Mention new events in the PR.
 - Run typecheck and tests before pushing. If a test fails, rerun it on the unmodified code
   to see whether it was already flaky, and say so.
 - If a decision is truly the user's and the answer changes what you build, ask. Otherwise
