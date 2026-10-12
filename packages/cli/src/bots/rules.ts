@@ -53,8 +53,8 @@ export function checkRules(rules: BotRule[]): void {
  * message's own, "" for none) and `related` ones, and its `action` says what to do with them:
  *
  * - `skip`: move on to the next rule.
- * - `attach`: attach the message to the thread holding a subject (the related ones first, in order, then the own
- *   one), or to a new thread if none does, and stop. This is the default.
+ * - `attach`: attach the message to the thread holding the subject (the own one first, then the related ones in
+ *   order), or to a new thread if none does, and stop. This is the default.
  *
  * A message that no rule attached is dropped. `add_subjects` is every subject the rule found that no thread holds
  * yet. Ones another thread holds stay there.
@@ -68,9 +68,7 @@ export function route(rules: readonly BotRule[], held: ReadonlyMap<string, strin
     const key = (rule.subject !== undefined && (base.evaluate(rule.subject, vars) as string)) || undefined;
     const related = rule.related !== undefined ? (base.evaluate(rule.related, vars) as string[]) : [];
     const subjects = key ? [key, ...related] : [];
-    // A related subject's thread wins over the message's own: a PR belongs with the issue it closes, even when a
-    // session already linked the PR to another thread.
-    const found = [...related, ...(key ? [key] : [])].map((s) => held.get(s)).find(Boolean);
+    const found = subjects.map((s) => held.get(s)).find(Boolean);
     const action =
       rule.action === undefined
         ? "attach"
