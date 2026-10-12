@@ -292,7 +292,7 @@ ALTER TABLE loopway.bot_versions ENABLE ROW LEVEL SECURITY;
 `,
   },
   {
-    // A version also holds the bot's assign rules (see BotRule in store.ts). Versions made before this have none until
+    // A version also holds the bot's assign rules (see BotRule in @loopway/rules). Versions made before this have none until
     // a runner posts a new version with its kind's rules.
     version: "012_bot_version_rules",
     sql: `
