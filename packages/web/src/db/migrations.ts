@@ -313,17 +313,14 @@ UPDATE loopway.bot_versions SET rules = (rules #>> '{}')::jsonb WHERE jsonb_type
 `,
   },
   {
-    // A bot is its prompt and rules, not a kind. Bots with no version, or one saved before rules, get the
-    // `github-threads` preset's (keeping the prompt they have), which is what `loopway bots run` used to backfill.
+    // A bot is its prompt and rules, not a kind. Bots with no version get the `github-threads` preset's, which is what
+    // `loopway bots run` used to backfill.
     version: "014_drop_bot_kind",
     sql: `
 INSERT INTO loopway.bot_versions (bot_id, version, prompt, rules)
-SELECT b.id, COALESCE(v.version, 0) + 1, COALESCE(v.prompt, ${lit(githubThreads.prompt)}), ${lit(JSON.stringify(githubThreads.rules))}::jsonb
+SELECT b.id, 1, ${lit(githubThreads.prompt)}, ${lit(JSON.stringify(githubThreads.rules))}::jsonb
 FROM loopway.bots b
-LEFT JOIN LATERAL (
-  SELECT version, prompt, rules FROM loopway.bot_versions WHERE bot_id = b.id ORDER BY version DESC LIMIT 1
-) v ON true
-WHERE v.rules IS NULL;
+WHERE NOT EXISTS (SELECT 1 FROM loopway.bot_versions v WHERE v.bot_id = b.id);
 
 ALTER TABLE loopway.bots DROP COLUMN kind;
 `,
