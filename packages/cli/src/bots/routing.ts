@@ -64,7 +64,9 @@ export function checkRules(rules: Rule[]): void {
       try {
         env.parse(expression);
       } catch (err) {
-        throw new Error(`Rule ${i + 1}'s ${field} doesn't parse: ${err instanceof Error ? err.message : String(err)}`);
+        throw new Error(`Rule ${i + 1}'s ${field} doesn't parse: ${err instanceof Error ? err.message : String(err)}`, {
+          cause: err,
+        });
       }
     }
   });
