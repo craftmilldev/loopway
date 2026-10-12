@@ -320,6 +320,19 @@ export function createApi(opts: ApiOptions) {
 
   const promptBody = z.string().min(1).max(100_000);
 
+  const expressionBody = z.string().min(1).max(10_000);
+
+  const rulesBody = z
+    .array(
+      z.object({
+        types: z.array(z.string().min(1).max(200)).min(1).max(50),
+        subject: expressionBody.optional(),
+        related: expressionBody.optional(),
+        skip: expressionBody.optional(),
+      }),
+    )
+    .max(100);
+
   authed.get("/bots", async (c) => {
     const rows = await store.listBots(c.var.db, c.var.user.id);
     return c.json({ data: rows.map(serializeBot) });
@@ -333,6 +346,7 @@ export function createApi(opts: ApiOptions) {
         model: modelBody,
         inbox_ids: inboxIdsBody,
         prompt: promptBody.optional(),
+        rules: rulesBody.optional(),
       })
       .parse(await jsonBody(c));
     const bot = await store.createBot(c.var.db, {
@@ -342,6 +356,7 @@ export function createApi(opts: ApiOptions) {
       model: input.model,
       inboxIds: await ownedInboxIds(c, input.inbox_ids),
       prompt: input.prompt,
+      rules: input.rules,
     });
     return c.json(serializeBot(bot), 201);
   });
@@ -367,8 +382,8 @@ export function createApi(opts: ApiOptions) {
 
   authed.post("/bots/:botId/versions", async (c) => {
     const bot = await ownedBot(c);
-    const input = z.object({ prompt: promptBody }).parse(await jsonBody(c));
-    return c.json(await store.addBotVersion(c.var.db, bot.id, input.prompt), 201);
+    const input = z.object({ prompt: promptBody, rules: rulesBody }).parse(await jsonBody(c));
+    return c.json(await store.addBotVersion(c.var.db, bot.id, input), 201);
   });
 
   authed.delete("/bots/:botId", async (c) => {
@@ -742,7 +757,7 @@ function serializeBot(b: store.Bot) {
     kind: b.kind,
     model: b.model,
     inbox_ids: b.inbox_ids,
-    prompt_version: b.prompt_version,
+    version: b.version,
     cursor: Number(b.cursor),
     runner_id: b.runner_id,
     leased_until: b.locked_until && new Date(b.locked_until) > new Date() ? iso(b.locked_until) : null,

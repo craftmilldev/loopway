@@ -10,7 +10,7 @@ import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { LoopwayClient, type Bot, type Message } from "../src/client.js";
-import { route } from "../src/bots/routing.js";
+import { compileRules, GITHUB_RULES } from "../src/bots/routing.js";
 import { LIMIT_FALLBACK_MS, LimitWatch, threadPrompt, type AgentRun, type RunOutcome } from "../src/bots/agent.js";
 import { API_ERROR_BACKOFF_MS, Dispatcher, NETWORK_ERROR_MAX_BACKOFF_MS } from "../src/bots/dispatcher.js";
 import { defaultTtl } from "../src/commands/bots-run.js";
@@ -1016,6 +1016,7 @@ describe("threads", () => {
   });
 
   it("route: own subject first, then the first closed issue a thread holds; adds only subjects nobody holds", () => {
+    const route = compileRules(GITHUB_RULES);
     const message = (n: number, body: string) =>
       ({
         id: randomUUID(),
@@ -1048,6 +1049,33 @@ describe("threads", () => {
     const fresh = route(held, message(7, "Closes #8"))!;
     expect(fresh).toMatchObject({ add_subjects: ["a/b#7", "a/b#8"], key: "a/b#7" });
     expect(["t1", "t2"]).not.toContain(fresh.thread_id);
+  });
+
+  it("route: CI with no PR and unthreaded `future` issues are dropped; custom rules decide the subjects", () => {
+    const route = compileRules(GITHUB_RULES);
+    const msg = (type: string, data: unknown) =>
+      ({ id: randomUUID(), inbox_id: "in", seq: 1, received_at: "", event: { type, data } }) as unknown as Message;
+    const held = new Map([["a/b#4", "t4"]]);
+    const ci = (prs: { number: number }[]) =>
+      msg("com.github.check_run.completed", { repository, check_run: { pull_requests: prs } });
+    expect(route(held, ci([]))).toBeUndefined();
+    expect(route(held, ci([{ number: 4 }]))).toEqual({ thread_id: "t4", add_subjects: [], key: "a/b#4" });
+    const issue = (n: number) =>
+      msg("com.github.issues.opened", { repository, issue: { number: n, labels: [{ name: "future" }] } });
+    expect(route(held, issue(5))).toBeUndefined();
+    expect(route(held, issue(4))).toMatchObject({ thread_id: "t4" });
+    // A push has no issue or PR: it gets a thread of its own with no subjects.
+    expect(route(held, msg("com.github.push", { repository }))).toMatchObject({ add_subjects: [], key: undefined });
+
+    const custom = compileRules([
+      { types: ["org.example.*"], subject: "event.data.id", related: "event.data.parents" },
+    ]);
+    expect(custom(new Map([["p1", "tp"]]), msg("org.example.created", { id: "c1", parents: ["p1", "p2"] }))).toEqual({
+      thread_id: "tp",
+      add_subjects: ["c1", "p2"],
+      key: "c1",
+    });
+    expect(() => compileRules([{ types: ["x"], subject: "event.data.(" }])).toThrow(/Rule 1's subject doesn't parse/);
   });
 
   it("leaves threads owned by another runner alone, and shows them as on that runner", async () => {

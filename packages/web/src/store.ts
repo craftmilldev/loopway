@@ -206,6 +206,22 @@ export async function getMessage(db: Db, inboxId: string, messageId: string): Pr
 
 // ---------- Bots ----------
 
+/** A rule for turning a bot's messages into subjects; the CLI evaluates them. */
+export interface BotRule {
+  types: string[];
+  subject?: string;
+  related?: string;
+  skip?: string;
+}
+
+/** One saved revision of a bot's instructions. `rules` is null on versions made before bots had rules. */
+export interface BotVersion {
+  version: number;
+  prompt: string;
+  rules: BotRule[] | null;
+  created_at: string;
+}
+
 export interface Bot {
   id: string;
   user_id: string;
@@ -216,8 +232,8 @@ export interface Bot {
   /** bigint: the `seq` of the last message the bot has read past. */
   cursor: string | bigint;
   inbox_ids: string[];
-  /** The bot's newest prompt version; null for a bot that has none yet. */
-  prompt_version: { version: number; prompt: string; created_at: string } | null;
+  /** The bot's newest version; null for a bot that has none yet. */
+  version: BotVersion | null;
   /** The runner's lease: see leaseBot(). runner_id is who holds it, if the lease asked to say. */
   lock_token: string | null;
   locked_until: Date | null;
@@ -229,8 +245,8 @@ const BOT_COLS = `
   b.id, b.user_id, b.name, b.kind, b.model, b.cursor, b.lock_token, b.locked_until, b.runner_id, b.created_at,
   COALESCE((SELECT jsonb_agg(bi.inbox_id ORDER BY bi.inbox_id) FROM loopway.bot_inboxes bi WHERE bi.bot_id = b.id),
            '[]'::jsonb) AS inbox_ids,
-  (SELECT jsonb_build_object('version', v.version, 'prompt', v.prompt, 'created_at', v.created_at)
-   FROM loopway.bot_versions v WHERE v.bot_id = b.id ORDER BY v.version DESC LIMIT 1) AS prompt_version`;
+  (SELECT jsonb_build_object('version', v.version, 'prompt', v.prompt, 'rules', v.rules, 'created_at', v.created_at)
+   FROM loopway.bot_versions v WHERE v.bot_id = b.id ORDER BY v.version DESC LIMIT 1) AS version`;
 
 /**
  * Messages that commit out of seq order (two webhooks landing at once) would be skipped by a cursor that had
@@ -244,7 +260,15 @@ const inboxIds = (param: string) => `(SELECT value::uuid FROM jsonb_array_elemen
 /** The inboxes must belong to the user (bot_inboxes' keys enforce it). The cursor starts at their newest message. */
 export async function createBot(
   db: Db,
-  input: { userId: string; name: string; kind: string; model: string; inboxIds: string[]; prompt?: string },
+  input: {
+    userId: string;
+    name: string;
+    kind: string;
+    model: string;
+    inboxIds: string[];
+    prompt?: string;
+    rules?: BotRule[];
+  },
 ): Promise<Bot> {
   const id = uuidv7();
   await db.query(
@@ -257,7 +281,7 @@ export async function createBot(
      SELECT b.id, ids.value, b.user_id FROM b, ${inboxIds("$5")} AS ids(value)`,
     [id, input.userId, input.name, input.kind, input.inboxIds, input.model],
   );
-  if (input.prompt !== undefined) await addBotVersion(db, id, input.prompt);
+  if (input.prompt !== undefined) await addBotVersion(db, id, { prompt: input.prompt, rules: input.rules ?? null });
   return (await getBot(db, id))!;
 }
 
@@ -300,19 +324,19 @@ export async function updateBot(
   return (await getBot(db, bot.id))!;
 }
 
-/** Appends a prompt version to the bot and returns it; versions are never changed after. */
+/** Appends a version to the bot and returns it; versions are never changed after. */
 export async function addBotVersion(
   db: Db,
   botId: string,
-  prompt: string,
-): Promise<NonNullable<Bot["prompt_version"]>> {
-  const [row] = await db.query<{ prompt_version: NonNullable<Bot["prompt_version"]> }>(
-    `INSERT INTO loopway.bot_versions (bot_id, version, prompt)
-     SELECT $1, COALESCE(max(version), 0) + 1, $2 FROM loopway.bot_versions WHERE bot_id = $1
-     RETURNING jsonb_build_object('version', version, 'prompt', prompt, 'created_at', created_at) AS prompt_version`,
-    [botId, prompt],
+  input: { prompt: string; rules: BotRule[] | null },
+): Promise<BotVersion> {
+  const [row] = await db.query<{ version: BotVersion }>(
+    `INSERT INTO loopway.bot_versions (bot_id, version, prompt, rules)
+     SELECT $1, COALESCE(max(version), 0) + 1, $2, $3::jsonb FROM loopway.bot_versions WHERE bot_id = $1
+     RETURNING jsonb_build_object('version', version, 'prompt', prompt, 'rules', rules, 'created_at', created_at) AS version`,
+    [botId, input.prompt, input.rules && JSON.stringify(input.rules)],
   );
-  return row!.prompt_version;
+  return row!.version;
 }
 
 export async function deleteBot(db: Db, id: string): Promise<void> {

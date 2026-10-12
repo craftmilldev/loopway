@@ -291,4 +291,12 @@ CREATE TABLE loopway.bot_versions (
 ALTER TABLE loopway.bot_versions ENABLE ROW LEVEL SECURITY;
 `,
   },
+  {
+    // A version also holds the bot's assign rules: how its messages become subjects (see the CLI's bots/routing.ts).
+    // Versions made before this have none (null) until a runner posts a version with them.
+    version: "012_bot_version_rules",
+    sql: `
+ALTER TABLE loopway.bot_versions ADD COLUMN rules jsonb;
+`,
+  },
 ];

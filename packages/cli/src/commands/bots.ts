@@ -38,12 +38,13 @@ export async function createBot(
   if (!opts.model) throw new UsageError("--model is required (an alias like sonnet or opus, or a full model id)");
   if (!opts.inbox?.length) throw new UsageError("--inbox is required");
   const client = await authedClient(ctx);
+  const kind = BOT_KINDS[opts.kind];
   const bot = await client.createBot({
     name: opts.name,
     kind: opts.kind,
     model: opts.model,
     inbox_ids: await resolveInboxes(client, opts.inbox),
-    prompt: await BOT_KINDS[opts.kind]?.prompt(),
+    ...(kind && { prompt: await kind.prompt(), rules: kind.rules }),
   });
   if (opts.json) return ctx.out(json(bot));
   ctx.out(`Created bot ${bold(bot.name)} (${bot.id})\n\n${describe(bot, await inboxNames(client))}`);
@@ -116,7 +117,7 @@ function describe(bot: Bot, names: Map<string, string>): string {
       ["id", bot.id],
       ["kind", bot.kind],
       ["model", bot.model],
-      ["prompt", bot.prompt_version ? `version ${bot.prompt_version.version}` : "none"],
+      ["prompt", bot.version ? `version ${bot.version.version}` : "none"],
       ["inboxes", inboxList(bot, names)],
       ["cursor", bot.cursor],
       ["created", `${bot.created_at} ${dim(`(${ago(bot.created_at)})`)}`],

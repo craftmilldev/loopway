@@ -16,7 +16,8 @@ import { clock, dim } from "../format.js";
 import { startMcpServer, type McpServer } from "../mcp.js";
 import { spawnClaude, type RunAgent, type RunOutcome } from "./agent.js";
 import { botEnv } from "./github.js";
-import { BOT_KINDS, type BotKind } from "./kinds.js";
+import { BOT_KINDS } from "./kinds.js";
+import { compileRules, type Router } from "./routing.js";
 import { sessionTools } from "./tools.js";
 import { sessionLogPath } from "./transcript.js";
 
@@ -71,7 +72,7 @@ export interface DispatcherState {
  * Each tick, per bot it holds a lease on:
  *
  * 1. reads the messages after the bot's cursor,
- * 2. routes each one to a thread with the bot kind's `route` (see kinds.ts), and hands them to the server
+ * 2. routes each one to a thread with the bot's assign rules (see routing.ts), and hands them to the server
  *    with `assign`, which moves the cursor past them; threads that creates are claimed right away;
  *
  * then starts or resumes, in the background, every thread of this runner that has waiting messages and no run
@@ -111,7 +112,7 @@ export class Dispatcher {
   private onFreed?: () => void;
 
   /**
-   * `bots` must all be of a kind in BOT_KINDS and have a prompt version, and `runnerId` is this machine's runner
+   * `bots` must all be of a kind in BOT_KINDS and have a version with rules, and `runnerId` is this machine's runner
    * (see ensureRunner). Takes the runner's lease.
    */
   static async start(
@@ -120,14 +121,14 @@ export class Dispatcher {
     bots: Bot[],
     opts: ThreadsOptions & { runnerId: string },
   ): Promise<Dispatcher> {
-    const kinds = new Map<string, BotKind>();
+    const routes = new Map<string, Router>();
     const prompts = new Map<string, string>();
     for (const bot of bots) {
       const kind = BOT_KINDS[bot.kind];
       if (!kind) throw new Error(`Bot ${bot.name} has kind ${bot.kind}, which this CLI can't run.`);
-      kinds.set(bot.id, kind);
-      if (!bot.prompt_version) throw new Error(`Bot ${bot.name} has no prompt version.`);
-      prompts.set(bot.id, bot.prompt_version.prompt);
+      if (!bot.version?.rules) throw new Error(`Bot ${bot.name} has no version with rules.`);
+      routes.set(bot.id, compileRules(bot.version.rules));
+      prompts.set(bot.id, bot.version.prompt);
     }
     // With a GitHub bot configured, sessions comment, push and commit as it; otherwise as the user.
     const gh = await loadGithubBot(ctx.configDir, ctx.env);
@@ -141,7 +142,7 @@ export class Dispatcher {
         patch: (id, patch) => later.dispatcher!.patchThread(id, patch),
       }),
     );
-    const dispatcher = (later.dispatcher = new Dispatcher(ctx, client, bots, kinds, prompts, opts, mcp, env));
+    const dispatcher = (later.dispatcher = new Dispatcher(ctx, client, bots, routes, prompts, opts, mcp, env));
     try {
       await dispatcher.leaseRunner();
     } catch (err) {
@@ -155,7 +156,7 @@ export class Dispatcher {
     private readonly ctx: Context,
     private readonly client: LoopwayClient,
     private readonly bots: Bot[],
-    private readonly kinds: Map<string, BotKind>,
+    private readonly routes: Map<string, Router>,
     private readonly prompts: Map<string, string>,
     opts: ThreadsOptions & { runnerId: string },
     private readonly mcp: McpServer,
@@ -339,7 +340,7 @@ export class Dispatcher {
    * claimed by this runner right away.
    */
   private async assign(bot: Bot, messages: Message[]): Promise<void> {
-    const kind = this.kinds.get(bot.id)!;
+    const route = this.routes.get(bot.id)!;
     const threads = await this.client.listThreads(bot.id, "all");
     // Who holds each subject, kept up to date as the page is routed so a later message sees an earlier one's threads.
     const held = new Map(threads.flatMap((t) => t.subjects.map((s) => [s, t.id] as const)));
@@ -347,7 +348,7 @@ export class Dispatcher {
     const created: string[] = [];
     const assignments: Assignment[] = [];
     for (const m of messages) {
-      const routed = kind.route(held, m);
+      const routed = route(held, m);
       if (!routed) continue;
       for (const s of routed.add_subjects) held.set(s, routed.thread_id);
       if (!known.has(routed.thread_id)) {

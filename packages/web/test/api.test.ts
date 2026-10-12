@@ -117,30 +117,35 @@ describe("bots", () => {
     ]);
   const seqs = (r: { body: { data: { seq: number }[] } }) => r.body.data.map((e) => e.seq);
 
-  it("versions a bot's prompt", async () => {
+  it("versions a bot's prompt and rules", async () => {
     const key = await newUser();
     const a = await newInbox(key);
     const bare = await call("POST", "/bots", {
       key,
       body: { name: "bare", kind: "github-threads", model: "sonnet", inbox_ids: [a.id] },
     });
-    expect(bare.body.prompt_version).toBeNull();
+    expect(bare.body.version).toBeNull();
     const created = await call("POST", "/bots", {
       key,
       body: { name: "dev", kind: "github-threads", model: "sonnet", inbox_ids: [a.id], prompt: "one" },
     });
-    expect(created.body.prompt_version).toMatchObject({ version: 1, prompt: "one" });
+    expect(created.body.version).toMatchObject({ version: 1, prompt: "one", rules: null });
     const id = created.body.id;
-    const v2 = await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "two" } });
+    const rules = [{ types: ["com.github.*"], subject: "event.data.id", skip: "false" }];
+    const v2 = await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "two", rules } });
     expect(v2.status).toBe(201);
-    expect(v2.body).toMatchObject({ version: 2, prompt: "two" });
-    expect((await call("GET", `/bots/${id}`, { key })).body.prompt_version).toMatchObject({
+    expect(v2.body).toMatchObject({ version: 2, prompt: "two", rules });
+    expect((await call("GET", `/bots/${id}`, { key })).body.version).toMatchObject({
       version: 2,
       prompt: "two",
+      rules,
     });
-    expect((await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "" } })).status).toBe(400);
+    expect((await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "", rules } })).status).toBe(400);
+    expect(
+      (await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "x", rules: [{ types: [] }] } })).status,
+    ).toBe(400);
     const other = await newUser();
-    expect((await call("POST", `/bots/${id}/versions`, { key: other, body: { prompt: "x" } })).status).toBe(404);
+    expect((await call("POST", `/bots/${id}/versions`, { key: other, body: { prompt: "x", rules } })).status).toBe(404);
     const rows = await db.query(`SELECT version FROM loopway.bot_versions WHERE bot_id = $1 ORDER BY version`, [id]);
     expect(rows).toEqual([{ version: 1 }, { version: 2 }]);
   });
