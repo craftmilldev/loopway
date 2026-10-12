@@ -1,9 +1,7 @@
 import { createHmac } from "node:crypto";
 import { z } from "zod";
-import { makeCloudEvent } from "../cloudevents.js";
-import { newSecret, safeEqual } from "../ids.js";
 import { get, str, type Payload } from "./payload.js";
-import type { SourceAdapter } from "./types.js";
+import type { SourceAdapter, SourceDeps } from "./types.js";
 
 /**
  * GitHub webhooks → CloudEvents, following the CloudEvents GitHub adapter spec:
@@ -129,7 +127,7 @@ const RULES: Record<string, Rule> = {
   workflow_run: { subject: "workflow.name" },
 };
 
-export const github: SourceAdapter<GithubConfig> = {
+export const github = ({ newSecret, safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter<GithubConfig> => ({
   type: "github",
   label: "GitHub",
   description: "GitHub repository/org/app webhooks, verified with X-Hub-Signature-256.",
@@ -174,6 +172,16 @@ export const github: SourceAdapter<GithubConfig> = {
       secret: config.secret,
       events: config.events.includes("*") ? "Send me everything" : config.events,
     };
+  },
+
+  rules: {
+    "com.github.": (env) =>
+      // github_closes(body): the issue numbers a PR body closes ("Closes #12", "fixes #3"), as a list of strings.
+      env.registerFunction("github_closes(dyn): list<string>", (body: unknown) =>
+        typeof body === "string"
+          ? [...body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi)].map((m) => m[1]!)
+          : [],
+      ),
   },
 
   receive({ headers, rawBody, receivedAt }, config) {
@@ -225,7 +233,7 @@ export const github: SourceAdapter<GithubConfig> = {
       }),
     };
   },
-};
+});
 
 function parseBody(contentType: string, raw: string): Payload {
   const ct = contentType.split(";")[0]!.trim().toLowerCase();
