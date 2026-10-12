@@ -14,17 +14,31 @@ export interface Routed {
  * The CEL environment rules run in. It is plain CEL plus this small API:
  *
  * - `data`: the event's payload, and `event_type`: its type.
- * - `closes(body)`: the issue numbers a PR body closes ("Closes #12", "fixes #3"), as a list of strings.
  * - In `skip` only: `subject` and `related` (what the rule's other expressions produced) and `held` (whether a
  *   thread already holds one of those subjects).
+ * - Helpers a source defines for rules on its own event types, named `<source>_<helper>` (see SOURCES).
  */
-const env = new Environment({ unlistedVariablesAreDyn: true }).registerFunction(
-  "closes(dyn): list<string>",
-  (body: unknown) =>
-    typeof body === "string"
-      ? [...body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi)].map((m) => m[1]!)
-      : [],
-);
+const base = new Environment({ unlistedVariablesAreDyn: true });
+
+/** A source's helpers, available to the rules whose type globs all start with its `prefix`. */
+const SOURCES = [
+  {
+    prefix: "com.github.",
+    env: base
+      .clone()
+      // The issue numbers a PR body closes ("Closes #12", "fixes #3"), as a list of strings.
+      .registerFunction("github_closes(dyn): list<string>", (body: unknown) =>
+        typeof body === "string"
+          ? [...body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi)].map((m) => m[1]!)
+          : [],
+      ),
+  },
+];
+
+/** The environment a rule runs in: its source's, if all its types are that source's, else the base one. */
+function envFor(rule: BotRule): Environment {
+  return SOURCES.find((s) => rule.types.every((t) => t.startsWith(s.prefix)))?.env ?? base;
+}
 
 /** Whether an event type matches a rule's glob, where `*` is any run of characters. */
 function matches(glob: string, type: string): boolean {
@@ -35,7 +49,8 @@ function matches(glob: string, type: string): boolean {
 /** Throws if a rule's expressions don't parse, so a bad version fails when the bot starts, not on its first message. */
 export function checkRules(rules: BotRule[]): void {
   for (const rule of rules)
-    for (const field of ["subject", "related", "skip"] as const) if (rule[field] !== undefined) env.parse(rule[field]);
+    for (const field of ["subject", "related", "skip"] as const)
+      if (rule[field] !== undefined) envFor(rule).parse(rule[field]);
 }
 
 /**
@@ -55,6 +70,7 @@ export function checkRules(rules: BotRule[]): void {
 export function route(rules: readonly BotRule[], held: ReadonlyMap<string, string>, e: Message): Routed | undefined {
   const rule = rules.find((r) => r.types.some((t) => matches(t, e.event.type)));
   if (!rule) return undefined;
+  const env = envFor(rule);
   const vars = { event_type: e.event.type, data: e.event.data ?? {} };
   const key = (rule.subject !== undefined && (env.evaluate(rule.subject, vars) as string)) || undefined;
   const related = rule.related !== undefined ? (env.evaluate(rule.related, vars) as string[]) : [];
@@ -87,7 +103,7 @@ export const GITHUB_THREADS_RULES: BotRule[] = [
     subject:
       "has(data.repository) && (has(data.pull_request) || has(data.issue) || has(data.number)) ? data.repository.full_name + '#' + string(has(data.pull_request) ? data.pull_request.number : has(data.issue) ? data.issue.number : data.number) : ''",
     related:
-      "has(data.repository) && has(data.pull_request) && has(data.pull_request.body) ? closes(data.pull_request.body).map(n, data.repository.full_name + '#' + n) : []",
+      "has(data.repository) && has(data.pull_request) && has(data.pull_request.body) ? github_closes(data.pull_request.body).map(n, data.repository.full_name + '#' + n) : []",
     skip: "!held && has(data.issue) && has(data.issue.labels) && data.issue.labels.exists(l, l.name == 'future')",
   },
 ];
