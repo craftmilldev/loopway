@@ -274,4 +274,21 @@ ALTER TABLE loopway.bots ADD COLUMN model text NOT NULL DEFAULT 'sonnet';
 ALTER TABLE loopway.bots ALTER COLUMN model DROP DEFAULT;
 `,
   },
+  {
+    // A bot's prompt is versioned: each change appends a row, and the bot's current version is its highest. Rows are
+    // never updated, so the history of a bot's instructions stays. Bots made before this have no version until a
+    // runner posts one.
+    version: "011_bot_versions",
+    sql: `
+CREATE TABLE loopway.bot_versions (
+  bot_id      uuid NOT NULL REFERENCES loopway.bots(id) ON DELETE CASCADE,
+  version     integer NOT NULL,
+  prompt      text NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (bot_id, version)
+);
+
+ALTER TABLE loopway.bot_versions ENABLE ROW LEVEL SECURITY;
+`,
+  },
 ];

@@ -271,6 +271,8 @@ export function createApi(opts: ApiOptions) {
 
   const modelBody = z.enum(BOT_MODELS);
 
+  const promptBody = z.string().min(1).max(100_000);
+
   authed.get("/bots", async (c) => {
     const rows = await store.listBots(c.var.db, c.var.user.id);
     return c.json({ data: rows.map(serializeBot) });
@@ -283,6 +285,7 @@ export function createApi(opts: ApiOptions) {
         kind: z.string().min(1).max(100),
         model: modelBody,
         inbox_ids: inboxIdsBody,
+        prompt: promptBody.optional(),
       })
       .parse(await jsonBody(c));
     const bot = await store.createBot(c.var.db, {
@@ -291,6 +294,7 @@ export function createApi(opts: ApiOptions) {
       kind: input.kind,
       model: input.model,
       inboxIds: await ownedInboxIds(c, input.inbox_ids),
+      prompt: input.prompt,
     });
     return c.json(serializeBot(bot), 201);
   });
@@ -312,6 +316,12 @@ export function createApi(opts: ApiOptions) {
       inboxIds: input.inbox_ids && (await ownedInboxIds(c, input.inbox_ids)),
     });
     return c.json(serializeBot(updated));
+  });
+
+  authed.post("/bots/:botId/versions", async (c) => {
+    const bot = await ownedBot(c);
+    const input = z.object({ prompt: promptBody }).parse(await jsonBody(c));
+    return c.json(await store.addBotVersion(c.var.db, bot.id, input.prompt), 201);
   });
 
   authed.delete("/bots/:botId", async (c) => {
@@ -685,6 +695,7 @@ function serializeBot(b: store.Bot) {
     kind: b.kind,
     model: b.model,
     inbox_ids: b.inbox_ids,
+    prompt_version: b.prompt_version,
     cursor: Number(b.cursor),
     runner_id: b.runner_id,
     leased_until: b.locked_until && new Date(b.locked_until) > new Date() ? iso(b.locked_until) : null,

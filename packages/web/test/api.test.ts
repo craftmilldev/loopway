@@ -117,6 +117,34 @@ describe("bots", () => {
     ]);
   const seqs = (r: { body: { data: { seq: number }[] } }) => r.body.data.map((e) => e.seq);
 
+  it("versions a bot's prompt", async () => {
+    const key = await newUser();
+    const a = await newInbox(key);
+    const bare = await call("POST", "/bots", {
+      key,
+      body: { name: "bare", kind: "github-threads", model: "sonnet", inbox_ids: [a.id] },
+    });
+    expect(bare.body.prompt_version).toBeNull();
+    const created = await call("POST", "/bots", {
+      key,
+      body: { name: "dev", kind: "github-threads", model: "sonnet", inbox_ids: [a.id], prompt: "one" },
+    });
+    expect(created.body.prompt_version).toMatchObject({ version: 1, prompt: "one" });
+    const id = created.body.id;
+    const v2 = await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "two" } });
+    expect(v2.status).toBe(201);
+    expect(v2.body).toMatchObject({ version: 2, prompt: "two" });
+    expect((await call("GET", `/bots/${id}`, { key })).body.prompt_version).toMatchObject({
+      version: 2,
+      prompt: "two",
+    });
+    expect((await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "" } })).status).toBe(400);
+    const other = await newUser();
+    expect((await call("POST", `/bots/${id}/versions`, { key: other, body: { prompt: "x" } })).status).toBe(404);
+    const rows = await db.query(`SELECT version FROM loopway.bot_versions WHERE bot_id = $1 ORDER BY version`, [id]);
+    expect(rows).toEqual([{ version: 1 }, { version: 2 }]);
+  });
+
   it("creates, lists, updates and deletes bots over the user's inboxes", async () => {
     const key = await newUser();
     const a = await newInbox(key);

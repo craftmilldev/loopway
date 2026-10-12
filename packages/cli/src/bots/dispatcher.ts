@@ -111,8 +111,8 @@ export class Dispatcher {
   private onFreed?: () => void;
 
   /**
-   * `bots` must all be of a kind in BOT_KINDS, and `runnerId` is this machine's runner (see ensureRunner). Takes
-   * the runner's lease.
+   * `bots` must all be of a kind in BOT_KINDS and have a prompt version, and `runnerId` is this machine's runner
+   * (see ensureRunner). Takes the runner's lease.
    */
   static async start(
     ctx: Context,
@@ -126,7 +126,8 @@ export class Dispatcher {
       const kind = BOT_KINDS[bot.kind];
       if (!kind) throw new Error(`Bot ${bot.name} has kind ${bot.kind}, which this CLI can't run.`);
       kinds.set(bot.id, kind);
-      prompts.set(bot.id, await kind.prompt());
+      if (!bot.prompt_version) throw new Error(`Bot ${bot.name} has no prompt version.`);
+      prompts.set(bot.id, bot.prompt_version.prompt);
     }
     // With a GitHub bot configured, sessions comment, push and commit as it; otherwise as the user.
     const gh = await loadGithubBot(ctx.configDir, ctx.env);
