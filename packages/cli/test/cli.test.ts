@@ -579,6 +579,45 @@ describe("runners", () => {
     expect((await runJson("bots", "threads", "dev"))[0].runner_id).toBeNull();
     expect(await run("bots", "threads", "dev")).toMatch(/none/);
   });
+
+  it("moves a subject to another thread, matching the thread by the start of its id", async () => {
+    const key = await configured();
+    const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
+    const inbox = await inboxWithEvents(2);
+    const bot = await runJson(
+      "bots",
+      "create",
+      "--name",
+      "dev",
+      "--kind",
+      "github-threads",
+      "--model",
+      "sonnet",
+      "--inbox",
+      inbox.id,
+    );
+    const runner = await ensureRunner(configDir, client);
+    const botLease = (await client.leaseBot(bot.id, { runner_id: runner.id })).lease;
+    const [m1, m2] = (await client.listMessages(inbox.id)).data;
+    const [a, b] = [randomUUID(), randomUUID()];
+    await client.assign(bot.id, {
+      lease_token: botLease.token,
+      cursor: m2!.seq,
+      assignments: [
+        { message_id: m1!.id, thread_id: a, add_subjects: ["a/b#1"] },
+        { message_id: m2!.id, thread_id: b, add_subjects: ["a/b#2"] },
+      ],
+    });
+    await client.releaseBot(bot.id, botLease.token);
+
+    expect(await run("bots", "threads", "move", "dev", "a/b#1", a.slice(0, 8), b.slice(0, 8))).toMatch(
+      /Moved a\/b#1 to thread/,
+    );
+    const threads = await runJson("bots", "threads", "dev");
+    expect(threads.find((t: any) => t.id === b).subjects).toEqual(["a/b#1", "a/b#2"]);
+    expect(threads.find((t: any) => t.id === a).subjects).toEqual([]);
+    await expect(run("bots", "threads", "move", "dev", "a/b#1", a, "zzzz")).rejects.toThrow(/No thread/);
+  });
 });
 
 describe("threads", () => {
