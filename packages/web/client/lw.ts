@@ -132,7 +132,6 @@ export interface BotVersion {
 export interface Bot {
   id: string;
   name: string;
-  kind: string;
   prompt_version: BotVersion | null;
   inbox_ids: string[];
   cursor: number;
@@ -222,10 +221,3 @@ export const BOT_MODELS = [
   "claude-sonnet-5-5",
   "claude-haiku-5-5",
 ];
-
-/** A starting point for a new bot (GET /presets). */
-export interface Preset {
-  kind: string;
-  label: string;
-  description: string;
-}

@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { PRESETS } from "@loopway/presets";
 import { useSourceRequest } from "../ee/client/source-request.js";
 import { DashNav, Layout } from "./layout.js";
 import * as lw from "./lw.js";
@@ -59,7 +60,7 @@ export function Dashboard() {
               {b.name}
             </a>
             <div className="meta">
-              {b.kind} · {b.inbox_ids.map((i) => inboxes.data?.find((x) => x.id === i)?.name ?? i).join(", ")} ·{" "}
+              {b.inbox_ids.map((i) => inboxes.data?.find((x) => x.id === i)?.name ?? i).join(", ")} ·{" "}
               {active[b.id] ?? "…"} active threads
             </div>
             <div className="meta">{leaseText(b, runnerName(b.runner_id))}</div>
@@ -135,14 +136,10 @@ export function leaseText(b: lw.Bot, runner: string | undefined) {
 
 function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: () => void }) {
   const [name, setName] = useState("");
-  const presets = lw.useList<lw.Preset>("/presets", true);
-  const [picked, setPicked] = useState("");
+  const [preset, setPreset] = useState(Object.keys(PRESETS)[0]!);
   const [model, setModel] = useState(lw.BOT_MODELS[0]!);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
-
-  // The first preset is picked until the user picks another.
-  const preset = presets.data?.find((p) => p.kind === picked) ?? presets.data?.[0];
 
   function toggle(id: string, on: boolean) {
     const next = new Set(checked);
@@ -154,15 +151,12 @@ function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: () => 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!preset) return setError("Pick a preset.");
     if (!checked.size) {
       track("bot_create_no_inbox");
       return setError("Pick at least one inbox.");
     }
-    const r = await lw.api("/bots", {
-      method: "POST",
-      body: { name, kind: preset.kind, model, inbox_ids: [...checked] },
-    });
+    const { prompt, rules } = PRESETS[preset]!;
+    const r = await lw.api("/bots", { method: "POST", body: { name, prompt, rules, model, inbox_ids: [...checked] } });
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) return setError(await lw.message(r));
     onCreated();
@@ -177,17 +171,17 @@ function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: () => 
         </div>
       </div>
       <div className="field">
-        <label htmlFor="bot-kind">Preset</label>
+        <label htmlFor="bot-preset">Start from</label>
         <div className="input-wrap">
-          <select id="bot-kind" value={preset?.kind ?? ""} onChange={(e) => setPicked(e.target.value)}>
-            {presets.data?.map((p) => (
-              <option key={p.kind} value={p.kind}>
+          <select id="bot-preset" value={preset} onChange={(e) => setPreset(e.target.value)}>
+            {Object.entries(PRESETS).map(([k, p]) => (
+              <option key={k} value={k}>
                 {p.label}
               </option>
             ))}
           </select>
         </div>
-        {preset && <p className="hint">{preset.description}</p>}
+        <p className="hint">{PRESETS[preset]!.description}</p>
       </div>
       <div className="field">
         <label htmlFor="bot-model">Model</label>

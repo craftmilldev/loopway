@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z, ZodError } from "zod";
-import { checkRules, PRESETS } from "@loopway/rules";
+import { checkRules } from "@loopway/rules";
 import { eeRoutes, type EeOptions } from "../ee/routes.js";
 import type { Db } from "./db/index.js";
 import { consoleSender, type SendEmail } from "./email.js";
@@ -346,12 +346,6 @@ export function createApi(opts: ApiOptions) {
     return rules;
   }
 
-  authed.get("/presets", (c) =>
-    c.json({
-      data: Object.entries(PRESETS).map(([kind, p]) => ({ kind, label: p.label, description: p.description })),
-    }),
-  );
-
   authed.get("/bots", async (c) => {
     const rows = await store.listBots(c.var.db, c.var.user.id);
     return c.json({ data: rows.map(serializeBot) });
@@ -361,25 +355,21 @@ export function createApi(opts: ApiOptions) {
     const input = z
       .object({
         name: z.string().min(1).max(200),
-        kind: z.string().min(1).max(100),
         model: modelBody,
         inbox_ids: inboxIdsBody,
         prompt: promptBody.optional(),
         rules: rulesBody.optional(),
       })
       .parse(await jsonBody(c));
-    // A kind that names a preset, with no prompt or rules, starts from the preset's.
-    const preset = input.prompt === undefined && input.rules === undefined ? PRESETS[input.kind] : undefined;
     const bot = await store.createBot(c.var.db, {
       userId: c.var.user.id,
       name: input.name,
-      kind: input.kind,
       model: input.model,
       inboxIds: await ownedInboxIds(c, input.inbox_ids),
-      prompt: preset?.prompt ?? input.prompt,
-      rules: preset?.rules ?? (await checked(c, input.rules, "create")),
+      prompt: input.prompt,
+      rules: await checked(c, input.rules, "create"),
     });
-    await metrics.capture("bot_created", c.var.user.id, { kind: input.kind, from_preset: !!preset });
+    await metrics.capture("bot_created", c.var.user.id, { has_version: !!bot.prompt_version });
     return c.json(serializeBot(bot), 201);
   });
 
@@ -796,7 +786,6 @@ function serializeBot(b: store.Bot) {
   return {
     id: b.id,
     name: b.name,
-    kind: b.kind,
     model: b.model,
     inbox_ids: b.inbox_ids,
     prompt_version: b.prompt_version,

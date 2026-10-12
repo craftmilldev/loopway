@@ -306,4 +306,11 @@ ALTER TABLE loopway.bot_versions ADD COLUMN rules jsonb;
 UPDATE loopway.bot_versions SET rules = (rules #>> '{}')::jsonb WHERE jsonb_typeof(rules) = 'string';
 `,
   },
+  {
+    // A bot is its prompt and rules, not a kind.
+    version: "014_drop_bot_kind",
+    sql: `
+ALTER TABLE loopway.bots DROP COLUMN kind;
+`,
+  },
 ];

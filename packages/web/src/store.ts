@@ -219,7 +219,6 @@ export interface Bot {
   id: string;
   user_id: string;
   name: string;
-  kind: string;
   /** The model its sessions run on, as `claude --model` takes it. */
   model: string;
   /** bigint: the `seq` of the last message the bot has read past. */
@@ -235,7 +234,7 @@ export interface Bot {
 }
 
 const BOT_COLS = `
-  b.id, b.user_id, b.name, b.kind, b.model, b.cursor, b.lock_token, b.locked_until, b.runner_id, b.created_at,
+  b.id, b.user_id, b.name, b.model, b.cursor, b.lock_token, b.locked_until, b.runner_id, b.created_at,
   COALESCE((SELECT jsonb_agg(bi.inbox_id ORDER BY bi.inbox_id) FROM loopway.bot_inboxes bi WHERE bi.bot_id = b.id),
            '[]'::jsonb) AS inbox_ids,
   (SELECT jsonb_build_object('version', v.version, 'prompt', v.prompt, 'rules', v.rules, 'created_at', v.created_at)
@@ -256,7 +255,6 @@ export async function createBot(
   input: {
     userId: string;
     name: string;
-    kind: string;
     model: string;
     inboxIds: string[];
     prompt?: string;
@@ -266,13 +264,13 @@ export async function createBot(
   const id = uuidv7();
   await db.query(
     `WITH b AS (
-       INSERT INTO loopway.bots (id, user_id, name, kind, model, cursor)
-       VALUES ($1, $2, $3, $4, $6, COALESCE((SELECT max(seq) FROM loopway.messages WHERE inbox_id IN ${inboxIds("$5")}), 0))
+       INSERT INTO loopway.bots (id, user_id, name, model, cursor)
+       VALUES ($1, $2, $3, $5, COALESCE((SELECT max(seq) FROM loopway.messages WHERE inbox_id IN ${inboxIds("$4")}), 0))
        RETURNING id, user_id
      )
      INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id)
-     SELECT b.id, ids.value, b.user_id FROM b, ${inboxIds("$5")} AS ids(value)`,
-    [id, input.userId, input.name, input.kind, input.inboxIds, input.model],
+     SELECT b.id, ids.value, b.user_id FROM b, ${inboxIds("$4")} AS ids(value)`,
+    [id, input.userId, input.name, input.inboxIds, input.model],
   );
   if (input.prompt !== undefined) await addBotVersion(db, id, input.prompt, input.rules);
   return (await getBot(db, id))!;

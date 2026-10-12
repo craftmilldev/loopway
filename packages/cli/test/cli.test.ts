@@ -4,15 +4,14 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApi } from "@loopway/web/api";
+import { PRESETS } from "@loopway/presets";
 import { openDb, type Db } from "@loopway/web/db";
 import { createUser } from "@loopway/web/store";
 import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { LoopwayClient, type Bot, type Message } from "../src/client.js";
-import { PRESETS, route as routeWith, type BotRule } from "@loopway/rules";
-const GITHUB_THREADS_RULES = PRESETS["github-threads"]!.rules;
-const threadPrompt = async () => PRESETS["github-threads"]!.prompt;
+import { route as routeWith, type BotRule } from "@loopway/rules";
 import { LIMIT_FALLBACK_MS, LimitWatch, type AgentRun, type RunOutcome } from "../src/bots/agent.js";
 import { API_ERROR_BACKOFF_MS, Dispatcher, NETWORK_ERROR_MAX_BACKOFF_MS } from "../src/bots/dispatcher.js";
 import { defaultTtl } from "../src/commands/bots-run.js";
@@ -21,6 +20,9 @@ import { botEnv } from "../src/bots/github.js";
 import { UsageError, type Context } from "../src/context.js";
 import { createProgram } from "../src/program.js";
 import { ensureRunner } from "../src/bots/runner.js";
+
+const GITHUB_THREADS_RULES = PRESETS["github-threads"]!.rules;
+const threadPrompt = async () => PRESETS["github-threads"]!.prompt;
 
 const API = "https://loopway.test";
 const SECRET = "test-secret";
@@ -374,7 +376,7 @@ describe("bots", () => {
       "create",
       "--name",
       "dev",
-      "--kind",
+      "--preset",
       "github-threads",
       "--model",
       "sonnet",
@@ -402,7 +404,7 @@ describe("bots", () => {
       "create",
       "--name",
       "dev",
-      "--kind",
+      "--preset",
       "github-threads",
       "--model",
       "sonnet",
@@ -411,7 +413,7 @@ describe("bots", () => {
     );
     expect(bot.inbox_ids).toEqual([a.id]);
 
-    expect(await run("bots", "list")).toMatch(/dev\s+github-threads\s+sonnet\s+a/);
+    expect(await run("bots", "list")).toMatch(/dev\s+sonnet\s+a/);
     expect((await runJson("bots", "show", "dev")).id).toBe(bot.id);
 
     const updated = await runJson("bots", "update", bot.id, "--name", "dev2", "--inbox", "a,b");
@@ -433,7 +435,7 @@ describe("bots", () => {
       "create",
       "--name",
       "dev",
-      "--kind",
+      "--preset",
       "github-threads",
       "--model",
       "sonnet",
@@ -466,18 +468,18 @@ describe("bots", () => {
     expect(await runJson("bots", "versions", "dev")).toHaveLength(3);
   });
 
-  it("checks the kind and inboxes before calling the API", async () => {
+  it("checks the preset, model and inboxes", async () => {
     await configured();
     await inboxWithEvents(0, "a");
-    await expect(run("bots", "create", "--name", "x", "--kind", "nope", "--inbox", "a")).rejects.toThrow(
-      /Allowed choices are github-threads/,
-    );
-    await expect(run("bots", "create", "--name", "x", "--inbox", "a")).rejects.toThrow(/--kind is required/);
-    await expect(run("bots", "create", "--name", "x", "--kind", "github-threads", "--inbox", "a")).rejects.toThrow(
+    await expect(
+      run("bots", "create", "--name", "x", "--preset", "nope", "--model", "sonnet", "--inbox", "a"),
+    ).rejects.toThrow(/Allowed choices are github-threads/);
+    await expect(run("bots", "create", "--name", "x", "--inbox", "a")).rejects.toThrow(/--preset is required/);
+    await expect(run("bots", "create", "--name", "x", "--preset", "github-threads", "--inbox", "a")).rejects.toThrow(
       /--model is required/,
     );
     await expect(
-      run("bots", "create", "--name", "x", "--kind", "github-threads", "--model", "sonnet", "--inbox", "zzz"),
+      run("bots", "create", "--name", "x", "--preset", "github-threads", "--model", "sonnet", "--inbox", "zzz"),
     ).rejects.toThrow(/No inbox with id or name "zzz"/);
   });
 });
@@ -498,7 +500,7 @@ describe("runners", () => {
       "create",
       "--name",
       "dev",
-      "--kind",
+      "--preset",
       "github-threads",
       "--model",
       "sonnet",
@@ -520,7 +522,7 @@ describe("runners", () => {
       "create",
       "--name",
       "dev",
-      "--kind",
+      "--preset",
       "github-threads",
       "--model",
       "sonnet",
@@ -552,7 +554,7 @@ describe("runners", () => {
       "create",
       "--name",
       "dev",
-      "--kind",
+      "--preset",
       "github-threads",
       "--model",
       "sonnet",
@@ -589,7 +591,7 @@ describe("runners", () => {
       "create",
       "--name",
       "dev",
-      "--kind",
+      "--preset",
       "github-threads",
       "--model",
       "sonnet",
@@ -664,7 +666,7 @@ describe("threads", () => {
           "create",
           "--name",
           `dev${i}`,
-          "--kind",
+          "--preset",
           "github-threads",
           "--model",
           "sonnet",
@@ -1431,6 +1433,6 @@ describe("threads", () => {
 
   it("says how to create a bot when there is none to run", async () => {
     await configured();
-    expect(await run("bots", "run", "--no-tui")).toMatch(/No bots to run.*loopway bots create.*--kind github-threads/);
+    expect(await run("bots", "run", "--no-tui")).toMatch(/No bots to run.*loopway bots create/);
   });
 });

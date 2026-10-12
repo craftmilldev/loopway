@@ -1,0 +1,32 @@
+{
+  "name": "@loopway/presets",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Templates for a new bot's first prompt and assign rules, shared by the web dashboard, the CLI and the migrations.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@loopway/rules": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.3"
+  }
+}

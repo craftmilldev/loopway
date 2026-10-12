@@ -1,7 +1,6 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { authedClient, type Context } from "../context.js";
 import { DEFAULTS, Dispatcher, type ThreadsOptions } from "../bots/dispatcher.js";
-import { PRESETS } from "@loopway/rules";
 import { ensureRunner } from "../bots/runner.js";
 import { showTui } from "../bots/tui.js";
 
@@ -13,10 +12,16 @@ export interface RunBotsOptions extends ThreadsOptions {
 /** `loopway bots run`: run every bot on the account, handing each message to its thread's session, forever. */
 export async function runBots(ctx: Context, opts: RunBotsOptions) {
   const client = await authedClient(ctx);
-  const bots = await client.listBots();
+  const all = await client.listBots();
+  const bots = all.filter((b) => b.prompt_version?.rules);
+  for (const b of all)
+    if (!b.prompt_version?.rules) {
+      ctx.out(`Skipping bot ${b.name}: it has no prompt and rules yet. Set them with \`loopway bots edit\`.`);
+      void ctx.metrics?.capture("bot_skipped", { reason: "no_version" });
+    }
   if (!bots.length) {
     ctx.out(
-      `No bots to run. Create one with \`loopway bots create --name <name> --kind ${Object.keys(PRESETS).join("|")} --inbox <inbox>\`.`,
+      `No bots to run. Create one with \`loopway bots create --name <name> --preset <preset> --model <model> --inbox <inbox>\`.`,
     );
     return;
   }

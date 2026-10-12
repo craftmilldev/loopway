@@ -45,7 +45,7 @@ export function Bot({ id }: { id: string }) {
           <h1>{bot.missing ? "Bot not found" : (b?.name ?? "Bot")}</h1>
           {b && (
             <div className="muted mono">
-              {b.kind} · read up to #{b.cursor} · {leaseText(b, runner(b.runner_id)?.name)}
+              read up to #{b.cursor} · {leaseText(b, runner(b.runner_id)?.name)}
             </div>
           )}
           {b && (
