@@ -67,7 +67,7 @@ packages/cli/
                         rules.ts (CEL assign rules: message → thread), sources/ (per-source rule helpers + starting rules),
                         tools.ts (MCP link/end), agent.ts (claude -p),
                         tui.tsx (the Ink TUI), transcript.ts (stream-json log → readable lines)
-  src/bots/defaults/    default bots: github-threads/ has its prompt.md and starting rules
+  src/bots/defaults/    default bots: github-threads/ has its prompt and starting rules
   test/cli.test.ts      runs commands against the real API app in-process
   test/tui.test.tsx     renders the threads TUI with ink-testing-library
 ```
