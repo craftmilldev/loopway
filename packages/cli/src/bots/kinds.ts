@@ -1,6 +1,5 @@
 import type { BotRule } from "../client.js";
-import { threadPrompt } from "./agent.js";
-import { GITHUB_THREADS_RULES } from "./sources/github.js";
+import { githubThreads } from "./defaults/github-threads/index.js";
 
 /** How `loopway bots run` runs a bot of some `kind`. The server stores any kind; the CLI runs these. */
 export interface BotKind {
@@ -11,5 +10,5 @@ export interface BotKind {
 }
 
 export const BOT_KINDS: Record<string, BotKind> = {
-  "github-threads": { prompt: threadPrompt, rules: GITHUB_THREADS_RULES },
+  "github-threads": githubThreads,
 };

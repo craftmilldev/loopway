@@ -11,8 +11,9 @@ import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { LoopwayClient, type Bot, type Message } from "../src/client.js";
 import { route as routeWith } from "../src/bots/rules.js";
-import { GITHUB_THREADS_RULES } from "../src/bots/sources/github.js";
-import { LIMIT_FALLBACK_MS, LimitWatch, threadPrompt, type AgentRun, type RunOutcome } from "../src/bots/agent.js";
+import { GITHUB_THREADS_RULES } from "../src/bots/defaults/github-threads/rules.js";
+import { threadPrompt } from "../src/bots/defaults/github-threads/index.js";
+import { LIMIT_FALLBACK_MS, LimitWatch, type AgentRun, type RunOutcome } from "../src/bots/agent.js";
 import { API_ERROR_BACKOFF_MS, Dispatcher, NETWORK_ERROR_MAX_BACKOFF_MS } from "../src/bots/dispatcher.js";
 import { defaultTtl } from "../src/commands/bots-run.js";
 import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
@@ -1267,7 +1268,7 @@ describe("threads", () => {
     });
   });
 
-  it("loads the session prompt from prompts/thread.md", async () => {
+  it("loads the default bot's session prompt", async () => {
     const prompt = await threadPrompt();
     expect(prompt).toContain("You are a loopway thread session");
     expect(prompt).toContain("loopway messages get <inbox> <message> --data");

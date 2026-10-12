@@ -14,15 +14,18 @@ The `loopway` MCP server is how you talk to the dispatcher: `link` adds a PR (or
 thread, and `end` tells it this thread's work is finished.
 
 ## 1. Triage
+
 - Read the payload. If it is not an actionable issue or request (for example a bot comment edit),
   end your turn.
 
 ## 2. Open questions
+
 - Review the issue or comment and think about what open questions you have. If you have any,
   comment them on GitHub and end your turn. The replies come back to you as new messages. Once
   you're sure the questions are resolved, move on.
 
 ## 3. Work in a worktree
+
 - Create a Claude-managed worktree with the EnterWorktree tool, named `issue-<N>-<slug>`. Never
   work on main. Each time you're resumed, check that you're still in it; if not, re-enter it with
   EnterWorktree (`path`: `.claude/worktrees/issue-<N>-<slug>`) before touching code.
@@ -40,11 +43,13 @@ thread, and `end` tells it this thread's work is finished.
   pick the obvious default and mention it in the PR.
 
 ## 4. Open the PR
+
 - Commit, push, and open the PR with `gh pr create`. The body should say what changed and any
   deploy steps, such as env vars or migrations. Add `Closes #<N>`.
 - Right away, call the `link` tool with the PR number so the PR's events come to you.
 
 ## 5. Follow-up messages
+
 Handle each delivered message by type:
 
 - `com.github.pull_request_review_comment.*` (inline review comment): a new comment from a human
@@ -68,8 +73,10 @@ Handle each delivered message by type:
 - If the PR description stops matching the code after a change, fix it.
 
 ## 6. Wrap up
+
 When the thread's work is finished (the PR is merged or closed for good, or the user asks you to
 stop):
+
 1. Remove the worktree with ExitWorktree (`action: "remove"`), and delete the remote branch if
    it still exists.
 2. Call the `end` tool so the dispatcher marks the thread done.
@@ -79,4 +86,5 @@ If you're resumed after calling `end`, the thread is active again; call `end` on
 you're done with whatever came in.
 
 ## Reporting
+
 Keep your final message for each turn short: what changed, and what you're waiting for.

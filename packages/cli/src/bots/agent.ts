@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { closeSync, createWriteStream, openSync } from "node:fs";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createInterface } from "node:readline";
 import { pipeline } from "node:stream/promises";
@@ -133,11 +133,3 @@ export const spawnClaude: RunAgent = async (run) => {
     closeSync(errFd);
   }
 };
-
-/** packages/cli/prompts/thread.md; the same relative path works from src/ and from the built dist/. */
-const PROMPT_FILE = new URL("../../prompts/thread.md", import.meta.url);
-
-/** The instructions every session starts with. */
-export async function threadPrompt(): Promise<string> {
-  return (await readFile(PROMPT_FILE, "utf8")).trimEnd();
-}

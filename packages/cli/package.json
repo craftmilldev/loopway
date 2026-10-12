@@ -12,11 +12,10 @@
     "loopway": "./dist/index.js"
   },
   "files": [
-    "dist",
-    "prompts"
+    "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node -e \"require('fs').cpSync('src/bots/defaults', 'dist/bots/defaults', {recursive: true, filter: (s) => !s.endsWith('.ts')})\"",
     "start": "tsx src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
