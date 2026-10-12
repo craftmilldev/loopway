@@ -134,7 +134,10 @@ describe("bots", () => {
     const v2 = await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "two" } });
     expect(v2.status).toBe(201);
     expect(v2.body).toMatchObject({ version: 2, prompt: "two" });
-    expect((await call("GET", `/bots/${id}`, { key })).body.prompt_version).toMatchObject({ version: 2, prompt: "two" });
+    expect((await call("GET", `/bots/${id}`, { key })).body.prompt_version).toMatchObject({
+      version: 2,
+      prompt: "two",
+    });
     expect((await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "" } })).status).toBe(400);
     const other = await newUser();
     expect((await call("POST", `/bots/${id}/versions`, { key: other, body: { prompt: "x" } })).status).toBe(404);

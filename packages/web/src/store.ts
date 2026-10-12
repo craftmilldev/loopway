@@ -301,7 +301,11 @@ export async function updateBot(
 }
 
 /** Appends a prompt version to the bot and returns it; versions are never changed after. */
-export async function addBotVersion(db: Db, botId: string, prompt: string): Promise<NonNullable<Bot["prompt_version"]>> {
+export async function addBotVersion(
+  db: Db,
+  botId: string,
+  prompt: string,
+): Promise<NonNullable<Bot["prompt_version"]>> {
   const [row] = await db.query<{ prompt_version: NonNullable<Bot["prompt_version"]> }>(
     `INSERT INTO loopway.bot_versions (bot_id, version, prompt)
      SELECT $1, COALESCE(max(version), 0) + 1, $2 FROM loopway.bot_versions WHERE bot_id = $1
