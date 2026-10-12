@@ -2,11 +2,12 @@ import type { BotRule } from "../../../client.js";
 
 /** The assign rules of the default `github-threads` bot. They use the helpers of the GitHub source. */
 export const GITHUB_THREADS_RULES: BotRule[] = [
-  // CI runs belong to the PR they ran for; a run with no PR (on main) belongs to no thread.
+  // CI runs belong to the PR they ran for. A run with no PR (on main) belongs to no thread: it skips this rule, and
+  // the next one skips it too.
   ...(["check_run", "check_suite", "workflow_run"] as const).map((kind) => ({
     types: [`com.github.${kind}.*`],
     subject: `has(data.repository) && has(data.${kind}) && has(data.${kind}.pull_requests) && size(data.${kind}.pull_requests) > 0 ? data.repository.full_name + '#' + string(data.${kind}.pull_requests[0].number) : ''`,
-    action: "subject == '' ? 'skip' : 'attach-once'",
+    action: "subject == '' ? 'skip' : 'attach'",
   })),
   // Everything else belongs to its issue or PR, and to the issues a PR body closes. An issue labeled `future` is
   // recorded but not worked on until a message arrives after the label is removed.
@@ -17,6 +18,6 @@ export const GITHUB_THREADS_RULES: BotRule[] = [
     related:
       "has(data.repository) && has(data.pull_request) && has(data.pull_request.body) ? github_closes(data.pull_request.body).map(n, data.repository.full_name + '#' + n) : []",
     action:
-      "!held && has(data.issue) && has(data.issue.labels) && data.issue.labels.exists(l, l.name == 'future') ? 'skip' : 'attach-once'",
+      "has(data.check_run) || has(data.check_suite) || has(data.workflow_run) || (!held && has(data.issue) && has(data.issue.labels) && data.issue.labels.exists(l, l.name == 'future')) ? 'skip' : 'attach'",
   },
 ];

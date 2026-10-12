@@ -54,40 +54,39 @@ export function checkRules(rules: BotRule[]): void {
 }
 
 /**
- * Decides which of the bot's threads a message goes to, given who holds each subject (`owner/repo#number` →
- * thread id) and the bot's rules. The first rule with a type glob matching the message applies; a message no rule
- * matches is dropped. The rule's `subject` is the message's own subject ("" for none), its `related` the other
- * subjects it names. Its `action` says what to do with what that finds: `attach-once` (the default) or `skip`.
+ * Decides which thread a message goes to, given who holds each subject (`owner/repo#number` → thread id) and the
+ * bot's rules. The rules whose type globs match the message are tried in order. Each finds a `subject` (the
+ * message's own, "" for none) and `related` ones, and its `action` says what to do with them:
  *
- * `attach-once`:
- * 1. The thread holding the message's own subject wins.
- * 2. Otherwise the first related subject, in order, that a thread holds wins.
- * 3. Otherwise it's a new thread.
+ * - `skip`: move on to the next rule.
+ * - `attach`: attach the message to the thread holding the subject (the own one first, then the related ones in
+ *   order), or to a new thread if none does, and stop. This is the default.
  *
- * `skip` drops the message.
- *
- * `add_subjects` is every collected subject no thread holds yet. Ones another thread holds stay there.
+ * A message that no rule attached is dropped. `add_subjects` is every subject the rule found that no thread holds
+ * yet. Ones another thread holds stay there.
  *
  * Doesn't change `held`; the caller adds `add_subjects` to it as it assigns, so later messages see them.
  */
 export function route(rules: readonly BotRule[], held: ReadonlyMap<string, string>, e: Message): Routed | undefined {
-  const rule = rules.find((r) => r.types.some((t) => matches(t, e.event.type)));
-  if (!rule) return undefined;
-  const env = envFor(rule);
   const vars = { event_type: e.event.type, data: e.event.data ?? {} };
-  const key = (rule.subject !== undefined && (env.evaluate(rule.subject, vars) as string)) || undefined;
-  const related = rule.related !== undefined ? (env.evaluate(rule.related, vars) as string[]) : [];
-  const subjects = key ? [key, ...related] : [];
-  const found = subjects.map((s) => held.get(s)).find(Boolean);
-  const action =
-    rule.action === undefined
-      ? "attach-once"
-      : (env.evaluate(rule.action, { ...vars, subject: key ?? "", related, held: !!found }) as string);
-  if (action === "skip") return undefined;
-  if (action !== "attach-once") throw new Error(`Unknown rule action "${action}"; use "attach-once" or "skip".`);
-  return {
-    thread_id: found ?? randomUUID(),
-    add_subjects: [...new Set(subjects)].filter((s) => !held.has(s)),
-    key,
-  };
+  for (const rule of rules) {
+    if (!rule.types.some((t) => matches(t, e.event.type))) continue;
+    const env = envFor(rule);
+    const key = (rule.subject !== undefined && (env.evaluate(rule.subject, vars) as string)) || undefined;
+    const related = rule.related !== undefined ? (env.evaluate(rule.related, vars) as string[]) : [];
+    const subjects = key ? [key, ...related] : [];
+    const found = subjects.map((s) => held.get(s)).find(Boolean);
+    const action =
+      rule.action === undefined
+        ? "attach"
+        : (env.evaluate(rule.action, { ...vars, subject: key ?? "", related, held: !!found }) as string);
+    if (action === "skip") continue;
+    if (action !== "attach") throw new Error(`Unknown rule action "${action}"; use "attach" or "skip".`);
+    return {
+      thread_id: found ?? randomUUID(),
+      add_subjects: [...new Set(subjects)].filter((s) => !held.has(s)),
+      key,
+    };
+  }
+  return undefined;
 }

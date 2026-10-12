@@ -9,7 +9,7 @@ import { createUser } from "@loopway/web/store";
 import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { LoopwayClient, type Bot, type Message } from "../src/client.js";
+import { LoopwayClient, type Bot, type BotRule, type Message } from "../src/client.js";
 import { route as routeWith } from "../src/bots/rules.js";
 import { GITHUB_THREADS_RULES } from "../src/bots/defaults/github-threads/rules.js";
 import { threadPrompt } from "../src/bots/defaults/github-threads/index.js";
@@ -1076,6 +1076,23 @@ describe("threads", () => {
     // Pushes have no subject: each is its own thread. Types no rule matches are dropped.
     expect(route(held, "com.github.push", { repository })).toMatchObject({ add_subjects: [], key: undefined });
     expect(route(held, "com.vercel.deployment.created", {})).toBeUndefined();
+  });
+
+  it("route: skip moves on to the next rule, attach stops", () => {
+    const msg = { id: randomUUID(), inbox_id: "in", seq: 1, received_at: "", event: { type: "x.y", data: {} } };
+    const held = new Map([["b", "t2"]]);
+    const go = (rules: BotRule[]) => routeWith(rules, held, msg as unknown as Message);
+    const rule = (subject: string, action?: string) => ({ types: ["x.*"], subject: `'${subject}'`, action });
+    // skip falls through; a message nothing attaches is dropped.
+    expect(go([rule("a", "'skip'")])).toBeUndefined();
+    expect(go([rule("a", "'skip'"), rule("b")])).toMatchObject({ thread_id: "t2", key: "b", add_subjects: [] });
+    // attach stops; later rules aren't looked at.
+    expect(go([rule("a"), rule("b")])).toMatchObject({ key: "a", add_subjects: ["a"] });
+    // `held` says whether a thread holds the subject.
+    expect(go([rule("a", "held ? 'attach' : 'skip'"), rule("b", "held ? 'attach' : 'skip'")])).toMatchObject({
+      thread_id: "t2",
+    });
+    expect(() => go([rule("a", "'nope'")])).toThrow(/Unknown rule action/);
   });
 
   it("leaves threads owned by another runner alone, and shows them as on that runner", async () => {

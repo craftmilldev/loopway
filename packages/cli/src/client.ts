@@ -57,7 +57,7 @@ export interface Message {
 /**
  * One assign rule of a bot. The first rule with a type glob matching a message applies; each field is a CEL
  * expression over the message (see rules.ts): `subject` gives the message's own subject ("" for none), `related`
- * the subjects it also names, and `action` what to do with what they find (`attach-once`, the default, or `skip`).
+ * the subjects it also names, and `action` what to do with what they find (`attach`, the default, or `skip`).
  */
 export interface BotRule {
   types: string[];
