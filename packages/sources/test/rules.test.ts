@@ -1,6 +1,8 @@
 import { Environment } from "@marcbachmann/cel-js";
 import { describe, expect, it } from "vitest";
-import { ruleSources } from "../src/index.js";
+import { createSources, NO_DEPS } from "../src/index.js";
+
+const ruleSources = createSources(NO_DEPS).ruleSources();
 
 describe("source rules", () => {
   it("lists the sources that define rule helpers", () => {

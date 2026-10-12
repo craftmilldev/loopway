@@ -82,5 +82,7 @@ export interface SourceAdapter<Config = unknown> {
   publicConfig(config: Config): unknown;
   /** Setup hints shown on inbox responses (e.g. which content type to pick in GitHub). */
   setup?(config: Config, webhookUrl: string): Record<string, unknown>;
+  /** Helpers for bot rules on this source's event types. */
+  rules?: SourceRules;
   receive(req: IncomingWebhook, config: Config): ReceiveResult | Promise<ReceiveResult>;
 }

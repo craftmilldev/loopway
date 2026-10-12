@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Environment } from "@marcbachmann/cel-js";
 import type { BotRule, Message } from "../client.js";
-import { ruleSources } from "@loopway/sources";
+import { createSources, NO_DEPS } from "@loopway/sources";
 
 /** Where `route` sends a message: a thread, the subjects to add to it, and the message's own subject for display. */
 export interface Routed {
@@ -17,12 +17,14 @@ export interface Routed {
  * - `data`: the event's payload, and `event_type`: its type.
  * - In `action` only: `subject` and `related` (what the rule's other expressions produced) and `held` (whether a
  *   thread already holds one of those subjects).
- * - Helpers a source defines for rules on its own event types, named `<source>_<helper>` (see SourceRules in @loopway/sources).
+ * - Helpers a source defines for rules on its own event types, named `<source>_<helper>` (see `rules` on SourceAdapter in @loopway/sources).
  */
 const base = new Environment({ unlistedVariablesAreDyn: true });
 
 /** Each source's environment, for the rules whose type globs all start with its prefix. */
-const sourceEnvs = ruleSources.map((s) => ({ prefix: s.prefix, env: s.extend(base.clone()) }));
+const sourceEnvs = createSources(NO_DEPS)
+  .ruleSources()
+  .map((s) => ({ prefix: s.prefix, env: s.extend(base.clone()) }));
 
 /** The environment a rule runs in: its source's, if all its types are that source's, else the base one. */
 function envFor(rule: BotRule): Environment {

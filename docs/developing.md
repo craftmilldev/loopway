@@ -48,7 +48,7 @@ The pages are a React app in `packages/web/client/`. The homepage copy is markdo
 packages/sources/
   src/                  one file per source (github.ts, granola.ts, linear.ts, vercel.ts): its webhook adapter, a function of the
                         SourceDeps (ids, secrets, CloudEvent validation) the host injects, and optionally its rule helpers;
-                        index.ts registers them (createSources, ruleSources)
+                        index.ts registers them (createSources)
 packages/web/
   src/sources.ts        the sources, wired to the server's real SourceDeps
   src/cloudevents.ts    CloudEvent validation
@@ -80,7 +80,7 @@ packages/cli/
 
 1. Add `packages/sources/src/<type>.ts` exporting a function from `SourceDeps` to a `SourceAdapter` (`types.ts`); use the injected `newSecret`, `uuidv7`, `safeEqual` and `makeCloudEvent` rather than importing your own:
    - what clients show: `label`, `description`, common `events`, `secret` (`{from: "loopway", minLength}` if loopway makes it, `{from: "sender"}` if the sender shows one after the webhook is added) and `webhookSettings`
-   - optionally export `SourceRules` with the CEL helpers (`<type>_<helper>`) bot rules can call on its event types, and list it in `ruleSources`
+   - optional `rules`: the CEL helpers (`<type>_<helper>`) bot rules can call on its event types
    - `parseConfig` (validate + defaults), `publicConfig`, optional `setup`, and `receive(headers, rawBody) → event | ignored | rejected`
 2. Add it to `createSources` in `packages/sources/src/index.ts`.
 3. Add `packages/web/test/sources/<type>.test.ts` (`test/helpers.ts` gives it an app and database) and write `docs/sources/<type>.md` (config, setup in the sender, delivery rules, CloudEvent mapping) like the [existing ones](sources/).
