@@ -1,3 +1,4 @@
+import type { BotRule } from "@loopway/rules";
 import type { CloudEvent } from "./cloudevents.js";
 import type { Db } from "./db/index.js";
 import { newLockToken, newLoginCode, normalizeLoginCode, safeEqual, sha256, uuidv7 } from "./ids.js";
@@ -206,16 +207,7 @@ export async function getMessage(db: Db, inboxId: string, messageId: string): Pr
 
 // ---------- Bots ----------
 
-/**
- * One assign rule: the first whose type globs match a message applies, and its CEL expressions give the message's
- * own subject, its related subjects and what to do with them. The server stores them; the runner evaluates them.
- */
-export interface BotRule {
-  types: string[];
-  subject?: string;
-  related?: string;
-  action?: string;
-}
+export type { BotRule };
 
 export interface BotVersion {
   version: number;

@@ -150,6 +150,16 @@ describe("bots", () => {
       (await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "x", rules: [{ types: [] }] } })).status,
     ).toBe(400);
     expect((await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "" } })).status).toBe(400);
+    // Rules that don't parse are rejected on save, on versions and on create.
+    const bad = [{ types: ["x"], subject: "data.(" }];
+    const rejected = await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "x", rules: bad } });
+    expect(rejected.status).toBe(400);
+    expect(rejected.body.error.code).toBe("invalid_rules");
+    const badCreate = await call("POST", "/bots", {
+      key,
+      body: { name: "bad", kind: "github-threads", model: "sonnet", inbox_ids: [a.id], prompt: "p", rules: bad },
+    });
+    expect(badCreate.body.error.code).toBe("invalid_rules");
     const other = await newUser();
     expect((await call("POST", `/bots/${id}/versions`, { key: other, body: { prompt: "x" } })).status).toBe(404);
     const rows = await db.query(`SELECT version FROM loopway.bot_versions WHERE bot_id = $1 ORDER BY version`, [id]);

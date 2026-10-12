@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z, ZodError } from "zod";
+import { checkRules } from "@loopway/rules";
 import { eeRoutes, type EeOptions } from "../ee/routes.js";
 import type { Db } from "./db/index.js";
 import { consoleSender, type SendEmail } from "./email.js";
@@ -332,6 +333,17 @@ export function createApi(opts: ApiOptions) {
     )
     .max(100);
 
+  /** Rejects rules whose expressions don't parse, so a bad edit fails on save and not on a runner. */
+  function checked(rules: z.infer<typeof rulesBody> | undefined) {
+    if (!rules) return rules;
+    try {
+      checkRules(rules);
+    } catch (err) {
+      throw new ApiError(400, "invalid_rules", err instanceof Error ? err.message : String(err));
+    }
+    return rules;
+  }
+
   authed.get("/bots", async (c) => {
     const rows = await store.listBots(c.var.db, c.var.user.id);
     return c.json({ data: rows.map(serializeBot) });
@@ -355,7 +367,7 @@ export function createApi(opts: ApiOptions) {
       model: input.model,
       inboxIds: await ownedInboxIds(c, input.inbox_ids),
       prompt: input.prompt,
-      rules: input.rules,
+      rules: checked(input.rules),
     });
     return c.json(serializeBot(bot), 201);
   });
@@ -388,7 +400,9 @@ export function createApi(opts: ApiOptions) {
   authed.post("/bots/:botId/versions", async (c) => {
     const bot = await ownedBot(c);
     const input = z.object({ prompt: promptBody, rules: rulesBody.optional() }).parse(await jsonBody(c));
-    return c.json(await store.addBotVersion(c.var.db, bot.id, input.prompt, input.rules), 201);
+    const version = await store.addBotVersion(c.var.db, bot.id, input.prompt, checked(input.rules));
+    await metrics.capture("bot_version_saved", c.var.user.id, { with_rules: !!input.rules });
+    return c.json(version, 201);
   });
 
   authed.delete("/bots/:botId", async (c) => {

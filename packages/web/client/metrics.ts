@@ -26,3 +26,8 @@ export function identify(id: string, props: { email: string | null; name: string
 export function reset() {
   if (on) posthog.reset();
 }
+
+/** Records something the user did in the browser that the server never sees (a form that stopped before a request). */
+export function track(event: string, props?: Record<string, string | number | boolean>) {
+  if (on) posthog.capture(event, props);
+}

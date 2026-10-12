@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { leaseText, type Inbox } from "./dashboard.js";
 import { DashNav, Layout } from "./layout.js";
 import * as lw from "./lw.js";
+import { track } from "./metrics.js";
 
 type Status = "active" | "ended" | "all";
 
@@ -80,6 +81,8 @@ export function Bot({ id }: { id: string }) {
       )}
       {error && <p className="error">{error}</p>}
 
+      {b && <Versions botPath={botPath} current={b.prompt_version} onSaved={() => void bot.reload()} />}
+
       <div className="page-head section">
         <h1>Threads</h1>
         <div className="input-wrap">
@@ -121,6 +124,127 @@ export function Bot({ id }: { id: string }) {
         </p>
       )}
     </Layout>
+  );
+}
+
+const showRules = (rules: lw.BotRule[] | null) => (rules ? JSON.stringify(rules, null, 2) : "");
+
+/** The bot's current prompt and rules with a form to edit them, and its earlier versions to restore. */
+function Versions({
+  botPath,
+  current,
+  onSaved,
+}: {
+  botPath: string;
+  current: lw.BotVersion | null;
+  onSaved: () => void;
+}) {
+  const history = lw.useList<lw.BotVersion>(botPath + "/versions", true);
+  const [prompt, setPrompt] = useState(current?.prompt ?? "");
+  const [rules, setRules] = useState(showRules(current?.rules ?? null));
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<number | null>(null);
+  const version = current?.version;
+
+  // A new current version (saved here, or by the CLI) fills the form.
+  useEffect(() => {
+    setPrompt(current?.prompt ?? "");
+    setRules(showRules(current?.rules ?? null));
+  }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function save(body: { prompt: string; rules?: lw.BotRule[] }, restored?: number) {
+    setError(null);
+    setSaved(null);
+    const r = await lw.api(botPath + "/versions", { method: "POST", body });
+    if (r.status === 401) return lw.expired(r);
+    if (!r.ok) return setError(await lw.message(r));
+    const v = (await r.json()) as lw.BotVersion;
+    if (restored) track("bot_version_restored");
+    setSaved(v.version);
+    onSaved();
+    void history.reload();
+  }
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    let parsed: lw.BotRule[] | undefined;
+    if (rules.trim()) {
+      try {
+        parsed = JSON.parse(rules) as lw.BotRule[];
+      } catch (err) {
+        track("bot_rules_invalid_json");
+        return setError("Rules aren't valid JSON: " + (err instanceof Error ? err.message : String(err)));
+      }
+    }
+    void save({ prompt, rules: parsed });
+  }
+
+  return (
+    <>
+      <div className="page-head section">
+        <h1>Prompt and rules</h1>
+        {current && <span className="muted mono">version {current.version}</span>}
+      </div>
+      <form className="panel" onSubmit={submit}>
+        <div className="field">
+          <label htmlFor="bot-prompt">Prompt</label>
+          <textarea
+            id="bot-prompt"
+            required
+            maxLength={100_000}
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="bot-rules">Rules (JSON)</label>
+          <textarea
+            id="bot-rules"
+            spellCheck={false}
+            value={rules}
+            onChange={(e) => setRules(e.target.value)}
+            placeholder="[]"
+          />
+          <p className="hint">Checked when you save. Leave empty to keep the current rules.</p>
+        </div>
+        <div className="form-actions">
+          <button className="btn" type="submit">
+            Save as new version
+          </button>
+        </div>
+        {error && <p className="error">{error}</p>}
+        {saved && <p className="hint">Saved version {saved}.</p>}
+      </form>
+
+      <div className="page-head section">
+        <h1>History</h1>
+      </div>
+      <ul className="list">
+        {history.data?.map((v) => (
+          <li key={v.version}>
+            <details className="message">
+              <summary>
+                <span className="type">Version {v.version}</span>
+                <span className="when">{lw.when(v.created_at)}</span>
+              </summary>
+              <pre>{v.prompt}</pre>
+              <pre>{v.rules ? showRules(v.rules) : "No rules."}</pre>
+              {v.version !== current?.version && (
+                <div className="actions">
+                  <button
+                    className="btn btn-sm"
+                    type="button"
+                    onClick={() => void save({ prompt: v.prompt, rules: v.rules ?? undefined }, v.version)}
+                  >
+                    Restore
+                  </button>
+                </div>
+              )}
+            </details>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 

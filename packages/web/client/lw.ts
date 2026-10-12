@@ -113,10 +113,27 @@ export function useMe() {
 }
 
 /** A bot as `GET /bots` describes it. `leased_until` is null when no runner holds it. */
+/** One assign rule of a bot (see @loopway/rules). */
+export interface BotRule {
+  types: string[];
+  subject?: string;
+  related?: string;
+  action?: string;
+}
+
+/** One saved revision of a bot's prompt and rules. Rules are null for versions saved before bots had them. */
+export interface BotVersion {
+  version: number;
+  prompt: string;
+  rules: BotRule[] | null;
+  created_at: string;
+}
+
 export interface Bot {
   id: string;
   name: string;
   kind: string;
+  prompt_version: BotVersion | null;
   inbox_ids: string[];
   cursor: number;
   runner_id: string | null;
