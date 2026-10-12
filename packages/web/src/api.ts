@@ -334,11 +334,12 @@ export function createApi(opts: ApiOptions) {
     .max(100);
 
   /** Rejects rules whose expressions don't parse, so a bad edit fails on save and not on a runner. */
-  function checked(rules: z.infer<typeof rulesBody> | undefined) {
+  async function checked(c: Context<Env>, rules: z.infer<typeof rulesBody> | undefined, action: "create" | "version") {
     if (!rules) return rules;
     try {
       checkRules(rules);
     } catch (err) {
+      await metrics.capture("bot_rules_rejected", c.var.user.id, { action });
       throw new ApiError(400, "invalid_rules", err instanceof Error ? err.message : String(err));
     }
     return rules;
@@ -367,7 +368,7 @@ export function createApi(opts: ApiOptions) {
       model: input.model,
       inboxIds: await ownedInboxIds(c, input.inbox_ids),
       prompt: input.prompt,
-      rules: checked(input.rules),
+      rules: await checked(c, input.rules, "create"),
     });
     return c.json(serializeBot(bot), 201);
   });
@@ -400,7 +401,7 @@ export function createApi(opts: ApiOptions) {
   authed.post("/bots/:botId/versions", async (c) => {
     const bot = await ownedBot(c);
     const input = z.object({ prompt: promptBody, rules: rulesBody.optional() }).parse(await jsonBody(c));
-    const version = await store.addBotVersion(c.var.db, bot.id, input.prompt, checked(input.rules));
+    const version = await store.addBotVersion(c.var.db, bot.id, input.prompt, await checked(c, input.rules, "version"));
     await metrics.capture("bot_version_saved", c.var.user.id, { with_rules: !!input.rules });
     return c.json(version, 201);
   });
