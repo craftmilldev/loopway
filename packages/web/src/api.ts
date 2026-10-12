@@ -544,17 +544,15 @@ export function createApi(opts: ApiOptions) {
     return c.json(serializeThread((await store.getThread(c.var.db, bot.id, thread.id))!));
   });
 
-  // The manual repair for a subject that landed on the wrong thread. Needs no lease, like release.
+  // The manual repair for a subject that landed on the wrong thread: from this thread to `to_thread_id`. Needs no lease, like release.
   authed.post("/bots/:botId/threads/:threadId/move-subject", async (c) => {
     const bot = await ownedBot(c);
-    const to = await existingThread(c, bot);
-    const { subject } = z.object({ subject: z.string().min(1).max(500) }).parse(await jsonBody(c));
-    const from = (await store.subjectHolders(c.var.db, bot.id, [subject])).get(subject);
-    if (!from) throw new ApiError(404, "not_found", `Subject ${subject} isn't on any of the bot's threads`);
-    if (from === to.id)
-      throw new ApiError(409, "subject_on_thread", `Subject ${subject} is already on thread ${to.id}`);
-    if (!(await store.moveSubject(c.var.db, bot.id, subject, to.id)))
-      throw new ApiError(404, "not_found", `Subject ${subject} isn't on any of the bot's threads`);
+    const from = await existingThread(c, bot);
+    const input = z.object({ subject: z.string().min(1).max(500), to_thread_id: uuid }).parse(await jsonBody(c));
+    const to = await existingThread(c, bot, input.to_thread_id);
+    if (to.id === from.id) throw new ApiError(400, "invalid_request", "The subject is already on that thread");
+    if (!(await store.moveSubject(c.var.db, bot.id, input.subject, from.id, to.id)))
+      throw new ApiError(404, "not_found", `Subject ${input.subject} isn't on thread ${from.id}`);
     return c.json(serializeThread((await store.getThread(c.var.db, bot.id, to.id))!));
   });
 

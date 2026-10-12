@@ -326,9 +326,9 @@ describe("thread writes", () => {
     const lease = await leaseThread(t2);
     await call("PATCH", `${base}/threads/${t2}`, { key, body: { lease_token: lease, status: "ended" } });
 
-    const move = (to: string, subject: string) =>
-      call("POST", `${base}/threads/${to}/move-subject`, { key, body: { subject } });
-    const moved = await move(t2, "o/r#1");
+    const move = (from: string, to: string, subject: string) =>
+      call("POST", `${base}/threads/${from}/move-subject`, { key, body: { subject, to_thread_id: to } });
+    const moved = await move(t1, t2, "o/r#1");
     expect(moved.status).toBe(200);
     expect(moved.body).toMatchObject({ id: t2, status: "active", subjects: ["o/r#1", "o/r#3"] });
     expect(moved.body.waiting.map((m: any) => m.id).sort()).toEqual([messages[0]!.id, messages[2]!.id].sort());
@@ -336,9 +336,10 @@ describe("thread writes", () => {
     expect(old.subjects).toEqual(["o/r#2"]);
     expect(old.waiting.map((m: any) => m.id)).toEqual([messages[1]!.id]);
 
-    expect((await move(t2, "o/r#1")).body.error.code).toBe("subject_on_thread");
-    expect((await move(t2, "o/r#9")).status).toBe(404);
-    expect((await move(randomUUID(), "o/r#2")).status).toBe(404);
+    expect((await move(t1, t2, "o/r#1")).status).toBe(404);
+    expect((await move(t1, t1, "o/r#2")).status).toBe(400);
+    expect((await move(t1, t2, "o/r#9")).status).toBe(404);
+    expect((await move(t1, randomUUID(), "o/r#2")).status).toBe(404);
   });
 
   it("won't move a subject to another bot's thread", async () => {
@@ -348,7 +349,10 @@ describe("thread writes", () => {
     const sibling = (
       await call("POST", "/bots", { key, body: { name: "s", kind: "k", model: "sonnet", inbox_ids: [] } })
     ).body;
-    const r = await call("POST", `/bots/${sibling.id}/threads/${t1}/move-subject`, { key, body: { subject: "o/r#1" } });
+    const r = await call("POST", `/bots/${sibling.id}/threads/${t1}/move-subject`, {
+      key,
+      body: { subject: "o/r#1", to_thread_id: randomUUID() },
+    });
     expect(r.status).toBe(404);
   });
 });

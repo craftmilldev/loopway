@@ -218,11 +218,14 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
 
   botThreads
     .command("move")
-    .description("move a subject to another of the bot's threads, with its waiting messages; an ended thread resumes")
+    .description(
+      "move a subject from one of the bot's threads to another, with its waiting messages; an ended thread resumes",
+    )
     .argument("<bot>", "bot id or name")
     .argument("<subject>", "the subject, e.g. owner/repo#12")
+    .argument("<from-thread>", "id of the thread it is on (the start of it is enough)")
     .argument("<to-thread>", "id of the thread to move it to (the start of it is enough)")
-    .action((ref, subject, to) => moveBotSubject(ctx, ref, subject, to));
+    .action((ref, subject, from, to) => moveBotSubject(ctx, ref, subject, from, to));
 
   bots
     .command("run")

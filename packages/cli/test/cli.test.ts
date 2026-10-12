@@ -569,11 +569,13 @@ describe("runners", () => {
     });
     await client.releaseBot(bot.id, botLease.token);
 
-    expect(await run("bots", "threads", "move", "dev", "a/b#1", b.slice(0, 8))).toMatch(/Moved a\/b#1 to thread/);
+    expect(await run("bots", "threads", "move", "dev", "a/b#1", a.slice(0, 8), b.slice(0, 8))).toMatch(
+      /Moved a\/b#1 to thread/,
+    );
     const threads = await runJson("bots", "threads", "dev");
     expect(threads.find((t: any) => t.id === b).subjects).toEqual(["a/b#1", "a/b#2"]);
     expect(threads.find((t: any) => t.id === a).subjects).toEqual([]);
-    await expect(run("bots", "threads", "move", "dev", "a/b#1", "zzzz")).rejects.toThrow(/No thread/);
+    await expect(run("bots", "threads", "move", "dev", "a/b#1", a, "zzzz")).rejects.toThrow(/No thread/);
   });
 });
 
