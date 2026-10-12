@@ -23,9 +23,16 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     );
     return;
   }
-  // Bots made before prompts were stored get their kind's prompt as version 1.
+  // Bots made before prompts or rules were stored get their kind's as a new version, keeping the prompt they have.
   for (const b of bots)
-    if (!b.prompt_version) b.prompt_version = await client.addBotVersion(b.id, await BOT_KINDS[b.kind]!.prompt());
+    if (!b.prompt_version?.rules) {
+      const kind = BOT_KINDS[b.kind]!;
+      b.prompt_version = await client.addBotVersion(
+        b.id,
+        b.prompt_version?.prompt ?? (await kind.prompt()),
+        kind.rules,
+      );
+    }
   const interval = opts.interval ?? DEFAULTS.interval;
   const runner = await ensureRunner(ctx.configDir, client);
   const dispatcherOpts = { ...opts, ttl: opts.ttl ?? defaultTtl(interval), runnerId: runner.id };

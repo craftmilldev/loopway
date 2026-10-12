@@ -63,11 +63,11 @@ packages/cli/
   src/client.ts         typed API client
   src/config.ts         ~/.loopway/config.json
   src/mcp.ts            minimal MCP server (HTTP, localhost) the bots dispatcher serves to its sessions
-  src/bots/             `loopway bots run`: dispatcher.ts (lease, read, assign, deliver), kinds.ts (bot kind → route + prompt),
-                        routing.ts (github-threads: message → thread),
+  src/bots/             `loopway bots run`: dispatcher.ts (lease, read, assign, deliver), kinds.ts (bot kind → prompt + starting rules),
+                        rules.ts (CEL assign rules: message → thread), sources/ (per-source rule helpers + starting rules),
                         tools.ts (MCP link/end), agent.ts (claude -p),
                         tui.tsx (the Ink TUI), transcript.ts (stream-json log → readable lines)
-  prompts/thread.md     the prompt every thread session starts with
+  src/bots/defaults/    default bots: github-threads/ has its prompt and starting rules
   test/cli.test.ts      runs commands against the real API app in-process
   test/tui.test.tsx     renders the threads TUI with ink-testing-library
 ```

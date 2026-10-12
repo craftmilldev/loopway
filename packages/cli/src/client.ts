@@ -54,10 +54,24 @@ export interface Message {
   event: CloudEvent;
 }
 
-/** One saved revision of a bot's prompt. */
+/**
+ * One assign rule of a bot. The first rule with a type glob matching a message applies; each field is a CEL
+ * expression over the message (see rules.ts): `subject` gives the message's own subject ("" for none), `related`
+ * the subjects it also names, and `action` what to do with what they find (`attach`, the default, or `skip`).
+ */
+export interface BotRule {
+  types: string[];
+  subject?: string;
+  related?: string;
+  action?: string;
+}
+
+/** One saved revision of a bot's prompt and assign rules. */
 export interface BotVersion {
   version: number;
   prompt: string;
+  /** Null for versions saved before bots had rules. */
+  rules: BotRule[] | null;
   created_at: string;
 }
 
@@ -259,13 +273,20 @@ export class LoopwayClient {
     return (await this.request<{ data: Bot[] }>("GET", "/bots")).data;
   }
 
-  createBot(input: { name: string; kind: string; model: string; inbox_ids: string[]; prompt?: string }) {
+  createBot(input: {
+    name: string;
+    kind: string;
+    model: string;
+    inbox_ids: string[];
+    prompt?: string;
+    rules?: BotRule[];
+  }) {
     return this.request<Bot>("POST", "/bots", input);
   }
 
-  /** Saves a new prompt version for the bot; it becomes the bot's current one. */
-  addBotVersion(botId: string, prompt: string) {
-    return this.request<BotVersion>("POST", `/bots/${enc(botId)}/versions`, { prompt });
+  /** Saves a new version for the bot; it becomes the bot's current one. Without `rules` it keeps the current ones. */
+  addBotVersion(botId: string, prompt: string, rules?: BotRule[]) {
+    return this.request<BotVersion>("POST", `/bots/${enc(botId)}/versions`, { prompt, rules });
   }
 
   getBot(botId: string) {

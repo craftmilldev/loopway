@@ -9,9 +9,11 @@ import { createUser } from "@loopway/web/store";
 import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { LoopwayClient, type Bot, type Message } from "../src/client.js";
-import { route } from "../src/bots/routing.js";
-import { LIMIT_FALLBACK_MS, LimitWatch, threadPrompt, type AgentRun, type RunOutcome } from "../src/bots/agent.js";
+import { LoopwayClient, type Bot, type BotRule, type Message } from "../src/client.js";
+import { route as routeWith } from "../src/bots/rules.js";
+import { GITHUB_THREADS_RULES } from "../src/bots/defaults/github-threads/rules.js";
+import { threadPrompt } from "../src/bots/defaults/github-threads/index.js";
+import { LIMIT_FALLBACK_MS, LimitWatch, type AgentRun, type RunOutcome } from "../src/bots/agent.js";
 import { API_ERROR_BACKOFF_MS, Dispatcher, NETWORK_ERROR_MAX_BACKOFF_MS } from "../src/bots/dispatcher.js";
 import { defaultTtl } from "../src/commands/bots-run.js";
 import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
@@ -1016,6 +1018,7 @@ describe("threads", () => {
   });
 
   it("route: own subject first, then the first closed issue a thread holds; adds only subjects nobody holds", () => {
+    const route = (held: ReadonlyMap<string, string>, m: Message) => routeWith(GITHUB_THREADS_RULES, held, m);
     const message = (n: number, body: string) =>
       ({
         id: randomUUID(),
@@ -1048,6 +1051,48 @@ describe("threads", () => {
     const fresh = route(held, message(7, "Closes #8"))!;
     expect(fresh).toMatchObject({ add_subjects: ["a/b#7", "a/b#8"], key: "a/b#7" });
     expect(["t1", "t2"]).not.toContain(fresh.thread_id);
+  });
+
+  it("route: CI joins its PR's thread, a run with no PR and a `future` issue without a thread are dropped", () => {
+    const route = (held: ReadonlyMap<string, string>, type: string, data: unknown) =>
+      routeWith(GITHUB_THREADS_RULES, held, {
+        id: randomUUID(),
+        inbox_id: "in",
+        seq: 1,
+        received_at: "",
+        event: { type, data },
+      } as unknown as Message);
+    const held = new Map([["a/b#1", "t1"]]);
+    const run = (prs: { number: number }[]) => ({ repository, workflow_run: { pull_requests: prs } });
+    expect(route(held, "com.github.workflow_run.completed", run([{ number: 1 }]))).toEqual({
+      thread_id: "t1",
+      add_subjects: [],
+      key: "a/b#1",
+    });
+    expect(route(held, "com.github.workflow_run.completed", run([]))).toBeUndefined();
+    const future = (n: number) => ({ repository, issue: { number: n, labels: [{ name: "future" }] } });
+    expect(route(held, "com.github.issues.opened", future(2))).toBeUndefined();
+    expect(route(held, "com.github.issues.opened", future(1))).toMatchObject({ thread_id: "t1" });
+    // Pushes have no subject: each is its own thread. Types no rule matches are dropped.
+    expect(route(held, "com.github.push", { repository })).toMatchObject({ add_subjects: [], key: undefined });
+    expect(route(held, "com.vercel.deployment.created", {})).toBeUndefined();
+  });
+
+  it("route: skip moves on to the next rule, attach stops", () => {
+    const msg = { id: randomUUID(), inbox_id: "in", seq: 1, received_at: "", event: { type: "x.y", data: {} } };
+    const held = new Map([["b", "t2"]]);
+    const go = (rules: BotRule[]) => routeWith(rules, held, msg as unknown as Message);
+    const rule = (subject: string, action?: string) => ({ types: ["x.*"], subject: `'${subject}'`, action });
+    // skip falls through; a message nothing attaches is dropped.
+    expect(go([rule("a", "'skip'")])).toBeUndefined();
+    expect(go([rule("a", "'skip'"), rule("b")])).toMatchObject({ thread_id: "t2", key: "b", add_subjects: [] });
+    // attach stops; later rules aren't looked at.
+    expect(go([rule("a"), rule("b")])).toMatchObject({ key: "a", add_subjects: ["a"] });
+    // `held` says whether a thread holds the subject.
+    expect(go([rule("a", "held ? 'attach' : 'skip'"), rule("b", "held ? 'attach' : 'skip'")])).toMatchObject({
+      thread_id: "t2",
+    });
+    expect(() => go([rule("a", "'nope'")])).toThrow(/Unknown rule action/);
   });
 
   it("leaves threads owned by another runner alone, and shows them as on that runner", async () => {
@@ -1240,7 +1285,7 @@ describe("threads", () => {
     });
   });
 
-  it("loads the session prompt from prompts/thread.md", async () => {
+  it("loads the default bot's session prompt", async () => {
     const prompt = await threadPrompt();
     expect(prompt).toContain("You are a loopway thread session");
     expect(prompt).toContain("loopway messages get <inbox> <message> --data");

@@ -12,8 +12,7 @@
     "loopway": "./dist/index.js"
   },
   "files": [
-    "dist",
-    "prompts"
+    "dist"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -23,6 +22,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",
+    "@marcbachmann/cel-js": "^8.0.0",
     "commander": "^15.0.0",
     "ink": "^8.0.0",
     "posthog-node": "^5.55.1",
