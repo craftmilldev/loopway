@@ -5,6 +5,15 @@ import { getDb } from "./db/index.js";
 import { consoleSender, resendSender } from "./email.js";
 import { createMetrics } from "./metrics.js";
 
+/** The /ingest proxy forwards to PostHog's EU cloud when POSTHOG_HOST is an EU host (eu.i.posthog.com), else US. */
+function posthogRegion(host: string | undefined) {
+  try {
+    return host && new URL(host).hostname.startsWith("eu.") ? "eu" : "us";
+  } catch {
+    return "us";
+  }
+}
+
 const app = new Hono();
 
 const tokenSecret = process.env.TOKEN_SECRET;
@@ -17,7 +26,7 @@ app.route(
     tokenSecret,
     metrics: createMetrics(),
     posthogKey: process.env.POSTHOG_API_KEY || undefined,
-    posthogRegion: process.env.POSTHOG_REGION === "eu" ? "eu" : "us",
+    posthogRegion: posthogRegion(process.env.POSTHOG_HOST),
     publicBaseUrl: process.env.PUBLIC_BASE_URL || undefined,
     sourceRequests:
       process.env.SOURCE_REQUEST_URL && process.env.SOURCE_REQUEST_TOKEN
