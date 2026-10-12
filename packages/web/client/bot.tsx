@@ -80,6 +80,8 @@ export function Bot({ id }: { id: string }) {
       )}
       {error && <p className="error">{error}</p>}
 
+      {b && <Instructions key={b.prompt_version?.version ?? 0} bot={b} onSaved={() => void bot.reload()} />}
+
       <div className="page-head section">
         <h1>Threads</h1>
         <div className="input-wrap">
@@ -121,6 +123,118 @@ export function Bot({ id }: { id: string }) {
         </p>
       )}
     </Layout>
+  );
+}
+
+const stringify = (rules: lw.BotRule[] | null) => JSON.stringify(rules ?? [], null, 2);
+
+/**
+ * The bot's current prompt and rules, with a form to save an edit as a new version, and the earlier versions. The
+ * page remounts it (by key) when the bot has a new version, which resets the form and reloads the list.
+ */
+function Instructions({ bot, onSaved }: { bot: lw.Bot; onSaved: () => void }) {
+  const current = bot.prompt_version;
+  const versions = lw.useList<lw.BotVersion>("/bots/" + bot.id + "/versions", true);
+  const [prompt, setPrompt] = useState(current?.prompt ?? "");
+  const [rules, setRules] = useState(stringify(current?.rules ?? null));
+  const [error, setError] = useState<string | null>(null);
+  const changed = prompt !== (current?.prompt ?? "") || rules !== stringify(current?.rules ?? null);
+
+  /** Saves a new version; rules that don't parse come back as an error, and nothing is saved. */
+  async function save(body: { prompt: string; rules: lw.BotRule[] }) {
+    setError(null);
+    const r = await lw.api("/bots/" + bot.id + "/versions", { method: "POST", body });
+    if (r.status === 401) return lw.expired(r);
+    if (!r.ok) return setError(await lw.message(r));
+    onSaved();
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    let parsed: lw.BotRule[];
+    try {
+      parsed = JSON.parse(rules) as lw.BotRule[];
+    } catch {
+      return setError("The rules aren't valid JSON.");
+    }
+    await save({ prompt, rules: parsed });
+  }
+
+  async function restore(v: lw.BotVersion) {
+    if (!confirm(`Save version ${v.version} again as the newest version?`)) return;
+    await save({ prompt: v.prompt, rules: v.rules ?? [] });
+  }
+
+  return (
+    <>
+      <div className="page-head section">
+        <h1>Instructions</h1>
+        <div className="muted mono">{current ? `version ${current.version}` : "no version yet"}</div>
+      </div>
+      <form className="panel" onSubmit={(e) => void submit(e)}>
+        <div className="field">
+          <label htmlFor="bot-prompt">Prompt</label>
+          <div className="input-wrap tall">
+            <textarea
+              id="bot-prompt"
+              required
+              rows={14}
+              maxLength={100000}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="field">
+          <label htmlFor="bot-rules">Assign rules</label>
+          <div className="input-wrap tall">
+            <textarea
+              id="bot-rules"
+              rows={14}
+              spellCheck={false}
+              value={rules}
+              onChange={(e) => setRules(e.target.value)}
+            />
+          </div>
+          <p className="hint">
+            JSON: a list of rules, each with <code>types</code> and CEL expressions <code>subject</code>,{" "}
+            <code>related</code> and <code>action</code>. The first rule that matches a message&apos;s type applies.
+          </p>
+        </div>
+        <div className="form-actions">
+          <button className="btn" type="submit" disabled={!changed}>
+            Save as a new version
+          </button>
+        </div>
+        {error && <p className="error">{error}</p>}
+      </form>
+      {!!versions.data?.length && (
+        <>
+          <div className="page-head section">
+            <h1>Versions</h1>
+          </div>
+          <ul className="list">
+            {versions.data.map((v) => (
+              <li key={v.version}>
+                <span className="title">Version {v.version}</span>
+                {v.version === current?.version && <span className="badge">current</span>}
+                <div className="meta">
+                  saved {lw.when(v.created_at)} · {v.rules ? `${v.rules.length} rules` : "no rules"} · {v.prompt.length}{" "}
+                  characters of prompt
+                </div>
+                {v.version !== current?.version && (
+                  <div className="actions">
+                    <button className="btn btn-sm btn-quiet" type="button" onClick={() => void restore(v)}>
+                      Restore
+                    </button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </>
   );
 }
 

@@ -1183,7 +1183,7 @@ describe("threads", () => {
   it("route: skip moves on to the next rule, attach stops", () => {
     const msg = { id: randomUUID(), inbox_id: "in", seq: 1, received_at: "", event: { type: "x.y", data: {} } };
     const held = new Map([["b", "t2"]]);
-    const go = (rules: BotRule[]) => routeWith(rules, held, msg as unknown as Message);
+    const go = (rules: BotRule[]) => routeWith(rules, held, msg);
     const rule = (subject: string, action?: string) => ({ types: ["x.*"], subject: `'${subject}'`, action });
     // skip falls through; a message nothing attaches is dropped.
     expect(go([rule("a", "'skip'")])).toBeUndefined();
@@ -1209,8 +1209,17 @@ describe("threads", () => {
     expect(runs[0]!.message).toContain("Be brief.");
     await finish();
 
-    // Rules whose expressions don't parse are reported once, and the version before keeps running.
-    await client.addBotVersion(bot.id, "Broken.", [{ types: ["*"], subject: "data.(" }]);
+    // The API refuses rules that don't parse, but a version can still get past it (saved before the check, say):
+    // the runner reports it once, and the version before keeps running.
+    await expect(client.addBotVersion(bot.id, "Broken.", [{ types: ["*"], subject: "data.(" }])).rejects.toThrow(
+      /Invalid rules/,
+    );
+    await db.query(
+      `INSERT INTO loopway.bot_versions (bot_id, version, prompt, rules)
+       SELECT bot_id, max(version) + 1, 'Broken.', '[{"types":["*"],"subject":"data.("}]'::jsonb
+       FROM loopway.bot_versions WHERE bot_id = $1 GROUP BY bot_id`,
+      [bot.id],
+    );
     await send(inbox, "issues", issue("opened", 2));
     await d.tick();
     await d.tick();

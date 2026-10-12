@@ -112,12 +112,30 @@ export function useMe() {
   return me;
 }
 
+/** One assign rule of a bot: CEL expressions over its messages (see the CLI's `bots show --rules`). */
+export interface BotRule {
+  types: string[];
+  subject?: string;
+  related?: string;
+  action?: string;
+}
+
+/** One saved revision of a bot's prompt and assign rules. `rules` is null on versions saved before bots had rules. */
+export interface BotVersion {
+  version: number;
+  prompt: string;
+  rules: BotRule[] | null;
+  created_at: string;
+}
+
 /** A bot as `GET /bots` describes it. `leased_until` is null when no runner holds it. */
 export interface Bot {
   id: string;
   name: string;
   kind: string;
   inbox_ids: string[];
+  /** The bot's newest version; null if it has none yet. */
+  prompt_version: BotVersion | null;
   cursor: number;
   runner_id: string | null;
   leased_until: string | null;

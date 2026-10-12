@@ -299,6 +299,26 @@ img {
   font-family: var(--font-type);
   font-size: 0.8125rem;
 }
+.input-wrap.tall {
+  height: auto;
+  padding: 8px;
+}
+.input-wrap textarea {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-bottom: 1px solid var(--rule-soft);
+  outline: none;
+  background: transparent;
+  color: var(--ink-900);
+  font-family: var(--font-type);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+.input-wrap textarea:focus {
+  border-bottom: 2px solid var(--madder-600);
+}
 .input-wrap input:focus,
 .input-wrap select:focus {
   border-bottom: 2px solid var(--madder-600);

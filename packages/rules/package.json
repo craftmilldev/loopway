@@ -1,0 +1,33 @@
+{
+  "name": "@loopway/rules",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "A bot's assign rules: the CEL environment they run in, checking them, and routing a message with them. Shared by the web API and the CLI.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@marcbachmann/cel-js": "^8.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.3"
+  }
+}

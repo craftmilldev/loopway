@@ -150,6 +150,25 @@ describe("bots", () => {
       (await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "x", rules: [{ types: [] }] } })).status,
     ).toBe(400);
     expect((await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "" } })).status).toBe(400);
+    // Rules whose expressions don't parse are refused with the reason, and nothing is saved.
+    const broken = await call("POST", `/bots/${id}/versions`, {
+      key,
+      body: { prompt: "x", rules: [{ types: ["*"], subject: "data.(" }] },
+    });
+    expect(broken.status).toBe(400);
+    expect(broken.body.error.message).toMatch(/^Invalid rules: /);
+    const brokenBot = await call("POST", "/bots", {
+      key,
+      body: {
+        name: "b",
+        kind: "github-threads",
+        model: "sonnet",
+        inbox_ids: [a.id],
+        prompt: "x",
+        rules: [{ types: ["*"], related: "[" }],
+      },
+    });
+    expect(brokenBot.status).toBe(400);
     const other = await newUser();
     expect((await call("POST", `/bots/${id}/versions`, { key: other, body: { prompt: "x" } })).status).toBe(404);
     const rows = await db.query(`SELECT version FROM loopway.bot_versions WHERE bot_id = $1 ORDER BY version`, [id]);

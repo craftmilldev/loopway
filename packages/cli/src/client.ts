@@ -1,5 +1,7 @@
 // Typed client for the loopway HTTP API (see docs/api.md for the contract).
 
+import type { BotRule } from "@loopway/rules";
+
 export interface User {
   id: string;
   name: string;
@@ -54,17 +56,7 @@ export interface Message {
   event: CloudEvent;
 }
 
-/**
- * One assign rule of a bot. The first rule with a type glob matching a message applies; each field is a CEL
- * expression over the message (see rules.ts): `subject` gives the message's own subject ("" for none), `related`
- * the subjects it also names, and `action` what to do with what they find (`attach`, the default, or `skip`).
- */
-export interface BotRule {
-  types: string[];
-  subject?: string;
-  related?: string;
-  action?: string;
-}
+export type { BotRule };
 
 /** One saved revision of a bot's prompt and assign rules. */
 export interface BotVersion {
