@@ -19,12 +19,14 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@loopway/rules": "*"
   },
   "devDependencies": {
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.3"
   }
 }
