@@ -88,12 +88,13 @@ export async function createBot(
   opts: JsonOpt & { name?: string; preset?: string; model?: string; inbox?: string[] },
 ) {
   if (!opts.name) throw new UsageError("--name is required");
+  if (!opts.preset) throw new UsageError(`--preset is required (${Object.keys(PRESETS).join(", ")})`);
   if (!opts.model) throw new UsageError("--model is required (an alias like sonnet or opus, or a full model id)");
   if (!opts.inbox?.length) throw new UsageError("--inbox is required");
   const client = await authedClient(ctx);
   const bot = await client.createBot({
     name: opts.name,
-    ...PRESETS[opts.preset ?? "github-threads"],
+    ...PRESETS[opts.preset],
     model: opts.model,
     inbox_ids: await resolveInboxes(client, opts.inbox),
   });

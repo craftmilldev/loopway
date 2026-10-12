@@ -45,7 +45,7 @@ loopway inbox update <inbox> [--name n] [--events a,b] [--secret s] [--schema fi
 loopway messages list <inbox> [--type 'com.github.pull_request.*'] [--limit 20] [--all]
 loopway messages get  <inbox> <message> [--data]
 
-loopway bots create --name dev --model sonnet --inbox <inbox>[,<inbox>]
+loopway bots create --name dev --preset github-threads --model sonnet --inbox <inbox>[,<inbox>]
 loopway bots list
 loopway bots show <bot>
 loopway bots update <bot> [--name n] [--model m] [--inbox a,b]   # --inbox replaces the bot's inboxes
@@ -62,7 +62,7 @@ loopway bots run [--max 3] [--interval 5] [--ttl <seconds>] [--no-tui]   # run y
 - Every read command takes `--json` for the raw API response.
 - `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`, `--schema file.json` for `loopway` inboxes); without a terminal it runs from flags alone. For sources whose sender makes the secret (`vercel`, `granola`) it doesn't ask for one: add the webhook in the sender, then paste the secret it shows with `loopway inbox update <inbox>` (or on the inbox's dashboard page).
 - Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, plus an optional `github` bot for [bot sessions](#acting-as-a-github-bot), mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `https://loopway.craftmill.dev`.
-- A bot reads messages from one or more inboxes (see [Bots](docs/api.md#bots)). `--preset` (default `github-threads`) picks the template its first prompt and rules are copied from; the bot doesn't remember it. `loopway bots run` runs them (see [Running bots](#running-bots)).
+- A bot reads messages from one or more inboxes (see [Bots](docs/api.md#bots)). `--preset` picks the template its first prompt and rules are copied from; the bot doesn't remember it. `loopway bots run` runs them (see [Running bots](#running-bots)).
 
 ### Running bots
 

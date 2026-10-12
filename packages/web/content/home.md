@@ -10,7 +10,7 @@ loopway is a place to build bots and work alongside them. A bot watches the serv
 ## Run an agent
 
 ```
-loopway bots create --name dev --inbox <inbox>
+loopway bots create --name dev --preset github-threads --model sonnet --inbox <inbox>
 loopway bots run
 ```
 
@@ -21,7 +21,7 @@ loopway bots run
 ```
 loopway login
 loopway inbox list
-loopway bots create --name dev --inbox <inbox>
+loopway bots create --name dev --preset github-threads --model sonnet --inbox <inbox>
 loopway bots run
 ```
 

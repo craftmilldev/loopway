@@ -160,9 +160,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .description("create a bot that reads the given inboxes, starting from their newest message")
     .option("--name <name>", "bot name")
     .addOption(
-      new Option("--preset <preset>", "template for the bot's first prompt and rules")
-        .choices(Object.keys(PRESETS))
-        .default("github-threads"),
+      new Option("--preset <preset>", "template for the bot's first prompt and rules").choices(Object.keys(PRESETS)),
     )
     .option("--model <model>", "model its sessions run on: an alias (sonnet, opus) or a full model id")
     .addOption(inboxesOpt("comma-separated inbox ids or names"))

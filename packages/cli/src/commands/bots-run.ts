@@ -20,7 +20,9 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
       void ctx.metrics?.capture("bot_skipped", { reason: "no_version" });
     }
   if (!bots.length) {
-    ctx.out(`No bots to run. Create one with \`loopway bots create --name <name> --inbox <inbox>\`.`);
+    ctx.out(
+      `No bots to run. Create one with \`loopway bots create --name <name> --preset <preset> --model <model> --inbox <inbox>\`.`,
+    );
     return;
   }
   const interval = opts.interval ?? DEFAULTS.interval;
