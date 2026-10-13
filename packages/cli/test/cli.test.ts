@@ -477,7 +477,7 @@ describe("bots", () => {
     await inboxWithEvents(0, "a");
     await expect(
       run("bots", "create", "--name", "x", "--preset", "nope", "--model", "sonnet", "--inbox", "a"),
-    ).rejects.toThrow(/Allowed choices are github-threads, blank/);
+    ).rejects.toThrow(/Allowed choices are github-threads/);
     await expect(run("bots", "create", "--name", "x", "--inbox", "a")).rejects.toThrow(/--preset is required/);
     await expect(run("bots", "create", "--name", "x", "--preset", "github-threads", "--inbox", "a")).rejects.toThrow(
       /--model is required/,

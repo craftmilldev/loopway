@@ -51,9 +51,8 @@ describe("New bot flow", () => {
     expect(screen.getByText("https://lw.test/in/i1")).toBeTruthy();
     fireEvent.click(screen.getByText("Continue"));
 
-    expect(await screen.findByText("Start blank")).toBeTruthy();
+    expect(await screen.findByText("GitHub threads")).toBeTruthy();
     expect(screen.getAllByRole("radio")).toHaveLength(Object.keys(PRESETS).length);
-    fireEvent.click(screen.getByLabelText(/Start blank/));
     fireEvent.click(screen.getByText("Continue"));
 
     fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "dev" } });
@@ -70,8 +69,8 @@ describe("New bot flow", () => {
     expect(posts[0]!.body).toEqual({
       name: "dev",
       model: "sonnet",
-      prompt: PRESETS.blank!.prompt,
-      rules: PRESETS.blank!.rules,
+      prompt: PRESETS["github-threads"]!.prompt,
+      rules: PRESETS["github-threads"]!.rules,
       inbox_ids: ["i1"],
     });
     expect(location.search).toBe("?bot=b1");
