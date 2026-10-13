@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import type { BotActivity } from "./lw.js";
 
 /** The days of deliveries the bars show. */
 export const BAR_DAYS = 14;
@@ -20,13 +19,18 @@ interface Tip {
   y: number;
 }
 
+/** The days of counts the bars draw: a bot's deliveries, or an inbox's received messages as `delivered`. */
+export interface BarDays {
+  days: { date: string; delivered: number }[];
+}
+
 /** Small bars, one per day, for a bot's deliveries. Words instead for a bot with none in the window. */
 export function DeliveryBars({
   activity,
   days,
   height = 24,
 }: {
-  activity: BotActivity | undefined;
+  activity: BarDays | undefined;
   days: number;
   /** The bars' height in px; above the default the columns widen to fill a chart. */
   height?: number;
