@@ -55,7 +55,7 @@ describe("ThreadEventsFeed", () => {
     const link = await screen.findByText("Fix login");
     expect(link.getAttribute("href")).toBe("/dashboard/bots/b1/threads/t2");
     expect(screen.getByText(/ended a thread/)).toBeTruthy();
-    expect(screen.getByText(/hit its limit/)).toBeTruthy();
+    expect(screen.getByText(/hit its usage limit/)).toBeTruthy();
     expect(screen.getByText("acme/app#1").getAttribute("href")).toBe("/dashboard/bots/b1/threads/t1");
     expect(screen.queryByText("Show earlier")).toBeNull();
   });
