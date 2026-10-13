@@ -34,7 +34,7 @@ beforeEach(() => {
       if (path === "/bots") return json({ data: [bot] });
       if (path === "/bots/b1") return json(bot);
       if (path === "/bots/b1/versions" && init?.method === "POST") {
-        posts.push(JSON.parse(String(init.body)));
+        posts.push(JSON.parse(init.body as string));
         if (postStatus !== 201)
           return json({ error: { code: "invalid_rules", message: "Rule 1: bad expression" } }, postStatus);
         return json({ ...v2, version: 3 }, 201);
@@ -51,7 +51,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const editor = async () => (await screen.findByLabelText("Prompt")) as HTMLTextAreaElement;
+const editor = async () => await screen.findByLabelText<HTMLTextAreaElement>("Prompt");
 const type = (el: HTMLElement, value: string) => fireEvent.change(el, { target: { value } });
 
 describe("helpers", () => {

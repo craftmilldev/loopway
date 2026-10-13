@@ -98,6 +98,7 @@ export function PromptTab({
     setPrompt(current?.prompt ?? "");
     setRules(toDrafts(current?.rules ?? null));
     setEditing(null);
+    setSaving(false);
   }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const parsed = fromDrafts(rules);
@@ -169,9 +170,9 @@ export function PromptTab({
     }
     setSaving(true);
     const r = await lw.api(botPath + "/versions", { method: "POST", body: { prompt, rules: parsed } });
-    setSaving(false);
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) {
+      setSaving(false);
       track("bot_version_save_failed", { status: r.status });
       return setError(await lw.message(r));
     }
