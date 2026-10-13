@@ -19,6 +19,8 @@
     "postinstall": "npm run build -w @loopway/sources -w @loopway/rules -w @loopway/presets",
     "dev": "npm run dev -w @loopway/web",
     "start": "npm run start -w @loopway/web",
+    "db:up": "docker compose -p loopway up -d --wait",
+    "db:down": "docker compose -p loopway down",
     "db:migrate": "npm run db:migrate -w @loopway/web",
     "cli": "npm run start -w @loopway/cli --",
     "build": "npm run build --workspaces --if-present",

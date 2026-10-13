@@ -1,7 +1,7 @@
 # Developing loopway
 
 - **Stack:** TypeScript + [Hono](https://hono.dev), zero-config on Vercel.
-- **DB:** Postgres everywhere. Locally [PGlite](https://pglite.dev) (embedded, no server); on Vercel, [Neon](https://neon.tech) via `DATABASE_URL`. Same SQL on both.
+- **DB:** Postgres 17 everywhere, through [postgres.js](https://github.com/porsager/postgres). Locally a Docker container (`docker-compose.yml`); on Vercel, [Neon](https://neon.tech) via `DATABASE_URL`. Tests run against the same local Postgres, so they exercise the engine that is deployed.
 - **Data types:** `User` → owns `Inbox`es → which receive `Message`s; a `Bot` reads the messages of one or more inboxes.
 - **Sources:** `github`, `granola`, `linear`, `loopway`, `vercel` (more can be added in `packages/sources/src/`, see [Adding a source](#adding-a-source)).
 - **Packages:** npm workspaces — [`packages/web`](../packages/web) (the server) and [`packages/cli`](../packages/cli) (the `loopway` command, a client of the [API](api.md)).
@@ -10,9 +10,10 @@
 
 ```bash
 npm install                   # installs every workspace
+npm run db:up                 # starts the local Postgres (needs Docker); `npm run db:down` stops it
 cp packages/web/.env.example packages/web/.env
-npm run dev                   # http://localhost:3000, data in packages/web/.data/pglite
-npm test                      # every workspace, in-memory PGlite
+npm run dev                   # http://localhost:3000, against the local Postgres (DATABASE_URL in .env)
+npm test                      # every workspace; each test file gets its own throwaway database
 npm run lint                  # ESLint, with type-aware rules
 npm run format                # Prettier; CI runs format:check
 npm run update                # git pull, npm install, npm run build
@@ -56,9 +57,9 @@ packages/web/
   src/api.ts            routes, auth, serialization
   src/ui.ts             web UI: home, /login, /dashboard (HTML + vanilla JS + styles)
   src/store.ts          all SQL
-  src/db/               driver adapter (PGlite | postgres.js) + migrations
+  src/db/               postgres.js adapter + migrations; testing.ts opens a throwaway test database
   scripts/              dev server, migrate
-  test/api.test.ts      end-to-end tests (TEST_DATABASE_URL=... to run against real Postgres)
+  test/api.test.ts      end-to-end tests (TEST_DATABASE_URL points at a different Postgres server)
   test/sources/         one webhook test file per source
 packages/cli/
   src/index.ts          `loopway` entry: error handling + exit codes

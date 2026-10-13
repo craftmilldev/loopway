@@ -2,34 +2,27 @@ import { migrations } from "./migrations.js";
 
 /**
  * The only thing the rest of the app knows about the database.
- * Both drivers speak Postgres, so the SQL is identical locally (PGlite) and on Vercel (Neon).
- */
-/**
- * For jsonb params, pass the JS object itself (not JSON.stringify'd): both drivers learn the param
- * type from the server and serialize it — a pre-stringified value gets stored as a JSON *string*.
+ * Postgres everywhere: a local Docker Postgres (see docker-compose.yml) in dev and tests, Neon on Vercel.
+ * For jsonb params, pass the JS object itself (not JSON.stringify'd): postgres.js learns the param
+ * type from the server and serializes it, so a pre-stringified value gets stored as a JSON *string*.
  */
 export interface Db {
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
+  /** Runs fn on one connection inside BEGIN/COMMIT; rolls back if it throws. */
+  transaction<R>(fn: (tx: Pick<Db, "query">) => Promise<R>): Promise<R>;
   close(): Promise<void>;
 }
 
 export interface DbOptions {
-  /** postgres:// URL. When absent, PGlite is used. */
-  databaseUrl?: string;
-  /** PGlite data dir, or "memory://". */
-  pgliteDir?: string;
+  /** postgres:// URL. */
+  databaseUrl: string;
 }
 
-export async function openDb(opts: DbOptions = {}): Promise<Db> {
-  if (opts.databaseUrl) return openPostgres(opts.databaseUrl);
-  return openPglite(opts.pgliteDir ?? "./.data/pglite");
-}
-
-async function openPostgres(url: string): Promise<Db> {
+export async function openDb(opts: DbOptions): Promise<Db> {
   const { default: postgres } = await import("postgres");
   // Neon's connection strings carry libpq's `channel_binding`, which postgres.js doesn't understand
   // and would forward to the server as a startup parameter.
-  const u = new URL(url);
+  const u = new URL(opts.databaseUrl);
   u.searchParams.delete("channel_binding");
   // prepare:false: Neon's pooled endpoint (-pooler) is PgBouncer in transaction mode.
   // onnotice: no-op, since postgres.js console.logs NOTICEs by default, and our idempotent
@@ -40,32 +33,18 @@ async function openPostgres(url: string): Promise<Db> {
       const rows = await sql.unsafe(text, params as never[]);
       return rows as unknown as T[];
     },
+    async transaction<R>(fn: (tx: Pick<Db, "query">) => Promise<R>) {
+      return (await sql.begin((tx) =>
+        fn({
+          query: async <T>(text: string, params: unknown[] = []) =>
+            (await tx.unsafe(text, params as never[])) as unknown as T[],
+        }),
+      )) as R;
+    },
     async close() {
       await sql.end({ timeout: 5 });
     },
   };
-}
-
-async function openPglite(dir: string): Promise<Db> {
-  const { PGlite } = await import("@electric-sql/pglite");
-  if (dir !== "memory://") {
-    const { mkdirSync } = await import("node:fs");
-    mkdirSync(dir, { recursive: true });
-  }
-  const pg = new PGlite(dir);
-  await pg.waitReady;
-  const db: Db = {
-    async query<T>(text: string, params: unknown[] = []) {
-      const res = await pg.query<T>(text, params);
-      return res.rows;
-    },
-    async close() {
-      await pg.close();
-    },
-  };
-  // Local DBs migrate themselves; Neon is migrated explicitly with `npm run db:migrate`.
-  await migrate(db);
-  return db;
 }
 
 export async function migrate(db: Db): Promise<string[]> {
@@ -82,8 +61,7 @@ export async function migrate(db: Db): Promise<string[]> {
   const applied: string[] = [];
   for (const m of migrations) {
     if (done.has(m.version)) continue;
-    // Each statement separately: postgres.js unsafe() with params can't run multi-statement strings,
-    // and PGlite's query() is single-statement too.
+    // Each statement separately: postgres.js unsafe() with params can't run multi-statement strings.
     for (const stmt of splitSql(m.sql)) await db.query(stmt);
     await db.query(`INSERT INTO loopway.schema_migrations (version) VALUES ($1)`, [m.version]);
     applied.push(m.version);
@@ -106,11 +84,13 @@ let shared: Promise<Db> | undefined;
  */
 export function getDb(): Promise<Db> {
   if (!shared) {
-    const databaseUrl = process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL || undefined;
-    if (!databaseUrl && process.env.VERCEL) {
-      throw new Error("DATABASE_URL must be set on Vercel (PGlite has no persistent disk there).");
+    const databaseUrl = process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL;
+    if (!databaseUrl) {
+      throw new Error(
+        "DATABASE_URL is not set. Locally: `npm run db:up`, then copy packages/web/.env.example to .env.",
+      );
     }
-    shared = openDb({ databaseUrl, pgliteDir: process.env.PGLITE_DIR });
+    shared = openDb({ databaseUrl });
   }
   return shared;
 }

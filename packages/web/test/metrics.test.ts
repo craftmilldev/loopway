@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApi } from "../src/api.js";
-import { migrate, openDb, type Db } from "../src/db/index.js";
+import { type Db } from "../src/db/index.js";
+import { openTestDb } from "../src/db/testing.js";
 import { createMetrics, noopMetrics, type Metrics } from "../src/metrics.js";
 
 let db: Db;
@@ -11,8 +12,7 @@ const metrics: Metrics = {
 };
 
 beforeAll(async () => {
-  db = await openDb({ pgliteDir: "memory://" });
-  await migrate(db);
+  db = await openTestDb();
   app = createApi({ getDb: async () => db, tokenSecret: "test-secret", metrics });
 });
 afterAll(() => db.close());

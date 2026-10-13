@@ -3,7 +3,8 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect } from "vitest";
 import { createApi } from "../src/api.js";
-import { migrate, openDb, type Db } from "../src/db/index.js";
+import { type Db } from "../src/db/index.js";
+import { openTestDb } from "../src/db/testing.js";
 import { createUser } from "../src/store.js";
 import { signSessionToken } from "../src/tokens.js";
 
@@ -12,15 +13,9 @@ export const SECRET = "test-secret";
 export let db: Db;
 export let app: ReturnType<typeof createApi>;
 
-// Runs against in-memory PGlite by default. Set TEST_DATABASE_URL to run against a real Postgres
-// (the `loopway` schema in that database is dropped and recreated!).
+// Each test file gets its own migrated database on the local Postgres (`npm run db:up`).
 beforeAll(async () => {
-  const url = process.env.TEST_DATABASE_URL;
-  db = await openDb(url ? { databaseUrl: url } : { pgliteDir: "memory://" });
-  if (url) {
-    await db.query("DROP SCHEMA IF EXISTS loopway CASCADE");
-    await migrate(db);
-  }
+  db = await openTestDb();
   app = createApi({ getDb: async () => db, publicBaseUrl: "https://loopway.test", tokenSecret: SECRET });
 });
 afterAll(() => db.close());
