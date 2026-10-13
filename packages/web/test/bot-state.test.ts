@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { botState } from "../client/bot-state.js";
+import { botState, filterOf, stateReason, type BotState } from "../client/bot-state.js";
 
 const runners = [
   { id: "on", leased_until: "2030-01-01T00:00:00Z" },
@@ -35,5 +35,24 @@ describe("botState", () => {
     expect(botState([thread({ runner_id: "off", limited: true, inflight })], runners)).toBe("stranded");
     expect(botState([thread({ limited: true, inflight })], runners)).toBe("limited");
     expect(botState([thread({ inflight })], runners)).toBe("working");
+  });
+});
+
+describe("stateReason", () => {
+  const t = (n: number) => ({ status: "active" as const, inflight: Array(n).fill(inflight[0]!) });
+  it("says why for each state, and nothing for idle", () => {
+    expect(stateReason("stranded", [])).toBe("Its runner is offline");
+    expect(stateReason("limited", [])).toBe("Hit its usage limit");
+    expect(stateReason("waiting", [t(0)])).toBe("Waiting for a runner");
+    expect(stateReason("working", [t(1)])).toBe("1 message in flight");
+    expect(stateReason("working", [t(2), t(1)])).toBe("3 messages in flight");
+    expect(stateReason("idle", [])).toBe("");
+  });
+});
+
+describe("filterOf", () => {
+  it("groups states into the filter tabs", () => {
+    const states: BotState[] = ["stranded", "limited", "working", "waiting", "idle"];
+    expect(states.map(filterOf)).toEqual(["stopped", "stopped", "working", "working", "idle"]);
   });
 });
