@@ -70,7 +70,7 @@ export function githubSummary(event: CloudEvent): string | null {
       return `${actor} ${action} check suite`;
     case "create":
     case "delete":
-      return `${actor} ${kind === "create" ? "created" : "deleted"} ${action} ${branch ?? ""}`.trim();
+      return `${actor} ${kind === "create" ? "created" : "deleted"} ${str(p.ref_type) ?? "ref"} ${branch ?? ""}`.trim();
     case "deployment_status":
       return `${actor} deployment ${action}`;
     case "discussion":

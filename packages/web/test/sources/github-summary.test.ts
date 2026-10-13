@@ -88,6 +88,13 @@ describe("github summarize", () => {
     );
   });
 
+  it("names the ref type for branch and tag creation and deletion", () => {
+    expect(summary("com.github.create.branch", { ref: "main", ref_type: "branch" })).toBe(
+      "mcwhittemore created branch main",
+    );
+    expect(summary("com.github.delete.tag", { ref: "v1", ref_type: "tag" })).toBe("mcwhittemore deleted tag v1");
+  });
+
   it("falls back to the actor and type for events it doesn't know", () => {
     expect(summary("com.github.gollum", {})).toBe("mcwhittemore gollum");
     expect(summary("com.github.made_up.thing", {})).toBe("mcwhittemore made_up thing");

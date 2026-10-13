@@ -87,6 +87,13 @@ describe("runsOf", () => {
   });
 });
 
+describe("runsOf with no delivery time", () => {
+  it("sorts a missing time first", () => {
+    const runs = runsOf([delivered("a", "2026-10-12T08:00:00Z"), { ...delivered("b", "x"), delivered_at: null }]);
+    expect(runs.map((r) => r.messages[0]!.id)).toEqual(["a", "b"]);
+  });
+});
+
 describe("Thread page", () => {
   it("shows the title, subject chips, state and the side column", async () => {
     current = thread({ waiting: [msg("w1")] });

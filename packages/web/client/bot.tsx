@@ -630,7 +630,8 @@ function EditBot({
 export function runsOf<M extends { delivered_at: string | null }>(messages: M[]) {
   const byTime = new Map<string, M[]>();
   for (const m of messages) byTime.set(m.delivered_at ?? "", [...(byTime.get(m.delivered_at ?? "") ?? []), m]);
-  const runs = [...byTime].sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime());
+  const time = (at: string) => (at ? new Date(at).getTime() : 0);
+  const runs = [...byTime].sort(([a], [b]) => time(a) - time(b));
   return runs.map(([at, ms], i) => ({ number: i + 1, at: at || null, messages: ms })).reverse();
 }
 
