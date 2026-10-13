@@ -1,0 +1,408 @@
+import { useEffect, useState } from "react";
+import { changed, lineDiff, type DiffLine } from "./diff.js";
+import * as lw from "./lw.js";
+import { track } from "./metrics.js";
+
+/** A rule as the form edits it: every field is text, and the type globs are one per line. */
+export interface RuleDraft {
+  types: string;
+  subject: string;
+  related: string;
+  action: string;
+}
+
+const EXPRESSIONS = [
+  { key: "subject", label: "Subject", hint: 'CEL: the message\'s own subject, "" for none.' },
+  { key: "related", label: "Related", hint: "CEL: a list of other subjects the message names." },
+  { key: "action", label: "Action", hint: "CEL: 'attach' (the default) or 'skip'." },
+] as const;
+
+const blankRule = (): RuleDraft => ({ types: "", subject: "", related: "", action: "" });
+
+export const toDrafts = (rules: lw.BotRule[] | null): RuleDraft[] =>
+  (rules ?? []).map((r) => ({
+    types: r.types.join("\n"),
+    subject: r.subject ?? "",
+    related: r.related ?? "",
+    action: r.action ?? "",
+  }));
+
+export const fromDrafts = (drafts: RuleDraft[]): lw.BotRule[] =>
+  drafts.map((d) => {
+    const rule: lw.BotRule = {
+      types: d.types
+        .split("\n")
+        .map((t) => t.trim())
+        .filter(Boolean),
+    };
+    for (const { key } of EXPRESSIONS) if (d[key].trim()) rule[key] = d[key].trim();
+    return rule;
+  });
+
+/** Rules as plain lines, one block per rule, for diffing. */
+export const rulesText = (rules: lw.BotRule[] | null) =>
+  (rules ?? [])
+    .map((r, i) =>
+      [
+        `Rule ${i + 1}`,
+        "  types: " + r.types.join(", "),
+        ...EXPRESSIONS.filter(({ key }) => r[key]).map(({ key }) => `  ${key}: ${r[key]}`),
+      ].join("\n"),
+    )
+    .join("\n");
+
+/** The first thing wrong with a draft that the API would refuse, in its words, else null. */
+export function problem(prompt: string, rules: lw.BotRule[]): { reason: string; message: string } | null {
+  if (!prompt.trim()) return { reason: "no_prompt", message: "Write a prompt." };
+  if (!rules.length) return { reason: "no_rules", message: "Add at least one rule." };
+  const empty = rules.findIndex((r) => !r.types.length);
+  if (empty >= 0) return { reason: "rule_missing_types", message: `Rule ${empty + 1} needs at least one event type.` };
+  return null;
+}
+
+function Diff({ lines, label }: { lines: DiffLine[]; label: string }) {
+  return (
+    <div className="diff" role="group" aria-label={label}>
+      {lines.map((l, i) => (
+        <div key={i} className={"diff-line " + l.kind}>
+          {l.kind === "add" ? "+ " : l.kind === "del" ? "- " : "  "}
+          {l.text}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Prompt and rules as a document: edits make a draft, saving makes the next version, and old versions can be compared and restored. */
+export function PromptTab({
+  botPath,
+  current,
+  onSaved,
+}: {
+  botPath: string;
+  current: lw.BotVersion | null;
+  onSaved: () => void;
+}) {
+  const history = lw.useList<lw.BotVersion>(botPath + "/versions", true);
+  const [prompt, setPrompt] = useState(current?.prompt ?? "");
+  const [rules, setRules] = useState(toDrafts(current?.rules ?? null));
+  const [editing, setEditing] = useState<number | null>(null);
+  const [comparing, setComparing] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const version = current?.version;
+  const next = (version ?? 0) + 1;
+
+  // A new current version (saved here, or by the CLI) fills the editor.
+  useEffect(() => {
+    setPrompt(current?.prompt ?? "");
+    setRules(toDrafts(current?.rules ?? null));
+    setEditing(null);
+  }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const parsed = fromDrafts(rules);
+  const promptChanged = prompt !== (current?.prompt ?? "");
+  const rulesChanged = JSON.stringify(parsed) !== JSON.stringify(current?.rules ?? []);
+  const dirty = promptChanged || rulesChanged;
+
+  useEffect(() => {
+    if (!dirty) return;
+    track("prompt_draft_started");
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  const setRule = (i: number, patch: Partial<RuleDraft>) =>
+    setRules(rules.map((r, n) => (n === i ? { ...r, ...patch } : r)));
+
+  function addRule() {
+    track("bot_rule_added");
+    setRules([...rules, blankRule()]);
+    setEditing(rules.length);
+  }
+
+  function removeRule(i: number) {
+    track("bot_rule_removed");
+    setRules(rules.filter((_, n) => n !== i));
+    setEditing(null);
+  }
+
+  function move(i: number, by: -1 | 1) {
+    track("bot_rule_moved");
+    const j = i + by;
+    const copy = [...rules];
+    [copy[i], copy[j]] = [copy[j]!, copy[i]!];
+    setRules(copy);
+    setEditing(editing === i ? j : editing === j ? i : editing);
+  }
+
+  function discard() {
+    track("prompt_draft_discarded");
+    setPrompt(current?.prompt ?? "");
+    setRules(toDrafts(current?.rules ?? null));
+    setEditing(null);
+    setError(null);
+  }
+
+  function restore(v: lw.BotVersion) {
+    track("bot_version_restored");
+    setPrompt(v.prompt);
+    setRules(toDrafts(v.rules));
+    setEditing(null);
+    setComparing(null);
+    setError(null);
+  }
+
+  function compare(v: lw.BotVersion) {
+    if (comparing === v.version) return setComparing(null);
+    track("bot_version_compared");
+    setComparing(v.version);
+  }
+
+  async function save() {
+    setError(null);
+    const bad = problem(prompt, parsed);
+    if (bad) {
+      track("bot_version_save_blocked", { reason: bad.reason });
+      return setError(bad.message);
+    }
+    setSaving(true);
+    const r = await lw.api(botPath + "/versions", { method: "POST", body: { prompt, rules: parsed } });
+    setSaving(false);
+    if (r.status === 401) return lw.expired(r);
+    if (!r.ok) {
+      track("bot_version_save_failed", { status: r.status });
+      return setError(await lw.message(r));
+    }
+    track("bot_version_saved_from_draft");
+    onSaved();
+    void history.reload();
+  }
+
+  const compared = history.data?.find((v) => v.version === comparing);
+
+  return (
+    <>
+      {dirty && (
+        <section className="draft-bar" aria-label="Draft">
+          <div>
+            <strong>Draft of version {next}</strong>{" "}
+            <span className="muted">
+              {[promptChanged && "prompt changed", rulesChanged && "rules changed"].filter(Boolean).join(" · ")} · new
+              threads pick it up; running ones keep version {version ?? "their own"}
+            </span>
+          </div>
+          <div className="form-actions">
+            <button className="btn btn-quiet" type="button" onClick={discard}>
+              Discard
+            </button>
+            <button className="btn" type="button" disabled={saving} onClick={() => void save()}>
+              Save as version {next}
+            </button>
+          </div>
+        </section>
+      )}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="ov-split bot-split">
+        <div className="ov-main">
+          <div className="field">
+            <div className="prompt-head">
+              <label htmlFor="bot-prompt">Prompt</label>
+              <span className="muted mono">{prompt.length.toLocaleString()} characters</span>
+            </div>
+            <textarea
+              id="bot-prompt"
+              className="prompt"
+              spellCheck={false}
+              maxLength={100_000}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+            />
+          </div>
+
+          <div className="prompt-head section">
+            <h2>Rules</h2>
+            <button className="btn btn-sm btn-quiet" type="button" onClick={addRule}>
+              Add rule
+            </button>
+          </div>
+          <p className="hint">
+            The first rule whose event types match a message applies. The expressions are checked when you save.
+          </p>
+          {rules.length === 0 && <p className="muted">No rules.</p>}
+          {rules.map((rule, i) => (
+            <div className="rule" key={i}>
+              <span className="rule-n">{i + 1}</span>
+              <div className="rule-body">
+                {editing === i ? (
+                  <RuleForm index={i} rule={rule} onChange={(patch) => setRule(i, patch)} />
+                ) : (
+                  <RuleBlock rule={parsed[i]!} />
+                )}
+              </div>
+              <div className="rule-actions">
+                <button
+                  className="btn btn-sm btn-quiet"
+                  type="button"
+                  onClick={() => setEditing(editing === i ? null : i)}
+                >
+                  {editing === i ? "Done" : "Edit"}
+                  <span className="sr-only"> rule {i + 1}</span>
+                </button>
+                <button
+                  className="btn btn-sm btn-quiet"
+                  type="button"
+                  disabled={i === 0}
+                  aria-label={`Move rule ${i + 1} up`}
+                  onClick={() => move(i, -1)}
+                >
+                  ↑
+                </button>
+                <button
+                  className="btn btn-sm btn-quiet"
+                  type="button"
+                  disabled={i === rules.length - 1}
+                  aria-label={`Move rule ${i + 1} down`}
+                  onClick={() => move(i, 1)}
+                >
+                  ↓
+                </button>
+                <button className="btn btn-sm btn-quiet" type="button" onClick={() => removeRule(i)}>
+                  Remove<span className="sr-only"> rule {i + 1}</span>
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <aside className="ov-side">
+          <h2>Versions</h2>
+          <ul className="list">
+            {history.data?.map((v) => (
+              <li key={v.version} className="version-row">
+                <span>
+                  Version {v.version}
+                  {v.version === version && <span className="badge">current</span>}{" "}
+                  <span className="muted">{lw.when(v.created_at)}</span>
+                </span>
+                {v.version !== version && (
+                  <span className="actions">
+                    <button
+                      className="btn btn-sm btn-quiet"
+                      type="button"
+                      aria-pressed={comparing === v.version}
+                      aria-label={`Compare version ${v.version}`}
+                      onClick={() => compare(v)}
+                    >
+                      Compare
+                    </button>{" "}
+                    <button
+                      className="btn btn-sm btn-quiet"
+                      type="button"
+                      aria-label={`Restore version ${v.version}`}
+                      onClick={() => restore(v)}
+                    >
+                      Restore
+                    </button>
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+          {history.data?.length === 0 && <p className="muted">No versions yet.</p>}
+          <p className="hint">Restoring loads a version into the draft. Saving it makes a new version.</p>
+          {compared && current && <VersionDiff from={compared} to={current} />}
+        </aside>
+      </div>
+    </>
+  );
+}
+
+function VersionDiff({ from, to }: { from: lw.BotVersion; to: lw.BotVersion }) {
+  const prompt = lineDiff(from.prompt, to.prompt);
+  const rules = lineDiff(rulesText(from.rules), rulesText(to.rules));
+  return (
+    <div className="diffs">
+      <h2>
+        Version {from.version} → {to.version}
+      </h2>
+      <span className="lbl">Prompt</span>
+      {changed(prompt) ? <Diff lines={prompt} label="Prompt changes" /> : <p className="muted">Same prompt.</p>}
+      <span className="lbl">Rules</span>
+      {changed(rules) ? <Diff lines={rules} label="Rule changes" /> : <p className="muted">Same rules.</p>}
+    </div>
+  );
+}
+
+/** A rule at rest: its event types as chips, then the fields it sets. */
+function RuleBlock({ rule }: { rule: lw.BotRule }) {
+  return (
+    <>
+      <div className="thread-meta">
+        {rule.types.length ? (
+          rule.types.map((t) => (
+            <span className="chip" key={t}>
+              {t}
+            </span>
+          ))
+        ) : (
+          <span className="muted">No event types yet</span>
+        )}
+      </div>
+      <dl className="kv">
+        {EXPRESSIONS.filter(({ key }) => rule[key]).map(({ key, label }) => (
+          <div key={key}>
+            <dt>{label}</dt>
+            <dd>{rule[key]}</dd>
+          </div>
+        ))}
+      </dl>
+    </>
+  );
+}
+
+function RuleForm({
+  index,
+  rule,
+  onChange,
+}: {
+  index: number;
+  rule: RuleDraft;
+  onChange: (patch: Partial<RuleDraft>) => void;
+}) {
+  return (
+    <>
+      <div className="field">
+        <label htmlFor={`rule-${index}-types`}>Rule {index + 1} · event types</label>
+        <textarea
+          id={`rule-${index}-types`}
+          className="short"
+          spellCheck={false}
+          value={rule.types}
+          onChange={(e) => onChange({ types: e.target.value })}
+          placeholder="com.github.*"
+        />
+        <p className="hint">One glob per line; * is any run of characters.</p>
+      </div>
+      {EXPRESSIONS.map(({ key, label, hint }) => (
+        <div className="field" key={key}>
+          <label htmlFor={`rule-${index}-${key}`}>{label}</label>
+          <div className="input-wrap">
+            <input
+              id={`rule-${index}-${key}`}
+              spellCheck={false}
+              maxLength={2000}
+              value={rule[key]}
+              onChange={(e) => onChange({ [key]: e.target.value })}
+            />
+          </div>
+          <p className="hint">{hint}</p>
+        </div>
+      ))}
+    </>
+  );
+}
