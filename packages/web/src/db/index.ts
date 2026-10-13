@@ -10,6 +10,11 @@ import { migrations } from "./migrations.js";
  */
 export interface Db {
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
+  /**
+   * Runs `fn` in one transaction on one connection: commits when it resolves, rolls back when it throws.
+   * Use the `query` it is given, not the outer `db.query` (which may land on another connection).
+   */
+  transaction<R>(fn: (tx: Pick<Db, "query">) => Promise<R>): Promise<R>;
   close(): Promise<void>;
 }
 
@@ -40,6 +45,15 @@ async function openPostgres(url: string): Promise<Db> {
       const rows = await sql.unsafe(text, params as never[]);
       return rows as unknown as T[];
     },
+    async transaction<R>(fn: (tx: Pick<Db, "query">) => Promise<R>) {
+      return (await sql.begin(async (tx) =>
+        fn({
+          async query<T>(text: string, params: unknown[] = []) {
+            return (await tx.unsafe(text, params as never[])) as unknown as T[];
+          },
+        }),
+      )) as R;
+    },
     async close() {
       await sql.end({ timeout: 5 });
     },
@@ -58,6 +72,15 @@ async function openPglite(dir: string): Promise<Db> {
     async query<T>(text: string, params: unknown[] = []) {
       const res = await pg.query<T>(text, params);
       return res.rows;
+    },
+    async transaction<R>(fn: (tx: Pick<Db, "query">) => Promise<R>) {
+      return pg.transaction(async (tx) =>
+        fn({
+          async query<T>(text: string, params: unknown[] = []) {
+            return (await tx.query<T>(text, params)).rows;
+          },
+        }),
+      );
     },
     async close() {
       await pg.close();
