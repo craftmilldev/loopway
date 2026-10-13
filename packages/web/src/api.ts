@@ -495,12 +495,12 @@ export function createApi(opts: ApiOptions) {
     const bot = await ownedBot(c);
     const q = z.object({ status: z.enum(["active", "ended", "all"]).default("active") }).parse(c.req.query());
     const rows = await store.listThreads(c.var.db, bot.id, q.status);
-    return c.json({ data: rows.map((t) => serializeThread(t)) });
+    return c.json({ data: await serializeThreads(c.var.db, rows) });
   });
 
   authed.get("/bots/:botId/threads/:threadId", async (c) => {
     const bot = await ownedBot(c);
-    return c.json(serializeThread(await existingThread(c, bot)));
+    return c.json(await serializeThread(c.var.db, await existingThread(c, bot)));
   });
 
   authed.post("/bots/:botId/threads/:threadId/claim", async (c) => {
@@ -511,7 +511,7 @@ export function createApi(opts: ApiOptions) {
     if (thread.runner_id && thread.runner_id !== runner.id) throw threadOwned(thread);
     const claimed = await store.claimThread(c.var.db, c.var.user.id, bot.id, thread.id, lease_token);
     if (!claimed) throw runnerNotLeased();
-    return c.json(serializeThread(claimed));
+    return c.json(await serializeThread(c.var.db, claimed));
   });
 
   // The manual move, for when the thread's runner is gone: the thread has no owner until a runner claims it.
@@ -519,7 +519,7 @@ export function createApi(opts: ApiOptions) {
     const bot = await ownedBot(c);
     const thread = await existingThread(c, bot);
     await store.releaseThread(c.var.db, bot.id, thread.id);
-    return c.json(serializeThread((await store.getThread(c.var.db, bot.id, thread.id))!));
+    return c.json(await serializeThread(c.var.db, (await store.getThread(c.var.db, bot.id, thread.id))!));
   });
 
   authed.post("/bots/:botId/assign", async (c) => {
@@ -589,7 +589,7 @@ export function createApi(opts: ApiOptions) {
     const { lease_token, add_subjects, ...fields } = input;
     if (!(await store.patchThread(c.var.db, bot.id, lease_token, thread.id, { ...fields, addSubjects: add_subjects })))
       throw runnerNotLeased();
-    return c.json(serializeThread((await store.getThread(c.var.db, bot.id, thread.id))!));
+    return c.json(await serializeThread(c.var.db, (await store.getThread(c.var.db, bot.id, thread.id))!));
   });
 
   // The manual repair for a subject that landed on the wrong thread: from this thread to `to_thread_id`. Needs no lease, like release.
@@ -601,7 +601,7 @@ export function createApi(opts: ApiOptions) {
     if (to.id === from.id) throw new ApiError(400, "invalid_request", "The subject is already on that thread");
     if (!(await store.moveSubject(c.var.db, bot.id, input.subject, from.id, to.id)))
       throw new ApiError(404, "not_found", `Subject ${input.subject} isn't on thread ${from.id}`);
-    return c.json(serializeThread((await store.getThread(c.var.db, bot.id, to.id))!));
+    return c.json(await serializeThread(c.var.db, (await store.getThread(c.var.db, bot.id, to.id))!));
   });
 
   authed.post("/bots/:botId/threads/:threadId/deliver", async (c) => {
@@ -775,7 +775,46 @@ function requireLease(b: store.Bot, token: string) {
     throw leaseMismatch(b);
 }
 
-function serializeThread(t: store.Thread) {
+/** How many of a thread's newest messages are looked at for its title. */
+const TITLE_LOOKBACK = 20;
+
+async function serializeThread(db: Db, t: store.Thread) {
+  return (await serializeThreads(db, [t]))[0]!;
+}
+
+/**
+ * Summaries and titles are computed here from the stored CloudEvents, through the source registry, so a better
+ * summary shows on old messages too. A thread's title is the newest title among its last TITLE_LOOKBACK messages.
+ */
+async function serializeThreads(db: Db, threads: store.Thread[]) {
+  const ids = new Set<string>();
+  for (const t of threads)
+    for (const m of [...t.waiting, ...t.inflight, ...(t.delivered_messages ?? [])]) ids.add(m.id);
+  const [events, newest] = await Promise.all([
+    store.messageEvents(db, [...ids]),
+    store.threadNewestEvents(
+      db,
+      threads.map((t) => t.id),
+      TITLE_LOOKBACK,
+    ),
+  ]);
+  const summary = (id: string) => {
+    const e = events.get(id);
+    return e ? sources.summarize(e.source_type, e.cloudevent) : null;
+  };
+  return threads.map((t) => ({
+    ...serializeThreadRow(t),
+    title:
+      (newest.get(t.id) ?? []).map((e) => sources.title(e.source_type, e.cloudevent)).find((title) => title) ?? null,
+    waiting: t.waiting.map((m) => ({ ...m, summary: summary(m.id) })),
+    inflight: t.inflight.map((m) => ({ ...m, summary: summary(m.id) })),
+    ...(t.delivered_messages
+      ? { delivered_messages: t.delivered_messages.map((m) => ({ ...m, summary: summary(m.id) })) }
+      : {}),
+  }));
+}
+
+function serializeThreadRow(t: store.Thread) {
   return {
     id: t.id,
     bot_id: t.bot_id,
@@ -785,11 +824,8 @@ function serializeThread(t: store.Thread) {
     limited: t.limited,
     runner_id: t.runner_id,
     subjects: t.subjects,
-    waiting: t.waiting,
-    inflight: t.inflight,
     delivered: t.delivered,
     ...(t.delivered_ids ? { delivered_ids: t.delivered_ids } : {}),
-    ...(t.delivered_messages ? { delivered_messages: t.delivered_messages } : {}),
     created_at: iso(t.created_at),
     updated_at: iso(t.updated_at),
   };

@@ -126,7 +126,7 @@ describe("Bot page", () => {
   it("keeps the tab when switching bots", async () => {
     at("?tab=threads");
     render(<Bot id="b1" />);
-    await screen.findByText("Subjects");
+    await screen.findByText("Thread");
     fireEvent.click(await screen.findByRole("button", { name: /Switch bot/ }));
     expect(items().map((a) => a.getAttribute("href"))).toEqual([
       "/dashboard/bots",

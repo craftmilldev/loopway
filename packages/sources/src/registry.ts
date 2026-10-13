@@ -1,4 +1,4 @@
-import type { SourceAdapter } from "./types.js";
+import type { CloudEvent, SourceAdapter } from "./types.js";
 
 /** Looks up source adapters by type. Callers go through this and never name a source themselves. */
 export class SourceRegistry {
@@ -16,6 +16,16 @@ export class SourceRegistry {
 
   get(type: string): SourceAdapter<unknown> | undefined {
     return this.byType.get(type);
+  }
+
+  /** The event's one-line summary, or null if its source has none (or isn't registered). */
+  summarize(type: string, event: CloudEvent): string | null {
+    return this.byType.get(type)?.summarize(event) ?? null;
+  }
+
+  /** The title the event carries, or null. */
+  title(type: string, event: CloudEvent): string | null {
+    return this.byType.get(type)?.title(event) ?? null;
   }
 
   types(): string[] {
