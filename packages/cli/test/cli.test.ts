@@ -819,6 +819,7 @@ describe("threads", () => {
         inbox_id: inbox.id,
         type: "com.github.issues.opened",
         subject: "a/b#3",
+        summary: null,
         thread_id: expect.any(String),
         bot_name: "dev1",
       },

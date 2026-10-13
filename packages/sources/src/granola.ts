@@ -1,6 +1,10 @@
 import { createHmac } from "node:crypto";
 import { z } from "zod";
-import type { SourceAdapter, SourceDeps } from "./types.js";
+import { firstLine, get, str, withText } from "./payload.js";
+import type { CloudEvent, SourceAdapter, SourceDeps } from "./types.js";
+
+/** The note's title, when the webhook carries one. */
+const noteTitle = (event: CloudEvent) => str(get(event.data, "title")) ?? str(get(event.data, "note.title"));
 
 /**
  * Granola webhooks → CloudEvents. Granola signs with the Standard Webhooks scheme:
@@ -68,6 +72,14 @@ export const granola = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapte
         ? "set"
         : "not set yet: paste the whsec_… secret Granola shows on the inbox page, or run `loopway inbox update <inbox> --secret whsec_…`",
     };
+  },
+
+  summarize(event) {
+    return withText(`Granola ${event.type.replace(/^ai\.granola\./, "").replace(/[._]/g, " ")}`, noteTitle(event));
+  },
+
+  title(event) {
+    return firstLine(noteTitle(event)) ?? null;
   },
 
   receive({ headers, rawBody, receivedAt }, config) {

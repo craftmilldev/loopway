@@ -12,7 +12,7 @@ const thread = (o: Partial<Parameters<typeof botState>[0][number]> = {}) => ({
   inflight: [],
   ...o,
 });
-const inflight = [{ id: "m", inbox_id: "i", type: "t", subject: null }];
+const inflight = [{ id: "m", inbox_id: "i", type: "t", subject: null, summary: null }];
 
 describe("botState", () => {
   it("is idle with no active threads", () => {

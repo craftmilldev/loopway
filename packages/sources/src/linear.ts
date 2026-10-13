@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { z } from "zod";
-import { get, str, type Payload } from "./payload.js";
-import type { SourceAdapter, SourceDeps } from "./types.js";
+import { firstLine, get, str, withText, type Payload } from "./payload.js";
+import type { CloudEvent, SourceAdapter, SourceDeps } from "./types.js";
 
 /**
  * Linear webhooks → CloudEvents. Linear sends `{action, type, data, url, createdAt, organizationId, webhookId, ...}`
@@ -81,6 +81,23 @@ export const linear = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter
     };
   },
 
+  summarize(event) {
+    const body = (event.data ?? {}) as Payload;
+    const [resource = "", action = ""] = event.type.replace(/^com\.linear\./, "").split(".");
+    const actor = str(get(body, "actor.name")) ?? "Someone";
+    const issue = str(get(body, "data.issue.identifier")) ?? str(get(body, "data.issue.title"));
+    if (resource === "comment" && action === "create") {
+      return withText(`${actor} commented${issue ? ` on ${issue}` : ""}`, str(get(body, "data.body")));
+    }
+    const id = str(get(body, "data.identifier"));
+    const head = `${actor} ${VERBS[action] ?? action} ${resource}${id ? " " + id : ""}`;
+    return withText(head, str(get(body, "data.title")) ?? str(get(body, "data.name")));
+  },
+
+  title(event) {
+    return linearTitle(event);
+  },
+
   receive({ headers, rawBody, receivedAt }, config) {
     if (!config.secret) {
       return {
@@ -134,6 +151,16 @@ export const linear = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter
     };
   },
 });
+
+const VERBS: Record<string, string> = { create: "created", update: "updated", remove: "removed" };
+
+/** An issue's title, or the title of the issue a comment is on. */
+function linearTitle(event: CloudEvent): string | null {
+  const body = (event.data ?? {}) as Payload;
+  const resource = event.type.replace(/^com\.linear\./, "").split(".")[0];
+  const title = resource === "issue" ? str(get(body, "data.title")) : str(get(body, "data.issue.title"));
+  return firstLine(title) ?? null;
+}
 
 function toIso(v: unknown): string | undefined {
   if (typeof v !== "string" && typeof v !== "number") return undefined;
