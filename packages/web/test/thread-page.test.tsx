@@ -42,10 +42,12 @@ const thread = (over: object = {}) => ({
 let current: object;
 let online: boolean;
 let requests: string[];
+let endFails: boolean;
 
 beforeEach(() => {
   localStorage.setItem("loopway_token", "t");
   online = true;
+  endFails = false;
   requests = [];
   current = thread();
   vi.stubGlobal(
@@ -58,6 +60,11 @@ beforeEach(() => {
       if (path === "/bots/b1/threads/t1") return json(current);
       if (path === "/bots/b1/threads/t1/release") {
         current = thread({ runner_id: null });
+        return json(current);
+      }
+      if (path === "/bots/b1/threads/t1/end") {
+        if (endFails) return new Response(JSON.stringify({ error: { message: "boom" } }), { status: 500 });
+        current = thread({ status: "ended" });
         return json(current);
       }
       if (path === "/runners")
@@ -178,5 +185,37 @@ describe("Thread page", () => {
     fireEvent.click(button);
     await waitFor(() => expect(requests).toContain("POST /bots/b1/threads/t1/release"));
     await waitFor(() => expect(screen.getByLabelText("Thread details").textContent).toContain("none yet"));
+  });
+
+  it("ends the thread after confirming, even with its runner online", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<Thread botId="b1" id="t1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "End thread" }));
+    await waitFor(() => expect(requests).toContain("POST /bots/b1/threads/t1/end"));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "End thread" })).toBeNull());
+    expect(screen.getByText("ended")).toBeTruthy();
+  });
+
+  it("doesn't end the thread when the confirmation is declined", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<Thread botId="b1" id="t1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "End thread" }));
+    expect(requests.some((r) => r.endsWith("/end"))).toBe(false);
+  });
+
+  it("shows the error when ending fails", async () => {
+    endFails = true;
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<Thread botId="b1" id="t1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "End thread" }));
+    expect(await screen.findByText("boom")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "End thread" })).toBeTruthy();
+  });
+
+  it("offers no End thread on an ended thread", async () => {
+    current = thread({ status: "ended" });
+    render(<Thread botId="b1" id="t1" />);
+    await screen.findByRole("button", { name: "Release" });
+    expect(screen.queryByRole("button", { name: "End thread" })).toBeNull();
   });
 });
