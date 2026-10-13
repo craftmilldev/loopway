@@ -35,7 +35,15 @@ describe("DeliveryBars", () => {
   });
 
   it("only counts the last `days` days", () => {
-    render(<DeliveryBars activity={activity([["2026-10-10", 9], ["2026-10-12", 0]])} days={1} />);
+    render(
+      <DeliveryBars
+        activity={activity([
+          ["2026-10-10", 9],
+          ["2026-10-12", 0],
+        ])}
+        days={1}
+      />,
+    );
     expect(screen.getByText("No deliveries")).toBeTruthy();
   });
 
