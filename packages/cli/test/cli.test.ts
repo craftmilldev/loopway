@@ -50,7 +50,10 @@ afterAll(() => db.close());
 beforeEach(async () => {
   configDir = await mkdtemp(join(tmpdir(), "loopway-cli-"));
 });
-afterEach(() => rm(configDir, { recursive: true, force: true }));
+afterEach(() => {
+  vi.useRealTimers();
+  return rm(configDir, { recursive: true, force: true });
+});
 
 // ---------- helpers ----------
 
@@ -623,6 +626,19 @@ describe("runners", () => {
   });
 });
 
+/** How long a usage limit lasts in the tests below: far longer than any test, and stepped over by skipAhead(). */
+const LIMIT_MS = 60_000;
+
+/**
+ * Moves the clock forward without waiting, so a usage limit's wait can't be outrun by a slow machine or cut short.
+ * The server runs in this process, so call vi.useRealTimers() once the tick that needed it is done: messages
+ * received while the clock is ahead would look brand new to the server's holdback.
+ */
+function skipAhead(ms: number) {
+  vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+  vi.setSystemTime(Date.now() + ms);
+}
+
 describe("threads", () => {
   const repository = { full_name: "a/b", url: "https://api.github.com/repos/a/b" };
   const issue = (action: string, n: number) => ({ action, issue: { number: n }, repository });
@@ -867,7 +883,7 @@ describe("threads", () => {
     const delivered = (await list()).map((e: any) => e.id);
 
     // The run stops for the limit after taking its messages: they stay delivered, and nothing starts.
-    await finish({ code: 1, delivered: true, limitedUntil: Date.now() + 300 });
+    await finish({ code: 1, delivered: true, limitedUntil: Date.now() + LIMIT_MS });
     expect(out.join("\n")).toMatch(/hit the usage limit; retrying sessions after/);
     await send(inbox, "issues", issue("opened", 2));
     await send(inbox, "issue_comment", comment(1));
@@ -880,8 +896,9 @@ describe("threads", () => {
     expect(state.threads[first!.sessionId]!.limited).toBe(true);
 
     // Once it resets, the session is told to carry on, with the comment that arrived meanwhile.
-    await new Promise((r) => setTimeout(r, 350));
+    skipAhead(LIMIT_MS);
     await d.tick();
+    vi.useRealTimers();
     expect(out.join("\n")).toMatch(/usage limit reset; resuming sessions/);
     expect(out.join("\n")).toMatch(/resumed \w+ for a\/b#1 \(after the usage limit, 1 message\)/);
     expect(runs).toHaveLength(3);
@@ -899,9 +916,10 @@ describe("threads", () => {
     await send(inbox, "issue_comment", comment(2));
     await d.tick();
     expect(runs).toHaveLength(4);
-    await finish({ code: 1, delivered: true, limitedUntil: Date.now() + 100 });
-    await new Promise((r) => setTimeout(r, 150));
+    await finish({ code: 1, delivered: true, limitedUntil: Date.now() + LIMIT_MS });
+    skipAhead(LIMIT_MS);
     await d.tick();
+    vi.useRealTimers();
     expect(runs).toHaveLength(5);
     expect(runs.at(-1)!.message).toBe(
       "Your last run stopped because the account hit its usage limit. The limit has reset: carry on with the messages you were given, from wherever you got to.",
@@ -918,7 +936,7 @@ describe("threads", () => {
     const delivered = (await list()).map((e: any) => e.id);
 
     // The run stops for the limit before taking its messages: they go back to waiting.
-    await finish({ code: 1, delivered: false, limitedUntil: Date.now() + 300 });
+    await finish({ code: 1, delivered: false, limitedUntil: Date.now() + LIMIT_MS });
     expect(out.join("\n")).toMatch(/hit the usage limit; retrying sessions after/);
     await send(inbox, "issues", issue("opened", 2));
     await d.tick();
@@ -929,8 +947,9 @@ describe("threads", () => {
     expect(state.threads[first!.sessionId]!.delivered).toBe(0);
 
     // Once it resets, the session is resumed with the same messages, and the new thread starts too.
-    await new Promise((r) => setTimeout(r, 350));
+    skipAhead(LIMIT_MS);
     await d.tick();
+    vi.useRealTimers();
     expect(out.join("\n")).toMatch(/usage limit reset; resuming sessions/);
     expect(runs).toHaveLength(3);
     const retry = runs.find((r) => r.sessionId === first!.sessionId && r !== first)!;
