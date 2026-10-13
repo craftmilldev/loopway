@@ -67,6 +67,10 @@ const owner = ({ threads, runnerId, runners }: DispatcherState, id: string): str
   return runner && runner !== runnerId ? ` on ${runners[runner] ?? runner.slice(0, 8)}` : "";
 };
 
+/** The name of the bot a thread belongs to, to tell the threads of different bots apart. */
+const botName = ({ bots }: Pick<DispatcherState, "bots">, id: string): string =>
+  [...bots.held, ...bots.skipped].find((b) => b.id === id)?.name ?? id.slice(0, 8);
+
 interface Row {
   key: string;
   /** Set on rows that can be selected (sessions). */
@@ -163,7 +167,7 @@ function listRows(snap: Snapshot, lists: Record<Section, string[]>, waitingMax: 
         key: id,
         id,
         label: t.subjects.join(", ") || "new thread",
-        meta: `${id.slice(0, 8)}  ${ago(t.updated_at)}${owner(snap, id)}`,
+        meta: `${botName(snap, t.bot_id)} ${id.slice(0, 8)}  ${ago(t.updated_at)}${owner(snap, id)}`,
       });
     }
     if (!lists[sec].length) rows.push({ key: `none-${sec}`, meta: "none" });

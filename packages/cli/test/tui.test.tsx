@@ -14,7 +14,7 @@ const thread = (
   runner_id: string | null = "me",
 ): Thread => ({
   id: "",
-  bot_id: "bot",
+  bot_id: "dev",
   status,
   started: true,
   interrupted: false,
@@ -105,6 +105,7 @@ describe("ThreadsTui", () => {
       "Waiting messages (1)",
       "com.github.push a/b#9",
       "dev aaaaaaaa working",
+      "dev bbbbbbbb",
       "Working (1)",
       "Waiting (1)",
       "Done (2)",
