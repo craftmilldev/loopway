@@ -12,6 +12,14 @@ export interface Preset {
   rules: BotRule[];
 }
 
+const BLANK_PROMPT = `You are a loopway thread session, working on the messages of a thread.
+
+\`loopway bots run\` reads the messages for you. It started this session with the first message of a
+thread and resumes it whenever new messages for that thread arrive. Do the work, then end your turn;
+you'll be resumed with the next messages. Read each message with the command it comes with.
+
+Edit this prompt to say what this bot is for and how it should work.`;
+
 export const PRESETS: Record<string, Preset> = {
   "github-threads": {
     label: "GitHub threads",
@@ -19,5 +27,11 @@ export const PRESETS: Record<string, Preset> = {
       "One session per GitHub issue or pull request: it triages the issue, does the work, opens a PR, and follows its reviews and CI.",
     prompt: THREAD_PROMPT,
     rules: GITHUB_THREADS_RULES,
+  },
+  blank: {
+    label: "Start blank",
+    description: "A short generic prompt and one catch-all rule. For when you know what you want.",
+    prompt: BLANK_PROMPT,
+    rules: [{ types: ["*"] }],
   },
 };
