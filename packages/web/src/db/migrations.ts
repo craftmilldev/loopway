@@ -313,4 +313,11 @@ UPDATE loopway.bot_versions SET rules = (rules #>> '{}')::jsonb WHERE jsonb_type
 ALTER TABLE loopway.bots DROP COLUMN kind;
 `,
   },
+  {
+    // Bot activity (deliveries per day, last delivery) reads a bot's delivered rows by time.
+    version: "015_thread_messages_delivered_idx",
+    sql: `
+CREATE INDEX thread_messages_delivered_idx ON loopway.thread_messages (bot_id, delivered_at) WHERE delivered_at IS NOT NULL;
+`,
+  },
 ];

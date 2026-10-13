@@ -351,6 +351,25 @@ export function createApi(opts: ApiOptions) {
     return c.json({ data: rows.map(serializeBot) });
   });
 
+  const activityQuery = z.object({ days: z.coerce.number().int().min(1).max(30).default(14) });
+
+  /** Parses `days`, recording a rejected one. */
+  async function activityDays(c: Context<Env>, scope: "all" | "bot") {
+    const q = activityQuery.safeParse(c.req.query());
+    if (!q.success) {
+      await metrics.capture("bot_activity_rejected", c.var.user.id, { scope, reason: "invalid_days" });
+      throw q.error;
+    }
+    return q.data.days;
+  }
+
+  authed.get("/bots/activity", async (c) => {
+    const days = await activityDays(c, "all");
+    const rows = await store.botActivity(c.var.db, c.var.user.id, days);
+    await metrics.capture("bot_activity_viewed", c.var.user.id, { scope: "all", days, bots: rows.length });
+    return c.json({ data: rows.map(serializeActivity) });
+  });
+
   authed.post("/bots", async (c) => {
     const input = z
       .object({
@@ -374,6 +393,14 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.get("/bots/:botId", async (c) => c.json(serializeBot(await ownedBot(c))));
+
+  authed.get("/bots/:botId/activity", async (c) => {
+    const bot = await ownedBot(c);
+    const days = await activityDays(c, "bot");
+    const [row] = await store.botActivity(c.var.db, c.var.user.id, days, bot.id);
+    await metrics.capture("bot_activity_viewed", c.var.user.id, { scope: "bot", days, bots: 1 });
+    return c.json(serializeActivity(row!));
+  });
 
   authed.patch("/bots/:botId", async (c) => {
     const bot = await ownedBot(c);
@@ -779,6 +806,17 @@ function serializeMessage(e: MessageRow) {
     seq: Number(e.seq),
     received_at: iso(e.received_at),
     event: e.cloudevent,
+  };
+}
+
+function serializeActivity(a: store.BotActivity) {
+  return {
+    bot_id: a.bot_id,
+    days: a.days,
+    delivered: a.delivered,
+    last_delivery_at: iso(a.last_delivery_at),
+    runs: a.runs,
+    median_wait_seconds: a.median_wait_seconds,
   };
 }
 

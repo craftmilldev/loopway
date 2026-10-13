@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { botState, filterOf, stateReason, type BotFilter } from "./bot-state.js";
 import type { Inbox } from "./dashboard.js";
+import { BAR_DAYS, DeliveryBars } from "./delivery-bars.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
@@ -22,6 +23,7 @@ export function Bots() {
   const runners = lw.useList<lw.Runner>("/runners", ready);
   const inboxes = lw.useList<Inbox>("/inboxes", ready);
   const [threads, setThreads] = useState<Record<string, lw.Thread[]>>({});
+  const [activity, setActivity] = useState<Record<string, lw.BotActivity> | null>(null);
   const [filter, setFilter] = useState<BotFilter>("all");
   const [find, setFind] = useState("");
 
@@ -35,6 +37,16 @@ export function Bots() {
       });
     }
   }, [bots.data]);
+
+  // Every bot's deliveries, in one call.
+  useEffect(() => {
+    if (!ready) return;
+    void lw.api("/bots/activity?days=" + BAR_DAYS).then(async (r) => {
+      if (!r.ok) return track("bots_load_failed", { resource: "activity", status: r.status });
+      const data = ((await r.json()) as { data: lw.BotActivity[] }).data;
+      setActivity(Object.fromEntries(data.map((a) => [a.bot_id, a])));
+    });
+  }, [ready]);
 
   const loaded = !!(bots.data && runners.data && inboxes.data && bots.data.every((b) => threads[b.id]));
   const total = bots.data?.length ?? 0;
@@ -144,7 +156,7 @@ export function Bots() {
                   <th scope="col" className="num">
                     Waiting
                   </th>
-                  <th scope="col">Deliveries, 14 days</th>
+                  <th scope="col">Deliveries, {BAR_DAYS} days</th>
                   <th scope="col" className="num">
                     Last delivery
                   </th>
@@ -170,8 +182,12 @@ export function Bots() {
                     <td className={"mono" + (r.runner ? "" : " muted")}>{r.runner ?? "not held"}</td>
                     <td className="num">{r.open}</td>
                     <td className="num">{r.waiting}</td>
-                    <td className="muted">Not available yet</td>
-                    <td className="num muted">–</td>
+                    <td>
+                      <DeliveryBars activity={activity?.[r.bot.id]} days={BAR_DAYS} />
+                    </td>
+                    <td className={"num" + (activity?.[r.bot.id]?.last_delivery_at ? "" : " muted")}>
+                      {activity ? lw.ago(activity[r.bot.id]?.last_delivery_at ?? null) : "…"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
