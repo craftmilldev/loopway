@@ -1250,6 +1250,25 @@ describe("threads", () => {
     expect((await d.state()).bots.held.map((b) => b.id).sort()).toEqual([bot.id, fresh.id].sort());
   });
 
+  it("reports a new bot whose rules don't parse once, and runs it when a valid version arrives", async () => {
+    const { inbox, client, out, d } = await setup(3);
+    const fresh = await client.createBot({ name: "broken", model: "sonnet", inbox_ids: [inbox.id], prompt: "Draft." });
+    // The server rejects rules that don't parse, so save the version straight to the database.
+    await db.query(
+      `INSERT INTO loopway.bot_versions (bot_id, version, prompt, rules)
+       SELECT bot_id, max(version) + 1, 'Broken.', $2::jsonb FROM loopway.bot_versions WHERE bot_id = $1 GROUP BY bot_id`,
+      [fresh.id, JSON.stringify([{ types: ["*"], subject: "data.(" }])],
+    );
+    await d.tick();
+    await d.tick();
+    expect(out.filter((l) => l.startsWith("bot broken: not running it"))).toHaveLength(1);
+    expect((await d.state()).bots.held.map((b) => b.id)).not.toContain(fresh.id);
+
+    await client.addBotVersion(fresh.id, "Fixed.", [{ types: ["*"], subject: '"fixed"' }]);
+    await d.tick();
+    expect((await d.state()).bots.held.map((b) => b.id)).toContain(fresh.id);
+  });
+
   it("leaves threads owned by another runner alone, and shows them as on that runner", async () => {
     const { inbox, bot, client, runs, d } = await setup(3);
     const other = await client.registerRunner({ id: randomUUID(), name: "desktop" });

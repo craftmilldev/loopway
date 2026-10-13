@@ -27,7 +27,12 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
   }
   const interval = opts.interval ?? DEFAULTS.interval;
   const runner = await ensureRunner(ctx.configDir, client);
-  const dispatcherOpts = { ...opts, ttl: opts.ttl ?? defaultTtl(interval), runnerId: runner.id, seen: all.map((b) => b.id) };
+  const dispatcherOpts = {
+    ...opts,
+    ttl: opts.ttl ?? defaultTtl(interval),
+    runnerId: runner.id,
+    seen: all.map((b) => b.id),
+  };
   const names = bots.map((b) => b.name).join(", ");
   const watching = `Running ${names} every ${interval}s (at most ${opts.max ?? DEFAULTS.max} sessions running at once).`;
 

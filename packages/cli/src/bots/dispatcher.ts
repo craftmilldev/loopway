@@ -124,12 +124,7 @@ export class Dispatcher {
    * `bots` must all have a prompt version with rules, and `runnerId` is this machine's runner
    * (see ensureRunner). Takes the runner's lease.
    */
-  static async start(
-    ctx: Context,
-    client: LoopwayClient,
-    bots: Bot[],
-    opts: StartOptions,
-  ): Promise<Dispatcher> {
+  static async start(ctx: Context, client: LoopwayClient, bots: Bot[], opts: StartOptions): Promise<Dispatcher> {
     const rules = new Map<string, BotRule[]>();
     const prompts = new Map<string, string>();
     for (const bot of bots) {
