@@ -3,6 +3,9 @@ import type { CloudEvent } from "./cloudevents.js";
 import type { Db } from "./db/index.js";
 import { newLockToken, newLoginCode, normalizeLoginCode, safeEqual, sha256, uuidv7 } from "./ids.js";
 
+/** What a transaction body gets: just `query`, bound to the transaction's connection. */
+type Q = Pick<Db, "query">;
+
 // ---------- Users ----------
 
 export interface User {
@@ -262,17 +265,19 @@ export async function createBot(
   },
 ): Promise<Bot> {
   const id = uuidv7();
-  await db.query(
-    `WITH b AS (
-       INSERT INTO loopway.bots (id, user_id, name, model, cursor)
-       VALUES ($1, $2, $3, $5, COALESCE((SELECT max(seq) FROM loopway.messages WHERE inbox_id IN ${inboxIds("$4")}), 0))
-       RETURNING id, user_id
-     )
-     INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id)
-     SELECT b.id, ids.value, b.user_id FROM b, ${inboxIds("$4")} AS ids(value)`,
-    [id, input.userId, input.name, input.inboxIds, input.model],
-  );
-  if (input.prompt !== undefined) await addBotVersion(db, id, input.prompt, input.rules);
+  await db.transaction(async (tx) => {
+    await tx.query(
+      `INSERT INTO loopway.bots (id, user_id, name, model, cursor)
+       VALUES ($1, $2, $3, $5, COALESCE((SELECT max(seq) FROM loopway.messages WHERE inbox_id IN ${inboxIds("$4")}), 0))`,
+      [id, input.userId, input.name, input.inboxIds, input.model],
+    );
+    await tx.query(
+      `INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id)
+       SELECT $1, ids.value, $2 FROM ${inboxIds("$3")} AS ids(value)`,
+      [id, input.userId, input.inboxIds],
+    );
+    if (input.prompt !== undefined) await addBotVersion(tx, id, input.prompt, input.rules);
+  });
   return (await getBot(db, id))!;
 }
 
@@ -301,17 +306,25 @@ export async function updateBot(
   bot: Bot,
   patch: { name?: string; model?: string; inboxIds?: string[] },
 ): Promise<Bot> {
-  await db.query(
-    `WITH b AS (UPDATE loopway.bots SET name = COALESCE($2, name), model = COALESCE($5, model) WHERE id = $1 RETURNING id),
-     gone AS (
-       DELETE FROM loopway.bot_inboxes
-       WHERE bot_id = $1 AND $4::jsonb IS NOT NULL AND inbox_id NOT IN ${inboxIds("$4")}
-     )
-     INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id)
-     SELECT $1, ids.value, $3 FROM ${inboxIds("$4")} AS ids(value)
-     ON CONFLICT DO NOTHING`,
-    [bot.id, patch.name ?? null, bot.user_id, patch.inboxIds ?? null, patch.model ?? null],
-  );
+  await db.transaction(async (tx) => {
+    await tx.query(`UPDATE loopway.bots SET name = COALESCE($2, name), model = COALESCE($3, model) WHERE id = $1`, [
+      bot.id,
+      patch.name ?? null,
+      patch.model ?? null,
+    ]);
+    if (patch.inboxIds) {
+      await tx.query(`DELETE FROM loopway.bot_inboxes WHERE bot_id = $1 AND inbox_id NOT IN ${inboxIds("$2")}`, [
+        bot.id,
+        patch.inboxIds,
+      ]);
+      await tx.query(
+        `INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id)
+         SELECT $1, ids.value, $2 FROM ${inboxIds("$3")} AS ids(value)
+         ON CONFLICT DO NOTHING`,
+        [bot.id, bot.user_id, patch.inboxIds],
+      );
+    }
+  });
   return (await getBot(db, bot.id))!;
 }
 
@@ -319,7 +332,7 @@ export async function updateBot(
  * Appends a version to the bot and returns it; versions are never changed after. Without `rules` the new version
  * keeps the previous version's.
  */
-export async function addBotVersion(db: Db, botId: string, prompt: string, rules?: BotRule[]): Promise<BotVersion> {
+export async function addBotVersion(db: Q, botId: string, prompt: string, rules?: BotRule[]): Promise<BotVersion> {
   const [row] = await db.query<{ prompt_version: BotVersion }>(
     `INSERT INTO loopway.bot_versions (bot_id, version, prompt, rules)
      SELECT $1, COALESCE(max(version), 0) + 1, $2,
@@ -668,7 +681,7 @@ export interface Assignment {
 }
 
 /**
- * One statement, so it's atomic: creates the threads the bot doesn't have yet, adds subjects, inserts the messages as
+ * One transaction, so it's atomic: creates the threads the bot doesn't have yet, adds subjects, inserts the messages as
  * waiting (one already assigned is skipped) and advances the cursor. Does nothing, and returns undefined, unless
  * `token` is the live lease. Callers check the ids, subjects and messages first (threadBots and friends).
  */
@@ -679,36 +692,38 @@ export async function assignMessages(
   cursor: number,
   assignments: Assignment[],
 ): Promise<{ assigned: number } | undefined> {
-  const [row] = await db.query<{ leased: number; assigned: number }>(
-    `WITH bot AS (
-       UPDATE loopway.bots b SET cursor = GREATEST(b.cursor, $3::bigint)
-       WHERE ${LEASED} RETURNING b.id, b.user_id
-     ),
-     a AS (
-       SELECT (x->>'message_id')::uuid AS message_id, (x->>'thread_id')::uuid AS thread_id,
-              x->'add_subjects' AS add_subjects, x->>'subject' AS subject
-       FROM jsonb_array_elements($4::jsonb) x
-     ),
-     new_threads AS (
-       INSERT INTO loopway.threads (id, bot_id, user_id)
-       SELECT DISTINCT a.thread_id, bot.id, bot.user_id FROM a, bot
-       ON CONFLICT (id) DO NOTHING
-     ),
-     new_subjects AS (
-       INSERT INTO loopway.thread_subjects (thread_id, bot_id, subject)
-       SELECT DISTINCT a.thread_id, bot.id, k.subject
-       FROM a CROSS JOIN bot CROSS JOIN LATERAL jsonb_array_elements_text(a.add_subjects) AS k(subject)
-       ON CONFLICT DO NOTHING
-     ),
-     msgs AS (
-       INSERT INTO loopway.thread_messages (thread_id, bot_id, message_id, state, subject)
-       SELECT DISTINCT ON (a.message_id) a.thread_id, bot.id, a.message_id, 'waiting', a.subject FROM a, bot
-       ON CONFLICT (bot_id, message_id) DO NOTHING RETURNING message_id
-     )
-     SELECT (SELECT count(*) FROM bot)::int AS leased, (SELECT count(*) FROM msgs)::int AS assigned`,
-    [botId, token, cursor, assignments],
-  );
-  return row!.leased ? { assigned: row!.assigned } : undefined;
+  return db.transaction(async (tx) => {
+    const [bot] = await tx.query<{ user_id: string }>(
+      `UPDATE loopway.bots b SET cursor = GREATEST(b.cursor, $3::bigint)
+       WHERE ${LEASED} RETURNING b.user_id`,
+      [botId, token, cursor],
+    );
+    if (!bot) return undefined;
+    // The assignments as rows, shared by the three inserts below.
+    const a = `(SELECT (x->>'message_id')::uuid AS message_id, (x->>'thread_id')::uuid AS thread_id,
+                       x->'add_subjects' AS add_subjects, x->>'subject' AS subject
+                FROM jsonb_array_elements($1::jsonb) x)`;
+    await tx.query(
+      `INSERT INTO loopway.threads (id, bot_id, user_id)
+       SELECT DISTINCT a.thread_id, $2::uuid, $3::uuid FROM ${a} a
+       ON CONFLICT (id) DO NOTHING`,
+      [assignments, botId, bot.user_id],
+    );
+    await tx.query(
+      `INSERT INTO loopway.thread_subjects (thread_id, bot_id, subject)
+       SELECT DISTINCT a.thread_id, $2::uuid, k.subject
+       FROM ${a} a CROSS JOIN LATERAL jsonb_array_elements_text(a.add_subjects) AS k(subject)
+       ON CONFLICT DO NOTHING`,
+      [assignments, botId],
+    );
+    const msgs = await tx.query(
+      `INSERT INTO loopway.thread_messages (thread_id, bot_id, message_id, state, subject)
+       SELECT DISTINCT ON (a.message_id) a.thread_id, $2::uuid, a.message_id, 'waiting', a.subject FROM ${a} a
+       ON CONFLICT (bot_id, message_id) DO NOTHING RETURNING message_id`,
+      [assignments, botId],
+    );
+    return { assigned: msgs.length };
+  });
 }
 
 export interface ThreadPatch {
@@ -727,38 +742,32 @@ export async function patchThread(
   id: string,
   patch: ThreadPatch,
 ): Promise<boolean> {
-  const [row] = await db.query<{ n: number }>(
-    `WITH upd AS (
-       UPDATE loopway.threads t SET
+  return db.transaction(async (tx) => {
+    const upd = await tx.query(
+      `UPDATE loopway.threads t SET
          status      = COALESCE($4, t.status),
          started     = COALESCE($5::boolean, t.started),
          interrupted = COALESCE($6::boolean, t.interrupted),
          limited     = COALESCE($7::boolean, t.limited),
          updated_at  = now()
-       WHERE ${THREAD_OWNED} RETURNING t.id, t.bot_id
-     ),
-     new_subjects AS (
-       INSERT INTO loopway.thread_subjects (thread_id, bot_id, subject)
-       SELECT upd.id, upd.bot_id, k.value FROM upd, ${jsonStrings("$8")} AS k
-       ON CONFLICT DO NOTHING
-     )
-     SELECT count(*)::int AS n FROM upd`,
-    [
-      botId,
-      token,
-      id,
-      patch.status ?? null,
-      patch.started ?? null,
-      patch.interrupted ?? null,
-      patch.limited ?? null,
-      patch.addSubjects ?? [],
-    ],
-  );
-  return row!.n > 0;
+       WHERE ${THREAD_OWNED} RETURNING t.id`,
+      [botId, token, id, patch.status ?? null, patch.started ?? null, patch.interrupted ?? null, patch.limited ?? null],
+    );
+    if (!upd.length) return false;
+    if (patch.addSubjects?.length) {
+      await tx.query(
+        `INSERT INTO loopway.thread_subjects (thread_id, bot_id, subject)
+         SELECT $3::uuid, $1::uuid, k.value FROM ${jsonStrings("$2")} AS k
+         ON CONFLICT DO NOTHING`,
+        [botId, patch.addSubjects, id],
+      );
+    }
+    return true;
+  });
 }
 
 /**
- * One statement: moves `subject` from thread $3 to thread $4 of bot $1, takes the waiting messages for the subject
+ * One transaction: moves `subject` from thread $3 to thread $4 of bot $1, takes the waiting messages for the subject
  * along (inflight and delivered ones stay), and resumes the target if it ended. False unless both are the bot's
  * threads and the subject is on the first.
  */
@@ -769,29 +778,27 @@ export async function moveSubject(
   fromThreadId: string,
   toThreadId: string,
 ): Promise<boolean> {
-  const [row] = await db.query<{ n: number }>(
-    `WITH target AS (
-       SELECT id FROM loopway.threads WHERE id = $4::uuid AND bot_id = $1::uuid
-     ),
-     moved AS (
-       UPDATE loopway.thread_subjects k SET thread_id = target.id
-       FROM target WHERE k.bot_id = $1::uuid AND k.subject = $2 AND k.thread_id = $3::uuid RETURNING k.subject
-     ),
-     msgs AS (
-       UPDATE loopway.thread_messages tm SET thread_id = target.id
-       FROM target
-       WHERE tm.bot_id = $1::uuid AND tm.thread_id = $3::uuid AND tm.subject = $2 AND tm.state = 'waiting'
-         AND EXISTS (SELECT 1 FROM moved)
-       RETURNING tm.message_id
-     ),
-     resumed AS (
-       UPDATE loopway.threads t SET status = 'active', updated_at = now()
-       FROM target WHERE t.id = target.id AND EXISTS (SELECT 1 FROM moved) RETURNING t.id
-     )
-     SELECT count(*)::int AS n FROM moved`,
-    [botId, subject, fromThreadId, toThreadId],
-  );
-  return row!.n > 0;
+  return db.transaction(async (tx) => {
+    // The target must be the bot's thread; the subject UPDATE only matches when it is.
+    const moved = await tx.query(
+      `UPDATE loopway.thread_subjects k SET thread_id = t.id
+       FROM loopway.threads t
+       WHERE t.id = $4::uuid AND t.bot_id = $1::uuid
+         AND k.bot_id = $1::uuid AND k.subject = $2 AND k.thread_id = $3::uuid
+       RETURNING k.subject`,
+      [botId, subject, fromThreadId, toThreadId],
+    );
+    if (!moved.length) return false;
+    await tx.query(
+      `UPDATE loopway.thread_messages SET thread_id = $4::uuid
+       WHERE bot_id = $1::uuid AND thread_id = $3::uuid AND subject = $2 AND state = 'waiting'`,
+      [botId, subject, fromThreadId, toThreadId],
+    );
+    await tx.query(`UPDATE loopway.threads SET status = 'active', updated_at = now() WHERE id = $1::uuid`, [
+      toThreadId,
+    ]);
+    return true;
+  });
 }
 
 /** Moves the thread's waiting messages to inflight and marks it active. Undefined unless `token` is the live lease of the thread's owner. */
@@ -801,23 +808,25 @@ export async function deliverThread(
   token: string,
   id: string,
 ): Promise<ThreadMessage[] | undefined> {
-  const [row] = await db.query<{ ok: number; messages: ThreadMessage[] }>(
-    `WITH t AS (
-       UPDATE loopway.threads t SET status = 'active', updated_at = now()
-       WHERE ${THREAD_OWNED} RETURNING t.id
-     ),
-     moved AS (
-       UPDATE loopway.thread_messages tm SET state = 'inflight'
-       FROM t WHERE tm.thread_id = t.id AND tm.state = 'waiting'
-       RETURNING tm.message_id, tm.subject, tm.assigned_at
-     )
-     SELECT (SELECT count(*) FROM t)::int AS ok,
-       COALESCE((SELECT jsonb_agg(jsonb_build_object('id', m.id, 'inbox_id', m.inbox_id, 'type', m.ce_type, 'subject', moved.subject)
-                                  ORDER BY moved.assigned_at, m.seq)
-                 FROM moved JOIN loopway.messages m ON m.id = moved.message_id), '[]'::jsonb) AS messages`,
-    [botId, token, id],
-  );
-  return row!.ok ? row!.messages : undefined;
+  return db.transaction(async (tx) => {
+    const owned = await tx.query(
+      `UPDATE loopway.threads t SET status = 'active', updated_at = now()
+       WHERE ${THREAD_OWNED} RETURNING t.id`,
+      [botId, token, id],
+    );
+    if (!owned.length) return undefined;
+    return tx.query<ThreadMessage>(
+      `WITH moved AS (
+         UPDATE loopway.thread_messages SET state = 'inflight'
+         WHERE thread_id = $1::uuid AND state = 'waiting'
+         RETURNING message_id, subject, assigned_at
+       )
+       SELECT m.id, m.inbox_id, m.ce_type AS type, moved.subject
+       FROM moved JOIN loopway.messages m ON m.id = moved.message_id
+       ORDER BY moved.assigned_at, m.seq`,
+      [id],
+    );
+  });
 }
 
 /** Moves the thread's inflight messages to delivered, or back to waiting. Undefined unless `token` is the live lease of the thread's owner. */
@@ -828,19 +837,19 @@ export async function finishThread(
   id: string,
   requeue: boolean,
 ): Promise<{ moved: number } | undefined> {
-  const [row] = await db.query<{ ok: number; moved: number }>(
-    `WITH t AS (
-       UPDATE loopway.threads t SET updated_at = now()
-       WHERE ${THREAD_OWNED} RETURNING t.id
-     ),
-     moved AS (
-       UPDATE loopway.thread_messages tm SET
-         state        = CASE WHEN $4::boolean THEN 'waiting' ELSE 'delivered' END,
-         delivered_at = CASE WHEN $4::boolean THEN NULL ELSE now() END
-       FROM t WHERE tm.thread_id = t.id AND tm.state = 'inflight' RETURNING tm.message_id
-     )
-     SELECT (SELECT count(*) FROM t)::int AS ok, (SELECT count(*) FROM moved)::int AS moved`,
-    [botId, token, id, requeue],
-  );
-  return row!.ok ? { moved: row!.moved } : undefined;
+  return db.transaction(async (tx) => {
+    const owned = await tx.query(
+      `UPDATE loopway.threads t SET updated_at = now() WHERE ${THREAD_OWNED} RETURNING t.id`,
+      [botId, token, id],
+    );
+    if (!owned.length) return undefined;
+    const moved = await tx.query(
+      `UPDATE loopway.thread_messages SET
+         state        = CASE WHEN $2::boolean THEN 'waiting' ELSE 'delivered' END,
+         delivered_at = CASE WHEN $2::boolean THEN NULL ELSE now() END
+       WHERE thread_id = $1::uuid AND state = 'inflight' RETURNING message_id`,
+      [id, requeue],
+    );
+    return { moved: moved.length };
+  });
 }
