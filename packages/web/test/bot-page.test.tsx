@@ -279,7 +279,7 @@ describe("Bot page", () => {
     expect((await screen.findByLabelText<HTMLInputElement>("Name")).value).toBe("dev");
     expect(screen.getByLabelText<HTMLSelectElement>("Model").value).toBe("sonnet");
     expect(screen.getByText("Delete bot")).toBeTruthy();
-    expect(screen.getByText("Save as new version")).toBeTruthy();
+    expect(screen.queryByText("Save as new version")).toBeNull();
   });
 });
 

@@ -386,6 +386,50 @@ export function createApi(opts: ApiOptions) {
     return c.json({ data: rows.map(serializeActivity) });
   });
 
+  // What happened to the user's threads, newest first. `before` is the `next` of the previous page.
+  authed.get("/events", async (c) => {
+    const q = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(100).default(20),
+        before: z
+          .string()
+          .regex(/^\d{1,18}$/)
+          .optional(),
+      })
+      .safeParse(c.req.query());
+    if (!q.success) {
+      await metrics.capture("thread_events_rejected", c.var.user.id, { reason: "invalid_query" });
+      throw q.error;
+    }
+    const rows = await store.listThreadEvents(c.var.db, c.var.user.id, q.data.limit + 1, q.data.before);
+    const page = rows.slice(0, q.data.limit);
+    const newest = await store.threadNewestEvents(c.var.db, [...new Set(page.map((e) => e.thread_id))], TITLE_LOOKBACK);
+    const titles = new Map(
+      [...newest].map(([id, events]) => [
+        id,
+        events.map((e) => sources.title(e.source_type, e.cloudevent)).find((title) => title) ?? null,
+      ]),
+    );
+    await metrics.capture("thread_events_viewed", c.var.user.id, {
+      paged: !!q.data.before,
+      empty: page.length === 0,
+      has_more: rows.length > page.length,
+    });
+    return c.json({
+      data: page.map((e) => ({
+        id: e.id,
+        kind: e.kind,
+        at: e.at,
+        bot_id: e.bot_id,
+        bot_name: e.bot_name,
+        thread_id: e.thread_id,
+        subjects: e.subjects,
+        title: titles.get(e.thread_id) ?? null,
+      })),
+      next: rows.length > page.length ? page[page.length - 1]!.id : null,
+    });
+  });
+
   authed.post("/bots", async (c) => {
     const input = z
       .object({

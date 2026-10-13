@@ -7,23 +7,27 @@ import { leaseText, type Inbox } from "./dashboard.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
+import { PromptTab } from "./prompt.js";
 
 type Status = "active" | "ended" | "all";
 
-export type Tab = "activity" | "threads" | "settings";
+export type Tab = "activity" | "threads" | "prompt" | "settings";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "activity", label: "Activity" },
   { key: "threads", label: "Threads" },
+  { key: "prompt", label: "Prompt and rules" },
   { key: "settings", label: "Settings" },
 ];
 
 /** The tab a `?tab=` value names; anything else is Activity. */
 export const tabOf = (value: string | null): Tab => (value === "threads" || value === "settings" ? value : "activity");
 
-/** A bot's page on `tab`. Activity is the bare bot URL. */
+/** A bot's page on `tab`. Activity is the bare bot URL, and Prompt and rules has a path of its own. */
 export const tabPath = (botId: string, tab: Tab) =>
-  "/dashboard/bots/" + encodeURIComponent(botId) + (tab === "activity" ? "" : "?tab=" + tab);
+  "/dashboard/bots/" +
+  encodeURIComponent(botId) +
+  (tab === "activity" ? "" : tab === "prompt" ? "/prompt" : "?tab=" + tab);
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : one + "s"}`;
 
@@ -36,10 +40,11 @@ export function waitText(seconds: number | null) {
   return `${Math.floor(min / 60)} h${min % 60 ? " " + (min % 60) + " min" : ""}`;
 }
 
-export function Bot({ id }: { id: string }) {
+/** A bot's page. `view` names the tab when the path picks it (the prompt tab); otherwise `?tab=` does. */
+export function Bot({ id, view }: { id: string; view?: Tab }) {
   const me = lw.useMe();
   const ready = !!me;
-  const tab = tabOf(new URLSearchParams(location.search).get("tab"));
+  const tab = view ?? tabOf(new URLSearchParams(location.search).get("tab"));
   const botPath = "/bots/" + encodeURIComponent(id);
   const bot = lw.useGet<lw.Bot>(botPath, ready);
   const bots = lw.useList<lw.Bot>("/bots", ready);
@@ -112,9 +117,12 @@ export function Bot({ id }: { id: string }) {
         <nav className="tabs" aria-label="Bot sections">
           <TabLink botId={id} tab="activity" current={tab} />
           <TabLink botId={id} tab="threads" current={tab} />
-          <a href={`/dashboard/bots/${encodeURIComponent(id)}/prompt`}>
-            Prompt and rules{b.prompt_version ? ` · v${b.prompt_version.version}` : ""}
-          </a>
+          <TabLink
+            botId={id}
+            tab="prompt"
+            current={tab}
+            suffix={b.prompt_version ? ` · v${b.prompt_version.version}` : ""}
+          />
           <TabLink botId={id} tab="settings" current={tab} />
         </nav>
       )}
@@ -127,24 +135,24 @@ export function Bot({ id }: { id: string }) {
       )}
       {error && <p className="error">{error}</p>}
 
-      {b && tab === "activity" && <ActivityTab botPath={botPath} threads={open.data} />}
+      {b && tab === "activity" && <ActivityTab botId={id} botPath={botPath} threads={open.data} />}
       {b && tab === "threads" && <ThreadsTab botId={id} botPath={botPath} runners={runners.data} onError={setError} />}
+      {b && tab === "prompt" && (
+        <PromptTab botPath={botPath} current={b.prompt_version} onSaved={() => void bot.reload()} />
+      )}
       {b && tab === "settings" && (
-        <>
-          <EditBot
-            bot={b}
-            inboxes={inboxes.data ?? []}
-            onSaved={() => void bot.reload()}
-            onDelete={() => void remove()}
-          />
-          <Versions botPath={botPath} current={b.prompt_version} onSaved={() => void bot.reload()} />
-        </>
+        <EditBot
+          bot={b}
+          inboxes={inboxes.data ?? []}
+          onSaved={() => void bot.reload()}
+          onDelete={() => void remove()}
+        />
       )}
     </DashLayout>
   );
 }
 
-function TabLink({ botId, tab, current }: { botId: string; tab: Tab; current: Tab }) {
+function TabLink({ botId, tab, current, suffix }: { botId: string; tab: Tab; current: Tab; suffix?: string }) {
   const label = TABS.find((t) => t.key === tab)!.label;
   return (
     <a
@@ -153,11 +161,12 @@ function TabLink({ botId, tab, current }: { botId: string; tab: Tab; current: Ta
       aria-current={tab === current ? "page" : undefined}
     >
       {label}
+      {suffix}
     </a>
   );
 }
 
-function ActivityTab({ botPath, threads }: { botPath: string; threads: lw.Thread[] | null }) {
+function ActivityTab({ botId, botPath, threads }: { botId: string; botPath: string; threads: lw.Thread[] | null }) {
   const week = lw.useGet<lw.BotActivity>(botPath + "/activity?days=7", true);
   const month = lw.useGet<lw.BotActivity>(botPath + "/activity?days=30", true);
   const versions = lw.useList<lw.BotVersion>(botPath + "/versions", true);
@@ -198,7 +207,10 @@ function ActivityTab({ botPath, threads }: { botPath: string; threads: lw.Thread
         <ul className="list">
           {versions.data?.slice(0, 3).map((v) => (
             <li key={v.version}>
-              <span className="type">Version {v.version}</span> <span className="muted">{lw.when(v.created_at)}</span>
+              <a className="type" href={tabPath(botId, "prompt")}>
+                Version {v.version}
+              </a>{" "}
+              <span className="muted">{lw.when(v.created_at)}</span>
             </li>
           ))}
         </ul>
@@ -319,219 +331,6 @@ function ThreadsTab({
       {threads.data?.length === 0 && (
         <p className="muted">No {status === "all" ? "" : (status === "active" ? "open" : status) + " "}threads.</p>
       )}
-    </>
-  );
-}
-
-/** A rule as the form edits it: every field is text, and the type globs are one per line. */
-interface RuleDraft {
-  types: string;
-  subject: string;
-  related: string;
-  action: string;
-}
-
-const EXPRESSIONS = [
-  { key: "subject", label: "Subject", hint: 'CEL: the message\'s own subject, "" for none.' },
-  { key: "related", label: "Related", hint: "CEL: a list of other subjects the message names." },
-  { key: "action", label: "Action", hint: "CEL: 'attach' (the default) or 'skip'." },
-] as const;
-
-const toDrafts = (rules: lw.BotRule[] | null): RuleDraft[] =>
-  (rules ?? []).map((r) => ({
-    types: r.types.join("\n"),
-    subject: r.subject ?? "",
-    related: r.related ?? "",
-    action: r.action ?? "",
-  }));
-
-const fromDrafts = (drafts: RuleDraft[]): lw.BotRule[] =>
-  drafts.map((d) => {
-    const rule: lw.BotRule = {
-      types: d.types
-        .split("\n")
-        .map((t) => t.trim())
-        .filter(Boolean),
-    };
-    for (const { key } of EXPRESSIONS) if (d[key].trim()) rule[key] = d[key].trim();
-    return rule;
-  });
-
-/** A rule's fields as plain lines, for reading an old version. */
-function RuleSummary({ rule }: { rule: lw.BotRule }) {
-  return (
-    <pre>
-      {[
-        "types: " + rule.types.join(", "),
-        ...EXPRESSIONS.filter(({ key }) => rule[key]).map(({ key }) => `${key}: ${rule[key]}`),
-      ].join("\n")}
-    </pre>
-  );
-}
-
-/** The bot's current prompt and rules with a form to edit them, and its earlier versions to restore. */
-function Versions({
-  botPath,
-  current,
-  onSaved,
-}: {
-  botPath: string;
-  current: lw.BotVersion | null;
-  onSaved: () => void;
-}) {
-  const history = lw.useList<lw.BotVersion>(botPath + "/versions", true);
-  const [prompt, setPrompt] = useState(current?.prompt ?? "");
-  const [rules, setRules] = useState(toDrafts(current?.rules ?? null));
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState<number | null>(null);
-  const version = current?.version;
-
-  // A new current version (saved here, or by the CLI) fills the form.
-  useEffect(() => {
-    setPrompt(current?.prompt ?? "");
-    setRules(toDrafts(current?.rules ?? null));
-  }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const setRule = (i: number, patch: Partial<RuleDraft>) =>
-    setRules(rules.map((r, n) => (n === i ? { ...r, ...patch } : r)));
-
-  async function save(body: { prompt: string; rules?: lw.BotRule[] }, restored?: number) {
-    setError(null);
-    setSaved(null);
-    const r = await lw.api(botPath + "/versions", { method: "POST", body });
-    if (r.status === 401) return lw.expired(r);
-    if (!r.ok) return setError(await lw.message(r));
-    const v = (await r.json()) as lw.BotVersion;
-    if (restored) track("bot_version_restored");
-    setSaved(v.version);
-    onSaved();
-    void history.reload();
-  }
-
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    const parsed = fromDrafts(rules);
-    if (!parsed.length) {
-      track("bot_rules_missing");
-      return setError("Add at least one rule.");
-    }
-    const empty = parsed.findIndex((r) => !r.types.length);
-    if (empty >= 0) {
-      track("bot_rule_missing_types");
-      return setError(`Rule ${empty + 1} needs at least one event type.`);
-    }
-    void save({ prompt, rules: parsed });
-  }
-
-  return (
-    <>
-      <div className="page-head section">
-        <h1>Prompt and rules</h1>
-        {current && <span className="muted mono">version {current.version}</span>}
-      </div>
-      <form className="panel" onSubmit={submit}>
-        <div className="field">
-          <label htmlFor="bot-prompt">Prompt</label>
-          <textarea
-            id="bot-prompt"
-            required
-            maxLength={100_000}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-          />
-        </div>
-        <div className="field">
-          <label>Rules</label>
-          <p className="hint">
-            The first rule whose event types match a message applies. The expressions are checked when you save.
-          </p>
-        </div>
-        {rules.map((rule, i) => (
-          <div className="panel" key={i}>
-            <div className="field">
-              <label htmlFor={`rule-${i}-types`}>Rule {i + 1} · event types</label>
-              <textarea
-                id={`rule-${i}-types`}
-                className="short"
-                spellCheck={false}
-                value={rule.types}
-                onChange={(e) => setRule(i, { types: e.target.value })}
-                placeholder="com.github.*"
-              />
-              <p className="hint">One glob per line; * is any run of characters.</p>
-            </div>
-            {EXPRESSIONS.map(({ key, label, hint }) => (
-              <div className="field" key={key}>
-                <label htmlFor={`rule-${i}-${key}`}>{label}</label>
-                <div className="input-wrap">
-                  <input
-                    id={`rule-${i}-${key}`}
-                    spellCheck={false}
-                    maxLength={2000}
-                    value={rule[key]}
-                    onChange={(e) => setRule(i, { [key]: e.target.value })}
-                  />
-                </div>
-                <p className="hint">{hint}</p>
-              </div>
-            ))}
-            <div className="form-actions">
-              <button
-                className="btn btn-sm btn-quiet"
-                type="button"
-                onClick={() => setRules(rules.filter((_, n) => n !== i))}
-              >
-                Remove rule
-              </button>
-            </div>
-          </div>
-        ))}
-        <div className="form-actions">
-          <button
-            className="btn btn-quiet"
-            type="button"
-            onClick={() => setRules([...rules, { types: "", subject: "", related: "", action: "" }])}
-          >
-            Add rule
-          </button>
-        </div>
-        <div className="form-actions">
-          <button className="btn" type="submit">
-            Save as new version
-          </button>
-        </div>
-        {error && <p className="error">{error}</p>}
-        {saved && <p className="hint">Saved version {saved}.</p>}
-      </form>
-
-      <div className="page-head section">
-        <h1>History</h1>
-      </div>
-      <ul className="list">
-        {history.data?.map((v) => (
-          <li key={v.version}>
-            <details className="message">
-              <summary>
-                <span className="type">Version {v.version}</span>
-                <span className="when">{lw.when(v.created_at)}</span>
-              </summary>
-              <pre>{v.prompt}</pre>
-              {v.rules?.length ? v.rules.map((r, i) => <RuleSummary key={i} rule={r} />) : <pre>No rules.</pre>}
-              {v.version !== current?.version && (
-                <div className="actions">
-                  <button
-                    className="btn btn-sm"
-                    type="button"
-                    onClick={() => void save({ prompt: v.prompt, rules: v.rules ?? undefined }, v.version)}
-                  >
-                    Restore
-                  </button>
-                </div>
-              )}
-            </details>
-          </li>
-        ))}
-      </ul>
     </>
   );
 }
