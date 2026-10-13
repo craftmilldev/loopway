@@ -786,7 +786,7 @@ export async function endThread(db: Db, botId: string, id: string): Promise<void
   });
 }
 
-export type ThreadEventKind = "created" | "started" | "ended" | "interrupted" | "limited" | "resumed";
+export type ThreadEventKind = "created" | "started" | "ended" | "interrupted" | "limited" | "limit_cleared";
 
 /** Writes one event per kind, for a thread's transitions. */
 async function recordThreadEvents(
@@ -933,7 +933,7 @@ export async function patchThread(
     if (u.started && !u.old_started) kinds.push("started");
     if (u.interrupted && !u.old_interrupted) kinds.push("interrupted");
     if (u.limited && !u.old_limited) kinds.push("limited");
-    if (!u.limited && u.old_limited) kinds.push("resumed");
+    if (!u.limited && u.old_limited) kinds.push("limit_cleared");
     if (u.status === "ended" && u.old_status !== "ended") kinds.push("ended");
     await recordThreadEvents(tx, u.user_id, botId, id, kinds);
     if (patch.addSubjects?.length) {

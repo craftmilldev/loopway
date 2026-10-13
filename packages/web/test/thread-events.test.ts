@@ -60,7 +60,7 @@ describe("thread events", () => {
       "started",
       "interrupted",
       "limited",
-      "resumed",
+      "limit_cleared",
       "ended",
     ]);
   });

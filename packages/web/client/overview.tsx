@@ -35,7 +35,7 @@ const EVENT_TEXT: Record<lw.ThreadEvent["kind"], string> = {
   ended: "ended a thread",
   interrupted: "was interrupted",
   limited: "hit its limit",
-  resumed: "is past its limit",
+  limit_cleared: "is back under its limit",
 };
 
 const startOfToday = () => new Date(new Date().setHours(0, 0, 0, 0)).getTime();

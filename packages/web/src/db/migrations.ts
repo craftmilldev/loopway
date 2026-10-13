@@ -330,7 +330,7 @@ CREATE TABLE loopway.thread_events (
   user_id    uuid NOT NULL,
   bot_id     uuid NOT NULL,
   thread_id  uuid NOT NULL,
-  kind       text NOT NULL CHECK (kind IN ('created', 'started', 'ended', 'interrupted', 'limited', 'resumed')),
+  kind       text NOT NULL CHECK (kind IN ('created', 'started', 'ended', 'interrupted', 'limited', 'limit_cleared')),
   at         timestamptz NOT NULL DEFAULT clock_timestamp(),
   FOREIGN KEY (thread_id, bot_id) REFERENCES loopway.threads(id, bot_id) ON DELETE CASCADE,
   FOREIGN KEY (bot_id, user_id) REFERENCES loopway.bots(id, user_id) ON DELETE CASCADE

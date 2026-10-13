@@ -212,7 +212,7 @@ export function useList<T>(path: string | null, ready: boolean) {
 /** One thing that happened to a thread, from `GET /events`. */
 export interface ThreadEvent {
   id: string;
-  kind: "created" | "started" | "ended" | "interrupted" | "limited" | "resumed";
+  kind: "created" | "started" | "ended" | "interrupted" | "limited" | "limit_cleared";
   at: string;
   bot_id: string;
   bot_name: string;
