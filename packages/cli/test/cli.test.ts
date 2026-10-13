@@ -1235,6 +1235,40 @@ describe("threads", () => {
     expect((await client.listThreads(bot.id, "all")).filter((t) => t.subjects.includes("one"))).toHaveLength(1);
   });
 
+  it("starts running a bot created after the runner started, once it has a prompt and rules", async () => {
+    const { inbox, bot, client, out, d } = await setup(3);
+    // A bot with no prompt yet is reported once and left alone.
+    const fresh = await client.createBot({ name: "late", model: "sonnet", inbox_ids: [inbox.id] });
+    await d.tick();
+    await d.tick();
+    expect(out.filter((l) => l.startsWith("Skipping bot late"))).toHaveLength(1);
+    expect((await d.state()).bots.held.map((b) => b.id)).toEqual([bot.id]);
+
+    await client.addBotVersion(fresh.id, "Late bot.", [{ types: ["*"], subject: '"late"' }]);
+    await d.tick();
+    expect(out).toContain("bot late: found, now running it");
+    expect((await d.state()).bots.held.map((b) => b.id).sort()).toEqual([bot.id, fresh.id].sort());
+  });
+
+  it("reports a new bot whose rules don't parse once, and runs it when a valid version arrives", async () => {
+    const { inbox, client, out, d } = await setup(3);
+    const fresh = await client.createBot({ name: "broken", model: "sonnet", inbox_ids: [inbox.id], prompt: "Draft." });
+    // The server rejects rules that don't parse, so save the version straight to the database.
+    await db.query(
+      `INSERT INTO loopway.bot_versions (bot_id, version, prompt, rules)
+       SELECT bot_id, max(version) + 1, 'Broken.', $2::jsonb FROM loopway.bot_versions WHERE bot_id = $1 GROUP BY bot_id`,
+      [fresh.id, JSON.stringify([{ types: ["*"], subject: "data.(" }])],
+    );
+    await d.tick();
+    await d.tick();
+    expect(out.filter((l) => l.startsWith("bot broken: not running it"))).toHaveLength(1);
+    expect((await d.state()).bots.held.map((b) => b.id)).not.toContain(fresh.id);
+
+    await client.addBotVersion(fresh.id, "Fixed.", [{ types: ["*"], subject: '"fixed"' }]);
+    await d.tick();
+    expect((await d.state()).bots.held.map((b) => b.id)).toContain(fresh.id);
+  });
+
   it("leaves threads owned by another runner alone, and shows them as on that runner", async () => {
     const { inbox, bot, client, runs, d } = await setup(3);
     const other = await client.registerRunner({ id: randomUUID(), name: "desktop" });

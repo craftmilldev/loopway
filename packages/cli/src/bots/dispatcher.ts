@@ -27,6 +27,12 @@ export interface ThreadsOptions {
   ttl?: number;
 }
 
+interface StartOptions extends ThreadsOptions {
+  runnerId: string;
+  /** Ids of bots already reported as not ready, so a new bot is announced only once. */
+  seen?: string[];
+}
+
 /**
  * The lease TTL is short on purpose: the bots of a runner that died without releasing them (killed,
  * crashed, power lost) come free in well under a minute instead of blocking the next runner.
@@ -92,6 +98,8 @@ export class Dispatcher {
   private readonly skipped = new Map<string, string | undefined>();
   /** Bots whose threads this runner has already checked for runs cut off by a previous runner. */
   private readonly reconciled = new Set<string>();
+  /** Ids of the bots not running that were already reported, so each is announced once. */
+  private readonly seen = new Set<string>();
   private closing?: Promise<void>;
   private readonly max: number;
   private readonly ttl: number;
@@ -116,12 +124,7 @@ export class Dispatcher {
    * `bots` must all have a prompt version with rules, and `runnerId` is this machine's runner
    * (see ensureRunner). Takes the runner's lease.
    */
-  static async start(
-    ctx: Context,
-    client: LoopwayClient,
-    bots: Bot[],
-    opts: ThreadsOptions & { runnerId: string },
-  ): Promise<Dispatcher> {
+  static async start(ctx: Context, client: LoopwayClient, bots: Bot[], opts: StartOptions): Promise<Dispatcher> {
     const rules = new Map<string, BotRule[]>();
     const prompts = new Map<string, string>();
     for (const bot of bots) {
@@ -158,11 +161,12 @@ export class Dispatcher {
     private readonly bots: Bot[],
     private readonly rules: Map<string, BotRule[]>,
     private readonly prompts: Map<string, string>,
-    opts: ThreadsOptions & { runnerId: string },
+    opts: StartOptions,
     private readonly mcp: McpServer,
     /** The environment each session runs with. */
     private readonly env: NodeJS.ProcessEnv,
   ) {
+    for (const id of opts.seen ?? []) this.seen.add(id);
     this.max = opts.max ?? DEFAULTS.max;
     this.ttl = opts.ttl ?? DEFAULTS.ttl;
     this.runnerId = opts.runnerId;
@@ -173,6 +177,9 @@ export class Dispatcher {
   async tick(): Promise<void> {
     this.freed = false;
     await this.leaseRunner();
+    await this.addNewBots().catch((err) =>
+      this.ctx.out(`error: looking for new bots: ${err instanceof Error ? err.message : String(err)}`),
+    );
     for (const bot of this.bots) {
       try {
         if (await this.lease(bot)) {
@@ -189,6 +196,38 @@ export class Dispatcher {
       }
     }
     await this.deliverAll();
+  }
+
+  /**
+   * Starts running the bots created since the last tick, so a new bot needs no restart. One without a prompt and
+   * rules yet is reported once and checked again each tick; one whose rules don't parse is reported once per version.
+   */
+  private async addNewBots(): Promise<void> {
+    for (const bot of await this.client.listBots()) {
+      if (this.rules.has(bot.id)) continue;
+      const version = bot.prompt_version;
+      if (!version?.rules) {
+        if (this.seen.has(bot.id)) continue;
+        this.seen.add(bot.id);
+        this.ctx.out(`Skipping bot ${bot.name}: it has no prompt and rules yet. Set them with \`loopway bots edit\`.`);
+        void this.ctx.metrics?.capture("bot_skipped", { reason: "no_version" });
+        continue;
+      }
+      if (this.rejected.get(bot.id) === version.version) continue;
+      try {
+        checkRules(version.rules);
+      } catch (err) {
+        this.rejected.set(bot.id, version.version);
+        this.ctx.out(`bot ${bot.name}: not running it: ${err instanceof Error ? err.message : String(err)}`);
+        void this.ctx.metrics?.capture("bot_skipped", { reason: "invalid_rules" });
+        continue;
+      }
+      this.rules.set(bot.id, version.rules);
+      this.prompts.set(bot.id, version.prompt);
+      this.bots.push(bot);
+      this.ctx.out(`bot ${bot.name}: found, now running it`);
+      void this.ctx.metrics?.capture("bot_picked_up");
+    }
   }
 
   /**
