@@ -140,13 +140,13 @@ describe("bot activity", () => {
     expect((await call("GET", "/bots/activity", { key: other })).body.data).toEqual([]);
   });
 
-  it("rejects days outside 1..90 rather than clamping", async () => {
+  it("rejects days outside 1..30 rather than clamping", async () => {
     const ctx = await setup();
-    for (const days of ["0", "91", "-1", "x", "1.5"]) {
+    for (const days of ["0", "31", "-1", "x", "1.5"]) {
       expect((await call("GET", `/bots/activity?days=${days}`, { key: ctx.key })).status, days).toBe(400);
       expect((await call("GET", `/bots/${ctx.bot.id}/activity?days=${days}`, { key: ctx.key })).status, days).toBe(400);
     }
-    expect((await call("GET", "/bots/activity?days=90", { key: ctx.key })).body.data[0].days).toHaveLength(90);
+    expect((await call("GET", "/bots/activity?days=30", { key: ctx.key })).body.data[0].days).toHaveLength(30);
     expect((await call("GET", "/bots/activity?days=1", { key: ctx.key })).body.data[0].days).toHaveLength(1);
   });
 });

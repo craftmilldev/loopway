@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { botState, type BotState } from "./bot-state.js";
 import type { Inbox } from "./dashboard.js";
+import { deliveredIn } from "./activity.js";
 import { BAR_DAYS, DeliveryBars } from "./delivery-bars.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
@@ -60,9 +61,7 @@ export function Overview() {
   }, [ready]);
 
   // The ranges are whole UTC days, so "24 h" is today.
-  const delivered = activity
-    ? Object.values(activity).reduce((n, a) => n + a.days.slice(-range.days).reduce((m, d) => m + d.delivered, 0), 0)
-    : null;
+  const delivered = activity ? deliveredIn(Object.values(activity), range.days) : null;
 
   const loaded = bots.data && runners.data && inboxes.data && bots.data.every((b) => threads[b.id]);
   const hasBots = (bots.data?.length ?? 0) > 0;

@@ -351,7 +351,7 @@ export function createApi(opts: ApiOptions) {
     return c.json({ data: rows.map(serializeBot) });
   });
 
-  const activityQuery = z.object({ days: z.coerce.number().int().min(1).max(90).default(14) });
+  const activityQuery = z.object({ days: z.coerce.number().int().min(1).max(30).default(14) });
 
   /** Parses `days`, recording a rejected one. */
   async function activityDays(c: Context<Env>, scope: "all" | "bot") {
