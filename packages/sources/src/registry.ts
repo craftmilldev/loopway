@@ -20,12 +20,12 @@ export class SourceRegistry {
 
   /** The event's one-line summary, or null if its source has none (or isn't registered). */
   summarize(type: string, event: CloudEvent): string | null {
-    return this.byType.get(type)?.summarize?.(event) ?? null;
+    return this.byType.get(type)?.summarize(event) ?? null;
   }
 
   /** The title the event carries, or null. */
   title(type: string, event: CloudEvent): string | null {
-    return this.byType.get(type)?.title?.(event) ?? null;
+    return this.byType.get(type)?.title(event) ?? null;
   }
 
   types(): string[] {

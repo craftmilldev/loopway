@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { z } from "zod";
-import { get, str, type Payload } from "./payload.js";
+import { get, str, withText, type Payload } from "./payload.js";
 import type { SourceAdapter, SourceDeps } from "./types.js";
 
 /**
@@ -117,6 +117,17 @@ export const vercel = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter
         : "not set yet: paste the secret Vercel shows after you create the webhook with `loopway inbox update <inbox> --secret`",
     };
   },
+
+  summarize(event) {
+    const type = event.type.replace(/^com\.vercel\./, "");
+    const payload = get(event.data, "payload");
+    const name = str(get(payload, "deployment.name")) ?? str(get(payload, "project.name")) ?? str(get(payload, "name"));
+    const message = str(get(payload, "deployment.meta.githubCommitMessage"));
+    return withText(`${type.replace(/[.-]/g, " ")}${name ? ` for ${name}` : ""}`, message);
+  },
+
+  // Nothing a Vercel event carries names a task; threads from Vercel events are titled by their other messages.
+  title: () => null,
 
   receive({ headers, rawBody, receivedAt }, config) {
     if (!config.secret) {

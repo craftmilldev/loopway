@@ -11,8 +11,8 @@ const event = (type: string, data: object) => ({
   type,
   data: { sender, repository, ...data },
 });
-const summary = (type: string, data: object) => github.summarize!(event(type, data));
-const title = (type: string, data: object) => github.title!(event(type, data));
+const summary = (type: string, data: object) => github.summarize(event(type, data));
+const title = (type: string, data: object) => github.title(event(type, data));
 
 describe("github summarize", () => {
   it("says who opened an issue or pull request", () => {
@@ -101,7 +101,7 @@ describe("github summarize", () => {
   });
 
   it("has nothing to say without an actor", () => {
-    expect(github.summarize!({ ...event("com.github.push", {}), data: {} })).toBeNull();
+    expect(github.summarize({ ...event("com.github.push", {}), data: {} })).toBeNull();
   });
 });
 
