@@ -155,10 +155,14 @@ export interface ThreadMessage {
   inbox_id: string;
   type: string;
   subject: string | null;
+  /** One line on what the message is; null when its source has none, and the UI shows the type instead. */
+  summary: string | null;
 }
 
 export interface Thread {
   id: string;
+  /** From the newest message that carries one (an issue or PR title); null if none does. */
+  title: string | null;
   bot_id: string;
   status: "active" | "ended";
   started: boolean;
@@ -176,7 +180,9 @@ export interface Thread {
     type: string;
     key: string | null;
     delivered_at: string | null;
+    summary: string | null;
   }[];
+  created_at: string;
   updated_at: string;
 }
 

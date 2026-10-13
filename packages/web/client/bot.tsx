@@ -272,7 +272,7 @@ function ThreadsTab({
         <table className="ledger">
           <thead>
             <tr>
-              <th scope="col">Subjects</th>
+              <th scope="col">Thread</th>
               <th scope="col">State</th>
               <th scope="col" className="num">
                 Waiting
@@ -289,8 +289,13 @@ function ThreadsTab({
               <tr key={t.id}>
                 <td>
                   <a href={`/dashboard/bots/${encodeURIComponent(botId)}/threads/${t.id}`}>
-                    {t.subjects.length ? t.subjects.join(", ") : t.id}
+                    {t.title ?? (t.subjects.length ? t.subjects.join(", ") : t.id)}
                   </a>
+                  {t.title && (
+                    <div className="thread-meta">
+                      <SubjectChips subjects={t.subjects} />
+                    </div>
+                  )}
                 </td>
                 <td>
                   {t.status}
@@ -621,14 +626,49 @@ function EditBot({
   );
 }
 
+/** Delivered messages grouped into runs (the ones delivered together), the newest run first. */
+export function runsOf<M extends { delivered_at: string | null }>(messages: M[]) {
+  const byTime = new Map<string, M[]>();
+  for (const m of messages) byTime.set(m.delivered_at ?? "", [...(byTime.get(m.delivered_at ?? "") ?? []), m]);
+  const runs = [...byTime].sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime());
+  return runs.map(([at, ms], i) => ({ number: i + 1, at: at || null, messages: ms })).reverse();
+}
+
 export function Thread({ botId, id }: { botId: string; id: string }) {
   const me = lw.useMe();
   const ready = !!me;
-  const bot = lw.useGet<lw.Bot>("/bots/" + encodeURIComponent(botId), ready);
-  const thread = lw.useGet<lw.Thread>(`/bots/${encodeURIComponent(botId)}/threads/${encodeURIComponent(id)}`, ready);
+  const botPath = "/bots/" + encodeURIComponent(botId);
+  const threadPath = `${botPath}/threads/${encodeURIComponent(id)}`;
+  const bot = lw.useGet<lw.Bot>(botPath, ready);
+  const thread = lw.useGet<lw.Thread>(threadPath, ready);
   const runners = lw.useList<lw.Runner>("/runners", ready);
+  const [error, setError] = useState<string | null>(null);
   const t = thread.data;
   const owner = runners.data?.find((r) => r.id === t?.runner_id);
+  const online = !!owner?.leased_until;
+  const runs = runsOf(t?.delivered_messages ?? []);
+  const state = t && runners.data && t.status === "active" ? botState([t], runners.data) : null;
+
+  useEffect(() => {
+    if (t) track("thread_viewed", { status: t.status, titled: !!t.title });
+  }, [t?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function release() {
+    if (!t) return;
+    if (
+      !confirm(`Release this thread from ${owner?.name ?? "its runner"}? The next runner to claim it starts it fresh.`)
+    )
+      return track("thread_release_cancelled");
+    const r = await lw.api(`${threadPath}/release`, { method: "POST", body: {} });
+    if (r.status === 401) return lw.expired(r);
+    if (!r.ok) {
+      track("thread_release_failed", { status: r.status });
+      return setError(await lw.message(r));
+    }
+    track("thread_released");
+    setError(null);
+    void thread.reload();
+  }
 
   return (
     <DashLayout
@@ -642,49 +682,85 @@ export function Thread({ botId, id }: { botId: string; id: string }) {
     >
       <div className="page-head">
         <div>
-          <h1>{thread.missing ? "Thread not found" : (t?.subjects.length ? t.subjects : ["Thread"]).map(subject)}</h1>
+          <h1>{thread.missing ? "Thread not found" : (t?.title ?? "Thread")}</h1>
           {t && (
-            <div className="muted mono">
-              {t.status}
-              {t.started ? " · started" : ""} ·{" "}
-              {t.runner_id ? `on ${owner?.name ?? "an unknown runner"}` : "no runner yet"}
+            <div className="thread-meta">
+              <SubjectChips subjects={t.subjects} />
+              {state ? <StateBadge state={state} /> : <span className="state state-idle">{t.status}</span>}
               <Flags t={t} />
             </div>
           )}
         </div>
+        {t && (
+          <div className="thread-actions">
+            <button
+              className="btn btn-quiet"
+              type="button"
+              disabled={!t.runner_id || !runners.data || online}
+              title={!t.runner_id ? "No runner owns this thread" : online ? "Its runner is online" : undefined}
+              onClick={() => void release()}
+            >
+              Release
+            </button>
+            {/* Ending a thread from the web goes here (a later ticket). */}
+          </div>
+        )}
       </div>
+      {error && <p className="error">{error}</p>}
       {t && (
-        <>
-          {t.runner_id && (
-            <p className="hint">
-              The transcript lives on {owner?.name ?? "the runner"} at <code>~/.loopway/threads/{t.id}.log</code>.
-            </p>
-          )}
-          <Group title="Waiting" messages={t.waiting.map((m) => ({ ...m, key: m.subject, at: null }))} />
-          <Group title="Inflight" messages={t.inflight.map((m) => ({ ...m, key: m.subject, at: null }))} />
-          <Group
-            title="Delivered"
-            messages={(t.delivered_messages ?? []).map((m) => ({ ...m, subject: m.key, at: m.delivered_at }))}
-          />
-        </>
+        <div className="thread-layout">
+          <div className="thread-main">
+            <Group title="Waiting" messages={t.waiting} />
+            <Group title="In flight" messages={t.inflight} />
+            {runs.map((run) => (
+              <Group key={run.at ?? run.number} title={`Run ${run.number}`} at={run.at} messages={run.messages} />
+            ))}
+          </div>
+          <aside className="thread-side" aria-label="Thread details">
+            <dl>
+              <dt>Runner</dt>
+              <dd>
+                {t.runner_id ? (owner?.name ?? "an unknown runner") : "none yet"}
+                {t.runner_id && <span className="muted"> · {online ? "online" : "offline"}</span>}
+              </dd>
+              <dt>Started</dt>
+              <dd>{lw.when(t.created_at)}</dd>
+              <dt>Runs</dt>
+              <dd>{runs.length}</dd>
+              <dt>Messages</dt>
+              <dd>{t.waiting.length + t.inflight.length + t.delivered}</dd>
+              <dt>Prompt version</dt>
+              <dd>{bot.data?.prompt_version ? "v" + bot.data.prompt_version.version : "–"}</dd>
+              <dt>Transcript</dt>
+              <dd>
+                <code className="mono">tail -f ~/.loopway/threads/{t.id}.log</code>
+                {t.runner_id && <span className="muted"> on {owner?.name ?? "the runner"}</span>}
+              </dd>
+            </dl>
+          </aside>
+        </div>
       )}
     </DashLayout>
   );
 }
 
-function subject(s: string, i: number) {
-  const url = lw.subjectUrl(s);
+/** A thread's subjects, each a chip linking to GitHub where it can. */
+export function SubjectChips({ subjects }: { subjects: string[] }) {
   return (
-    <span key={s}>
-      {i > 0 && ", "}
-      {url ? (
-        <a href={url} target="_blank" rel="noreferrer">
-          {s}
-        </a>
-      ) : (
-        s
-      )}
-    </span>
+    <>
+      {subjects.map((s) => {
+        const url = lw.subjectUrl(s);
+        return url ? (
+          <a key={s} className="chip" href={url} target="_blank" rel="noreferrer">
+            {s}
+          </a>
+        ) : (
+          <span key={s} className="chip">
+            {s}
+          </span>
+        );
+      })}
+    </>
   );
 }
 
@@ -692,22 +768,21 @@ interface Row {
   id: string;
   inbox_id: string;
   type: string;
-  subject: string | null;
-  at: string | null;
+  summary: string | null;
 }
 
-function Group({ title, messages }: { title: string; messages: Row[] }) {
+function Group({ title, at, messages }: { title: string; at?: string | null; messages: Row[] }) {
+  if (!messages.length) return null;
   return (
-    <>
-      <div className="page-head section">
-        <h1>
-          {title} <span className="muted">{messages.length}</span>
-        </h1>
+    <section className="thread-group">
+      <div className="lbl">
+        {title} <span className="muted">{messages.length}</span>
+        {at && <span className="when">{lw.when(at)}</span>}
       </div>
       {messages.map((m) => (
         <MessageRow key={m.id} m={m} />
       ))}
-    </>
+    </section>
   );
 }
 
@@ -719,18 +794,24 @@ function MessageRow({ m }: { m: Row }) {
 
   useEffect(() => {
     if (!open || event) return;
+    track("thread_event_opened", { type: m.type });
     void lw.api(`/inboxes/${m.inbox_id}/messages/${m.id}`).then(async (r) => {
-      if (!r.ok) return setFailed(true);
+      if (!r.ok) {
+        track("thread_event_load_failed", { status: r.status });
+        return setFailed(true);
+      }
       setEvent(((await r.json()) as { event: unknown }).event);
     });
-  }, [open, event, m.inbox_id, m.id]);
+  }, [open, event, m.inbox_id, m.id, m.type]);
 
   return (
     <details className="message" onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>
-        <span className="type">{m.type}</span>
-        <span className="muted">{m.subject || ""}</span>
-        {m.at && <span className="when">{lw.when(m.at)}</span>}
+        <div>
+          <div>{m.summary ?? m.type}</div>
+          {m.summary && <div className="type">{m.type}</div>}
+        </div>
+        <span className="lbl">Event</span>
       </summary>
       <pre>{failed ? "Couldn't load this message." : event ? JSON.stringify(event, null, 2) : "Loading…"}</pre>
     </details>

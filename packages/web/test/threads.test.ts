@@ -34,6 +34,51 @@ async function setup(count = 3) {
   return { key, inbox, bot, base, messages, lease, assign, thread, runner, runnerLease, leaseThread };
 }
 
+describe("thread titles and summaries", () => {
+  it("computes them from the stored events, the title from the newest message that has one", async () => {
+    const { key, inbox, base, assign, thread } = await setup(0);
+    const sender = { login: "alice" };
+    await sendGithub(inbox, "issues", {
+      action: "opened",
+      sender,
+      issue: { number: 4, title: "Old title" },
+      repository: { url: "u" },
+    });
+    await sendGithub(inbox, "issue_comment", {
+      action: "created",
+      sender,
+      issue: { number: 4, title: "New title" },
+      comment: { body: "Looks good\nsecond line" },
+      repository: { url: "u" },
+    });
+    await sendGithub(inbox, "push", { ref: "refs/heads/main", sender, commits: [{}], repository: { url: "u" } });
+    const ms = (await call("GET", `/inboxes/${inbox.id}/messages?order=asc`, { key })).body.data as { id: string }[];
+    const id = randomUUID();
+    expect((await assign(ms.map((m) => ({ message_id: m.id, thread_id: id, add_subjects: ["o/r#4"] })))).status).toBe(
+      200,
+    );
+
+    const got = (await thread(id)).body;
+    expect(got.title).toBe("New title");
+    expect(got.waiting.map((m: any) => m.summary)).toEqual([
+      "alice opened issue #4: Old title",
+      "alice commented on #4: Looks good",
+      "alice pushed 1 commit to main",
+    ]);
+    const list = (await call("GET", `${base}/threads`, { key })).body.data;
+    expect(list[0]).toMatchObject({ title: "New title" });
+    expect(list[0].waiting[0].summary).toBe("alice opened issue #4: Old title");
+  });
+
+  it("has a null title when no message carries one", async () => {
+    const { key, base, messages, assign, thread } = await setup(1);
+    const id = randomUUID();
+    await assign([{ message_id: messages[0]!.id, thread_id: id }]);
+    expect((await thread(id)).body.title).toBeNull();
+    expect((await call("GET", `${base}/threads`, { key })).body.data[0].title).toBeNull();
+  });
+});
+
 describe("thread assignment", () => {
   it("creates threads, subjects and waiting messages, and advances the cursor, in one go", async () => {
     const { key, base, bot, messages, assign, thread } = await setup();
@@ -60,7 +105,13 @@ describe("thread assignment", () => {
       delivered: 0,
     });
     expect(got.waiting).toEqual([
-      { id: messages[0]!.id, inbox_id: bot.inbox_ids[0], type: "com.github.pull_request.opened", subject: "o/r#1" },
+      {
+        id: messages[0]!.id,
+        inbox_id: bot.inbox_ids[0],
+        type: "com.github.pull_request.opened",
+        subject: "o/r#1",
+        summary: null,
+      },
       expect.objectContaining({ id: messages[1]!.id, subject: null }),
     ]);
     expect(got.delivered_ids).toEqual([]);
@@ -256,6 +307,7 @@ describe("thread writes", () => {
         inbox_id: expect.any(String),
         type: "com.github.pull_request.opened",
         key: null,
+        summary: null,
         delivered_at: expect.any(String),
       },
       expect.objectContaining({ id: messages[1]!.id }),

@@ -676,6 +676,47 @@ export async function threadBots(db: Db, ids: string[]): Promise<Map<string, str
   return new Map(rows.map((r) => [r.id, r.bot_id]));
 }
 
+export interface MessageEvent {
+  id: string;
+  source_type: string;
+  cloudevent: CloudEvent;
+}
+
+/** The stored event and source type of each of these messages, for the summaries. */
+export async function messageEvents(db: Db, ids: string[]): Promise<Map<string, MessageEvent>> {
+  if (!ids.length) return new Map();
+  const rows = await db.query<MessageEvent>(
+    `SELECT m.id, i.source_type, m.cloudevent FROM loopway.messages m JOIN loopway.inboxes i ON i.id = m.inbox_id
+     WHERE m.id IN (SELECT value::uuid FROM jsonb_array_elements_text($1::jsonb))`,
+    [ids],
+  );
+  return new Map(rows.map((r) => [r.id, r]));
+}
+
+/** Each thread's newest `limit` messages (any state), newest first, for finding the thread's title. */
+export async function threadNewestEvents(
+  db: Db,
+  threadIds: string[],
+  limit: number,
+): Promise<Map<string, MessageEvent[]>> {
+  if (!threadIds.length) return new Map();
+  const rows = await db.query<MessageEvent & { thread_id: string }>(
+    `SELECT t.id AS thread_id, n.id, n.source_type, n.cloudevent
+     FROM loopway.threads t CROSS JOIN LATERAL (
+       SELECT m.id, m.received_at, m.seq, i.source_type, m.cloudevent
+       FROM loopway.thread_messages tm JOIN loopway.messages m ON m.id = tm.message_id
+       JOIN loopway.inboxes i ON i.id = m.inbox_id
+       WHERE tm.thread_id = t.id ORDER BY m.received_at DESC, m.seq DESC LIMIT $2
+     ) n
+     WHERE t.id IN (SELECT value::uuid FROM jsonb_array_elements_text($1::jsonb))
+     ORDER BY t.id, n.received_at DESC, n.seq DESC`,
+    [threadIds, limit],
+  );
+  const byThread = new Map<string, MessageEvent[]>();
+  for (const { thread_id, ...e } of rows) byThread.set(thread_id, [...(byThread.get(thread_id) ?? []), e]);
+  return byThread;
+}
+
 /** The thread that holds each of these subjects, for the bot's subjects that are taken. */
 export async function subjectHolders(db: Db, botId: string, subjects: string[]): Promise<Map<string, string>> {
   const rows = await db.query<{ subject: string; thread_id: string }>(

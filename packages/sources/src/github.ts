@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { z } from "zod";
+import { githubSummary, githubTitle } from "./github-summary.js";
 import { get, str, type Payload } from "./payload.js";
 import type { SourceAdapter, SourceDeps } from "./types.js";
 
@@ -173,6 +174,9 @@ export const github = ({ newSecret, safeEqual, makeCloudEvent }: SourceDeps): So
       events: config.events.includes("*") ? "Send me everything" : config.events,
     };
   },
+
+  summarize: githubSummary,
+  title: githubTitle,
 
   receive({ headers, rawBody, receivedAt }, config) {
     const event = headers.get("x-github-event");

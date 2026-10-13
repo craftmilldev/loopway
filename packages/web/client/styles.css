@@ -1085,3 +1085,63 @@ main.dash {
   font-family: var(--font-type);
   text-align: right;
 }
+
+/* Thread page */
+.thread-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+.chip {
+  padding: 1px 8px;
+  border: 1px solid var(--rule-hair);
+  font-family: var(--font-type);
+  font-size: 0.75rem;
+  color: var(--ink-900);
+}
+.thread-actions {
+  display: flex;
+  gap: 12px;
+}
+.thread-actions .btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.thread-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 40px;
+  margin-top: 32px;
+}
+.thread-group {
+  margin-bottom: 32px;
+}
+.thread-group .when {
+  margin-left: 12px;
+  color: var(--ink-400);
+}
+.thread-side dl {
+  margin: 0;
+}
+.thread-side dt {
+  margin-top: 16px;
+  font-family: var(--font-type);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-400);
+}
+.thread-side dd {
+  margin: 4px 0 0;
+}
+details.message summary {
+  justify-content: space-between;
+}
+@media (max-width: 760px) {
+  .thread-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+}
