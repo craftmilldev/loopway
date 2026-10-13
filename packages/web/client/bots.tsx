@@ -37,9 +37,10 @@ export function Bots() {
   }, [bots.data]);
 
   const loaded = !!(bots.data && runners.data && inboxes.data && bots.data.every((b) => threads[b.id]));
+  const total = bots.data?.length ?? 0;
   useEffect(() => {
-    if (loaded) track("bots_viewed", { count: bots.data!.length, has_bots: bots.data!.length > 0 });
-  }, [loaded]);
+    if (loaded) track("bots_viewed", { count: total, has_bots: total > 0 });
+  }, [loaded, total]);
 
   const inboxName = (id: string) => inboxes.data?.find((i) => i.id === id)?.name ?? id;
   const rows = loaded
@@ -72,8 +73,8 @@ export function Bots() {
   };
   // A filter or find that leaves nothing is where this page gives up on the user, so that's recorded.
   useEffect(() => {
-    if (loaded && rows.length && !shown.length) track("bots_none_match", { filter, has_find: !!needle });
-  }, [loaded, needle, filter, shown.length]);
+    if (loaded && total && !shown.length) track("bots_none_match", { filter, has_find: !!needle });
+  }, [loaded, total, needle, filter, shown.length]);
 
   const headline = !loaded
     ? " "
