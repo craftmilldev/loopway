@@ -75,6 +75,7 @@ describe("New bot flow", () => {
       inbox_ids: ["i1"],
     });
     expect(location.search).toBe("?bot=b1");
+    expect(screen.queryByText("Loading…")).toBeNull();
 
     // Back from the runner step shows the created bot and doesn't make another.
     fireEvent.click(screen.getByText("Back"));

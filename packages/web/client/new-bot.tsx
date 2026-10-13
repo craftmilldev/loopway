@@ -24,7 +24,8 @@ export function NewBot() {
   const me = lw.useMe();
   const ready = !!me;
   const inboxes = lw.useList<Inbox>("/inboxes", ready);
-  const resumeId = new URLSearchParams(location.search).get("bot");
+  // Read once: creating the bot rewrites the URL, and that must not count as a resume.
+  const [resumeId] = useState(() => new URLSearchParams(location.search).get("bot"));
   const [botId, setBotId] = useState(resumeId);
   const [step, setStep] = useState(1);
   const [picked, setPicked] = useState<Set<string>>(new Set());
