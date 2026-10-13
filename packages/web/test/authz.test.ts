@@ -7,12 +7,21 @@ import { app, call, db, newInbox, newUser, prPayload, sendGithub } from "./helpe
 // 404 (or a refusal) for a user who doesn't own it, leaving the owner's data as it was.
 
 // Public on purpose: the shell, health, signed webhooks, login, and the analytics proxy.
-const PUBLIC = [/^GET \/api$/, /^GET \/health$/, /^POST \/webhooks\/:inboxId$/, /^POST \/auth\/(login|verify)$/];
+const PUBLIC = [
+  /^GET \/api$/,
+  /^GET \/health$/,
+  /^POST \/webhooks\/:inboxId$/,
+  /^POST \/auth\/(login|verify)$/,
+  // The UI shell and its bundle (GETs that serve no account data), and the analytics proxy.
+  /^GET \/(login|app\.js|app\.css)?$/,
+  /^GET \/dashboard(\/|$)/,
+  /^ALL \/ingest\//,
+];
 
 describe("authentication", () => {
   it("covers every API route that isn't public", async () => {
     const routes = [...new Set(app.routes.map((r) => `${r.method} ${r.path}`))].filter(
-      (r) => /^\w+ \/(me|sources|inboxes|runners|bots)\b/.test(r) && !PUBLIC.some((p) => p.test(r)),
+      (r) => !PUBLIC.some((p) => p.test(r)),
     );
     let checked = 0;
     for (const route of routes) {
@@ -103,6 +112,13 @@ describe("ownership", () => {
     expect(
       (await call("PATCH", `/bots/${mineBot.id}`, { key: stranger, body: { inbox_ids: [inbox.id] } })).status,
     ).toBe(400);
+    expect(
+      (await call("POST", "/bots", { key: stranger, body: { name: "x", model: "sonnet", inbox_ids: [inbox.id] } }))
+        .status,
+    ).toBe(400);
+    // Activity covers only the caller's own bots.
+    const activity = (await call("GET", "/bots/activity", { key: stranger })).body.data as { bot_id: string }[];
+    expect(activity.map((a) => a.bot_id)).toEqual([mineBot.id]);
     const mineLease = (await call("POST", `/bots/${mineBot.id}/lease`, { key: stranger, body: {} })).body.lease.token;
     const reach = await call("POST", `/bots/${mineBot.id}/assign`, {
       key: stranger,
