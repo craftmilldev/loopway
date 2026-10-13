@@ -67,6 +67,10 @@ const owner = ({ threads, runnerId, runners }: DispatcherState, id: string): str
   return runner && runner !== runnerId ? ` on ${runners[runner] ?? runner.slice(0, 8)}` : "";
 };
 
+/** The name of the bot a thread belongs to, to tell the threads of different bots apart. */
+const botName = ({ bots }: Pick<DispatcherState, "bots">, id: string): string =>
+  [...bots.held, ...bots.skipped].find((b) => b.id === id)?.name ?? id.slice(0, 8);
+
 interface Row {
   key: string;
   /** Set on rows that can be selected (sessions). */
@@ -146,7 +150,11 @@ function ListView({ snap, selected, onSelect, onOpen }: ListViewProps) {
 /** Every row of the list view. Waiting messages stop at `waitingMax` so the session lists stay in view. */
 function listRows(snap: Snapshot, lists: Record<Section, string[]>, waitingMax: number): Row[] {
   const rows: Row[] = [{ key: "h-messages", header: `Waiting messages (${snap.waiting.length})` }];
-  for (const m of snap.waiting.slice(0, waitingMax)) rows.push({ key: m.id, label: m.type, meta: m.subject ?? "" });
+  // The same message waits once per bot that routed it, so a row is keyed by its thread too.
+  for (const m of snap.waiting.slice(0, waitingMax)) {
+    const where = `${m.bot_name} ${m.thread_id.slice(0, 8)}${snap.running.has(m.thread_id) ? " working" : ""}`;
+    rows.push({ key: `${m.thread_id}:${m.id}`, label: m.type, meta: [m.subject, where].filter(Boolean).join("  ") });
+  }
   const more = snap.waiting.length - waitingMax;
   if (more > 0) rows.push({ key: "more-messages", meta: `… ${more} more` });
   if (!snap.waiting.length) rows.push({ key: "none-messages", meta: "none" });
@@ -159,7 +167,7 @@ function listRows(snap: Snapshot, lists: Record<Section, string[]>, waitingMax: 
         key: id,
         id,
         label: t.subjects.join(", ") || "new thread",
-        meta: `${id.slice(0, 8)}  ${ago(t.updated_at)}${owner(snap, id)}`,
+        meta: `${botName(snap, t.bot_id)} ${id.slice(0, 8)}  ${ago(t.updated_at)}${owner(snap, id)}`,
       });
     }
     if (!lists[sec].length) rows.push({ key: `none-${sec}`, meta: "none" });
