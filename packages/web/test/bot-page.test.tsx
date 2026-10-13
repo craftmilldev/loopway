@@ -178,8 +178,8 @@ describe("Bot page", () => {
   it("settings tab has the edit form and the versions editor", async () => {
     at("?tab=settings");
     render(<Bot id="b1" />);
-    expect(((await screen.findByLabelText("Name")) as HTMLInputElement).value).toBe("dev");
-    expect((screen.getByLabelText("Model") as HTMLSelectElement).value).toBe("sonnet");
+    expect((await screen.findByLabelText<HTMLInputElement>("Name")).value).toBe("dev");
+    expect(screen.getByLabelText<HTMLSelectElement>("Model").value).toBe("sonnet");
     expect(screen.getByText("Delete bot")).toBeTruthy();
     expect(screen.getByText("Save as new version")).toBeTruthy();
   });
