@@ -10,7 +10,7 @@ export interface Inbox {
   name: string;
   source_type: string;
   webhook_url: string;
-  config?: { secret?: string | null };
+  config?: { secret?: string | null; events?: string[] };
 }
 
 /** `/dashboard/bots/new`: the create form, until the new-bot flow lands. */
@@ -24,48 +24,6 @@ export function NewBot() {
       </div>
       {inboxes.data && (
         <CreateBot inboxes={inboxes.data} onCreated={(id) => location.assign("/dashboard/bots/" + id)} />
-      )}
-    </DashLayout>
-  );
-}
-
-/** `/dashboard/inboxes`: the inbox list and its create form, until the inboxes page lands. */
-export function Inboxes() {
-  const me = lw.useMe();
-  const inboxes = lw.useList<Inbox>("/inboxes", !!me);
-  const [creating, setCreating] = useState(false);
-  return (
-    <DashLayout title="Inboxes · loopway" me={me}>
-      <div className="page-head">
-        <h1>Inboxes</h1>
-        <button className="btn btn-md" type="button" onClick={() => setCreating(!creating)}>
-          New inbox
-        </button>
-      </div>
-      {creating && (
-        <CreateInbox
-          onCreated={() => {
-            setCreating(false);
-            void inboxes.reload();
-          }}
-        />
-      )}
-      <ul className="list">
-        {inboxes.data?.map((i) => (
-          <li key={i.id}>
-            <a className="title" href={"/dashboard/inboxes/" + i.id}>
-              {i.name}
-            </a>
-            <div className="meta">
-              {i.source_type} · {i.webhook_url}
-            </div>
-          </li>
-        ))}
-      </ul>
-      {inboxes.data?.length === 0 && (
-        <p className="muted" style={{ marginTop: 24 }}>
-          No inboxes yet.
-        </p>
       )}
     </DashLayout>
   );
@@ -164,7 +122,7 @@ function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: (id: s
 /** The Source option that asks for a new source type instead of creating an inbox. */
 const REQUEST = "request:";
 
-function CreateInbox({ onCreated }: { onCreated: () => void }) {
+export function CreateInbox({ onCreated }: { onCreated: () => void }) {
   const { data: sources = [], can_request } = lw.useSources() ?? {};
   const [name, setName] = useState("");
   const [type, setType] = useState("");
