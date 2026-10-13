@@ -1235,6 +1235,21 @@ describe("threads", () => {
     expect((await client.listThreads(bot.id, "all")).filter((t) => t.subjects.includes("one"))).toHaveLength(1);
   });
 
+  it("starts running a bot created after the runner started, once it has a prompt and rules", async () => {
+    const { inbox, bot, client, out, d } = await setup(3);
+    // A bot with no prompt yet is reported once and left alone.
+    const fresh = await client.createBot({ name: "late", model: "sonnet", inbox_ids: [inbox.id] });
+    await d.tick();
+    await d.tick();
+    expect(out.filter((l) => l.startsWith("Skipping bot late"))).toHaveLength(1);
+    expect((await d.state()).bots.held.map((b) => b.id)).toEqual([bot.id]);
+
+    await client.addBotVersion(fresh.id, "Late bot.", [{ types: ["*"], subject: '"late"' }]);
+    await d.tick();
+    expect(out).toContain("bot late: found, now running it");
+    expect((await d.state()).bots.held.map((b) => b.id).sort()).toEqual([bot.id, fresh.id].sort());
+  });
+
   it("leaves threads owned by another runner alone, and shows them as on that runner", async () => {
     const { inbox, bot, client, runs, d } = await setup(3);
     const other = await client.registerRunner({ id: randomUUID(), name: "desktop" });
