@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApi } from "@loopway/web/api";
 import { PRESETS } from "@loopway/presets";
-import { openDb, type Db } from "@loopway/web/db";
+import { type Db } from "@loopway/web/db";
+import { openTestDb } from "@loopway/web/db/testing";
 import { createUser } from "@loopway/web/store";
 import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
@@ -36,7 +37,7 @@ const emails: { to: string; text: string }[] = [];
 const apiFetch = ((input: string | URL | Request, init?: RequestInit) => app.request(input, init)) as typeof fetch;
 
 beforeAll(async () => {
-  db = await openDb({ pgliteDir: "memory://" });
+  db = await openTestDb();
   app = createApi({
     getDb: async () => db,
     publicBaseUrl: API,

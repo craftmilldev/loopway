@@ -12,6 +12,7 @@
     ".": "./src/index.ts",
     "./api": "./src/api.ts",
     "./db": "./src/db/index.ts",
+    "./db/testing": "./src/db/testing.ts",
     "./store": "./src/store.ts",
     "./tokens": "./src/tokens.ts"
   },
@@ -27,7 +28,6 @@
     "@loopway/presets": "*",
     "@loopway/rules": "*",
     "@loopway/sources": "*",
-    "@electric-sql/pglite": "^0.5.8",
     "ajv": "^8.20.0",
     "hono": "^4.13.13",
     "marked": "^18.1.0",

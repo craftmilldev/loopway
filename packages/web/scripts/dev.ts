@@ -4,7 +4,7 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { context } from "esbuild";
 import { Hono } from "hono";
-import { getDb } from "../src/db/index.js";
+import { getDb, migrate } from "../src/db/index.js";
 import { clientBuild } from "./client.js";
 
 if (!process.env.TOKEN_SECRET) {
@@ -13,7 +13,8 @@ if (!process.env.TOKEN_SECRET) {
 }
 const { default: app } = await import("../src/index.js"); // after TOKEN_SECRET is settled
 
-await getDb(); // open + migrate PGlite up front so the first request isn't slow
+// Open and migrate up front so the first request isn't slow and a fresh local database has its tables.
+await migrate(await getDb());
 
 // Rebuild the web UI bundle into public/ on change, and serve public/ the way Vercel's CDN serves the icons in
 // production.
@@ -24,9 +25,6 @@ local.route("/", app);
 
 const port = Number(process.env.PORT ?? 3000);
 serve({ fetch: local.fetch, port }, () => {
-  const remote = process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL;
-  const where = remote
-    ? `Postgres (${new URL(remote).host})`
-    : `PGlite (${process.env.PGLITE_DIR ?? "./.data/pglite"})`;
-  console.log(`loopway listening on http://localhost:${port} — db: ${where}`);
+  const url = new URL((process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL)!);
+  console.log(`loopway listening on http://localhost:${port} — db: Postgres (${url.host})`);
 });
