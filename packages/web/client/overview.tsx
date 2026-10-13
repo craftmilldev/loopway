@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { botState, type BotState } from "./bot-state.js";
 import type { Inbox } from "./dashboard.js";
-import { DeliveryBars } from "./delivery-bars.js";
+import { BAR_DAYS, DeliveryBars } from "./delivery-bars.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
@@ -49,10 +49,10 @@ export function Overview() {
     }
   }, [bots.data]);
 
-  // Every bot's deliveries in one call: 30 days covers the bars (14) and every range.
+  // Every bot's deliveries in one call, as many days as the bars and the longest range need.
   useEffect(() => {
     if (!ready) return;
-    void lw.api("/bots/activity?days=30").then(async (r) => {
+    void lw.api("/bots/activity?days=" + Math.max(BAR_DAYS, ...RANGES.map((r) => r.days))).then(async (r) => {
       if (!r.ok) return track("overview_load_failed", { resource: "activity", status: r.status });
       const data = ((await r.json()) as { data: lw.BotActivity[] }).data;
       setActivity(Object.fromEntries(data.map((a) => [a.bot_id, a])));
@@ -168,7 +168,7 @@ export function Overview() {
                 <th scope="col" className="num">
                   Waiting
                 </th>
-                <th scope="col">Deliveries, 14 days</th>
+                <th scope="col">Deliveries, {BAR_DAYS} days</th>
                 <th scope="col" className="num">
                   Last delivery
                 </th>

@@ -1,7 +1,10 @@
 import type { BotActivity } from "./lw.js";
 
+/** The days of deliveries the bars show. */
+export const BAR_DAYS = 14;
+
 /** Small bars, one per day, for a bot's deliveries. Words instead for a bot with none in the window. */
-export function DeliveryBars({ activity, days = 14 }: { activity: BotActivity | undefined; days?: number }) {
+export function DeliveryBars({ activity, days = BAR_DAYS }: { activity: BotActivity | undefined; days?: number }) {
   if (!activity) return <span className="muted">…</span>;
   const shown = activity.days.slice(-days);
   const total = shown.reduce((n, d) => n + d.delivered, 0);

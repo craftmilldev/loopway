@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { botState, filterOf, stateReason, type BotFilter } from "./bot-state.js";
 import type { Inbox } from "./dashboard.js";
-import { DeliveryBars } from "./delivery-bars.js";
+import { BAR_DAYS, DeliveryBars } from "./delivery-bars.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
@@ -41,7 +41,7 @@ export function Bots() {
   // Every bot's deliveries, in one call.
   useEffect(() => {
     if (!ready) return;
-    void lw.api("/bots/activity?days=14").then(async (r) => {
+    void lw.api("/bots/activity?days=" + BAR_DAYS).then(async (r) => {
       if (!r.ok) return track("bots_load_failed", { resource: "activity", status: r.status });
       const data = ((await r.json()) as { data: lw.BotActivity[] }).data;
       setActivity(Object.fromEntries(data.map((a) => [a.bot_id, a])));
@@ -156,7 +156,7 @@ export function Bots() {
                   <th scope="col" className="num">
                     Waiting
                   </th>
-                  <th scope="col">Deliveries, 14 days</th>
+                  <th scope="col">Deliveries, {BAR_DAYS} days</th>
                   <th scope="col" className="num">
                     Last delivery
                   </th>
