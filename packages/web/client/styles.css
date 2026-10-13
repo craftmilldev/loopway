@@ -917,23 +917,96 @@ main.dash {
   }
 }
 
-.switcher {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
+.bot-switch {
+  position: relative;
   margin-bottom: 16px;
   font-family: var(--font-type);
   font-size: 12px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
-.switcher a {
+@media (min-width: 761px) {
+  .bot-switch {
+    max-width: 320px;
+  }
+}
+.bot-switch-button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--rule-hair);
+  border-radius: 0;
+  background: none;
+  color: var(--ink-900);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bot-switch-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bot-switch-caret {
+  margin-left: 12px;
+  color: var(--ink-600);
+}
+.bot-switch-list {
+  position: absolute;
+  z-index: 10;
+  top: 100%;
+  left: 0;
+  box-sizing: border-box;
+  width: 100%;
+  background: var(--paper-100);
+  border-top: 1px solid var(--ink-900);
+  border-bottom: 1px solid var(--rule-hair);
+}
+.bot-switch-find {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--rule-hair);
+  border-radius: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: none;
+}
+.bot-switch-items {
+  max-height: 280px;
+  overflow-y: auto;
+}
+.bot-switch-items a {
+  display: flex;
+  align-items: center;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--rule-soft);
   color: var(--ink-600);
   text-decoration: none;
+  overflow-wrap: anywhere;
 }
-.switcher a.on {
+.bot-switch-items a:hover,
+.bot-switch-items a:focus {
   color: var(--ink-900);
-  border-bottom: 2px solid var(--madder-600);
+  outline: none;
+  background: var(--paper-200);
+}
+.bot-switch-items a[aria-current="page"] {
+  color: var(--ink-900);
+  box-shadow: inset 2px 0 0 var(--madder-600);
+  padding-left: 8px;
+}
+.bot-switch-empty {
+  margin: 0;
+  padding: 8px 2px;
 }
 .dot {
   display: inline-block;

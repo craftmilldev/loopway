@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { botState } from "./bot-state.js";
+import { BotSwitcher } from "./bot-switcher.js";
 import { DeliveryBars } from "./delivery-bars.js";
 import { StateBadge } from "./overview.js";
 import { leaseText, type Inbox } from "./dashboard.js";
@@ -77,12 +78,13 @@ export function Bot({ id }: { id: string }) {
   return (
     <DashLayout title="Bot · loopway" me={me}>
       {bots.data && (
-        <nav className="switcher" aria-label="Bots">
-          <a href="/dashboard/bots">All bots</a>
-          {bots.data.map((x) => (
-            <BotSwitch key={x.id} bot={x} current={x.id === id} tab={tab} runners={runners.data} />
-          ))}
-        </nav>
+        <BotSwitcher
+          bots={bots.data}
+          current={id}
+          currentState={state}
+          runners={runners.data}
+          pathFor={(botId) => tabPath(botId, tab)}
+        />
       )}
       <div className="page-head">
         <div>
@@ -151,33 +153,6 @@ function TabLink({ botId, tab, current }: { botId: string; tab: Tab; current: Ta
       aria-current={tab === current ? "page" : undefined}
     >
       {label}
-    </a>
-  );
-}
-
-/** One bot in the switcher, marked with its state. Its threads are fetched on their own so the mark fills in late. */
-function BotSwitch({
-  bot,
-  current,
-  tab,
-  runners,
-}: {
-  bot: lw.Bot;
-  current: boolean;
-  tab: Tab;
-  runners: lw.Runner[] | null;
-}) {
-  const threads = lw.useList<lw.Thread>("/bots/" + encodeURIComponent(bot.id) + "/threads?status=active", true);
-  const state = threads.data && runners ? botState(threads.data, runners) : null;
-  return (
-    <a
-      href={tabPath(bot.id, tab)}
-      className={current ? "on" : undefined}
-      aria-current={current ? "page" : undefined}
-      onClick={() => track("bot_switched", { tab })}
-    >
-      {state && <span className={"dot state-" + state} title={state} />}
-      {bot.name}
     </a>
   );
 }
