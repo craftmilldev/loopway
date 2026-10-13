@@ -5,7 +5,6 @@ import { NewBot } from "./dashboard.js";
 import { Home } from "./home.js";
 import { Inbox } from "./inbox.js";
 import { Inboxes } from "./inboxes.js";
-import { Placeholder } from "./layout.js";
 import { Login } from "./login.js";
 import { startMetrics } from "./metrics.js";
 import { Overview } from "./overview.js";
@@ -25,7 +24,8 @@ function page(path: string) {
   if (inbox) return <Inbox id={part(inbox, 1)} />;
   const thread = path.match(/^\/dashboard\/bots\/([^/]+)\/threads\/([^/]+)$/);
   if (thread) return <Thread botId={part(thread, 1)} id={part(thread, 2)} />;
-  if (/^\/dashboard\/bots\/[^/]+\/prompt$/.test(path)) return <Placeholder title="Prompt" />;
+  const prompt = path.match(/^\/dashboard\/bots\/([^/]+)\/prompt$/);
+  if (prompt) return <Bot id={part(prompt, 1)} view="prompt" />;
   const bot = path.match(/^\/dashboard\/bots\/([^/]+)$/);
   if (bot) return <Bot id={part(bot, 1)} />;
   return null;

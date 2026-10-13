@@ -1146,6 +1146,116 @@ details.message summary {
   }
 }
 
+/* Prompt and rules tab */
+.sr-only {
+  position: absolute;
+  left: -9999px;
+}
+.draft-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding: 14px 20px;
+  background: var(--paper-100);
+  border-top: 2px solid var(--ink-900);
+}
+.draft-bar .form-actions {
+  margin-top: 0;
+}
+.prompt-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.prompt-head.section {
+  margin-top: 36px;
+}
+.field textarea.prompt {
+  min-height: 360px;
+  line-height: 1.6;
+}
+.rule {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 4px 16px;
+  padding: 18px 0;
+  border-top: 1px solid var(--ink-900);
+}
+.rule:last-child {
+  border-bottom: 1px solid var(--ink-900);
+}
+.rule-n {
+  font-size: 1.875rem;
+  line-height: 1;
+}
+.rule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: flex-start;
+}
+.kv {
+  margin: 8px 0 0;
+}
+.kv > div {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 12px;
+  padding: 6px 0;
+  border-top: 1px solid var(--rule-hair);
+}
+.kv dt {
+  font-family: var(--font-type);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-600);
+}
+.kv dd {
+  margin: 0;
+  font-family: var(--font-type);
+  font-size: 0.8125rem;
+  color: var(--ink-700);
+  overflow-wrap: anywhere;
+}
+.version-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
+}
+.diffs {
+  margin-top: 24px;
+}
+.diff {
+  padding-top: 6px;
+  border-top: 1px solid var(--ink-900);
+  font-family: var(--font-type);
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+.diff-line {
+  padding: 1px 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ink-500);
+}
+.diff-line.add {
+  color: var(--indigo-600);
+  background: rgba(44, 74, 83, 0.12);
+}
+.diff-line.del {
+  color: var(--madder-600);
+  background: rgba(184, 65, 44, 0.12);
+  text-decoration: line-through;
+}
+
 /* Inboxes */
 .inboxes-ledger {
   min-width: 860px;
