@@ -796,7 +796,6 @@ async function recordThreadEvents(
   threadId: string,
   kinds: ThreadEventKind[],
 ) {
-  if (!kinds.length) return;
   await db.query(
     `INSERT INTO loopway.thread_events (user_id, bot_id, thread_id, kind)
      SELECT $1::uuid, $2::uuid, $3::uuid, k.value FROM jsonb_array_elements_text($4::jsonb) WITH ORDINALITY k(value, n)
@@ -935,7 +934,7 @@ export async function patchThread(
     if (u.limited && !u.old_limited) kinds.push("limited");
     if (!u.limited && u.old_limited) kinds.push("limit_cleared");
     if (u.status === "ended" && u.old_status !== "ended") kinds.push("ended");
-    await recordThreadEvents(tx, u.user_id, botId, id, kinds);
+    if (kinds.length) await recordThreadEvents(tx, u.user_id, botId, id, kinds);
     if (patch.addSubjects?.length) {
       await tx.query(
         `INSERT INTO loopway.thread_subjects (thread_id, bot_id, subject)
