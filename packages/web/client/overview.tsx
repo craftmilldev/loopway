@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import { botState, type BotState } from "./bot-state.js";
 import type { Inbox } from "./dashboard.js";
+import { DeliveryBars } from "./delivery-bars.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
 
 const RANGES = [
-  { key: "24h", label: "24 h", hours: 24 },
-  { key: "7d", label: "7 days", hours: 24 * 7 },
-  { key: "30d", label: "30 days", hours: 24 * 30 },
+  { key: "24h", label: "24 h", days: 1 },
+  { key: "7d", label: "7 days", days: 7 },
+  { key: "30d", label: "30 days", days: 30 },
 ];
 
 const WORDS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
@@ -35,7 +36,7 @@ export function Overview() {
   const inboxes = lw.useList<Inbox>("/inboxes", ready);
   const [range, setRange] = useState(RANGES[1]!);
   const [threads, setThreads] = useState<Record<string, lw.Thread[]>>({});
-  const [delivered, setDelivered] = useState<number | null>(null);
+  const [activity, setActivity] = useState<Record<string, lw.BotActivity> | null>(null);
 
   // Each bot's active threads. One request per bot.
   useEffect(() => {
@@ -48,36 +49,20 @@ export function Overview() {
     }
   }, [bots.data]);
 
-  // Messages delivered in the range: the delivery times are on each thread, and only threads touched in the range
-  // can hold one.
+  // Every bot's deliveries in one call: 30 days covers the bars (14) and every range.
   useEffect(() => {
-    if (!bots.data) return;
-    let stale = false;
-    setDelivered(null);
-    const since = Date.now() - range.hours * 3_600_000;
-    void (async () => {
-      let total = 0;
-      for (const b of bots.data!) {
-        const list = await lw.api(`/bots/${b.id}/threads?status=all`);
-        if (!list.ok) return track("overview_load_failed", { resource: "deliveries", status: list.status });
-        const touched = ((await list.json()) as { data: lw.Thread[] }).data.filter(
-          (t) => new Date(t.updated_at).getTime() >= since,
-        );
-        for (const t of touched) {
-          const r = await lw.api(`/bots/${b.id}/threads/${t.id}`);
-          if (!r.ok) return track("overview_load_failed", { resource: "deliveries", status: r.status });
-          const full = (await r.json()) as lw.Thread;
-          total += (full.delivered_messages ?? []).filter(
-            (m) => m.delivered_at && new Date(m.delivered_at).getTime() >= since,
-          ).length;
-        }
-      }
-      if (!stale) setDelivered(total);
-    })();
-    return () => {
-      stale = true;
-    };
-  }, [bots.data, range]);
+    if (!ready) return;
+    void lw.api("/bots/activity?days=30").then(async (r) => {
+      if (!r.ok) return track("overview_load_failed", { resource: "activity", status: r.status });
+      const data = ((await r.json()) as { data: lw.BotActivity[] }).data;
+      setActivity(Object.fromEntries(data.map((a) => [a.bot_id, a])));
+    });
+  }, [ready]);
+
+  // The ranges are whole UTC days, so "24 h" is today.
+  const delivered = activity
+    ? Object.values(activity).reduce((n, a) => n + a.days.slice(-range.days).reduce((m, d) => m + d.delivered, 0), 0)
+    : null;
 
   const loaded = bots.data && runners.data && inboxes.data && bots.data.every((b) => threads[b.id]);
   const hasBots = (bots.data?.length ?? 0) > 0;
@@ -204,8 +189,12 @@ export function Overview() {
                     <td className="mono">{b.inbox_ids.map(inboxName).join(", ")}</td>
                     <td className="num">{threads[b.id]?.length ?? "…"}</td>
                     <td className="num">{waitingBy.get(b.id) ?? "…"}</td>
-                    <td className="muted">Not available yet</td>
-                    <td className="num muted">–</td>
+                    <td>
+                      <DeliveryBars activity={activity?.[b.id]} />
+                    </td>
+                    <td className={"num" + (activity?.[b.id]?.last_delivery_at ? "" : " muted")}>
+                      {activity ? lw.ago(activity[b.id]?.last_delivery_at ?? null) : "…"}
+                    </td>
                   </tr>
                 );
               })}

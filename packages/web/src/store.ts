@@ -300,6 +300,66 @@ export async function getBot(db: Db, id: string, userId?: string): Promise<Bot |
   return row;
 }
 
+export interface BotActivity {
+  bot_id: string;
+  /** One entry per UTC day of the window, oldest first, zero for a day with no deliveries. */
+  days: { date: string; delivered: number }[];
+  delivered: number;
+  /** The newest delivery ever, not only in the window. */
+  last_delivery_at: Date | null;
+  runs: number;
+  /** Seconds from assigned to delivered, median over the messages delivered in the window; null with none. */
+  median_wait_seconds: number | null;
+}
+
+/**
+ * What the user's bots delivered in the last `days` UTC days (today included), for one bot or all. A run is the
+ * messages of one thread delivered at the same instant.
+ */
+export async function botActivity(db: Db, userId: string, days: number, botId?: string): Promise<BotActivity[]> {
+  const today = new Date().toISOString().slice(0, 10);
+  const dates = Array.from({ length: days }, (_, i) => {
+    const d = new Date(today + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() - (days - 1 - i));
+    return d.toISOString().slice(0, 10);
+  });
+  const since = dates[0] + "T00:00:00Z";
+  const scope = `b.user_id = $1 AND b.deleted_at IS NULL AND ($2::uuid IS NULL OR b.id = $2::uuid)`;
+  const [bots, perDay, totals] = await Promise.all([
+    db.query<{ id: string }>(`SELECT b.id FROM loopway.bots b WHERE ${scope} ORDER BY b.id`, [userId, botId ?? null]),
+    db.query<{ bot_id: string; day: string; n: number }>(
+      `SELECT tm.bot_id, to_char(tm.delivered_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, count(*)::int AS n
+       FROM loopway.thread_messages tm JOIN loopway.bots b ON b.id = tm.bot_id
+       WHERE ${scope} AND tm.delivered_at >= $3::timestamptz
+       GROUP BY 1, 2`,
+      [userId, botId ?? null, since],
+    ),
+    db.query<{ bot_id: string; last: Date; runs: number; median: number | null }>(
+      `SELECT tm.bot_id, max(tm.delivered_at) AS last,
+              count(DISTINCT (tm.thread_id, tm.delivered_at)) FILTER (WHERE tm.delivered_at >= $3::timestamptz)::int AS runs,
+              (percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM tm.delivered_at - tm.assigned_at))
+                 FILTER (WHERE tm.delivered_at >= $3::timestamptz))::float8 AS median
+       FROM loopway.thread_messages tm JOIN loopway.bots b ON b.id = tm.bot_id
+       WHERE ${scope} AND tm.delivered_at IS NOT NULL
+       GROUP BY 1`,
+      [userId, botId ?? null, since],
+    ),
+  ]);
+  return bots.map(({ id }) => {
+    const counts = new Map(perDay.filter((r) => r.bot_id === id).map((r) => [r.day, r.n]));
+    const t = totals.find((r) => r.bot_id === id);
+    const list = dates.map((date) => ({ date, delivered: counts.get(date) ?? 0 }));
+    return {
+      bot_id: id,
+      days: list,
+      delivered: list.reduce((n, d) => n + d.delivered, 0),
+      last_delivery_at: t?.last ?? null,
+      runs: t?.runs ?? 0,
+      median_wait_seconds: t?.median ?? null,
+    };
+  });
+}
+
 /** `inboxIds`, when given, replaces the bot's inboxes. The cursor stays where it is. */
 export async function updateBot(
   db: Db,

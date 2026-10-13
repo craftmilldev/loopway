@@ -203,6 +203,27 @@ export function useList<T>(path: string | null, ready: boolean) {
   return { data: data?.data ?? null, ...rest };
 }
 
+/** What a bot delivered, from `GET /bots/activity` (a list) or `GET /bots/:id/activity`. */
+export interface BotActivity {
+  bot_id: string;
+  /** Oldest first, one per UTC day. */
+  days: { date: string; delivered: number }[];
+  delivered: number;
+  last_delivery_at: string | null;
+  runs: number;
+  median_wait_seconds: number | null;
+}
+
+/** "5 min ago" for a time in the past; "never" for null. */
+export function ago(iso: string | null, now = Date.now()) {
+  if (!iso) return "never";
+  const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
+  if (s < 60) return "just now";
+  if (s < 3600) return Math.floor(s / 60) + " min ago";
+  if (s < 86_400) return Math.floor(s / 3600) + " h ago";
+  return Math.floor(s / 86_400) + " d ago";
+}
+
 export const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "never");
 
 /** A GitHub link for a subject that looks like `owner/repo#N`, else null. */

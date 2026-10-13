@@ -402,6 +402,18 @@ pre {
 .page-head h1 {
   font-size: clamp(1.5rem, 3vw, 2.25rem);
 }
+.bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 20px;
+}
+
+.bars .bar {
+  width: 4px;
+  background: currentColor;
+}
+
 .muted {
   color: var(--ink-400);
 }
