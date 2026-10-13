@@ -190,7 +190,7 @@ export function Overview() {
                     <td className="num">{threads[b.id]?.length ?? "…"}</td>
                     <td className="num">{waitingBy.get(b.id) ?? "…"}</td>
                     <td>
-                      <DeliveryBars activity={activity?.[b.id]} />
+                      <DeliveryBars activity={activity?.[b.id]} days={BAR_DAYS} />
                     </td>
                     <td className={"num" + (activity?.[b.id]?.last_delivery_at ? "" : " muted")}>
                       {activity ? lw.ago(activity[b.id]?.last_delivery_at ?? null) : "…"}

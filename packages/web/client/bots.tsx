@@ -183,7 +183,7 @@ export function Bots() {
                     <td className="num">{r.open}</td>
                     <td className="num">{r.waiting}</td>
                     <td>
-                      <DeliveryBars activity={activity?.[r.bot.id]} />
+                      <DeliveryBars activity={activity?.[r.bot.id]} days={BAR_DAYS} />
                     </td>
                     <td className={"num" + (activity?.[r.bot.id]?.last_delivery_at ? "" : " muted")}>
                       {activity ? lw.ago(activity[r.bot.id]?.last_delivery_at ?? null) : "…"}
