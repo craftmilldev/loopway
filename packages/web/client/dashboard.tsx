@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from "react";
 import { useSourceRequest } from "../ee/client/source-request.js";
-import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 
 export interface Inbox {
@@ -8,49 +7,7 @@ export interface Inbox {
   name: string;
   source_type: string;
   webhook_url: string;
-  config?: { secret?: string | null };
-}
-
-/** `/dashboard/inboxes`: the inbox list and its create form, until the inboxes page lands. */
-export function Inboxes() {
-  const me = lw.useMe();
-  const inboxes = lw.useList<Inbox>("/inboxes", !!me);
-  const [creating, setCreating] = useState(false);
-  return (
-    <DashLayout title="Inboxes · loopway" me={me}>
-      <div className="page-head">
-        <h1>Inboxes</h1>
-        <button className="btn btn-md" type="button" onClick={() => setCreating(!creating)}>
-          New inbox
-        </button>
-      </div>
-      {creating && (
-        <CreateInbox
-          onCreated={() => {
-            setCreating(false);
-            void inboxes.reload();
-          }}
-        />
-      )}
-      <ul className="list">
-        {inboxes.data?.map((i) => (
-          <li key={i.id}>
-            <a className="title" href={"/dashboard/inboxes/" + i.id}>
-              {i.name}
-            </a>
-            <div className="meta">
-              {i.source_type} · {i.webhook_url}
-            </div>
-          </li>
-        ))}
-      </ul>
-      {inboxes.data?.length === 0 && (
-        <p className="muted" style={{ marginTop: 24 }}>
-          No inboxes yet.
-        </p>
-      )}
-    </DashLayout>
-  );
+  config?: { secret?: string | null; events?: string[] };
 }
 
 /** Who holds the bot, in words. */

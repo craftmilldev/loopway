@@ -139,6 +139,57 @@ export async function inboxStats(db: Db, inboxId: string) {
   return row!;
 }
 
+export interface InboxActivity {
+  inbox_id: string;
+  /** One entry per UTC day of the window, oldest first, zero for a day with no messages. */
+  days: { date: string; received: number }[];
+  /** Messages received in the window. */
+  received: number;
+  /** Messages ever received, not only in the window. */
+  messages: number;
+  /** The newest message ever, not only in the window. */
+  last_message_at: Date | null;
+}
+
+/** What the user's inboxes received in the last `days` UTC days (today included), for one inbox or all. */
+export async function inboxActivity(db: Db, userId: string, days: number, inboxId?: string): Promise<InboxActivity[]> {
+  const dates = windowDates(days);
+  const since = dates[0] + "T00:00:00Z";
+  const scope = `i.user_id = $1 AND ($2::uuid IS NULL OR i.id = $2::uuid)`;
+  const [inboxes, perDay, totals] = await Promise.all([
+    db.query<{ id: string }>(`SELECT i.id FROM loopway.inboxes i WHERE ${scope} ORDER BY i.id`, [
+      userId,
+      inboxId ?? null,
+    ]),
+    db.query<{ inbox_id: string; day: string; n: number }>(
+      `SELECT m.inbox_id, to_char(m.received_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, count(*)::int AS n
+       FROM loopway.messages m JOIN loopway.inboxes i ON i.id = m.inbox_id
+       WHERE ${scope} AND m.received_at >= $3::timestamptz
+       GROUP BY 1, 2`,
+      [userId, inboxId ?? null, since],
+    ),
+    db.query<{ inbox_id: string; messages: number; last: Date }>(
+      `SELECT m.inbox_id, count(*)::int AS messages, max(m.received_at) AS last
+       FROM loopway.messages m JOIN loopway.inboxes i ON i.id = m.inbox_id
+       WHERE ${scope}
+       GROUP BY 1`,
+      [userId, inboxId ?? null],
+    ),
+  ]);
+  return inboxes.map(({ id }) => {
+    const counts = new Map(perDay.filter((r) => r.inbox_id === id).map((r) => [r.day, r.n]));
+    const t = totals.find((r) => r.inbox_id === id);
+    const list = dates.map((date) => ({ date, received: counts.get(date) ?? 0 }));
+    return {
+      inbox_id: id,
+      days: list,
+      received: list.reduce((n, d) => n + d.received, 0),
+      messages: t?.messages ?? 0,
+      last_message_at: t?.last ?? null,
+    };
+  });
+}
+
 // ---------- Messages ----------
 
 export interface MessageRow {
@@ -300,6 +351,16 @@ export async function getBot(db: Db, id: string, userId?: string): Promise<Bot |
   return row;
 }
 
+/** The last `days` UTC dates, today included, oldest first. */
+function windowDates(days: number): string[] {
+  const today = new Date().toISOString().slice(0, 10);
+  return Array.from({ length: days }, (_, i) => {
+    const d = new Date(today + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() - (days - 1 - i));
+    return d.toISOString().slice(0, 10);
+  });
+}
+
 export interface BotActivity {
   bot_id: string;
   /** One entry per UTC day of the window, oldest first, zero for a day with no deliveries. */
@@ -317,12 +378,7 @@ export interface BotActivity {
  * messages of one thread delivered at the same instant.
  */
 export async function botActivity(db: Db, userId: string, days: number, botId?: string): Promise<BotActivity[]> {
-  const today = new Date().toISOString().slice(0, 10);
-  const dates = Array.from({ length: days }, (_, i) => {
-    const d = new Date(today + "T00:00:00Z");
-    d.setUTCDate(d.getUTCDate() - (days - 1 - i));
-    return d.toISOString().slice(0, 10);
-  });
+  const dates = windowDates(days);
   const since = dates[0] + "T00:00:00Z";
   const scope = `b.user_id = $1 AND b.deleted_at IS NULL AND ($2::uuid IS NULL OR b.id = $2::uuid)`;
   const [bots, perDay, totals] = await Promise.all([

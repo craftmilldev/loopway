@@ -1,7 +1,8 @@
-import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
+import { Fragment, useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import type { Inbox as InboxInfo } from "./dashboard.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
+import { track } from "./metrics.js";
 
 interface InboxMessage {
   id: string;
@@ -25,7 +26,10 @@ export function Inbox({ id }: { id: string }) {
     void (async () => {
       const r = await lw.api("/inboxes/" + encodeURIComponent(id));
       if (r.status === 404) return setMissing(true);
-      if (!r.ok) return lw.expired(r);
+      if (!r.ok) {
+        track("inbox_load_failed", { status: r.status });
+        return lw.expired(r);
+      }
       setInbox((await r.json()) as InboxInfo);
     })();
   }, [me, id]);
@@ -36,7 +40,10 @@ export function Inbox({ id }: { id: string }) {
       const q = new URLSearchParams({ order: "desc", limit: "50" });
       if (after) q.set("cursor", after);
       const r = await lw.api("/inboxes/" + encodeURIComponent(id) + "/messages?" + q.toString());
-      if (!r.ok) return lw.expired(r);
+      if (!r.ok) {
+        track("inbox_messages_load_failed", { status: r.status });
+        return lw.expired(r);
+      }
       const body = (await r.json()) as { data: InboxMessage[]; next_cursor: string | null };
       setMessages((prev) => (after && prev ? [...prev, ...body.data] : body.data));
       setCursor(body.next_cursor);
@@ -48,17 +55,28 @@ export function Inbox({ id }: { id: string }) {
     if (inbox) void load(null);
   }, [inbox, load]);
 
+  // A source that makes the secret on its side leaves the inbox rejecting deliveries until it's pasted in.
+  const unfinished = !!inbox && !inbox.config?.secret;
+  const loaded = !!inbox;
+  useEffect(() => {
+    if (loaded) track("inbox_viewed", { setup_unfinished: unfinished });
+  }, [loaded, unfinished]);
+  useEffect(() => {
+    if (missing) track("inbox_not_found");
+  }, [missing]);
+
   return (
     <DashLayout title="Inbox · loopway" me={me}>
       <div className="page-head">
         <div>
+          <span className="lbl">{inbox && (source?.label ?? inbox.source_type)}</span>
           <h1>{missing ? "Inbox not found" : (inbox?.name ?? "Inbox")}</h1>
-          <div className="muted" style={{ fontFamily: "var(--font-type)", fontSize: ".75rem", wordBreak: "break-all" }}>
-            {inbox && inbox.source_type + " · " + inbox.webhook_url}
-          </div>
         </div>
+        {unfinished && <span className="state state-limited">rejecting deliveries</span>}
       </div>
-      {inbox && source?.secret.from === "sender" && <SenderSecret inbox={inbox} source={source} onSaved={setInbox} />}
+      {inbox && <Setup inbox={inbox} source={source} unfinished={unfinished} onSaved={setInbox} />}
+      {inbox && <Settings inbox={inbox} onSaved={setInbox} />}
+      {inbox && <h2 className="inbox-recent">Recent messages</h2>}
       <div>
         {messages?.map((e, i) => (
           <Fragment key={e.id}>
@@ -106,6 +124,90 @@ function ReadMarkers({ readers, seq, newer }: { readers: lw.Bot[]; seq: number; 
   );
 }
 
+/** PATCHes the inbox and returns it merged with the reply, or the API's message. `what` names the part for metrics. */
+async function patch(inbox: InboxInfo, what: string, body: object): Promise<InboxInfo | string> {
+  const r = await lw.api("/inboxes/" + encodeURIComponent(inbox.id), { method: "PATCH", body });
+  if (r.status === 401) {
+    lw.expired(r);
+    return "Signed out.";
+  }
+  if (!r.ok) {
+    track("inbox_save_failed", { what, status: r.status });
+    return await lw.message(r);
+  }
+  track("inbox_saved", { what });
+  return { ...inbox, ...((await r.json()) as InboxInfo) };
+}
+
+/** The webhook URL, the secret and the events: numbered steps while the inbox can't accept deliveries yet. */
+function Setup({
+  inbox,
+  source,
+  unfinished,
+  onSaved,
+}: {
+  inbox: InboxInfo;
+  source: lw.Source | undefined;
+  unfinished: boolean;
+  onSaved: (inbox: InboxInfo) => void;
+}) {
+  const steps: ReactNode[] = [
+    <UrlField key="url" inbox={inbox} hint={unfinished && source ? `Add it in ${source.webhook_settings}.` : null} />,
+  ];
+  if (source?.secret.from === "sender") {
+    steps.push(<SenderSecret key="secret" inbox={inbox} source={source} onSaved={onSaved} />);
+  }
+  steps.push(<EventToggles key="events" inbox={inbox} source={source} onSaved={onSaved} />);
+  if (!unfinished) {
+    return (
+      <section className="panel setup">
+        {steps.map((step, i) => (
+          <div key={i}>{step}</div>
+        ))}
+      </section>
+    );
+  }
+  return (
+    <section className="panel setup">
+      <h2>Finish setting up this inbox</h2>
+      <ol className="steps">
+        {steps.map((step, i) => (
+          <li key={i}>
+            <span className="step-n">{i + 1}</span>
+            <div>{step}</div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function UrlField({ inbox, hint }: { inbox: InboxInfo; hint: string | null }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(inbox.webhook_url);
+    } catch {
+      return track("inbox_url_copy_failed");
+    }
+    track("inbox_url_copied");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+  return (
+    <div className="field">
+      <label htmlFor="hook">Webhook URL</label>
+      <div className="input-wrap">
+        <input id="hook" readOnly value={inbox.webhook_url} onFocus={(e) => e.currentTarget.select()} />
+        <button className="btn btn-sm btn-quiet" type="button" onClick={() => void copy()}>
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      {hint && <p className="hint">{hint}</p>}
+    </div>
+  );
+}
+
 // Some senders make the signing secret when the webhook is added there, so it's pasted in here afterwards.
 function SenderSecret({
   inbox,
@@ -123,40 +225,158 @@ function SenderSecret({
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const r = await lw.api("/inboxes/" + encodeURIComponent(inbox.id), {
-      method: "PATCH",
-      body: { config: { secret } },
-    });
-    if (r.status === 401) return lw.expired(r);
-    if (!r.ok) return setError(await lw.message(r));
+    const saved = await patch(inbox, "secret", { config: { secret } });
+    if (typeof saved === "string") return setError(saved);
     setSecret("");
-    onSaved({ ...inbox, ...((await r.json()) as InboxInfo) });
+    onSaved(saved);
   }
 
   return (
-    <form className="panel" onSubmit={(e) => void submit(e)}>
-      <div className="field">
-        <label htmlFor="secret">Webhook secret</label>
-        <div className="input-wrap">
+    <form className="field" onSubmit={(e) => void submit(e)}>
+      <label htmlFor="secret">Signing secret</label>
+      <div className="input-wrap">
+        <input
+          id="secret"
+          required
+          autoComplete="off"
+          placeholder={isSet ? "set (paste a new one to replace it)" : "Paste the secret here"}
+          value={secret}
+          onChange={(e) => setSecret(e.target.value)}
+        />
+        <button className="btn btn-sm" type="submit">
+          Save
+        </button>
+      </div>
+      <p className="hint">
+        {isSet
+          ? "Deliveries are checked against this secret."
+          : `${source.label} shows the secret once you save the webhook there. Until it's saved here, deliveries are rejected.`}
+      </p>
+      {error && <p className="error">{error}</p>}
+    </form>
+  );
+}
+
+/** The events the inbox keeps: the source's, plus any already set that it no longer lists. */
+function EventToggles({
+  inbox,
+  source,
+  onSaved,
+}: {
+  inbox: InboxInfo;
+  source: lw.Source | undefined;
+  onSaved: (inbox: InboxInfo) => void;
+}) {
+  const current = inbox.config?.events ?? ["*"];
+  const [all, setAll] = useState(current.includes("*"));
+  const [checked, setChecked] = useState(new Set(current.filter((e) => e !== "*")));
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const known = [...new Set([...(source?.events ?? []), ...current.filter((e) => e !== "*")])];
+
+  function toggle(event: string, on: boolean) {
+    const next = new Set(checked);
+    if (on) next.add(event);
+    else next.delete(event);
+    setChecked(next);
+    setSaved(false);
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSaved(false);
+    const events = all ? ["*"] : known.filter((ev) => checked.has(ev));
+    if (!events.length) {
+      track("inbox_events_none");
+      return setError("Pick at least one event.");
+    }
+    const result = await patch(inbox, "events", { config: { events } });
+    if (typeof result === "string") return setError(result);
+    setSaved(true);
+    onSaved(result);
+  }
+
+  return (
+    <form className="field" onSubmit={(e) => void submit(e)}>
+      <label>Events it keeps</label>
+      <div className="checks">
+        <label className="check all">
           <input
-            id="secret"
-            required
-            autoComplete="off"
-            placeholder={isSet ? "set (paste a new one to replace it)" : ""}
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
-          />
-          <button className="btn btn-sm" type="submit">
-            Save
-          </button>
-        </div>
-        <p className="hint">
-          {isSet
-            ? "Deliveries are checked against this secret."
-            : `Not set yet. Add the webhook in ${source.webhook_settings} with the URL above, then paste the secret ${source.label} shows. Until then deliveries are rejected.`}
-        </p>
+            type="checkbox"
+            checked={all}
+            onChange={(e) => {
+              setAll(e.target.checked);
+              setSaved(false);
+            }}
+          />{" "}
+          Everything
+        </label>
+        {known.map((ev) => (
+          <label key={ev} className="check">
+            <input
+              type="checkbox"
+              disabled={all}
+              checked={checked.has(ev)}
+              onChange={(e) => toggle(ev, e.target.checked)}
+            />{" "}
+            {ev}
+          </label>
+        ))}
+      </div>
+      <p className="hint">Anything else the webhook sends is rejected and shows as a failed delivery in the sender.</p>
+      <div className="form-actions">
+        <button className="btn btn-sm" type="submit">
+          Save events
+        </button>
+        {saved && <span className="muted">Saved.</span>}
       </div>
       {error && <p className="error">{error}</p>}
     </form>
+  );
+}
+
+function Settings({ inbox, onSaved }: { inbox: InboxInfo; onSaved: (inbox: InboxInfo) => void }) {
+  const [name, setName] = useState(inbox.name);
+  const [error, setError] = useState<string | null>(null);
+
+  async function rename(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const saved = await patch(inbox, "name", { name });
+    if (typeof saved === "string") return setError(saved);
+    onSaved(saved);
+  }
+
+  async function remove() {
+    if (!confirm(`Delete ${inbox.name}? Its messages are deleted with it.`)) return track("inbox_delete_cancelled");
+    const r = await lw.api("/inboxes/" + encodeURIComponent(inbox.id), { method: "DELETE" });
+    if (r.status === 401) return lw.expired(r);
+    if (!r.ok) {
+      track("inbox_delete_failed", { status: r.status });
+      return setError(await lw.message(r));
+    }
+    track("inbox_deleted");
+    location.assign("/dashboard/inboxes");
+  }
+
+  return (
+    <section className="panel setup">
+      <form className="field" onSubmit={(e) => void rename(e)}>
+        <label htmlFor="inbox-name">Name</label>
+        <div className="input-wrap">
+          <input id="inbox-name" required maxLength={200} value={name} onChange={(e) => setName(e.target.value)} />
+          <button className="btn btn-sm" type="submit">
+            Rename
+          </button>
+        </div>
+      </form>
+      <div className="form-actions">
+        <button className="btn btn-quiet" type="button" onClick={() => void remove()}>
+          Delete inbox
+        </button>
+      </div>
+      {error && <p className="error">{error}</p>}
+    </section>
   );
 }
