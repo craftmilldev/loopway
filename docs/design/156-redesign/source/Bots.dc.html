@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bots</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/craftmill/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;1,400&amp;family=Sorts+Mill+Goudy:ital@0;1&amp;display=swap">
+<style>
+body{margin:0;background:#e4ddc9}
+a{color:#9e2b1c;text-underline-offset:3px}a:hover{color:#16130e}
+.lbl{font-family:var(--font-type);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint)}
+.btn{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 16px;font-family:var(--font-type);font-size:12px;letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--ink-900);background:var(--ink-900);color:var(--paper-100);text-decoration:none;cursor:pointer;box-sizing:border-box;white-space:nowrap}
+.btn:hover{background:var(--ink-800);color:var(--paper-100)}
+.btn.ghost{background:transparent;color:var(--ink-900);border-color:var(--rule-soft)}
+.btn.ghost:hover{background:var(--paper-100);border-color:var(--ink-900);color:var(--ink-900)}
+.btn.sm{min-height:28px;padding:0 10px;font-size:11px}
+.badge{display:inline-block;font-family:var(--font-type);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;padding:1px 6px;border:1px solid currentColor;line-height:16px;white-space:nowrap}
+.b-pos{color:var(--indigo-600)}.b-warn{color:var(--madder-600)}.b-neu{color:var(--ink-500)}.b-ink{background:var(--ink-900);color:var(--paper-100);border-color:var(--ink-900)}
+.nav a{font-family:var(--font-type);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-900);text-decoration:none;padding:10px 16px;display:inline-block}
+.nav a:hover{background:var(--paper-100)}
+.nav a.on{background:var(--ink-900);color:var(--paper-100)}
+.seg a{padding:8px 14px;font-family:var(--font-type);font-size:11px;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;color:var(--ink-900);border-left:1px solid var(--rule-hair)}
+.seg a:first-child{border-left:0}
+.seg a.on{background:var(--ink-900);color:var(--paper-100)}
+table.ledger{width:100%;border-collapse:collapse;min-width:1040px}
+.ledger th{font-family:var(--font-type);font-weight:400;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint);text-align:left;padding:8px 12px;border-bottom:1px solid var(--ink-900)}
+.ledger td{padding:16px 12px;border-bottom:1px solid var(--rule-hair);vertical-align:top}
+.ledger .num{font-family:var(--font-type);text-align:right;font-size:14px}
+.ledger tr:hover td{background:#f2eede80}
+.why{font-size:14px;color:var(--ink-600);margin-top:4px}
+.mono{font-family:var(--font-type);font-size:13px}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: var(--paper-200); color: var(--ink-900); font-family: var(--font-text); font-size: 17px; line-height: 1.5;">
+
+<header style="border-bottom: 3px double var(--ink-900);">
+  <div style="max-width: 1280px; margin: 0 auto; padding: 24px 40px 0; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+    <a href="Main.dc.html" style="text-decoration: none; color: var(--ink-900); display: flex; flex-direction: column; gap: 4px;">
+      <span style="font-family: var(--font-text); font-size: 32px; letter-spacing: .06em; line-height: 1;">LOOPWAY</span>
+      <span class="lbl">Bots at work · from Craftmill</span>
+    </a>
+    <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+      <a href="Alerts.dc.html" style="display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--madder-600); font-family: var(--font-type); font-size: 12px; letter-spacing: .12em; text-transform: uppercase;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.73 18l-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+        3 open alerts
+      </a>
+      <span class="lbl">mcwhittemore</span>
+      <a class="btn" href="Onboard.dc.html">New bot</a>
+    </div>
+  </div>
+  <nav class="nav" aria-label="Main" style="max-width: 1280px; margin: 0 auto; padding: 20px 40px 0; display: flex; flex-wrap: wrap;">
+    <a href="Main.dc.html">Overview</a>
+    <a class="on" href="Bots.dc.html">Bots</a>
+    <a href="Inboxes.dc.html">Inboxes</a>
+    <a href="Main.dc.html#runners">Runners</a>
+    <a href="Alerts.dc.html">Alerts</a>
+  </nav>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 36px 40px 64px; display: flex; flex-direction: column; gap: 28px;">
+
+  <section style="display: flex; flex-wrap: wrap; gap: 20px; justify-content: space-between; align-items: flex-end;">
+    <div style="display: flex; flex-direction: column; gap: 8px; max-width: 720px;">
+      <span class="lbl">Bots</span>
+      <h1 style="margin: 0; font-size: 50px; line-height: 1.05; letter-spacing: -0.021em; font-weight: 400;">Four bots. <em style="color: var(--madder-600);">Two are stopped.</em></h1>
+      <p style="margin: 0; color: var(--ink-600);">Each bot reads its inboxes in order and works one thread per issue. Open one to see its threads, prompt and rules.</p>
+    </div>
+    <a class="btn" href="Onboard.dc.html">New bot</a>
+  </section>
+
+  <section style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; border-top: 2px solid var(--ink-900); padding-top: 16px;">
+    <nav class="seg" aria-label="Filter bots" style="display: flex; flex-wrap: wrap; border: 1px solid var(--rule-soft);">
+      <a class="on" href="Bots.dc.html">All · 4</a>
+      <a href="Bots.dc.html">Stopped · 2</a>
+      <a href="Bots.dc.html">Working · 1</a>
+      <a href="Bots.dc.html">Idle · 1</a>
+    </nav>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <label for="find" class="lbl" style="color: var(--ink-600);">Find</label>
+      <input id="find" placeholder="Bot or inbox name" style="width: 240px; height: 36px; padding: 0 10px; box-sizing: border-box; font-family: var(--font-type); font-size: 13px; color: var(--ink-900); background: var(--paper-100); border: 0; border-bottom: 1px solid var(--ink-900); outline: none;">
+    </div>
+  </section>
+
+  <section style="overflow-x: auto;">
+    <table class="ledger">
+      <thead><tr>
+        <th scope="col">Bot</th><th scope="col">State</th><th scope="col">Reads</th><th scope="col">Runner</th><th scope="col" style="text-align: right;">Open</th><th scope="col" style="text-align: right;">Waiting</th><th scope="col">Deliveries, 14 days</th><th scope="col" style="text-align: right;">Last</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><a href="Bot.dc.html" style="font-size: 22px; color: var(--ink-900);">dev</a><div class="lbl" style="font-size: 10px; margin-top: 2px;">GitHub threads · sonnet · prompt v7</div></td>
+          <td><span class="badge b-warn">limited</span><div class="why">Usage limit; resumes 14:00</div></td>
+          <td class="mono"><a href="Inboxes.dc.html" style="color: var(--ink-900);">loopway-github</a></td>
+          <td class="mono">mcw-macbook</td>
+          <td class="num">6</td><td class="num" style="color: var(--madder-600);">6</td>
+          <td><div style="display: flex; align-items: flex-end; gap: 2px; height: 28px;"><sc-for list="{{spark.dev}}" as="h" hint-placeholder-count="14"><span style="width: 6px; height: {{h}}px; background: var(--indigo-600);"></span></sc-for></div></td>
+          <td class="num" style="color: var(--ink-600);">11 min</td>
+        </tr>
+        <tr>
+          <td><a href="Bot.dc.html" style="font-size: 22px; color: var(--ink-900);">reviewer</a><div class="lbl" style="font-size: 10px; margin-top: 2px;">GitHub threads · opus · prompt v3</div></td>
+          <td><span class="badge b-warn">stranded</span><div class="why">Its runner is offline</div></td>
+          <td class="mono"><a href="Inboxes.dc.html" style="color: var(--ink-900);">loopway-github</a></td>
+          <td class="mono" style="color: var(--madder-600);">mcw-studio</td>
+          <td class="num">4</td><td class="num" style="color: var(--madder-600);">3</td>
+          <td><div style="display: flex; align-items: flex-end; gap: 2px; height: 28px;"><sc-for list="{{spark.reviewer}}" as="h" hint-placeholder-count="14"><span style="width: 6px; height: {{h}}px; background: var(--indigo-600);"></span></sc-for></div></td>
+          <td class="num" style="color: var(--ink-600);">2 h</td>
+        </tr>
+        <tr>
+          <td><a href="Bot.dc.html" style="font-size: 22px; color: var(--ink-900);">meeting-notes</a><div class="lbl" style="font-size: 10px; margin-top: 2px;">Blank · haiku · prompt v2</div></td>
+          <td><span class="badge b-pos">working</span><div class="why">1 run in flight</div></td>
+          <td class="mono"><a href="Inboxes.dc.html" style="color: var(--ink-900);">granola</a></td>
+          <td class="mono">mcw-macbook</td>
+          <td class="num">1</td><td class="num">0</td>
+          <td><div style="display: flex; align-items: flex-end; gap: 2px; height: 28px;"><sc-for list="{{spark.notes}}" as="h" hint-placeholder-count="14"><span style="width: 6px; height: {{h}}px; background: var(--indigo-600);"></span></sc-for></div></td>
+          <td class="num" style="color: var(--ink-600);">3 min</td>
+        </tr>
+        <tr>
+          <td><a href="Bot.dc.html" style="font-size: 22px; color: var(--ink-600);">deploy-watch</a><div class="lbl" style="font-size: 10px; margin-top: 2px;">Blank · haiku · prompt v1</div></td>
+          <td><span class="badge b-neu">idle</span><div class="why">No messages; its inbox needs a secret</div></td>
+          <td class="mono"><a href="Inboxes.dc.html" style="color: var(--ink-900);">vercel-prod</a></td>
+          <td class="mono" style="color: var(--ink-500);">not held</td>
+          <td class="num">0</td><td class="num">0</td>
+          <td><div style="display: flex; align-items: flex-end; gap: 2px; height: 28px;"><sc-for list="{{spark.deploy}}" as="h" hint-placeholder-count="14"><span style="width: 6px; height: {{h}}px; background: var(--ink-200);"></span></sc-for></div></td>
+          <td class="num" style="color: var(--ink-600);">4 days</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center; background: var(--paper-100); border-top: 1px solid var(--rule-soft); padding: 16px 20px;">
+    <div>
+      <div style="font-size: 18px;">A bot only works while a runner holds it.</div>
+      <div style="font-size: 15px; color: var(--ink-600);">Leave <span class="mono">loopway bots run</span> open on a machine with the repository checked out. One runner holds every bot it can.</div>
+    </div>
+    <a class="btn ghost" href="Main.dc.html#runners">See runners</a>
+  </section>
+
+  <footer style="border-top: 3px double var(--ink-900); padding-top: 12px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+    <span class="lbl">Loopway · Plumbline LLC, Maine</span>
+    <span class="lbl">Webhooks in · bots out</span>
+  </footer>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var s = function (a) { return a.map(function (v) { return Math.max(2, v * 2.6); }); };
+    return {
+      spark: {
+        dev: s([4, 6, 3, 8, 7, 9, 2, 1, 6, 10, 8, 7, 9, 5]),
+        reviewer: s([2, 3, 2, 4, 5, 3, 1, 0, 2, 4, 6, 3, 0, 0]),
+        notes: s([1, 2, 1, 1, 2, 0, 0, 1, 2, 1, 1, 2, 0, 1]),
+        deploy: s([0, 1, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0])
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

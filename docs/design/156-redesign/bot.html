@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bot dev — activity</title>
+<!-- Generated from source/Bot.dc.html. Static: links work, controls don't. -->
+<link rel="stylesheet" href="ds/craftmill/tokens.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;1,400&amp;family=Sorts+Mill+Goudy:ital@0;1&amp;display=swap">
+<style>
+body{margin:0;background:#e4ddc9}
+a{color:#9e2b1c;text-underline-offset:3px}a:hover{color:#16130e}
+.lbl{font-family:var(--font-type);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint)}
+.btn{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 16px;font-family:var(--font-type);font-size:12px;letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--ink-900);background:var(--ink-900);color:var(--paper-100);text-decoration:none;cursor:pointer;box-sizing:border-box;white-space:nowrap}
+.btn:hover{background:var(--ink-800);color:var(--paper-100)}
+.btn.ghost{background:transparent;color:var(--ink-900);border-color:var(--rule-soft)}
+.btn.ghost:hover{background:var(--paper-100);border-color:var(--ink-900);color:var(--ink-900)}
+.btn.sm{min-height:28px;padding:0 10px;font-size:11px}
+.badge{display:inline-block;font-family:var(--font-type);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;padding:1px 6px;border:1px solid currentColor;line-height:16px;white-space:nowrap}
+.b-pos{color:var(--indigo-600)}.b-warn{color:var(--madder-600)}.b-neu{color:var(--ink-500)}.b-ink{background:var(--ink-900);color:var(--paper-100);border-color:var(--ink-900)}
+.nav a{font-family:var(--font-type);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-900);text-decoration:none;padding:10px 16px;display:inline-block}
+.nav a:hover{background:var(--paper-100)}
+.nav a.on{background:var(--ink-900);color:var(--paper-100)}
+.tabs a{font-family:var(--font-type);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-600);text-decoration:none;padding:12px 2px;margin-right:28px;display:inline-block;border-bottom:2px solid transparent}
+.tabs a:hover{color:var(--ink-900)}
+.tabs a.on{color:var(--ink-900);border-bottom-color:var(--madder-600)}
+table.ledger{width:100%;border-collapse:collapse;min-width:640px}
+.ledger th{font-family:var(--font-type);font-weight:400;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint);text-align:left;padding:8px 10px;border-bottom:1px solid var(--ink-900)}
+.ledger td{padding:12px 10px;border-bottom:1px solid var(--rule-hair);vertical-align:top}
+.ledger .num{font-family:var(--font-type);text-align:right;font-size:14px}
+.ledger tr:hover td{background:#f2eede80}
+</style>
+</head>
+<body>
+<div style="min-height: 100vh; background: var(--paper-200); color: var(--ink-900); font-family: var(--font-text); font-size: 17px; line-height: 1.5;">
+
+<header style="border-bottom: 3px double var(--ink-900);">
+  <div style="max-width: 1280px; margin: 0 auto; padding: 24px 40px 0; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+    <a href="overview.html" style="text-decoration: none; color: var(--ink-900); display: flex; flex-direction: column; gap: 4px;">
+      <span style="font-family: var(--font-text); font-size: 32px; letter-spacing: .06em; line-height: 1;">LOOPWAY</span>
+      <span class="lbl">Bots at work · from Craftmill</span>
+    </a>
+    <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+      <a href="alerts.html" style="display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--madder-600); font-family: var(--font-type); font-size: 12px; letter-spacing: .12em; text-transform: uppercase;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.73 18l-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+        3 open alerts
+      </a>
+      <span class="lbl">mcwhittemore</span>
+      <a class="btn" href="new-bot.html">New bot</a>
+    </div>
+  </div>
+  <nav class="nav" aria-label="Main" style="max-width: 1280px; margin: 0 auto; padding: 20px 40px 0; display: flex; flex-wrap: wrap;">
+    <a href="overview.html">Overview</a>
+    <a class="on" href="bots.html">Bots</a>
+    <a href="inboxes.html">Inboxes</a>
+    <a href="overview.html#runners">Runners</a>
+    <a href="alerts.html">Alerts</a>
+  </nav>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 32px 40px 64px; display: flex; flex-direction: column; gap: 36px;">
+
+  <section style="display: flex; flex-direction: column; gap: 12px;">
+    <nav aria-label="Your bots" style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px;">
+      <a href="bots.html" class="lbl" style="color: var(--ink-600);">All bots</a>
+      <div style="display: flex; flex-wrap: wrap; border: 1px solid var(--rule-soft);">
+        <a href="bot.html" aria-current="page" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; font-family: var(--font-type); font-size: 13px; text-decoration: none; background: var(--ink-900); color: var(--paper-100);"><span style="width: 7px; height: 7px; background: var(--madder-300);"></span>dev</a>
+        <a href="bot.html" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; font-family: var(--font-type); font-size: 13px; text-decoration: none; color: var(--ink-900); border-left: 1px solid var(--rule-hair);"><span style="width: 7px; height: 7px; background: var(--madder-600);"></span>reviewer</a>
+        <a href="bot.html" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; font-family: var(--font-type); font-size: 13px; text-decoration: none; color: var(--ink-900); border-left: 1px solid var(--rule-hair);"><span style="width: 7px; height: 7px; background: var(--indigo-600);"></span>meeting-notes</a>
+        <a href="bot.html" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; font-family: var(--font-type); font-size: 13px; text-decoration: none; color: var(--ink-900); border-left: 1px solid var(--rule-hair);"><span style="width: 7px; height: 7px; background: var(--ink-300);"></span>deploy-watch</a>
+      </div>
+    </nav>
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; justify-content: space-between; align-items: flex-end;">
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+          <h1 style="margin: 0; font-size: 56px; line-height: 1; letter-spacing: -0.021em; font-weight: 400;">dev</h1>
+          <span class="badge b-warn">limited until 14:00</span>
+        </div>
+        <div style="font-family: var(--font-type); font-size: 13px; color: var(--ink-600); display: flex; gap: 6px 14px; flex-wrap: wrap;">
+          <span>GitHub threads</span><span>·</span><span>sonnet</span><span>·</span><span>reads <a href="inboxes.html">loopway-github</a></span><span>·</span><span>held by mcw-macbook</span><span>·</span><span>read up to #2,418</span>
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <a class="btn ghost" href="bot.html">Pause</a>
+        <a class="btn" href="prompt-and-rules.html">Edit prompt and rules</a>
+      </div>
+    </div>
+    <nav class="tabs" aria-label="Bot" style="border-bottom: 1px solid var(--ink-900); display: flex; flex-wrap: wrap; margin-top: 8px;">
+      <a class="on" href="bot.html">Activity</a>
+      <a href="bot.html#threads">Threads · 6</a>
+      <a href="prompt-and-rules.html">Prompt and rules · v7</a>
+      <a href="alerts.html">Alerts · 1</a>
+      <a href="bot.html">Settings</a>
+    </nav>
+  </section>
+
+  <section style="background: var(--paper-100); border-top: 2px solid var(--madder-600); padding: 16px 20px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center;">
+    <div>
+      <div style="font-size: 20px;">The Claude usage limit stopped a run at 08:03. Deliveries resume at 14:00.</div>
+      <div style="font-size: 15px; color: var(--ink-600);">6 messages on 3 threads are waiting. Nothing is lost; they go out on the next tick after the reset.</div>
+    </div>
+    <a class="btn sm ghost" href="thread.html">See waiting</a>
+  </section>
+
+  <section aria-label="Figures for the last 7 days" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); border-top: 1px solid var(--ink-900); border-bottom: 1px solid var(--ink-900);">
+    <div style="padding: 18px 20px 18px 0; display: flex; flex-direction: column; gap: 4px;"><span class="lbl">Open threads</span><span style="font-family: var(--font-type); font-size: 34px; line-height: 1.1;">6</span><span style="font-size: 14px; color: var(--ink-600);">3 working, 3 waiting</span></div>
+    <div style="padding: 18px 20px; border-left: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 4px;"><span class="lbl">Delivered, 7 d</span><span style="font-family: var(--font-type); font-size: 34px; line-height: 1.1;">196</span><span style="font-size: 14px; color: var(--ink-600);">in 64 runs</span></div>
+    <div style="padding: 18px 20px; border-left: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 4px;"><span class="lbl">Wait to delivery</span><span style="font-family: var(--font-type); font-size: 34px; line-height: 1.1;">1m 40s</span><span style="font-size: 14px; color: var(--ink-600);">median, arrival to run</span></div>
+    <div style="padding: 18px 20px; border-left: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 4px;"><span class="lbl">PRs opened</span><span style="font-family: var(--font-type); font-size: 34px; line-height: 1.1;">7</span><span style="font-size: 14px; color: var(--ink-600);">5 merged</span></div>
+    <div style="padding: 18px 20px; border-left: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 4px;"><span class="lbl">Limit stops</span><span style="font-family: var(--font-type); font-size: 34px; line-height: 1.1; color: var(--madder-600);">2</span><span style="font-size: 14px; color: var(--ink-600);">4 h 10 m held</span></div>
+  </section>
+
+  <section aria-labelledby="chart-h" style="display: flex; flex-direction: column; gap: 12px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 12px;">
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <span class="lbl">Usage</span>
+        <h2 id="chart-h" style="margin: 0; font-size: 28px; font-weight: 400;">Messages delivered per day</h2>
+      </div>
+      <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
+        <span style="display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-type); font-size: 12px; color: var(--ink-600);"><span style="width: 10px; height: 10px; background: var(--indigo-600);"></span>Delivered</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-type); font-size: 12px; color: var(--ink-600);"><span style="width: 10px; height: 3px; background: var(--madder-600);"></span>Usage-limit stop</span>
+        <div style="display: flex; border: 1px solid var(--rule-soft);">
+          <a href="bot.html" style="padding: 6px 12px; font-family: var(--font-type); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; text-decoration: none; color: var(--ink-900);">7 d</a>
+          <a href="bot.html" style="padding: 6px 12px; font-family: var(--font-type); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; text-decoration: none; background: var(--ink-900); color: var(--paper-100);">30 d</a>
+        </div>
+      </div>
+    </div>
+    <div role="img" aria-label="Bar chart of messages delivered per day over 30 days, peaking at 34 on 6 October, with two usage-limit stops" style="display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 8px;">
+      <div style="display: flex; flex-direction: column; justify-content: space-between; height: 200px; font-family: var(--font-type); font-size: 11px; color: var(--ink-500); text-align: right;"><span>40</span><span>20</span><span>0</span></div>
+      <div style="position: relative; height: 200px; border-bottom: 1px solid var(--ink-900); background-image: linear-gradient(var(--rule-hair) 1px, transparent 1px); background-size: 100% 100px;">
+        <div style="position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 4px;">
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 15%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 23%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 10%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 30%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 38%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 8%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 5%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 28%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 35%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 45%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 23%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 55%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 13%; background: var(--indigo-600);"></div>
+              <div style="position: absolute; left: 0; right: 0; bottom: -7px; height: 3px; background: var(--madder-600);"></div>
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 10%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 40%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 53%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 48%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 63%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 70%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 18%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 15%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 60%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 85%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 68%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 75%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 30%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 20%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 55%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 73%; background: var(--indigo-600);"></div>
+              
+            </div>
+          
+            <div style="flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative;">
+              <div style="height: 35%; background: var(--indigo-600);"></div>
+              <div style="position: absolute; left: 0; right: 0; bottom: -7px; height: 3px; background: var(--madder-600);"></div>
+            </div>
+          
+        </div>
+      </div>
+      <span></span>
+      <div style="display: flex; justify-content: space-between; font-family: var(--font-type); font-size: 11px; color: var(--ink-500); padding-top: 6px;"><span>13 Sep</span><span>20 Sep</span><span>27 Sep</span><span>4 Oct</span><span>Today</span></div>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-wrap: wrap; gap: 0; border-top: 2px solid var(--ink-900);">
+    <div id="threads" style="flex: 999 1 600px; min-width: 0; padding: 16px 32px 0 0; display: flex; flex-direction: column; gap: 10px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px;">
+        <div style="display: flex; flex-direction: column; gap: 2px;"><span class="lbl">Threads</span><h2 style="margin: 0; font-size: 26px; font-weight: 400;">One per issue and its pull requests</h2></div>
+        <div style="display: flex; border: 1px solid var(--rule-soft);">
+          <a href="bot.html" style="padding: 6px 12px; font-family: var(--font-type); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; text-decoration: none; background: var(--ink-900); color: var(--paper-100);">Open</a>
+          <a href="bot.html" style="padding: 6px 12px; font-family: var(--font-type); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; text-decoration: none; color: var(--ink-900);">Ended</a>
+          <a href="bot.html" style="padding: 6px 12px; font-family: var(--font-type); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; text-decoration: none; color: var(--ink-900);">All</a>
+        </div>
+      </div>
+      <div style="overflow-x: auto;">
+        <table class="ledger">
+          <thead><tr><th scope="col">Thread</th><th scope="col">State</th><th scope="col" style="text-align: right;">Waiting</th><th scope="col" style="text-align: right;">Delivered</th><th scope="col" style="text-align: right;">Updated</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><a href="thread.html" style="color: var(--ink-900);">Redesign the app</a><div style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">loopway#156 · PR #170</div></td>
+              <td><span class="badge b-pos">working</span></td><td class="num">0</td><td class="num">14</td><td class="num" style="color: var(--ink-600);">11 m</td>
+            </tr>
+            <tr>
+              <td><a href="thread.html" style="color: var(--ink-900);">Remove the bot kind</a><div style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">loopway#155</div></td>
+              <td><span class="badge b-warn">interrupted</span></td><td class="num" style="color: var(--madder-600);">3</td><td class="num">22</td><td class="num" style="color: var(--ink-600);">1 h</td>
+            </tr>
+            <tr>
+              <td><a href="thread.html" style="color: var(--ink-900);">Edit a bot's prompt and rules in the dashboard</a><div style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">loopway#149 · PR #151</div></td>
+              <td><span class="badge b-neu">waiting on review</span></td><td class="num">2</td><td class="num">31</td><td class="num" style="color: var(--ink-600);">2 h</td>
+            </tr>
+            <tr>
+              <td><a href="thread.html" style="color: var(--ink-900);">Replace github_closes with regex_all</a><div style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">loopway#143 · PR #145</div></td>
+              <td><span class="badge b-neu">waiting on CI</span></td><td class="num">1</td><td class="num">18</td><td class="num" style="color: var(--ink-600);">3 h</td>
+            </tr>
+            <tr>
+              <td><a href="thread.html" style="color: var(--ink-900);">Move sources into their own package</a><div style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">loopway#140</div></td>
+              <td><span class="badge b-pos">working</span></td><td class="num">0</td><td class="num">9</td><td class="num" style="color: var(--ink-600);">5 h</td>
+            </tr>
+            <tr>
+              <td><a href="thread.html" style="color: var(--ink-900);">Describe presets in the create form</a><div style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">loopway#153</div></td>
+              <td><span class="badge b-pos">working</span></td><td class="num">0</td><td class="num">12</td><td class="num" style="color: var(--ink-600);">6 h</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <aside style="flex: 1 1 320px; min-width: 0; padding: 16px 0 0 32px; border-left: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 28px;">
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span class="lbl">Right now</span>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--ink-900); border-bottom: 1px solid var(--rule-hair);">
+          <div style="padding: 10px 0;"><div style="font-family: var(--font-type); font-size: 26px; color: var(--madder-600);">6</div><div class="lbl">Waiting</div></div>
+          <div style="padding: 10px 0 10px 12px; border-left: 1px solid var(--rule-hair);"><div style="font-family: var(--font-type); font-size: 26px;">0</div><div class="lbl">Inflight</div></div>
+          <div style="padding: 10px 0 10px 12px; border-left: 1px solid var(--rule-hair);"><div style="font-family: var(--font-type); font-size: 26px;">41</div><div class="lbl">Today</div></div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;"><span class="lbl">Prompt history</span><a href="prompt-and-rules.html" class="lbl" style="color: var(--madder-600);">Open</a></div>
+        <div style="border-top: 1px solid var(--ink-900);">
+          <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--rule-hair);"><span>Version 7 <span class="badge b-ink" style="margin-left: 6px;">current</span></span><span style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">2 days ago</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--rule-hair);"><span>Version 6</span><span style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">9 Oct</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--rule-hair);"><span>Version 5</span><span style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">2 Oct</span></div>
+        </div>
+      </div>
+    </aside>
+  </section>
+</main>
+</div>
+</body>
+</html>

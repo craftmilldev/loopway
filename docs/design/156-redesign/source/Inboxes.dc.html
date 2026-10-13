@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inboxes</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/craftmill/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;1,400&amp;family=Sorts+Mill+Goudy:ital@0;1&amp;display=swap">
+<style>
+body{margin:0;background:#e4ddc9}
+a{color:#9e2b1c;text-underline-offset:3px}a:hover{color:#16130e}
+.lbl{font-family:var(--font-type);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint)}
+.btn{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 16px;font-family:var(--font-type);font-size:12px;letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--ink-900);background:var(--ink-900);color:var(--paper-100);text-decoration:none;cursor:pointer;box-sizing:border-box;white-space:nowrap}
+.btn:hover{background:var(--ink-800);color:var(--paper-100)}
+.btn.ghost{background:transparent;color:var(--ink-900);border-color:var(--rule-soft)}
+.btn.ghost:hover{background:var(--paper-100);border-color:var(--ink-900);color:var(--ink-900)}
+.btn.sm{min-height:28px;padding:0 10px;font-size:11px}
+.badge{display:inline-block;font-family:var(--font-type);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;padding:1px 6px;border:1px solid currentColor;line-height:16px;white-space:nowrap}
+.b-pos{color:var(--indigo-600)}.b-warn{color:var(--madder-600)}.b-neu{color:var(--ink-500)}.b-ink{background:var(--ink-900);color:var(--paper-100);border-color:var(--ink-900)}
+.nav a{font-family:var(--font-type);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-900);text-decoration:none;padding:10px 16px;display:inline-block}
+.nav a:hover{background:var(--paper-100)}
+.nav a.on{background:var(--ink-900);color:var(--paper-100)}
+table.ledger{width:100%;border-collapse:collapse;min-width:900px}
+.ledger th{font-family:var(--font-type);font-weight:400;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint);text-align:left;padding:8px 12px;border-bottom:1px solid var(--ink-900)}
+.ledger td{padding:14px 12px;border-bottom:1px solid var(--rule-hair);vertical-align:middle}
+.ledger .num{font-family:var(--font-type);text-align:right;font-size:14px}
+.ledger tr:hover td{background:#f2eede80}
+.field label.f{display:block;font-family:var(--font-type);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-600);margin-bottom:6px}
+.field input{width:100%;box-sizing:border-box;height:44px;padding:0 12px;font-family:var(--font-type);font-size:14px;color:var(--ink-900);background:var(--paper-100);border:0;border-bottom:1px solid var(--ink-900);outline:none}
+.field input:focus{border-bottom:2px solid var(--madder-600)}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: var(--paper-200); color: var(--ink-900); font-family: var(--font-text); font-size: 17px; line-height: 1.5;">
+
+<header style="border-bottom: 3px double var(--ink-900);">
+  <div style="max-width: 1280px; margin: 0 auto; padding: 24px 40px 0; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+    <a href="Main.dc.html" style="text-decoration: none; color: var(--ink-900); display: flex; flex-direction: column; gap: 4px;">
+      <span style="font-family: var(--font-text); font-size: 32px; letter-spacing: .06em; line-height: 1;">LOOPWAY</span>
+      <span class="lbl">Bots at work · from Craftmill</span>
+    </a>
+    <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+      <a href="Alerts.dc.html" style="display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--madder-600); font-family: var(--font-type); font-size: 12px; letter-spacing: .12em; text-transform: uppercase;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.73 18l-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+        3 open alerts
+      </a>
+      <span class="lbl">mcwhittemore</span>
+      <a class="btn" href="Onboard.dc.html">New bot</a>
+    </div>
+  </div>
+  <nav class="nav" aria-label="Main" style="max-width: 1280px; margin: 0 auto; padding: 20px 40px 0; display: flex; flex-wrap: wrap;">
+    <a href="Main.dc.html">Overview</a>
+    <a href="Bots.dc.html">Bots</a>
+    <a class="on" href="Inboxes.dc.html">Inboxes</a>
+    <a href="Main.dc.html#runners">Runners</a>
+    <a href="Alerts.dc.html">Alerts</a>
+  </nav>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 36px 40px 64px; display: flex; flex-direction: column; gap: 36px;">
+
+  <section style="display: flex; flex-wrap: wrap; gap: 20px; justify-content: space-between; align-items: flex-end;">
+    <div style="display: flex; flex-direction: column; gap: 8px; max-width: 720px;">
+      <span class="lbl">Inboxes</span>
+      <h1 style="margin: 0; font-size: 50px; line-height: 1.05; letter-spacing: -0.021em; font-weight: 400;">Where the messages come in</h1>
+      <p style="margin: 0; color: var(--ink-600);">Each inbox listens to one source's webhook, checks its signature, and keeps what arrives in order. Bots read from as many as they need.</p>
+    </div>
+    <a class="btn" href="Onboard.dc.html">Connect a source</a>
+  </section>
+
+  <section style="overflow-x: auto;">
+    <table class="ledger">
+      <thead><tr><th scope="col">Inbox</th><th scope="col">Source</th><th scope="col">Read by</th><th scope="col">Deliveries, 14 days</th><th scope="col" style="text-align: right;">Rejected</th><th scope="col" style="text-align: right;">Last</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><a href="Inboxes.dc.html" style="font-size: 19px; color: var(--ink-900);">loopway-github</a><div style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">5 event types · 2,418 messages</div></td>
+          <td style="font-family: var(--font-type); font-size: 14px;">GitHub</td>
+          <td style="font-size: 15px;"><a href="Bot.dc.html">dev</a>, <a href="Bot.dc.html">reviewer</a></td>
+          <td><div style="display: flex; align-items: flex-end; gap: 2px; height: 28px;"><sc-for list="{{h.github}}" as="d" hint-placeholder-count="14"><span style="width: 7px; height: {{d}}px; background: var(--indigo-600);"></span></sc-for></div></td>
+          <td class="num">0</td><td class="num" style="color: var(--ink-600);">2 min</td>
+        </tr>
+        <tr>
+          <td><a href="Inboxes.dc.html" style="font-size: 19px; color: var(--ink-900);">granola</a><div style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">every event · 63 messages</div></td>
+          <td style="font-family: var(--font-type); font-size: 14px;">Granola</td>
+          <td style="font-size: 15px;"><a href="Bot.dc.html">meeting-notes</a></td>
+          <td><div style="display: flex; align-items: flex-end; gap: 2px; height: 28px;"><sc-for list="{{h.granola}}" as="d" hint-placeholder-count="14"><span style="width: 7px; height: {{d}}px; background: var(--indigo-600);"></span></sc-for></div></td>
+          <td class="num">0</td><td class="num" style="color: var(--ink-600);">1 h</td>
+        </tr>
+        <tr style="background: var(--paper-100);">
+          <td><a href="Inboxes.dc.html" style="font-size: 19px; color: var(--ink-900);">vercel-prod</a><div style="font-family: var(--font-type); font-size: 12px; color: var(--madder-600);">needs its secret</div></td>
+          <td style="font-family: var(--font-type); font-size: 14px;">Vercel</td>
+          <td style="font-size: 15px;"><a href="Bot.dc.html">deploy-watch</a></td>
+          <td><div style="display: flex; align-items: flex-end; gap: 2px; height: 28px;"><sc-for list="{{h.vercel}}" as="d" hint-placeholder-count="14"><span style="width: 7px; height: {{d}}px; background: var(--madder-600);"></span></sc-for></div></td>
+          <td class="num" style="color: var(--madder-600);">12</td><td class="num" style="color: var(--ink-600);">40 min</td>
+        </tr>
+        <tr>
+          <td><a href="Inboxes.dc.html" style="font-size: 19px; color: var(--ink-900);">bot-to-bot</a><div style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">schema · 0 messages</div></td>
+          <td style="font-family: var(--font-type); font-size: 14px;">loopway</td>
+          <td style="font-size: 15px; color: var(--ink-500);">no bot yet</td>
+          <td><span style="font-size: 14px; color: var(--ink-500);">Nothing yet</span></td>
+          <td class="num">0</td><td class="num" style="color: var(--ink-600);">—</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section style="border-top: 2px solid var(--ink-900); display: flex; flex-wrap: wrap; gap: 0;">
+    <div style="flex: 999 1 560px; min-width: 0; padding: 18px 36px 0 0; display: flex; flex-direction: column; gap: 22px;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;">
+        <div><span class="lbl">vercel-prod · Vercel</span><h2 style="margin: 0; font-size: 30px; font-weight: 400;">Finish setting up this inbox</h2></div>
+        <span class="badge b-warn">rejecting deliveries</span>
+      </div>
+      <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 20px;">
+        <li style="display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px;">
+          <span style="font-family: var(--font-text); font-size: 26px; line-height: 1;">1</span>
+          <div class="field">
+            <label class="f" for="hook">Webhook URL — add it in Vercel under Settings › Webhooks</label>
+            <div style="display: flex; gap: 8px;"><input id="hook" readonly="" value="https://loopway.craftmill.dev/hooks/ibx_01J9X4K2"><button type="button" class="btn ghost" style="min-height: 44px;">Copy</button></div>
+          </div>
+        </li>
+        <li style="display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px;">
+          <span style="font-family: var(--font-text); font-size: 26px; line-height: 1;">2</span>
+          <div class="field">
+            <label class="f" for="secret">Signing secret — Vercel shows it once you save the webhook</label>
+            <div style="display: flex; gap: 8px;"><input id="secret" placeholder="Paste the secret here" autocomplete="off"><button type="button" class="btn" style="min-height: 44px;">Save</button></div>
+            <div style="font-size: 14px; color: var(--ink-600); margin-top: 6px;">Deliveries since yesterday were rejected. Vercel retries failed ones, so most will arrive once this is saved.</div>
+          </div>
+        </li>
+        <li style="display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px;">
+          <span style="font-family: var(--font-text); font-size: 26px; line-height: 1;">3</span>
+          <div>
+            <div class="lbl" style="color: var(--ink-600); margin-bottom: 6px;">Events it keeps</div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <span style="font-family: var(--font-type); font-size: 13px; padding: 4px 10px; background: var(--ink-900); color: var(--paper-100);">deployment.created</span>
+              <span style="font-family: var(--font-type); font-size: 13px; padding: 4px 10px; background: var(--ink-900); color: var(--paper-100);">deployment.error</span>
+              <span style="font-family: var(--font-type); font-size: 13px; padding: 4px 10px; background: var(--ink-900); color: var(--paper-100);">deployment.succeeded</span>
+              <span style="font-family: var(--font-type); font-size: 13px; padding: 3px 9px; border: 1px solid var(--rule-soft); color: var(--ink-600);">deployment.canceled</span>
+              <span style="font-family: var(--font-type); font-size: 13px; padding: 3px 9px; border: 1px solid var(--rule-soft); color: var(--ink-600);">project.created</span>
+            </div>
+          </div>
+        </li>
+      </ol>
+    </div>
+
+    <aside style="flex: 1 1 320px; min-width: 0; padding: 18px 0 0 32px; border-left: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 6px;">
+      <span class="lbl">Recent deliveries</span>
+      <div style="border-top: 1px solid var(--ink-900);">
+        <div style="display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--rule-hair); align-items: baseline;"><span style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">10:01</span><span style="font-family: var(--font-type); font-size: 13px;">deployment.succeeded</span><span class="badge b-warn">rejected</span></div>
+        <div style="display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--rule-hair); align-items: baseline;"><span style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">09:58</span><span style="font-family: var(--font-type); font-size: 13px;">deployment.created</span><span class="badge b-warn">rejected</span></div>
+        <div style="display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--rule-hair); align-items: baseline;"><span style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">09:12</span><span style="font-family: var(--font-type); font-size: 13px;">deployment.error</span><span class="badge b-warn">rejected</span></div>
+      </div>
+      <p style="margin: 6px 0 0; font-size: 14px; color: var(--ink-600);">Rejected deliveries are counted, not kept. Once the secret is saved this list shows accepted messages, each one opening its event.</p>
+    </aside>
+  </section>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1400}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var s = function (a) { return a.map(function (v) { return Math.max(2, v); }); };
+    return {
+      h: {
+        github: s([14, 18, 9, 22, 20, 6, 4, 19, 24, 28, 17, 26, 12, 21]),
+        granola: s([4, 6, 2, 5, 7, 0, 0, 5, 6, 4, 3, 6, 0, 4]),
+        vercel: s([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 12])
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

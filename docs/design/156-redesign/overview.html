@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loopway overview</title>
+<!-- Generated from source/Main.dc.html. Static: links work, controls don't. -->
+<link rel="stylesheet" href="ds/craftmill/tokens.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;1,400&amp;family=Sorts+Mill+Goudy:ital@0;1&amp;display=swap">
+<style>
+body{margin:0;background:#e4ddc9}
+a{color:#9e2b1c;text-underline-offset:3px}a:hover{color:#16130e}
+.lbl{font-family:var(--font-type);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint)}
+.btn{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 16px;font-family:var(--font-type);font-size:12px;letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--ink-900);background:var(--ink-900);color:var(--paper-100);text-decoration:none;cursor:pointer;box-sizing:border-box;white-space:nowrap}
+.btn:hover{background:var(--ink-800);color:var(--paper-100)}
+.btn.ghost{background:transparent;color:var(--ink-900);border-color:var(--rule-soft)}
+.btn.ghost:hover{background:var(--paper-100);border-color:var(--ink-900);color:var(--ink-900)}
+.btn.sm{min-height:28px;padding:0 10px;font-size:11px}
+.badge{display:inline-block;font-family:var(--font-type);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;padding:1px 6px;border:1px solid currentColor;line-height:16px;white-space:nowrap}
+.b-pos{color:var(--indigo-600)}.b-warn{color:var(--madder-600)}.b-neu{color:var(--ink-500)}.b-ink{background:var(--ink-900);color:var(--paper-100);border-color:var(--ink-900)}
+.nav a{font-family:var(--font-type);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-900);text-decoration:none;padding:10px 16px;display:inline-block;border:1px solid transparent;border-bottom:0}
+.nav a:hover{background:var(--paper-100)}
+.nav a.on{background:var(--ink-900);color:var(--paper-100)}
+table.ledger{width:100%;border-collapse:collapse;min-width:880px}
+.ledger th{font-family:var(--font-type);font-weight:400;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint);text-align:left;padding:8px 12px;border-bottom:1px solid var(--ink-900)}
+.ledger td{padding:14px 12px;border-bottom:1px solid var(--rule-hair);vertical-align:middle}
+.ledger .num{font-family:var(--font-type);text-align:right;font-size:14px}
+.ledger tr:hover td{background:#f2eede80}
+</style>
+</head>
+<body>
+<div style="min-height: 100vh; background: var(--paper-200); color: var(--ink-900); font-family: var(--font-text); font-size: 17px; line-height: 1.5;">
+
+<header style="border-bottom: 3px double var(--ink-900);">
+  <div style="max-width: 1280px; margin: 0 auto; padding: 24px 40px 0; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+    <a href="overview.html" style="text-decoration: none; color: var(--ink-900); display: flex; flex-direction: column; gap: 4px;">
+      <span style="font-family: var(--font-text); font-size: 32px; letter-spacing: .06em; line-height: 1;">LOOPWAY</span>
+      <span class="lbl">Bots at work · from Craftmill</span>
+    </a>
+    <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+      <a href="alerts.html" style="display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--madder-600); font-family: var(--font-type); font-size: 12px; letter-spacing: .12em; text-transform: uppercase;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.73 18l-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+        3 open alerts
+      </a>
+      <span class="lbl">mcwhittemore</span>
+      <a class="btn" href="new-bot.html">New bot</a>
+    </div>
+  </div>
+  <nav class="nav" aria-label="Main" style="max-width: 1280px; margin: 0 auto; padding: 20px 40px 0; display: flex; flex-wrap: wrap;">
+    <a class="on" href="overview.html">Overview</a>
+    <a href="bots.html">Bots</a>
+    <a href="inboxes.html">Inboxes</a>
+    <a href="overview.html#runners">Runners</a>
+    <a href="alerts.html">Alerts</a>
+  </nav>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 40px 40px 64px; display: flex; flex-direction: column; gap: 48px;">
+
+  <section style="display: flex; flex-wrap: wrap; gap: 24px; justify-content: space-between; align-items: flex-end;">
+    <div style="display: flex; flex-direction: column; gap: 8px; max-width: 760px;">
+      <span class="lbl">Overview · Monday 12 October</span>
+      <h1 style="margin: 0; font-size: 46px; line-height: 1.08; letter-spacing: -0.021em; font-weight: 400;">Three bots at work on 11 threads. <em style="color: var(--madder-600);">Two things need you.</em></h1>
+    </div>
+    <div style="display: flex; gap: 0; border: 1px solid var(--rule-soft);">
+      <a href="overview.html" style="padding: 8px 14px; font-family: var(--font-type); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; text-decoration: none; color: var(--ink-900);">24 h</a>
+      <a href="overview.html" style="padding: 8px 14px; font-family: var(--font-type); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; text-decoration: none; background: var(--ink-900); color: var(--paper-100);">7 days</a>
+      <a href="overview.html" style="padding: 8px 14px; font-family: var(--font-type); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; text-decoration: none; color: var(--ink-900);">30 days</a>
+    </div>
+  </section>
+
+  <section aria-labelledby="attn" style="border-top: 2px solid var(--ink-900); display: flex; flex-direction: column;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0;">
+      <h2 id="attn" class="lbl" style="margin: 0; color: var(--madder-600); font-weight: 400;">Needs attention</h2>
+      <a href="alerts.html" class="lbl" style="color: var(--ink-600);">All alerts</a>
+    </div>
+    <div style="display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 16px 0; border-top: 1px solid var(--rule-hair);">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9e2b1c" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+      <div>
+        <div style="font-size: 19px;">Runner <span style="font-family: var(--font-type); font-size: 15px;">mcw-studio</span> has been offline for 2 h. 4 threads of <a href="bot.html">reviewer</a> are stranded on it.</div>
+        <div class="lbl" style="margin-top: 2px;">Runner offline · since 07:42</div>
+      </div>
+      <div style="display: flex; gap: 8px;"><a class="btn sm ghost" href="alerts.html">Snooze</a><a class="btn sm" href="bot.html">Release threads</a></div>
+    </div>
+    <div style="display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 16px 0; border-top: 1px solid var(--rule-hair);">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9e2b1c" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.73 18l-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+      <div>
+        <div style="font-size: 19px;">Inbox <span style="font-family: var(--font-type); font-size: 15px;">vercel-prod</span> has no secret yet. Vercel's deliveries are being rejected.</div>
+        <div class="lbl" style="margin-top: 2px;">Inbox setup · 12 rejected today</div>
+      </div>
+      <div style="display: flex; gap: 8px;"><a class="btn sm" href="inboxes.html">Add secret</a></div>
+    </div>
+    <div style="display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 16px 0; border-top: 1px solid var(--rule-hair); border-bottom: 1px solid var(--rule-hair);">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2c4a53" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
+      <div>
+        <div style="font-size: 19px; color: var(--ink-700);"><a href="bot.html">dev</a> hit the Claude usage limit. Deliveries resume at 14:00; 6 messages are waiting.</div>
+        <div class="lbl" style="margin-top: 2px;">Usage limit · clears on its own</div>
+      </div>
+      <span class="badge b-pos">holding</span>
+    </div>
+  </section>
+
+  <section aria-label="This week in figures" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); border-top: 1px solid var(--ink-900); border-bottom: 1px solid var(--ink-900);">
+    <div style="padding: 20px 24px 20px 0; display: flex; flex-direction: column; gap: 6px;">
+      <span class="lbl">Open threads</span>
+      <span style="font-family: var(--font-type); font-size: 40px; line-height: 1;">11</span>
+      <span style="font-size: 15px; color: var(--ink-600);">7 working, 4 waiting on people</span>
+    </div>
+    <div style="padding: 20px 24px; border-left: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 6px;">
+      <span class="lbl">Messages delivered</span>
+      <span style="font-family: var(--font-type); font-size: 40px; line-height: 1;">284</span>
+      <span style="font-size: 15px; color: var(--ink-600);">up 31 on last week</span>
+    </div>
+    <div style="padding: 20px 24px; border-left: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 6px;">
+      <span class="lbl">Pull requests opened</span>
+      <span style="font-family: var(--font-type); font-size: 40px; line-height: 1;">9</span>
+      <span style="font-size: 15px; color: var(--ink-600);">6 merged, 3 in review</span>
+    </div>
+    <div style="padding: 20px 24px; border-left: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 6px;">
+      <span class="lbl">Runners online</span>
+      <span style="font-family: var(--font-type); font-size: 40px; line-height: 1;">1 <span style="font-size: 22px; color: var(--ink-500);">of 2</span></span>
+      <span style="font-size: 15px; color: var(--ink-600);">mcw-studio offline since 07:42</span>
+    </div>
+  </section>
+
+  <section id="bots" aria-labelledby="bots-h" style="display: flex; flex-direction: column; gap: 12px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 12px;">
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <span class="lbl">The bots</span>
+        <h2 id="bots-h" style="margin: 0; font-size: 30px; font-weight: 400;">Who is doing what</h2>
+      </div>
+      <div style="display: flex; gap: 8px;"><a class="btn ghost" href="new-bot.html">New bot</a><a class="btn ghost" href="bots.html">All bots</a></div>
+    </div>
+    <div style="overflow-x: auto;">
+      <table class="ledger">
+        <thead><tr>
+          <th scope="col">Bot</th><th scope="col">State</th><th scope="col">Reads</th><th scope="col" style="text-align: right;">Open</th><th scope="col" style="text-align: right;">Waiting</th><th scope="col">Deliveries, 14 days</th><th scope="col" style="text-align: right;">Last delivery</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><a href="bot.html" style="font-size: 20px; color: var(--ink-900);">dev</a><div class="lbl" style="font-size: 10px;">GitHub threads · sonnet</div></td>
+            <td><span class="badge b-warn">limited</span></td>
+            <td style="font-family: var(--font-type); font-size: 13px;">loopway-github</td>
+            <td class="num">6</td><td class="num">6</td>
+            <td><div style="display: flex; align-items: flex-end; gap: 2px; height: 28px;"><span style="width: 6px; height: 10.4px; background: var(--indigo-600);"></span><span style="width: 6px; height: 15.600000000000001px; background: var(--indigo-600);"></span><span style="width: 6px; height: 7.800000000000001px; background: var(--indigo-600);"></span><span style="width: 6px; height: 20.8px; background: var(--indigo-600);"></span><span style="width: 6px; height: 18.2px; background: var(--indigo-600);"></span><span style="width: 6px; height: 23.400000000000002px; background: var(--indigo-600);"></span><span style="width: 6px; height: 5.2px; background: var(--indigo-600);"></span><span style="width: 6px; height: 2.6px; background: var(--indigo-600);"></span><span style="width: 6px; height: 15.600000000000001px; background: var(--indigo-600);"></span><span style="width: 6px; height: 26px; background: var(--indigo-600);"></span><span style="width: 6px; height: 20.8px; background: var(--indigo-600);"></span><span style="width: 6px; height: 18.2px; background: var(--indigo-600);"></span><span style="width: 6px; height: 23.400000000000002px; background: var(--indigo-600);"></span><span style="width: 6px; height: 13px; background: var(--indigo-600);"></span></div></td>
+            <td class="num" style="color: var(--ink-600);">11 min ago</td>
+          </tr>
+          <tr>
+            <td><a href="bot.html" style="font-size: 20px; color: var(--ink-900);">reviewer</a><div class="lbl" style="font-size: 10px;">GitHub threads · opus</div></td>
+            <td><span class="badge b-warn">stranded</span></td>
+            <td style="font-family: var(--font-type); font-size: 13px;">loopway-github</td>
+            <td class="num">4</td><td class="num">3</td>
+            <td><div style="display: flex; align-items: flex-end; gap: 2px; height: 28px;"><span style="width: 6px; height: 5.2px; background: var(--indigo-600);"></span><span style="width: 6px; height: 7.800000000000001px; background: var(--indigo-600);"></span><span style="width: 6px; height: 5.2px; background: var(--indigo-600);"></span><span style="width: 6px; height: 10.4px; background: var(--indigo-600);"></span><span style="width: 6px; height: 13px; background: var(--indigo-600);"></span><span style="width: 6px; height: 7.800000000000001px; background: var(--indigo-600);"></span><span style="width: 6px; height: 2.6px; background: var(--indigo-600);"></span><span style="width: 6px; height: 2px; background: var(--indigo-600);"></span><span style="width: 6px; height: 5.2px; background: var(--indigo-600);"></span><span style="width: 6px; height: 10.4px; background: var(--indigo-600);"></span><span style="width: 6px; height: 15.600000000000001px; background: var(--indigo-600);"></span><span style="width: 6px; height: 7.800000000000001px; background: var(--indigo-600);"></span><span style="width: 6px; height: 2px; background: var(--indigo-600);"></span><span style="width: 6px; height: 2px; background: var(--indigo-600);"></span></div></td>
+            <td class="num" style="color: var(--ink-600);">2 h ago</td>
+          </tr>
+          <tr>
+            <td><a href="bot.html" style="font-size: 20px; color: var(--ink-900);">meeting-notes</a><div class="lbl" style="font-size: 10px;">Blank · haiku</div></td>
+            <td><span class="badge b-pos">working</span></td>
+            <td style="font-family: var(--font-type); font-size: 13px;">granola</td>
+            <td class="num">1</td><td class="num">0</td>
+            <td><div style="display: flex; align-items: flex-end; gap: 2px; height: 28px;"><span style="width: 6px; height: 2.6px; background: var(--indigo-600);"></span><span style="width: 6px; height: 5.2px; background: var(--indigo-600);"></span><span style="width: 6px; height: 2.6px; background: var(--indigo-600);"></span><span style="width: 6px; height: 2.6px; background: var(--indigo-600);"></span><span style="width: 6px; height: 5.2px; background: var(--indigo-600);"></span><span style="width: 6px; height: 2px; background: var(--indigo-600);"></span><span style="width: 6px; height: 2px; background: var(--indigo-600);"></span><span style="width: 6px; height: 2.6px; background: var(--indigo-600);"></span><span style="width: 6px; height: 5.2px; background: var(--indigo-600);"></span><span style="width: 6px; height: 2.6px; background: var(--indigo-600);"></span><span style="width: 6px; height: 2.6px; background: var(--indigo-600);"></span><span style="width: 6px; height: 5.2px; background: var(--indigo-600);"></span><span style="width: 6px; height: 2px; background: var(--indigo-600);"></span><span style="width: 6px; height: 2.6px; background: var(--indigo-600);"></span></div></td>
+            <td class="num" style="color: var(--ink-600);">3 min ago</td>
+          </tr>
+          <tr>
+            <td><a href="bot.html" style="font-size: 20px; color: var(--ink-600);">deploy-watch</a><div class="lbl" style="font-size: 10px;">Blank · haiku</div></td>
+            <td><span class="badge b-neu">idle</span></td>
+            <td style="font-family: var(--font-type); font-size: 13px;">vercel-prod</td>
+            <td class="num">0</td><td class="num">0</td>
+            <td><div style="display: flex; align-items: flex-end; gap: 2px; height: 28px;"><span style="width: 6px; height: 2px; background: var(--ink-200);"></span><span style="width: 6px; height: 2.6px; background: var(--ink-200);"></span><span style="width: 6px; height: 2px; background: var(--ink-200);"></span><span style="width: 6px; height: 2px; background: var(--ink-200);"></span><span style="width: 6px; height: 5.2px; background: var(--ink-200);"></span><span style="width: 6px; height: 2px; background: var(--ink-200);"></span><span style="width: 6px; height: 2px; background: var(--ink-200);"></span><span style="width: 6px; height: 2px; background: var(--ink-200);"></span><span style="width: 6px; height: 2.6px; background: var(--ink-200);"></span><span style="width: 6px; height: 2px; background: var(--ink-200);"></span><span style="width: 6px; height: 2px; background: var(--ink-200);"></span><span style="width: 6px; height: 2px; background: var(--ink-200);"></span><span style="width: 6px; height: 2px; background: var(--ink-200);"></span><span style="width: 6px; height: 2px; background: var(--ink-200);"></span></div></td>
+            <td class="num" style="color: var(--ink-600);">4 days ago</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-wrap: wrap; gap: 0; border-top: 2px solid var(--ink-900);">
+    <div style="flex: 999 1 560px; min-width: 0; padding: 16px 32px 0 0; display: flex; flex-direction: column; gap: 4px;">
+      <span class="lbl">Today on the threads</span>
+      <h2 style="margin: 0 0 8px; font-size: 26px; font-weight: 400;">What the bots did</h2>
+      <div style="display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 4px 16px; padding: 10px 0; border-top: 1px solid var(--rule-hair);">
+        <span style="font-family: var(--font-type); font-size: 13px; color: var(--ink-500);">09:52</span>
+        <div><a href="bot.html" style="color: var(--ink-900);">dev</a> opened <a href="thread.html">loopway#170</a> for <a href="thread.html">#156 Redesign the app</a></div>
+      </div>
+      <div style="display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 4px 16px; padding: 10px 0; border-top: 1px solid var(--rule-hair);">
+        <span style="font-family: var(--font-type); font-size: 13px; color: var(--ink-500);">09:40</span>
+        <div><a href="bot.html" style="color: var(--ink-900);">meeting-notes</a> took 1 new transcript from <span style="font-family: var(--font-type); font-size: 14px;">granola</span></div>
+      </div>
+      <div style="display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 4px 16px; padding: 10px 0; border-top: 1px solid var(--rule-hair);">
+        <span style="font-family: var(--font-type); font-size: 13px; color: var(--ink-500);">09:18</span>
+        <div><a href="bot.html" style="color: var(--ink-900);">dev</a> ended <a href="thread.html">#153 Describe presets in the create form</a> after the PR merged</div>
+      </div>
+      <div style="display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 4px 16px; padding: 10px 0; border-top: 1px solid var(--rule-hair);">
+        <span style="font-family: var(--font-type); font-size: 13px; color: var(--ink-500);">08:03</span>
+        <div><a href="bot.html" style="color: var(--ink-900);">dev</a> was stopped by the usage limit mid-run on <a href="thread.html">#155</a></div>
+      </div>
+      <div style="display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 4px 16px; padding: 10px 0; border-top: 1px solid var(--rule-hair); border-bottom: 1px solid var(--rule-hair);">
+        <span style="font-family: var(--font-type); font-size: 13px; color: var(--ink-500);">07:42</span>
+        <div>Runner <span style="font-family: var(--font-type); font-size: 14px;">mcw-studio</span> stopped renewing its lease</div>
+      </div>
+    </div>
+
+    <div id="runners" style="flex: 1 1 340px; min-width: 0; padding: 16px 0 0 32px; border-left: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 4px;">
+      <span class="lbl">Runners</span>
+      <h2 style="margin: 0 0 8px; font-size: 26px; font-weight: 400;">The machines</h2>
+      <div style="padding: 12px 0; border-top: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;"><span style="font-family: var(--font-type); font-size: 15px;">mcw-macbook</span><span class="badge b-pos">online</span></div>
+        <div style="font-size: 15px; color: var(--ink-600);">Holds dev and meeting-notes · 7 threads · seen 20 s ago</div>
+      </div>
+      <div style="padding: 12px 0; border-top: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;"><span style="font-family: var(--font-type); font-size: 15px;">mcw-studio</span><span class="badge b-warn">offline</span></div>
+        <div style="font-size: 15px; color: var(--ink-600);">Owns 4 threads of reviewer · seen 2 h ago</div>
+      </div>
+      <div style="margin-top: 12px; background: var(--ink-900); color: var(--paper-100); padding: 16px; display: flex; flex-direction: column; gap: 6px;">
+        <span class="lbl" style="color: var(--ink-200);">Add a runner</span>
+        <code style="font-family: var(--font-type); font-size: 13px;">$ loopway bots run --max 3</code>
+      </div>
+    </div>
+  </section>
+
+  <footer style="border-top: 3px double var(--ink-900); padding-top: 12px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+    <span class="lbl">Loopway · Plumbline LLC, Maine</span>
+    <span class="lbl">Webhooks in · bots out</span>
+  </footer>
+</main>
+</div>
+</body>
+</html>

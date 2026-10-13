@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Thread — Redesign the app</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/craftmill/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;1,400&amp;family=Sorts+Mill+Goudy:ital@0;1&amp;display=swap">
+<style>
+body{margin:0;background:#e4ddc9}
+a{color:#9e2b1c;text-underline-offset:3px}a:hover{color:#16130e}
+.lbl{font-family:var(--font-type);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint)}
+.btn{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 16px;font-family:var(--font-type);font-size:12px;letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--ink-900);background:var(--ink-900);color:var(--paper-100);text-decoration:none;cursor:pointer;box-sizing:border-box;white-space:nowrap}
+.btn:hover{background:var(--ink-800);color:var(--paper-100)}
+.btn.ghost{background:transparent;color:var(--ink-900);border-color:var(--rule-soft)}
+.btn.ghost:hover{background:var(--paper-100);border-color:var(--ink-900);color:var(--ink-900)}
+.btn.sm{min-height:28px;padding:0 10px;font-size:11px}
+.badge{display:inline-block;font-family:var(--font-type);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;padding:1px 6px;border:1px solid currentColor;line-height:16px;white-space:nowrap}
+.b-pos{color:var(--indigo-600)}.b-warn{color:var(--madder-600)}.b-neu{color:var(--ink-500)}.b-ink{background:var(--ink-900);color:var(--paper-100);border-color:var(--ink-900)}
+.nav a{font-family:var(--font-type);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-900);text-decoration:none;padding:10px 16px;display:inline-block}
+.nav a:hover{background:var(--paper-100)}
+.nav a.on{background:var(--ink-900);color:var(--paper-100)}
+.ev{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:4px 16px;padding:12px 0;border-top:1px solid var(--rule-hair);align-items:baseline}
+.ev .t{font-family:var(--font-type);font-size:13px;color:var(--ink-500)}
+.ev .ty{font-family:var(--font-type);font-size:12px;color:var(--ink-500)}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: var(--paper-200); color: var(--ink-900); font-family: var(--font-text); font-size: 17px; line-height: 1.5;">
+
+<header style="border-bottom: 3px double var(--ink-900);">
+  <div style="max-width: 1280px; margin: 0 auto; padding: 24px 40px 0; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+    <a href="Main.dc.html" style="text-decoration: none; color: var(--ink-900); display: flex; flex-direction: column; gap: 4px;">
+      <span style="font-family: var(--font-text); font-size: 32px; letter-spacing: .06em; line-height: 1;">LOOPWAY</span>
+      <span class="lbl">Bots at work · from Craftmill</span>
+    </a>
+    <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+      <a href="Alerts.dc.html" style="display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--madder-600); font-family: var(--font-type); font-size: 12px; letter-spacing: .12em; text-transform: uppercase;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.73 18l-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+        3 open alerts
+      </a>
+      <span class="lbl">mcwhittemore</span>
+      <a class="btn" href="Onboard.dc.html">New bot</a>
+    </div>
+  </div>
+  <nav class="nav" aria-label="Main" style="max-width: 1280px; margin: 0 auto; padding: 20px 40px 0; display: flex; flex-wrap: wrap;">
+    <a href="Main.dc.html">Overview</a>
+    <a class="on" href="Bots.dc.html">Bots</a>
+    <a href="Inboxes.dc.html">Inboxes</a>
+    <a href="Main.dc.html#runners">Runners</a>
+    <a href="Alerts.dc.html">Alerts</a>
+  </nav>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 32px 40px 64px; display: flex; flex-direction: column; gap: 28px;">
+
+  <section style="display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--ink-900); padding-bottom: 20px;">
+    <div class="lbl"><a href="Bots.dc.html" style="color: var(--ink-600);">Bots</a> / <a href="Bot.dc.html" style="color: var(--ink-600);">dev</a> / Thread</div>
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; justify-content: space-between; align-items: flex-end;">
+      <div style="display: flex; flex-direction: column; gap: 10px; max-width: 820px;">
+        <h1 style="margin: 0; font-size: 46px; line-height: 1.08; letter-spacing: -0.021em; font-weight: 400;">Redesign the app</h1>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+          <span class="badge b-pos">working</span>
+          <a href="https://github.com/craftmilldev/loopway/issues/156" style="font-family: var(--font-type); font-size: 13px; padding: 2px 8px; border: 1px solid var(--rule-soft); text-decoration: none; color: var(--ink-900);">craftmilldev/loopway#156 · issue</a>
+          <a href="https://github.com/craftmilldev/loopway/pull/170" style="font-family: var(--font-type); font-size: 13px; padding: 2px 8px; border: 1px solid var(--rule-soft); text-decoration: none; color: var(--ink-900);">#170 · pull request, draft</a>
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button type="button" class="btn ghost" disabled="" style="opacity: .4; cursor: not-allowed;" title="Its runner is online">Release</button>
+        <button type="button" class="btn ghost">End thread</button>
+      </div>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-wrap: wrap; gap: 0;">
+    <div style="flex: 999 1 600px; min-width: 0; padding-right: 36px; display: flex; flex-direction: column; gap: 28px;">
+
+      <div style="display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 6px;">
+          <span class="lbl" style="color: var(--madder-600);">Waiting · 1</span>
+          <span style="font-size: 14px; color: var(--ink-600);">Goes out when the current run ends</span>
+        </div>
+        <div class="ev" style="background: var(--paper-100); padding-left: 12px; padding-right: 12px; border-top: 2px solid var(--madder-600);">
+          <span class="t">09:55</span>
+          <div><div>mcwhittemore commented on #156: “Can we keep runners on the overview?”</div><div class="ty">com.github.issue_comment.created</div></div>
+          <a href="Thread.dc.html" class="lbl" style="color: var(--ink-600);">Event</a>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 6px; border-bottom: 1px solid var(--ink-900);">
+          <h2 style="margin: 0; font-size: 22px; font-weight: 400;">Run 4 <span style="font-family: var(--font-type); font-size: 13px; color: var(--ink-500); margin-left: 8px;">09:48 — now · 2 messages</span></h2>
+          <span class="badge b-pos">in flight</span>
+        </div>
+        <div class="ev"><span class="t">09:47</span><div><div>CI finished on #170: 3 checks passed</div><div class="ty">com.github.check_suite.completed</div></div><a href="Thread.dc.html" class="lbl" style="color: var(--ink-600);">Event</a></div>
+        <div class="ev"><span class="t">09:45</span><div><div>Review requested on #170 from mcwhittemore</div><div class="ty">com.github.pull_request.review_requested</div></div><a href="Thread.dc.html" class="lbl" style="color: var(--ink-600);">Event</a></div>
+      </div>
+
+      <div style="display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 6px; border-bottom: 1px solid var(--ink-900);">
+          <h2 style="margin: 0; font-size: 22px; font-weight: 400;">Run 3 <span style="font-family: var(--font-type); font-size: 13px; color: var(--ink-500); margin-left: 8px;">09:20 — 09:41 · 1 message · 21 min</span></h2>
+          <span class="badge b-neu">delivered</span>
+        </div>
+        <div class="ev"><span class="t">09:19</span><div><div>dev opened pull request #170 and linked it to this thread</div><div class="ty">com.github.pull_request.opened</div></div><a href="Thread.dc.html" class="lbl" style="color: var(--ink-600);">Event</a></div>
+      </div>
+
+      <div style="display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 6px; border-bottom: 1px solid var(--ink-900);">
+          <h2 style="margin: 0; font-size: 22px; font-weight: 400;">Run 2 <span style="font-family: var(--font-type); font-size: 13px; color: var(--ink-500); margin-left: 8px;">08:40 — 09:18 · 3 messages · 38 min</span></h2>
+          <span class="badge b-neu">delivered</span>
+        </div>
+        <div class="ev"><span class="t">08:39</span><div><div>mcwhittemore commented: “Use the Craftmill design system.”</div><div class="ty">com.github.issue_comment.created</div></div><a href="Thread.dc.html" class="lbl" style="color: var(--ink-600);">Event</a></div>
+        <div class="ev"><span class="t">08:31</span><div><div>Label <span style="font-family: var(--font-type); font-size: 14px;">ux</span> added to #156</div><div class="ty">com.github.issues.labeled</div></div><a href="Thread.dc.html" class="lbl" style="color: var(--ink-600);">Event</a></div>
+        <div class="ev"><span class="t">08:30</span><div><div>dev commented a plan on #156</div><div class="ty">com.github.issue_comment.created</div></div><a href="Thread.dc.html" class="lbl" style="color: var(--ink-600);">Event</a></div>
+      </div>
+
+      <div style="display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 6px; border-bottom: 1px solid var(--ink-900);">
+          <h2 style="margin: 0; font-size: 22px; font-weight: 400;">Run 1 <span style="font-family: var(--font-type); font-size: 13px; color: var(--ink-500); margin-left: 8px;">08:12 — 08:29 · 1 message · started the session</span></h2>
+          <span class="badge b-neu">delivered</span>
+        </div>
+        <div class="ev" style="border-bottom: 1px solid var(--rule-hair);"><span class="t">08:11</span><div><div>mcwhittemore opened #156 Redesign the app</div><div class="ty">com.github.issues.opened</div></div><a href="Thread.dc.html" class="lbl" style="color: var(--ink-600);">Event</a></div>
+      </div>
+    </div>
+
+    <aside style="flex: 1 1 320px; min-width: 0; padding-left: 32px; border-left: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 28px;">
+      <div style="display: flex; flex-direction: column;">
+        <span class="lbl" style="padding-bottom: 6px; border-bottom: 1px solid var(--ink-900);">The thread</span>
+        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--rule-hair);"><span style="color: var(--ink-600);">Runner</span><span style="font-family: var(--font-type); font-size: 14px;">mcw-macbook</span></div>
+        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--rule-hair);"><span style="color: var(--ink-600);">Started</span><span style="font-family: var(--font-type); font-size: 14px;">today 08:12</span></div>
+        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--rule-hair);"><span style="color: var(--ink-600);">Runs</span><span style="font-family: var(--font-type); font-size: 14px;">4</span></div>
+        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--rule-hair);"><span style="color: var(--ink-600);">Messages</span><span style="font-family: var(--font-type); font-size: 14px;">7 in · 1 waiting</span></div>
+        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--rule-hair);"><span style="color: var(--ink-600);">Prompt</span><a href="Prompt.dc.html" style="font-family: var(--font-type); font-size: 14px;">version 7</a></div>      </div>
+
+      <div style="background: var(--ink-900); color: var(--paper-100); padding: 18px; display: flex; flex-direction: column; gap: 10px;">
+        <span class="lbl" style="color: var(--ink-200);">Session transcript</span>
+        <p style="margin: 0; font-size: 15px; color: var(--paper-300);">The Claude session lives on mcw-macbook. Follow it there:</p>
+        <code style="font-family: var(--font-type); font-size: 12.5px; word-break: break-all; color: var(--paper-100);">$ tail -f ~/.loopway/threads/th_01JA7Q2.log</code>
+        <div style="border-top: 1px solid #f2eede4d; padding-top: 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+          <span style="font-size: 14px; color: var(--ink-200);">Read it here, live</span>
+          <span class="badge" style="color: var(--ink-200);">planned</span>
+        </div>
+      </div>
+    </aside>
+  </section>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

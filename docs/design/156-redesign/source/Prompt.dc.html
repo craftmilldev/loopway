@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bot dev — prompt and rules</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/craftmill/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;1,400&amp;family=Sorts+Mill+Goudy:ital@0;1&amp;display=swap">
+<style>
+body{margin:0;background:#e4ddc9}
+a{color:#9e2b1c;text-underline-offset:3px}a:hover{color:#16130e}
+.lbl{font-family:var(--font-type);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint)}
+.btn{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 16px;font-family:var(--font-type);font-size:12px;letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--ink-900);background:var(--ink-900);color:var(--paper-100);text-decoration:none;cursor:pointer;box-sizing:border-box;white-space:nowrap}
+.btn:hover{background:var(--ink-800);color:var(--paper-100)}
+.btn.ghost{background:transparent;color:var(--ink-900);border-color:var(--rule-soft)}
+.btn.ghost:hover{background:var(--paper-100);border-color:var(--ink-900);color:var(--ink-900)}
+.btn.sm{min-height:28px;padding:0 10px;font-size:11px}
+.badge{display:inline-block;font-family:var(--font-type);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;padding:1px 6px;border:1px solid currentColor;line-height:16px;white-space:nowrap}
+.b-pos{color:var(--indigo-600)}.b-warn{color:var(--madder-600)}.b-neu{color:var(--ink-500)}.b-ink{background:var(--ink-900);color:var(--paper-100);border-color:var(--ink-900)}
+.nav a{font-family:var(--font-type);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-900);text-decoration:none;padding:10px 16px;display:inline-block}
+.nav a:hover{background:var(--paper-100)}
+.nav a.on{background:var(--ink-900);color:var(--paper-100)}
+.tabs a{font-family:var(--font-type);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-600);text-decoration:none;padding:12px 2px;margin-right:28px;display:inline-block;border-bottom:2px solid transparent}
+.tabs a:hover{color:var(--ink-900)}
+.tabs a.on{color:var(--ink-900);border-bottom-color:var(--madder-600)}
+.chip{font-family:var(--font-type);font-size:12.5px;padding:1px 8px;border:1px solid var(--rule-soft);background:var(--paper-100);white-space:nowrap}
+.kv{display:grid;grid-template-columns:84px minmax(0,1fr);gap:12px;padding:6px 0;border-top:1px solid var(--rule-hair);align-items:baseline}
+.kv code{font-family:var(--font-type);font-size:12.5px;color:var(--ink-700);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.rule{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:4px 16px;padding:18px 0;border-top:1px solid var(--ink-900)}
+.rule .n{font-family:var(--font-text);font-size:30px;line-height:1}
+textarea.prompt{width:100%;box-sizing:border-box;min-height:300px;padding:16px 18px;font-family:var(--font-type);font-size:14px;line-height:1.6;color:var(--ink-900);background:var(--paper-100);border:0;border-top:1px solid var(--ink-900);border-bottom:1px solid var(--ink-900);resize:vertical;outline:none}
+textarea.prompt:focus{border-bottom:2px solid var(--madder-600)}
+.d{font-family:var(--font-type);font-size:12.5px;line-height:1.6;padding:1px 8px;white-space:pre-wrap}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: var(--paper-200); color: var(--ink-900); font-family: var(--font-text); font-size: 17px; line-height: 1.5;">
+
+<header style="border-bottom: 3px double var(--ink-900);">
+  <div style="max-width: 1280px; margin: 0 auto; padding: 24px 40px 0; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+    <a href="Main.dc.html" style="text-decoration: none; color: var(--ink-900); display: flex; flex-direction: column; gap: 4px;">
+      <span style="font-family: var(--font-text); font-size: 32px; letter-spacing: .06em; line-height: 1;">LOOPWAY</span>
+      <span class="lbl">Bots at work · from Craftmill</span>
+    </a>
+    <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+      <a href="Alerts.dc.html" style="display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--madder-600); font-family: var(--font-type); font-size: 12px; letter-spacing: .12em; text-transform: uppercase;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.73 18l-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+        3 open alerts
+      </a>
+      <span class="lbl">mcwhittemore</span>
+      <a class="btn" href="Onboard.dc.html">New bot</a>
+    </div>
+  </div>
+  <nav class="nav" aria-label="Main" style="max-width: 1280px; margin: 0 auto; padding: 20px 40px 0; display: flex; flex-wrap: wrap;">
+    <a href="Main.dc.html">Overview</a>
+    <a class="on" href="Bots.dc.html">Bots</a>
+    <a href="Inboxes.dc.html">Inboxes</a>
+    <a href="Main.dc.html#runners">Runners</a>
+    <a href="Alerts.dc.html">Alerts</a>
+  </nav>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 32px 40px 64px; display: flex; flex-direction: column; gap: 28px;">
+
+  <section style="display: flex; flex-direction: column; gap: 12px;">
+    <nav aria-label="Your bots" style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px;">
+      <a href="Bots.dc.html" class="lbl" style="color: var(--ink-600);">All bots</a>
+      <div style="display: flex; flex-wrap: wrap; border: 1px solid var(--rule-soft);">
+        <a href="Prompt.dc.html" aria-current="page" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; font-family: var(--font-type); font-size: 13px; text-decoration: none; background: var(--ink-900); color: var(--paper-100);"><span style="width: 7px; height: 7px; background: var(--madder-300);"></span>dev</a>
+        <a href="Prompt.dc.html" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; font-family: var(--font-type); font-size: 13px; text-decoration: none; color: var(--ink-900); border-left: 1px solid var(--rule-hair);"><span style="width: 7px; height: 7px; background: var(--madder-600);"></span>reviewer</a>
+        <a href="Prompt.dc.html" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; font-family: var(--font-type); font-size: 13px; text-decoration: none; color: var(--ink-900); border-left: 1px solid var(--rule-hair);"><span style="width: 7px; height: 7px; background: var(--indigo-600);"></span>meeting-notes</a>
+        <a href="Prompt.dc.html" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; font-family: var(--font-type); font-size: 13px; text-decoration: none; color: var(--ink-900); border-left: 1px solid var(--rule-hair);"><span style="width: 7px; height: 7px; background: var(--ink-300);"></span>deploy-watch</a>
+      </div>
+    </nav>
+    <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+      <h1 style="margin: 0; font-size: 56px; line-height: 1; letter-spacing: -0.021em; font-weight: 400;">dev</h1>
+      <span class="badge b-warn">limited until 14:00</span>
+    </div>
+    <nav class="tabs" aria-label="Bot" style="border-bottom: 1px solid var(--ink-900); display: flex; flex-wrap: wrap; margin-top: 8px;">
+      <a href="Bot.dc.html">Activity</a>
+      <a href="Bot.dc.html#threads">Threads · 6</a>
+      <a class="on" href="Prompt.dc.html">Prompt and rules · v7</a>
+      <a href="Alerts.dc.html">Alerts · 1</a>
+      <a href="Bot.dc.html">Settings</a>
+    </nav>
+  </section>
+
+  <section style="background: var(--paper-100); border-top: 2px solid var(--ink-900); padding: 14px 20px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center;">
+    <div><span style="font-size: 19px;">Draft of version 8</span> <span style="font-size: 15px; color: var(--ink-600); margin-left: 8px;">2 changes to the prompt · new threads pick it up; running ones keep version 7</span></div>
+    <div style="display: flex; gap: 8px;"><button type="button" class="btn ghost">Discard</button><button type="button" class="btn">Save as version 8</button></div>
+  </section>
+
+  <section style="display: flex; flex-wrap: wrap; gap: 0;">
+    <div style="flex: 999 1 620px; min-width: 0; padding-right: 36px; display: flex; flex-direction: column; gap: 36px;">
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px;">
+          <div><span class="lbl">The prompt</span><h2 style="margin: 0; font-size: 28px; font-weight: 400;">What each session is told first</h2></div>
+          <span style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">3,912 characters</span>
+        </div>
+        <label for="prompt" class="lbl" style="position: absolute; left: -9999px;">Prompt</label>
+        <textarea id="prompt" class="prompt" spellcheck="false">You are a loopway thread session, working on the messages of a thread.
+
+`loopway bots run` reads the messages for you. It started this session with the first message of a thread (an issue, its PR, and their comments and reviews) and resumes it whenever new messages for that thread arrive. Do the work, then end your turn; you'll be resumed with the next messages.
+
+Don't poll for messages, don't run `loopway messages next`, and don't touch messages you weren't given.
+
+Use the Craftmill design system for any web UI work.</textarea>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 8px;">
+          <div><span class="lbl">The rules</span><h2 style="margin: 0; font-size: 28px; font-weight: 400;">Which thread each message joins</h2><p style="margin: 2px 0 0; font-size: 15px; color: var(--ink-600);">The first rule whose event types match a message decides. Expressions are CEL and are checked when you save.</p></div>
+          <button type="button" class="btn sm ghost">Add rule</button>
+        </div>
+
+        <div class="rule">
+          <span class="n">1</span>
+          <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0;">
+            <div style="font-size: 19px;">CI runs join the pull request they ran for, and are skipped when there is none</div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;"><span class="chip">com.github.check_run.*</span><span class="chip">com.github.check_suite.*</span><span class="chip">com.github.workflow_run.*</span></div>
+            <div>
+              <div class="kv"><span class="lbl">Subject</span><code>data.repository.full_name + '#' + string(data.check_run.pull_requests[0].number)</code></div>
+              <div class="kv"><span class="lbl">Action</span><code>subject == '' ? 'skip' : 'attach'</code></div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 6px; align-items: flex-start;"><button type="button" class="btn sm ghost">Edit</button></div>
+        </div>
+
+        <div class="rule" style="background: var(--paper-100); box-shadow: inset 2px 0 0 var(--indigo-600); padding-left: 12px; padding-right: 12px;">
+          <span class="n">2</span>
+          <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0;">
+            <div style="font-size: 19px;">Everything else joins its issue or PR, and the issues a PR body closes</div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;"><span class="chip">com.github.*</span></div>
+            <div>
+              <div class="kv"><span class="lbl">Subject</span><code>data.repository.full_name + '#' + string(has(data.pull_request) ? data.pull_request.number : data.issue.number)</code></div>
+              <div class="kv"><span class="lbl">Related</span><code>regex_all(data.pull_request.body, '(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)', 'i')</code></div>
+              <div class="kv"><span class="lbl">Action</span><code>!held &amp;&amp; data.issue.labels.exists(l, l.name == 'future') ? 'skip' : 'attach'</code></div>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end;"><span class="badge b-pos">matched</span><button type="button" class="btn sm ghost">Edit</button></div>
+        </div>
+        <div style="border-top: 1px solid var(--ink-900);"></div>
+      </div>
+    </div>
+
+    <aside style="flex: 1 1 340px; min-width: 0; padding-left: 32px; border-left: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 32px;">
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div><span class="lbl">Try the rules</span><h2 style="margin: 0; font-size: 22px; font-weight: 400;">On a recent message</h2></div>
+        <div class="field">
+          <label for="sample" class="lbl" style="display: block; margin-bottom: 6px; color: var(--ink-600);">Message</label>
+          <select id="sample" style="width: 100%; height: 40px; padding: 0 10px; font-family: var(--font-type); font-size: 13px; color: var(--ink-900); background: var(--paper-100); border: 0; border-bottom: 1px solid var(--ink-900);">
+            <option>09:19 · pull_request.opened · #170</option>
+            <option>09:47 · check_suite.completed · #170</option>
+            <option>08:31 · issues.labeled · #156</option>
+          </select>
+        </div>
+        <div style="border-top: 2px solid var(--indigo-600); background: var(--paper-100); padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;">
+          <div style="font-size: 17px;">Rule 2 matched. It joins <a href="Thread.dc.html">Redesign the app</a>.</div>
+          <div class="kv" style="grid-template-columns: 72px minmax(0,1fr);"><span class="lbl">Subject</span><code>craftmilldev/loopway#170</code></div>
+          <div class="kv" style="grid-template-columns: 72px minmax(0,1fr);"><span class="lbl">Related</span><code>craftmilldev/loopway#156</code></div>
+          <div class="kv" style="grid-template-columns: 72px minmax(0,1fr);"><span class="lbl">Action</span><code>attach</code></div>
+        </div>
+        <p style="margin: 0; font-size: 14px; color: var(--ink-600);">Runs the draft, not the saved version, so you can check a change before saving it.</p>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span class="lbl">Versions</span>
+        <div style="border-top: 1px solid var(--ink-900);">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--rule-hair);"><span>Version 7 <span class="badge b-ink" style="margin-left: 6px;">current</span></span><span style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">10 Oct · 6 threads</span></div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--rule-hair); background: var(--paper-100);"><span>Version 6</span><span style="display: flex; gap: 6px;"><button type="button" class="btn sm ghost">Compare</button><button type="button" class="btn sm ghost">Restore</button></span></div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--rule-hair);"><span>Version 5</span><span style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">2 Oct · 11 threads</span></div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--rule-hair);"><span>Version 4</span><span style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">24 Sep · 19 threads</span></div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <span class="lbl">Version 6 → 7</span>
+        <div style="border-top: 1px solid var(--ink-900); padding-top: 6px; display: flex; flex-direction: column; gap: 2px;">
+          <div class="d" style="color: var(--ink-500);">  Don't poll for messages, don't run</div>
+          <div class="d" style="color: var(--madder-700); background: #b8412c1f; text-decoration: line-through;">- Leave the PR as a draft until CI passes.</div>
+          <div class="d" style="color: var(--indigo-700); background: #2c4a531f;">+ Mark the PR ready once CI passes and</div>
+          <div class="d" style="color: var(--indigo-700); background: #2c4a531f;">+ request a review from the issue author.</div>
+        </div>
+      </div>
+    </aside>
+  </section>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1800}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

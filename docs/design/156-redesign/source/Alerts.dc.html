@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Alerts</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/craftmill/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;1,400&amp;family=Sorts+Mill+Goudy:ital@0;1&amp;display=swap">
+<style>
+body{margin:0;background:#e4ddc9}
+a{color:#9e2b1c;text-underline-offset:3px}a:hover{color:#16130e}
+.lbl{font-family:var(--font-type);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint)}
+.btn{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 16px;font-family:var(--font-type);font-size:12px;letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--ink-900);background:var(--ink-900);color:var(--paper-100);text-decoration:none;cursor:pointer;box-sizing:border-box;white-space:nowrap}
+.btn:hover{background:var(--ink-800);color:var(--paper-100)}
+.btn.ghost{background:transparent;color:var(--ink-900);border-color:var(--rule-soft)}
+.btn.ghost:hover{background:var(--paper-100);border-color:var(--ink-900);color:var(--ink-900)}
+.btn.sm{min-height:28px;padding:0 10px;font-size:11px}
+.badge{display:inline-block;font-family:var(--font-type);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;padding:1px 6px;border:1px solid currentColor;line-height:16px;white-space:nowrap}
+.b-pos{color:var(--indigo-600)}.b-warn{color:var(--madder-600)}.b-neu{color:var(--ink-500)}.b-ink{background:var(--ink-900);color:var(--paper-100);border-color:var(--ink-900)}
+.nav a{font-family:var(--font-type);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-900);text-decoration:none;padding:10px 16px;display:inline-block}
+.nav a:hover{background:var(--paper-100)}
+.nav a.on{background:var(--ink-900);color:var(--paper-100)}
+.tabs a{font-family:var(--font-type);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-600);text-decoration:none;padding:12px 2px;margin-right:28px;display:inline-block;border-bottom:2px solid transparent}
+.tabs a.on{color:var(--ink-900);border-bottom-color:var(--madder-600)}
+.al{display:grid;grid-template-columns:28px minmax(0,1fr);gap:6px 14px;padding:20px 0;border-top:1px solid var(--rule-hair)}
+.sw{position:relative;width:40px;height:22px;border:1px solid var(--ink-900);background:transparent;cursor:pointer;padding:0;flex:none}
+.sw span{position:absolute;top:3px;width:14px;height:14px}
+.rl{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:14px 0;border-top:1px solid var(--rule-hair)}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: var(--paper-200); color: var(--ink-900); font-family: var(--font-text); font-size: 17px; line-height: 1.5;">
+
+<header style="border-bottom: 3px double var(--ink-900);">
+  <div style="max-width: 1280px; margin: 0 auto; padding: 24px 40px 0; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+    <a href="Main.dc.html" style="text-decoration: none; color: var(--ink-900); display: flex; flex-direction: column; gap: 4px;">
+      <span style="font-family: var(--font-text); font-size: 32px; letter-spacing: .06em; line-height: 1;">LOOPWAY</span>
+      <span class="lbl">Bots at work · from Craftmill</span>
+    </a>
+    <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+      <span class="lbl">mcwhittemore</span>
+      <a class="btn" href="Onboard.dc.html">New bot</a>
+    </div>
+  </div>
+  <nav class="nav" aria-label="Main" style="max-width: 1280px; margin: 0 auto; padding: 20px 40px 0; display: flex; flex-wrap: wrap;">
+    <a href="Main.dc.html">Overview</a>
+    <a href="Bots.dc.html">Bots</a>
+    <a href="Inboxes.dc.html">Inboxes</a>
+    <a href="Main.dc.html#runners">Runners</a>
+    <a class="on" href="Alerts.dc.html">Alerts · 3</a>
+  </nav>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 36px 40px 64px; display: flex; flex-direction: column; gap: 28px;">
+
+  <section style="display: flex; flex-direction: column; gap: 8px; max-width: 760px;">
+    <span class="lbl">Alerts <span class="badge b-neu" style="margin-left: 8px;">future · craftmilldev/loopway#157</span></span>
+    <h1 style="margin: 0; font-size: 50px; line-height: 1.05; letter-spacing: -0.021em; font-weight: 400;">When a bot stops, we say so.</h1>
+    <p style="margin: 0; color: var(--ink-600);">Alerts open on their own and close when the cause clears. Each one names what stopped and what to do next.</p>
+  </section>
+
+  <section style="display: flex; flex-wrap: wrap; gap: 0;">
+    <div style="flex: 999 1 600px; min-width: 0; padding-right: 36px; display: flex; flex-direction: column;">
+      <nav class="tabs" aria-label="Alert state" style="border-bottom: 1px solid var(--ink-900); display: flex; flex-wrap: wrap;">
+        <a class="on" href="Alerts.dc.html">Open · 3</a>
+        <a href="Alerts.dc.html">Snoozed · 0</a>
+        <a href="Alerts.dc.html">Resolved · 14</a>
+      </nav>
+
+      <article class="al">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9e2b1c" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-top: 4px;"><path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline;">
+            <h2 style="margin: 0; font-size: 22px; font-weight: 400;">Runner mcw-studio is offline</h2>
+            <span style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">opened 07:52 · 2 h</span>
+          </div>
+          <p style="margin: 0; color: var(--ink-700);">It stopped renewing its lease at 07:42. It owns 4 threads of <a href="Bot.dc.html">reviewer</a>, and their sessions live on that machine. Start it again to carry on, or release the threads so another runner starts them fresh.</p>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;"><span class="badge b-warn">runner offline</span><span class="badge b-neu">reviewer</span></div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;"><button type="button" class="btn sm">Release 4 threads</button><button type="button" class="btn sm ghost">Snooze 1 h</button><button type="button" class="btn sm ghost">Mute this rule</button></div>
+        </div>
+      </article>
+
+      <article class="al">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9e2b1c" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-top: 4px;"><path d="M21.73 18l-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline;">
+            <h2 style="margin: 0; font-size: 22px; font-weight: 400;">Inbox vercel-prod is rejecting deliveries</h2>
+            <span style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">opened yesterday · 12 rejected</span>
+          </div>
+          <p style="margin: 0; color: var(--ink-700);">Vercel makes the signing secret, and it has not been pasted in yet. Until it is, every delivery fails its signature check and Vercel shows it as failed.</p>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;"><span class="badge b-warn">inbox setup</span><span class="badge b-neu">vercel-prod</span></div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;"><a class="btn sm" href="Inboxes.dc.html">Add the secret</a><button type="button" class="btn sm ghost">Snooze 1 day</button></div>
+        </div>
+      </article>
+
+      <article class="al" style="border-bottom: 1px solid var(--rule-hair);">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2c4a53" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-top: 4px;"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline;">
+            <h2 style="margin: 0; font-size: 22px; font-weight: 400;">dev is holding for the usage limit</h2>
+            <span style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">opened 08:03 · clears 14:00</span>
+          </div>
+          <p style="margin: 0; color: var(--ink-700);">A run on <a href="Thread.dc.html">#155</a> stopped when the Claude account reached its limit. 6 messages are waiting and go out on the first tick after the reset. Nothing to do unless it keeps happening.</p>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;"><span class="badge b-pos">usage limit</span><span class="badge b-neu">dev</span><span class="badge b-neu">2nd this week</span></div>
+        </div>
+      </article>
+    </div>
+
+    <aside style="flex: 1 1 360px; min-width: 0; padding-left: 32px; border-left: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 32px;">
+      <div style="display: flex; flex-direction: column;">
+        <span class="lbl">Rules</span>
+        <h2 style="margin: 0 0 10px; font-size: 26px; font-weight: 400;">Open an alert when</h2>
+        <sc-for list="{{rules}}" as="r" hint-placeholder-count="7">
+          <div class="rl" style="{{r.rowStyle}}">
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <span style="font-size: 16px;">{{r.text}}</span>
+              <span style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">{{r.meta}}</span>
+            </div>
+            <button type="button" class="sw" role="switch" aria-checked="{{r.on}}" aria-label="{{r.text}}" disabled="{{r.planned}}" onClick="{{r.toggle}}" style="{{r.swStyle}}"><span style="{{r.knobStyle}}"></span></button>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display: flex; flex-direction: column;">
+        <span class="lbl">Delivery</span>
+        <h2 style="margin: 0 0 10px; font-size: 26px; font-weight: 400;">Where alerts go</h2>
+        <div class="rl"><div><div style="font-size: 16px;">In loopway</div><div style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">This page and the masthead count</div></div><span class="badge b-ink">always</span></div>
+        <div class="rl"><div><div style="font-size: 16px;">Email</div><div style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">A digest, or each alert as it opens</div></div><span class="badge b-neu">planned</span></div>
+        <div class="rl"><div><div style="font-size: 16px;">Slack</div><div style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">One channel per account</div></div><span class="badge b-neu">planned</span></div>
+        <div class="rl" style="border-bottom: 1px solid var(--rule-hair);"><div><div style="font-size: 16px;">A loopway inbox</div><div style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">So a bot can act on alerts itself</div></div><span class="badge b-neu">planned</span></div>
+      </div>
+    </aside>
+  </section>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1560}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { on: { runner: true, wait: true, limit: true, reject: true, interrupted: false, quiet: false, spend: false } };
+  }
+  renderVals() {
+    var self = this;
+    var list = [
+      { id: 'runner', text: 'A runner stops renewing its lease', meta: 'after 10 min' },
+      { id: 'wait', text: 'A message waits too long for delivery', meta: 'longer than 30 min' },
+      { id: 'limit', text: 'A bot hits the Claude usage limit', meta: 'each time' },
+      { id: 'reject', text: 'An inbox rejects a delivery', meta: 'bad signature or no secret' },
+      { id: 'interrupted', text: 'A thread is interrupted mid-run', meta: 'each time' },
+      { id: 'quiet', text: 'An inbox goes quiet', meta: 'no messages for 7 days' }
+    ];
+    return {
+      rules: list.map(function (r, i) {
+        var on = !!self.state.on[r.id];
+        return {
+          text: r.text, meta: r.meta, on: on, planned: !!r.planned,
+          rowStyle: (i === list.length - 1 ? 'border-bottom: 1px solid var(--rule-hair);' : '') + (r.planned ? ' opacity: .5;' : ''),
+          swStyle: on ? 'background: var(--ink-900);' : '',
+          knobStyle: on ? 'left: 21px; background: var(--paper-100);' : 'left: 3px; background: var(--ink-500);',
+          toggle: function () {
+            if (r.planned) return;
+            var next = Object.assign({}, self.state.on);
+            next[r.id] = !on;
+            self.setState({ on: next });
+          }
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

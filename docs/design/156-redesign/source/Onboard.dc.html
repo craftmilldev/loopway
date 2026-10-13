@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>New bot</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/craftmill/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;1,400&amp;family=Sorts+Mill+Goudy:ital@0;1&amp;display=swap">
+<style>
+body{margin:0;background:#e4ddc9}
+a{color:#9e2b1c;text-underline-offset:3px}a:hover{color:#16130e}
+.lbl{font-family:var(--font-type);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint)}
+.btn{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 20px;font-family:var(--font-type);font-size:12px;letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--ink-900);background:var(--ink-900);color:var(--paper-100);text-decoration:none;cursor:pointer;box-sizing:border-box;white-space:nowrap}
+.btn:hover{background:var(--ink-800);color:var(--paper-100)}
+.btn.ghost{background:transparent;color:var(--ink-900);border-color:var(--rule-soft)}
+.btn.ghost:hover{background:var(--paper-100);border-color:var(--ink-900);color:var(--ink-900)}
+.btn.sm{min-height:28px;padding:0 10px;font-size:11px}
+.badge{display:inline-block;font-family:var(--font-type);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;padding:1px 6px;border:1px solid currentColor;line-height:16px;white-space:nowrap}
+.b-pos{color:var(--indigo-600)}.b-warn{color:var(--madder-600)}.b-neu{color:var(--ink-500)}.b-ink{background:var(--ink-900);color:var(--paper-100);border-color:var(--ink-900)}
+.field label.f{display:block;font-family:var(--font-type);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-600);margin-bottom:6px}
+.field input[type=text]{width:100%;box-sizing:border-box;height:44px;padding:0 12px;font-family:var(--font-type);font-size:15px;color:var(--ink-900);background:var(--paper-100);border:0;border-bottom:1px solid var(--ink-900);outline:none}
+.field input[type=text]:focus{border-bottom:2px solid var(--madder-600)}
+.opt{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:4px 14px;padding:16px;border-top:1px solid var(--rule-hair);cursor:pointer;align-items:start}
+.opt:hover{background:var(--paper-100)}
+.opt input{accent-color:#9e2b1c;width:16px;height:16px;margin:5px 0 0}
+.step{display:grid;grid-template-columns:64px minmax(0,1fr);gap:0 20px;padding:28px 0;border-top:1px solid var(--ink-900)}
+.step .n{font-family:var(--font-text);font-size:44px;line-height:1;color:var(--ink-900)}
+</style>
+</helmet>
+<div style="min-height: 100vh; background: var(--paper-200); color: var(--ink-900); font-family: var(--font-text); font-size: 17px; line-height: 1.5;">
+
+<header style="border-bottom: 3px double var(--ink-900);">
+  <div style="max-width: 1280px; margin: 0 auto; padding: 24px 40px 20px; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+    <a href="Main.dc.html" style="text-decoration: none; color: var(--ink-900); display: flex; flex-direction: column; gap: 4px;">
+      <span style="font-family: var(--font-text); font-size: 32px; letter-spacing: .06em; line-height: 1;">LOOPWAY</span>
+      <span class="lbl">Bots at work · from Craftmill</span>
+    </a>
+    <a href="Main.dc.html" class="lbl" style="color: var(--ink-600);">Leave setup — your progress is kept</a>
+  </div>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 40px 40px 64px; display: flex; flex-wrap: wrap; gap: 0;">
+
+  <aside style="flex: 1 1 260px; min-width: 0; padding-right: 40px; display: flex; flex-direction: column; gap: 20px;">
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <span class="lbl">New bot</span>
+      <h1 style="margin: 0; font-size: 44px; line-height: 1.05; letter-spacing: -0.021em; font-weight: 400;">Put a bot to work</h1>
+      <p style="margin: 0; color: var(--ink-600);">Five steps, about ten minutes. You can change every answer later.</p>
+    </div>
+    <ol style="list-style: none; margin: 0; padding: 0; border-top: 2px solid var(--ink-900);">
+      <li style="display: flex; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--rule-hair); color: var(--ink-600);">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2c4a53" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg>
+        <span>Connect a source</span>
+      </li>
+      <li aria-current="step" style="display: flex; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--rule-hair); color: var(--ink-900);">
+        <span style="font-family: var(--font-type); font-size: 13px; width: 15px; color: var(--madder-600);">2</span>
+        <span style="border-bottom: 2px solid var(--madder-600);">Choose its job</span>
+      </li>
+      <li style="display: flex; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--rule-hair); color: var(--ink-500);">
+        <span style="font-family: var(--font-type); font-size: 13px; width: 15px;">3</span><span>Name and model</span>
+      </li>
+      <li style="display: flex; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--rule-hair); color: var(--ink-500);">
+        <span style="font-family: var(--font-type); font-size: 13px; width: 15px;">4</span><span>Start a runner</span>
+      </li>
+      <li style="display: flex; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--rule-hair); color: var(--ink-500);">
+        <span style="font-family: var(--font-type); font-size: 13px; width: 15px;">5</span><span>Watch the first run</span>
+      </li>
+    </ol>
+  </aside>
+
+  <div style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column;">
+
+    <section class="step" style="border-top-color: var(--rule-soft); color: var(--ink-600);">
+      <span class="n" style="color: var(--ink-400);">1</span>
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+        <div>
+          <h2 style="margin: 0; font-size: 24px; font-weight: 400; color: var(--ink-700);">Connect a source</h2>
+          <div style="font-size: 15px;">Messages come from <span style="font-family: var(--font-type); font-size: 14px; color: var(--ink-900);">loopway-github</span> · GitHub · 37 deliveries so far, all verified</div>
+        </div>
+        <a class="btn sm ghost" href="Inboxes.dc.html">Change</a>
+      </div>
+    </section>
+
+    <section class="step">
+      <span class="n">2</span>
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div>
+          <h2 style="margin: 0; font-size: 30px; font-weight: 400;">What should it do with those messages?</h2>
+          <p style="margin: 4px 0 0; color: var(--ink-600); max-width: 62ch;">A starting point fills in the bot's prompt and its routing rules. The bot keeps its own copy, so you can edit it freely afterwards.</p>
+        </div>
+        <fieldset style="border: 0; margin: 0; padding: 0; border-bottom: 1px solid var(--rule-hair);">
+          <legend class="lbl" style="padding: 0 0 8px;">Starting point</legend>
+          <sc-for list="{{presets}}" as="p" hint-placeholder-count="5">
+            <label class="opt" style="{{p.rowStyle}}">
+              <input type="radio" name="preset" checked="{{p.on}}" disabled="{{p.off}}" onChange="{{p.pick}}">
+              <span style="display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 20px;">{{p.label}}</span>
+                <span style="font-size: 15px; color: var(--ink-600);">{{p.desc}}</span>
+              </span>
+              <span class="badge {{p.badgeClass}}">{{p.badge}}</span>
+            </label>
+          </sc-for>
+        </fieldset>
+      </div>
+    </section>
+
+    <section class="step">
+      <span class="n">3</span>
+      <div style="display: flex; flex-direction: column; gap: 20px;">
+        <h2 style="margin: 0; font-size: 30px; font-weight: 400;">Name it and pick a model</h2>
+        <div class="field" style="max-width: 420px;">
+          <label class="f" for="bot-name">Name</label>
+          <input type="text" id="bot-name" value="dev">
+          <div style="font-size: 14px; color: var(--ink-600); margin-top: 6px;">Shown on threads and in <span style="font-family: var(--font-type); font-size: 13px;">loopway bots run</span>.</div>
+        </div>
+        <fieldset style="border: 0; margin: 0; padding: 0;">
+          <legend class="lbl" style="padding: 0 0 8px;">Model</legend>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); border: 1px solid var(--rule-soft);">
+            <sc-for list="{{models}}" as="m" hint-placeholder-count="4">
+              <label style="{{m.cellStyle}}">
+                <span style="display: flex; align-items: center; gap: 8px;"><input type="radio" name="model" checked="{{m.on}}" onChange="{{m.pick}}" style="accent-color: #9e2b1c; margin: 0;"><span style="font-family: var(--font-type); font-size: 15px;">{{m.id}}</span></span>
+                <span style="font-size: 14px; color: var(--ink-600);">{{m.note}}</span>
+              </label>
+            </sc-for>
+          </div>
+        </fieldset>
+      </div>
+    </section>
+
+    <section class="step">
+      <span class="n" style="color: var(--ink-400);">4</span>
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <h2 style="margin: 0; font-size: 30px; font-weight: 400; color: var(--ink-600);">Start a runner</h2>
+        <p style="margin: 0; color: var(--ink-600); max-width: 62ch;">Bots run on your own machine, in the repository they work on. Run this there and leave it open.</p>
+        <div style="background: var(--ink-900); color: var(--paper-100); padding: 18px 20px; display: flex; flex-direction: column; gap: 8px;">
+          <code style="font-family: var(--font-type); font-size: 14px;"><span style="color: var(--ink-300);">$</span> npm i -g @loopway/cli &amp;&amp; loopway login</code>
+          <code style="font-family: var(--font-type); font-size: 14px;"><span style="color: var(--ink-300);">$</span> cd ~/code/loopway &amp;&amp; loopway bots run</code>
+          <div style="border-top: 1px solid #f2eede4d; margin-top: 6px; padding-top: 10px; display: flex; align-items: center; gap: 10px; font-family: var(--font-type); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-200);">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--madder-300);"></span>
+            Listening for a runner to take the lease
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="step" style="border-bottom: 1px solid var(--ink-900);">
+      <span class="n" style="color: var(--ink-400);">5</span>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <h2 style="margin: 0; font-size: 30px; font-weight: 400; color: var(--ink-600);">Watch the first run</h2>
+        <p style="margin: 0; color: var(--ink-600); max-width: 62ch;">Open an issue in <span style="font-family: var(--font-type); font-size: 15px;">craftmilldev/loopway</span> to give it something to do. The thread appears here as soon as the runner picks it up.</p>
+      </div>
+    </section>
+
+    <div style="display: flex; justify-content: space-between; gap: 12px; padding-top: 24px; flex-wrap: wrap;">
+      <a class="btn ghost" href="Inboxes.dc.html">Back</a>
+      <a class="btn" href="Bot.dc.html">Create bot and continue</a>
+    </div>
+  </div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1800}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { preset: 'github-threads', model: 'sonnet' };
+  }
+  renderVals() {
+    var self = this;
+    var presets = [
+      { id: 'github-threads', label: 'GitHub threads', desc: 'One session per GitHub issue or pull request: it triages the issue, does the work, opens a PR, and follows its reviews and CI.', badge: 'suggested', ready: true },
+      { id: 'blank', label: 'Start blank', desc: 'An empty prompt and one catch-all rule. For when you know what you want.', badge: 'any source', ready: true },
+      { id: 'review', label: 'Review pull requests', desc: 'Reads every PR that opens and leaves a review against your checklist.', badge: 'planned', ready: false },
+      { id: 'deploys', label: 'Watch deploys', desc: 'Reads Vercel deployments and opens an issue when one fails.', badge: 'planned', ready: false },
+      { id: 'notes', label: 'Meeting follow-ups', desc: 'Turns Granola notes into issues for the action items.', badge: 'planned', ready: false }
+    ];
+    var models = [
+      { id: 'sonnet', note: 'The usual choice' },
+      { id: 'opus', note: 'Harder problems, slower' },
+      { id: 'haiku', note: 'Quick, simple jobs' },
+      { id: 'fable', note: 'The newest family' }
+    ];
+    return {
+      presets: presets.map(function (p) {
+        var on = self.state.preset === p.id;
+        return {
+          label: p.label, desc: p.desc, badge: p.badge, on: on, off: !p.ready,
+          badgeClass: p.ready ? (on ? 'b-ink' : 'b-pos') : 'b-neu',
+          rowStyle: on ? 'background: var(--paper-100); box-shadow: inset 2px 0 0 var(--madder-600);' : (p.ready ? '' : 'opacity: .55; cursor: not-allowed;'),
+          pick: function () { if (p.ready) self.setState({ preset: p.id }); }
+        };
+      }),
+      models: models.map(function (m, i) {
+        var on = self.state.model === m.id;
+        return {
+          id: m.id, note: m.note, on: on,
+          cellStyle: 'display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; cursor: pointer;' + (i ? ' border-left: 1px solid var(--rule-hair);' : '') + (on ? ' background: var(--paper-100); box-shadow: inset 0 -2px 0 var(--madder-600);' : ''),
+          pick: function () { self.setState({ model: m.id }); }
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>
