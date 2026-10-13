@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { leaseText, type Inbox } from "./dashboard.js";
-import { DashNav, Layout } from "./layout.js";
+import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
 
@@ -39,7 +39,7 @@ export function Bot({ id }: { id: string }) {
   }
 
   return (
-    <Layout title="Bot · loopway" nav={<DashNav me={me} />}>
+    <DashLayout title="Bot · loopway" me={me}>
       <div className="page-head">
         <div>
           <h1>{bot.missing ? "Bot not found" : (b?.name ?? "Bot")}</h1>
@@ -123,7 +123,7 @@ export function Bot({ id }: { id: string }) {
           No {status === "all" ? "" : status + " "}threads.
         </p>
       )}
-    </Layout>
+    </DashLayout>
   );
 }
 
@@ -423,12 +423,13 @@ export function Thread({ botId, id }: { botId: string; id: string }) {
   const owner = runners.data?.find((r) => r.id === t?.runner_id);
 
   return (
-    <Layout
+    <DashLayout
       title="Thread · loopway"
-      nav={
-        <DashNav me={me}>
-          <a href={"/dashboard/bots/" + botId}>{bot.data?.name ?? "Bot"}</a>
-        </DashNav>
+      me={me}
+      crumb={
+        <p className="crumb">
+          <a href={"/dashboard/bots/" + botId}>← {bot.data?.name ?? "Bot"}</a>
+        </p>
       }
     >
       <div className="page-head">
@@ -459,7 +460,7 @@ export function Thread({ botId, id }: { botId: string; id: string }) {
           />
         </>
       )}
-    </Layout>
+    </DashLayout>
   );
 }
 

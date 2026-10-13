@@ -132,6 +132,7 @@ export interface BotVersion {
 export interface Bot {
   id: string;
   name: string;
+  model: string;
   prompt_version: BotVersion | null;
   inbox_ids: string[];
   cursor: number;
@@ -145,7 +146,7 @@ export interface Runner {
   name: string;
   last_seen_at: string;
   leased_until: string | null;
-  bots: unknown[];
+  bots: { id: string; name: string }[];
   threads: number;
 }
 

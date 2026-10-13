@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
 import type { Inbox as InboxInfo } from "./dashboard.js";
-import { DashNav, Layout } from "./layout.js";
+import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 
 interface InboxMessage {
@@ -49,7 +49,7 @@ export function Inbox({ id }: { id: string }) {
   }, [inbox, load]);
 
   return (
-    <Layout title="Inbox · loopway" nav={<DashNav me={me} />}>
+    <DashLayout title="Inbox · loopway" me={me}>
       <div className="page-head">
         <div>
           <h1>{missing ? "Inbox not found" : (inbox?.name ?? "Inbox")}</h1>
@@ -87,7 +87,7 @@ export function Inbox({ id }: { id: string }) {
           </button>
         )}
       </div>
-    </Layout>
+    </DashLayout>
   );
 }
 
