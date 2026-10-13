@@ -220,6 +220,21 @@ export interface BotActivity {
   median_wait_seconds: number | null;
 }
 
+/** What an inbox received, from `GET /inboxes/activity` (a list) or `GET /inboxes/:id/activity`. */
+export interface InboxActivity {
+  inbox_id: string;
+  /** Oldest first, one per UTC day. */
+  days: { date: string; received: number }[];
+  received: number;
+  /** Messages ever received. */
+  messages: number;
+  last_message_at: string | null;
+}
+
+/** An inbox's days in the shape `DeliveryBars` draws. */
+export const barDays = (a: InboxActivity | undefined) =>
+  a && { days: a.days.map((d) => ({ date: d.date, delivered: d.received })) };
+
 /** "5 min ago" for a time in the past; "never" for null. */
 export function ago(iso: string | null, now = Date.now()) {
   if (!iso) return "never";

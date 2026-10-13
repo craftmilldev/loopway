@@ -210,6 +210,34 @@ export function createApi(opts: ApiOptions) {
     return c.json(serializeInbox(c, inbox), 201);
   });
 
+  const activityQuery = z.object({ days: z.coerce.number().int().min(1).max(30).default(14) });
+
+  /** Parses `days`, recording a rejected one under `<kind>_activity_rejected`. */
+  async function activityDays(c: Context<Env>, kind: "bot" | "inbox", scope: "all" | "bot" | "one") {
+    const q = activityQuery.safeParse(c.req.query());
+    if (!q.success) {
+      await metrics.capture(`${kind}_activity_rejected`, c.var.user.id, { scope, reason: "invalid_days" });
+      throw q.error;
+    }
+    return q.data.days;
+  }
+
+  // Registered before /inboxes/:inboxId, which would take "activity" for an id.
+  authed.get("/inboxes/activity", async (c) => {
+    const days = await activityDays(c, "inbox", "all");
+    const rows = await store.inboxActivity(c.var.db, c.var.user.id, days);
+    await metrics.capture("inbox_activity_viewed", c.var.user.id, { scope: "all", days, inboxes: rows.length });
+    return c.json({ data: rows.map(serializeInboxActivity) });
+  });
+
+  authed.get("/inboxes/:inboxId/activity", async (c) => {
+    const inbox = await ownedInbox(c);
+    const days = await activityDays(c, "inbox", "one");
+    const [row] = await store.inboxActivity(c.var.db, c.var.user.id, days, inbox.id);
+    await metrics.capture("inbox_activity_viewed", c.var.user.id, { scope: "one", days, inboxes: 1 });
+    return c.json(serializeInboxActivity(row!));
+  });
+
   authed.get("/inboxes/:inboxId", async (c) => {
     const inbox = await ownedInbox(c);
     return c.json({ ...serializeInbox(c, inbox), stats: await store.inboxStats(c.var.db, inbox.id) });
@@ -351,20 +379,8 @@ export function createApi(opts: ApiOptions) {
     return c.json({ data: rows.map(serializeBot) });
   });
 
-  const activityQuery = z.object({ days: z.coerce.number().int().min(1).max(30).default(14) });
-
-  /** Parses `days`, recording a rejected one. */
-  async function activityDays(c: Context<Env>, scope: "all" | "bot") {
-    const q = activityQuery.safeParse(c.req.query());
-    if (!q.success) {
-      await metrics.capture("bot_activity_rejected", c.var.user.id, { scope, reason: "invalid_days" });
-      throw q.error;
-    }
-    return q.data.days;
-  }
-
   authed.get("/bots/activity", async (c) => {
-    const days = await activityDays(c, "all");
+    const days = await activityDays(c, "bot", "all");
     const rows = await store.botActivity(c.var.db, c.var.user.id, days);
     await metrics.capture("bot_activity_viewed", c.var.user.id, { scope: "all", days, bots: rows.length });
     return c.json({ data: rows.map(serializeActivity) });
@@ -396,7 +412,7 @@ export function createApi(opts: ApiOptions) {
 
   authed.get("/bots/:botId/activity", async (c) => {
     const bot = await ownedBot(c);
-    const days = await activityDays(c, "bot");
+    const days = await activityDays(c, "bot", "bot");
     const [row] = await store.botActivity(c.var.db, c.var.user.id, days, bot.id);
     await metrics.capture("bot_activity_viewed", c.var.user.id, { scope: "bot", days, bots: 1 });
     return c.json(serializeActivity(row!));
@@ -852,6 +868,16 @@ function serializeMessage(e: MessageRow) {
     seq: Number(e.seq),
     received_at: iso(e.received_at),
     event: e.cloudevent,
+  };
+}
+
+function serializeInboxActivity(a: store.InboxActivity) {
+  return {
+    inbox_id: a.inbox_id,
+    days: a.days,
+    received: a.received,
+    messages: a.messages,
+    last_message_at: iso(a.last_message_at),
   };
 }
 

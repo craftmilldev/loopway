@@ -1,9 +1,10 @@
 import { createRoot } from "react-dom/client";
 import { Bot, Thread } from "./bot.js";
 import { Bots } from "./bots.js";
-import { Inboxes, NewBot } from "./dashboard.js";
+import { NewBot } from "./dashboard.js";
 import { Home } from "./home.js";
 import { Inbox } from "./inbox.js";
+import { Inboxes } from "./inboxes.js";
 import { Placeholder } from "./layout.js";
 import { Login } from "./login.js";
 import { startMetrics } from "./metrics.js";
