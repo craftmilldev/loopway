@@ -1,4 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { botState } from "./bot-state.js";
+import { DeliveryBars } from "./delivery-bars.js";
+import { StateBadge } from "./overview.js";
 import { leaseText, type Inbox } from "./dashboard.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
@@ -6,50 +9,89 @@ import { track } from "./metrics.js";
 
 type Status = "active" | "ended" | "all";
 
+export type Tab = "activity" | "threads" | "settings";
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: "activity", label: "Activity" },
+  { key: "threads", label: "Threads" },
+  { key: "settings", label: "Settings" },
+];
+
+/** The tab a `?tab=` value names; anything else is Activity. */
+export const tabOf = (value: string | null): Tab => (value === "threads" || value === "settings" ? value : "activity");
+
+/** A bot's page on `tab`. Activity is the bare bot URL. */
+export const tabPath = (botId: string, tab: Tab) =>
+  "/dashboard/bots/" + encodeURIComponent(botId) + (tab === "activity" ? "" : "?tab=" + tab);
+
+const plural = (n: number, one: string) => `${n} ${n === 1 ? one : one + "s"}`;
+
+/** "4 min", "1 h 5 min" for a wait in seconds; "–" when nothing was delivered. */
+export function waitText(seconds: number | null) {
+  if (seconds === null) return "–";
+  if (seconds < 60) return Math.round(seconds) + " s";
+  const min = Math.round(seconds / 60);
+  if (min < 60) return min + " min";
+  return `${Math.floor(min / 60)} h${min % 60 ? " " + (min % 60) + " min" : ""}`;
+}
+
 export function Bot({ id }: { id: string }) {
   const me = lw.useMe();
   const ready = !!me;
+  const tab = tabOf(new URLSearchParams(location.search).get("tab"));
   const botPath = "/bots/" + encodeURIComponent(id);
   const bot = lw.useGet<lw.Bot>(botPath, ready);
+  const bots = lw.useList<lw.Bot>("/bots", ready);
   const runners = lw.useList<lw.Runner>("/runners", ready);
   const inboxes = lw.useList<Inbox>("/inboxes", ready);
-  const [status, setStatus] = useState<Status>("active");
-  const threads = lw.useList<lw.Thread>(botPath + "/threads?status=" + status, ready);
-  const [editing, setEditing] = useState(false);
+  const open = lw.useList<lw.Thread>(botPath + "/threads?status=active", ready);
   const [error, setError] = useState<string | null>(null);
 
   const runner = (rid: string | null) => runners.data?.find((r) => r.id === rid);
   const b = bot.data;
+  const state = open.data && runners.data ? botState(open.data, runners.data) : null;
+  const waiting = open.data?.reduce((n, t) => n + t.waiting.length, 0) ?? 0;
+  const stopped = state === "limited" || state === "stranded";
+
+  useEffect(() => {
+    if (b) track("bot_tab_viewed", { tab });
+  }, [b?.id, tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (bot.missing) track("bot_not_found");
+  }, [bot.missing]);
+  useEffect(() => {
+    if (stopped) track("bot_banner_shown", { state });
+  }, [stopped, state]);
 
   async function remove() {
-    if (!confirm(`Delete ${b?.name}? Its threads are deleted with it.`)) return;
+    if (!confirm(`Delete ${b?.name}? Its threads are deleted with it.`)) return track("bot_delete_cancelled");
     const r = await lw.api(botPath, { method: "DELETE" });
     if (r.status === 401) return lw.expired(r);
-    if (!r.ok) return setError(await lw.message(r));
+    if (!r.ok) {
+      track("bot_delete_failed", { status: r.status });
+      return setError(await lw.message(r));
+    }
     location.assign("/dashboard");
-  }
-
-  async function release(t: lw.Thread) {
-    const name = runner(t.runner_id)?.name ?? "its runner";
-    if (!confirm(`Release this thread from ${name}? The next runner to claim it starts it fresh.`)) return;
-    const r = await lw.api(`${botPath}/threads/${t.id}/release`, { method: "POST", body: {} });
-    if (r.status === 401) return lw.expired(r);
-    if (!r.ok) return setError(await lw.message(r));
-    void threads.reload();
   }
 
   return (
     <DashLayout title="Bot · loopway" me={me}>
+      {bots.data && (
+        <nav className="switcher" aria-label="Bots">
+          <a href="/dashboard/bots">All bots</a>
+          {bots.data.map((x) => (
+            <BotSwitch key={x.id} bot={x} current={x.id === id} tab={tab} runners={runners.data} />
+          ))}
+        </nav>
+      )}
       <div className="page-head">
         <div>
-          <h1>{bot.missing ? "Bot not found" : (b?.name ?? "Bot")}</h1>
+          <h1>
+            {bot.missing ? "Bot not found" : (b?.name ?? "Bot")} {state && <StateBadge state={state} />}
+          </h1>
           {b && (
             <div className="muted mono">
-              read up to #{b.cursor} · {leaseText(b, runner(b.runner_id)?.name)}
-            </div>
-          )}
-          {b && (
-            <div className="muted mono">
+              {b.model} · reads{" "}
               {b.inbox_ids.map((i, n) => {
                 const inbox = inboxes.data?.find((x) => x.id === i);
                 return (
@@ -58,72 +100,246 @@ export function Bot({ id }: { id: string }) {
                     <a href={"/dashboard/inboxes/" + i}>{inbox?.name ?? i}</a>
                   </span>
                 );
-              })}
+              })}{" "}
+              · {leaseText(b, runner(b.runner_id)?.name)} · read up to #{b.cursor}
             </div>
           )}
         </div>
-        {b && (
-          <button className="btn btn-md" type="button" onClick={() => setEditing(!editing)}>
-            Edit
-          </button>
-        )}
       </div>
-      {b && editing && (
-        <EditBot
-          bot={b}
-          inboxes={inboxes.data ?? []}
-          onSaved={() => {
-            setEditing(false);
-            void bot.reload();
-          }}
-          onDelete={() => void remove()}
-        />
+      {b && (
+        <nav className="tabs" aria-label="Bot sections">
+          <TabLink botId={id} tab="activity" current={tab} />
+          <TabLink botId={id} tab="threads" current={tab} />
+          <a href={`/dashboard/bots/${encodeURIComponent(id)}/prompt`}>
+            Prompt and rules{b.prompt_version ? ` · v${b.prompt_version.version}` : ""}
+          </a>
+          <TabLink botId={id} tab="settings" current={tab} />
+        </nav>
+      )}
+      {stopped && (
+        <div className="banner" role="alert">
+          <strong>{state === "limited" ? "Stopped at its usage limit." : "Stranded: its runner is offline."}</strong>{" "}
+          {state === "limited" ? "It carries on when the limit resets." : "It carries on when a runner holds it again."}{" "}
+          {plural(waiting, "message")} waiting.
+        </div>
       )}
       {error && <p className="error">{error}</p>}
 
-      {b && <Versions botPath={botPath} current={b.prompt_version} onSaved={() => void bot.reload()} />}
-
-      <div className="page-head section">
-        <h1>Threads</h1>
-        <div className="input-wrap">
-          <select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value as Status)}>
-            <option value="active">Active</option>
-            <option value="ended">Ended</option>
-            <option value="all">All</option>
-          </select>
-        </div>
-      </div>
-      <ul className="list">
-        {threads.data?.map((t) => {
-          const owner = runner(t.runner_id);
-          return (
-            <li key={t.id}>
-              <a className="title" href={`/dashboard/bots/${id}/threads/${t.id}`}>
-                {t.subjects.length ? t.subjects.join(", ") : t.id}
-              </a>
-              <Flags t={t} />
-              <div className="meta">
-                {t.status} · {t.runner_id ? `on ${owner?.name ?? "an unknown runner"}` : "no runner yet"} ·{" "}
-                {t.waiting.length} waiting · {t.inflight.length} inflight · {t.delivered} delivered · updated{" "}
-                {lw.when(t.updated_at)}
-              </div>
-              {t.runner_id && !owner?.leased_until && (
-                <div className="actions">
-                  <button className="btn btn-sm btn-quiet" type="button" onClick={() => void release(t)}>
-                    Release
-                  </button>
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-      {threads.data?.length === 0 && (
-        <p className="muted" style={{ marginTop: 24 }}>
-          No {status === "all" ? "" : status + " "}threads.
-        </p>
+      {b && tab === "activity" && <ActivityTab botPath={botPath} threads={open.data} />}
+      {b && tab === "threads" && <ThreadsTab botId={id} botPath={botPath} runners={runners.data} onError={setError} />}
+      {b && tab === "settings" && (
+        <>
+          <EditBot
+            bot={b}
+            inboxes={inboxes.data ?? []}
+            onSaved={() => void bot.reload()}
+            onDelete={() => void remove()}
+          />
+          <Versions botPath={botPath} current={b.prompt_version} onSaved={() => void bot.reload()} />
+        </>
       )}
     </DashLayout>
+  );
+}
+
+function TabLink({ botId, tab, current }: { botId: string; tab: Tab; current: Tab }) {
+  const label = TABS.find((t) => t.key === tab)!.label;
+  return (
+    <a
+      href={tabPath(botId, tab)}
+      className={tab === current ? "on" : undefined}
+      aria-current={tab === current ? "page" : undefined}
+    >
+      {label}
+    </a>
+  );
+}
+
+/** One bot in the switcher, marked with its state. Its threads are fetched on their own so the mark fills in late. */
+function BotSwitch({
+  bot,
+  current,
+  tab,
+  runners,
+}: {
+  bot: lw.Bot;
+  current: boolean;
+  tab: Tab;
+  runners: lw.Runner[] | null;
+}) {
+  const threads = lw.useList<lw.Thread>("/bots/" + encodeURIComponent(bot.id) + "/threads?status=active", true);
+  const state = threads.data && runners ? botState(threads.data, runners) : null;
+  return (
+    <a
+      href={tabPath(bot.id, tab)}
+      className={current ? "on" : undefined}
+      aria-current={current ? "page" : undefined}
+      onClick={() => track("bot_switched", { tab })}
+    >
+      {state && <span className={"dot state-" + state} title={state} />}
+      {bot.name}
+    </a>
+  );
+}
+
+function ActivityTab({ botPath, threads }: { botPath: string; threads: lw.Thread[] | null }) {
+  const week = lw.useGet<lw.BotActivity>(botPath + "/activity?days=7", true);
+  const month = lw.useGet<lw.BotActivity>(botPath + "/activity?days=30", true);
+  const versions = lw.useList<lw.BotVersion>(botPath + "/versions", true);
+  const w = week.data;
+  const m = month.data;
+  const today = m?.days[m.days.length - 1]?.delivered;
+  const inflight = threads?.reduce((n, t) => n + t.inflight.length, 0);
+  const waiting = threads?.reduce((n, t) => n + t.waiting.length, 0);
+
+  return (
+    <div className="ov-split bot-split">
+      <div className="ov-main">
+        <section className="figures" aria-label="Last 7 days">
+          <Figure label="Open threads" value={threads?.length} />
+          <Figure label="Delivered, 7 days" value={w?.delivered} note={w ? "in " + plural(w.runs, "run") : undefined} />
+          <Figure
+            label="Median wait"
+            value={w ? waitText(w.median_wait_seconds) : undefined}
+            note="assigned to delivered"
+          />
+        </section>
+        <h2>Delivered per day, 30 days</h2>
+        <div className="bars-large">
+          <DeliveryBars activity={m ?? undefined} days={30} height={120} />
+        </div>
+      </div>
+      <aside className="ov-side">
+        <h2>Right now</h2>
+        <dl className="now">
+          <dt>Waiting</dt>
+          <dd>{waiting ?? "…"}</dd>
+          <dt>Inflight</dt>
+          <dd>{inflight ?? "…"}</dd>
+          <dt>Delivered today</dt>
+          <dd>{today ?? "…"}</dd>
+        </dl>
+        <h2>Prompt versions</h2>
+        <ul className="list">
+          {versions.data?.slice(0, 3).map((v) => (
+            <li key={v.version}>
+              <span className="type">Version {v.version}</span> <span className="muted">{lw.when(v.created_at)}</span>
+            </li>
+          ))}
+        </ul>
+        {versions.data?.length === 0 && <p className="muted">No versions yet.</p>}
+      </aside>
+    </div>
+  );
+}
+
+function Figure({ label, value, note }: { label: string; value: string | number | undefined; note?: string }) {
+  return (
+    <div className="figure">
+      <span className="lbl">{label}</span>
+      <span className="figure-value">{value ?? "…"}</span>
+      {note && <span className="muted">{note}</span>}
+    </div>
+  );
+}
+
+const FILTERS: { key: Status; label: string }[] = [
+  { key: "active", label: "Open" },
+  { key: "ended", label: "Ended" },
+  { key: "all", label: "All" },
+];
+
+function ThreadsTab({
+  botId,
+  botPath,
+  runners,
+  onError,
+}: {
+  botId: string;
+  botPath: string;
+  runners: lw.Runner[] | null;
+  onError: (message: string) => void;
+}) {
+  const [status, setStatus] = useState<Status>("active");
+  const threads = lw.useList<lw.Thread>(botPath + "/threads?status=" + status, true);
+
+  async function release(t: lw.Thread) {
+    const name = runners?.find((r) => r.id === t.runner_id)?.name ?? "its runner";
+    if (!confirm(`Release this thread from ${name}? The next runner to claim it starts it fresh.`)) return;
+    const r = await lw.api(`${botPath}/threads/${t.id}/release`, { method: "POST", body: {} });
+    if (r.status === 401) return lw.expired(r);
+    if (!r.ok) {
+      track("thread_release_failed", { status: r.status });
+      return onError(await lw.message(r));
+    }
+    void threads.reload();
+  }
+
+  return (
+    <>
+      <div className="range" role="group" aria-label="Filter threads">
+        {FILTERS.map((f) => (
+          <button
+            key={f.key}
+            type="button"
+            className={f.key === status ? "on" : undefined}
+            aria-pressed={f.key === status}
+            onClick={() => {
+              track("bot_threads_filter_changed", { filter: f.key });
+              setStatus(f.key);
+            }}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+      <div className="scroll">
+        <table className="ledger">
+          <thead>
+            <tr>
+              <th scope="col">Subjects</th>
+              <th scope="col">State</th>
+              <th scope="col" className="num">
+                Waiting
+              </th>
+              <th scope="col" className="num">
+                Delivered
+              </th>
+              <th scope="col">Updated</th>
+              <th scope="col" />
+            </tr>
+          </thead>
+          <tbody>
+            {threads.data?.map((t) => (
+              <tr key={t.id}>
+                <td>
+                  <a href={`/dashboard/bots/${encodeURIComponent(botId)}/threads/${t.id}`}>
+                    {t.subjects.length ? t.subjects.join(", ") : t.id}
+                  </a>
+                </td>
+                <td>
+                  {t.status}
+                  <Flags t={t} />
+                </td>
+                <td className="num">{t.waiting.length}</td>
+                <td className="num">{t.delivered}</td>
+                <td>{lw.when(t.updated_at)}</td>
+                <td>
+                  {t.runner_id && !runners?.find((r) => r.id === t.runner_id)?.leased_until && (
+                    <button className="btn btn-sm btn-quiet" type="button" onClick={() => void release(t)}>
+                      Release
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {threads.data?.length === 0 && (
+        <p className="muted">No {status === "all" ? "" : (status === "active" ? "open" : status) + " "}threads.</p>
+      )}
+    </>
   );
 }
 
@@ -361,6 +577,7 @@ function EditBot({
   onDelete: () => void;
 }) {
   const [name, setName] = useState(bot.name);
+  const [model, setModel] = useState(bot.model);
   const [checked, setChecked] = useState(new Set(bot.inbox_ids));
   const [error, setError] = useState<string | null>(null);
 
@@ -374,10 +591,16 @@ function EditBot({
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!checked.size) return setError("Pick at least one inbox.");
-    const r = await lw.api("/bots/" + bot.id, { method: "PATCH", body: { name, inbox_ids: [...checked] } });
+    if (!checked.size) {
+      track("bot_edit_no_inbox");
+      return setError("Pick at least one inbox.");
+    }
+    const r = await lw.api("/bots/" + bot.id, { method: "PATCH", body: { name, model, inbox_ids: [...checked] } });
     if (r.status === 401) return lw.expired(r);
-    if (!r.ok) return setError(await lw.message(r));
+    if (!r.ok) {
+      track("bot_edit_failed", { status: r.status });
+      return setError(await lw.message(r));
+    }
     onSaved();
   }
 
@@ -387,6 +610,16 @@ function EditBot({
         <label htmlFor="bot-name">Name</label>
         <div className="input-wrap">
           <input id="bot-name" required maxLength={200} value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+      </div>
+      <div className="field">
+        <label htmlFor="bot-model">Model</label>
+        <div className="input-wrap">
+          <select id="bot-model" value={model} onChange={(e) => setModel(e.target.value)}>
+            {(lw.BOT_MODELS.includes(model) ? lw.BOT_MODELS : [model, ...lw.BOT_MODELS]).map((m) => (
+              <option key={m}>{m}</option>
+            ))}
+          </select>
         </div>
       </div>
       <div className="field">

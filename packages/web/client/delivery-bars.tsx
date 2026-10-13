@@ -21,7 +21,16 @@ interface Tip {
 }
 
 /** Small bars, one per day, for a bot's deliveries. Words instead for a bot with none in the window. */
-export function DeliveryBars({ activity, days }: { activity: BotActivity | undefined; days: number }) {
+export function DeliveryBars({
+  activity,
+  days,
+  height = 24,
+}: {
+  activity: BotActivity | undefined;
+  days: number;
+  /** The bars' height in px; above the default the columns widen to fill a chart. */
+  height?: number;
+}) {
   const [tip, setTip] = useState<Tip | null>(null);
   // The tip is placed once, so hide it if anything scrolls rather than leave it detached from its bar.
   useEffect(() => {
@@ -40,8 +49,12 @@ export function DeliveryBars({ activity, days }: { activity: BotActivity | undef
     setTip({ text, x: r.left + r.width / 2, y: r.top });
   };
   return (
-    <span className="bars-wrap" role="group" aria-label={`${total} delivered in ${shown.length} days`}>
-      <span className="bars">
+    <span
+      className={"bars-wrap" + (height > 24 ? " bars-lg" : "")}
+      role="group"
+      aria-label={`${total} delivered in ${shown.length} days`}
+    >
+      <span className="bars" style={{ height }}>
         {shown.map((d) => {
           const text = `${shortDate(d.date)} · ${d.delivered} delivered`;
           return (
@@ -58,7 +71,7 @@ export function DeliveryBars({ activity, days }: { activity: BotActivity | undef
             >
               <span
                 className="bar"
-                style={{ height: d.delivered ? Math.max(2, Math.round((d.delivered / max) * 20)) : 1 }}
+                style={{ height: d.delivered ? Math.max(2, Math.round((d.delivered / max) * (height - 4))) : 1 }}
               />
             </span>
           );
