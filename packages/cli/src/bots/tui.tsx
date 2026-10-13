@@ -146,7 +146,11 @@ function ListView({ snap, selected, onSelect, onOpen }: ListViewProps) {
 /** Every row of the list view. Waiting messages stop at `waitingMax` so the session lists stay in view. */
 function listRows(snap: Snapshot, lists: Record<Section, string[]>, waitingMax: number): Row[] {
   const rows: Row[] = [{ key: "h-messages", header: `Waiting messages (${snap.waiting.length})` }];
-  for (const m of snap.waiting.slice(0, waitingMax)) rows.push({ key: m.id, label: m.type, meta: m.subject ?? "" });
+  // The same message waits once per bot that routed it, so a row is keyed by its thread too.
+  for (const m of snap.waiting.slice(0, waitingMax)) {
+    const where = `${m.bot_name} ${m.thread_id.slice(0, 8)}${snap.running.has(m.thread_id) ? " working" : ""}`;
+    rows.push({ key: `${m.thread_id}:${m.id}`, label: m.type, meta: [m.subject, where].filter(Boolean).join("  ") });
+  }
   const more = snap.waiting.length - waitingMax;
   if (more > 0) rows.push({ key: "more-messages", meta: `… ${more} more` });
   if (!snap.waiting.length) rows.push({ key: "none-messages", meta: "none" });

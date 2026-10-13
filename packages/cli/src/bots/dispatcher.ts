@@ -56,12 +56,18 @@ export interface SkippedBot extends Bot {
   leased_until?: string;
 }
 
+/** A message waiting on one of this runner's threads. The same message can wait on a thread of each bot. */
+export interface WaitingMessage extends ThreadMessage {
+  thread_id: string;
+  bot_name: string;
+}
+
 /** What a dispatcher is doing right now, for the TUI. */
 export interface DispatcherState {
   /** The bots this runner holds a lease on, and the ones it skipped because another runner holds theirs. */
   bots: { held: Bot[]; skipped: SkippedBot[] };
   /** Messages assigned to this runner's threads but not delivered yet, oldest first. */
-  waiting: ThreadMessage[];
+  waiting: WaitingMessage[];
   /** Every thread of the bots, this runner's and other runners', by id. */
   threads: Record<string, Thread>;
   /** This runner's id, and the names of the account's runners, to say whose a thread is. */
@@ -260,10 +266,11 @@ export class Dispatcher {
     const threads: Record<string, Thread> = {};
     for (const bot of this.bots) for (const t of await this.client.listThreads(bot.id, "all")) threads[t.id] = t;
     const runners = Object.fromEntries((await this.client.listRunners()).map((r) => [r.id, r.name]));
+    const names = new Map(this.bots.map((b) => [b.id, b.name]));
     const waiting = Object.values(threads)
       .filter((t) => t.runner_id === this.runnerId)
-      .flatMap((t) => t.waiting)
-      .sort((a, b) => a.id.localeCompare(b.id));
+      .flatMap((t) => t.waiting.map((m) => ({ ...m, thread_id: t.id, bot_name: names.get(t.bot_id) ?? "" })))
+      .sort((a, b) => a.id.localeCompare(b.id) || a.thread_id.localeCompare(b.thread_id));
     return {
       bots: {
         held: this.bots.filter((b) => this.leases.has(b.id)),

@@ -814,7 +814,14 @@ describe("threads", () => {
     const state = await d.state();
     expect(state.bots.held.map((b) => b.name)).toEqual(["dev1"]);
     expect(state.waiting).toEqual([
-      { id: (await list()).at(-1).id, inbox_id: inbox.id, type: "com.github.issues.opened", subject: "a/b#3" },
+      {
+        id: (await list()).at(-1).id,
+        inbox_id: inbox.id,
+        type: "com.github.issues.opened",
+        subject: "a/b#3",
+        thread_id: expect.any(String),
+        bot_name: "dev1",
+      },
     ]);
     expect([...state.running].sort()).toEqual(
       Object.keys(state.threads)

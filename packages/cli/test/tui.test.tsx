@@ -32,7 +32,9 @@ const bot = (name: string) => ({ id: name, name, kind: "github-threads", inbox_i
 
 const snapshot: Snapshot = {
   bots: { held: [bot("dev")], skipped: [bot("ci")] },
-  waiting: [{ id: "e1", inbox_id: "in", type: "com.github.push", subject: "a/b#9" }],
+  waiting: [
+    { id: "e1", inbox_id: "in", type: "com.github.push", subject: "a/b#9", thread_id: "aaaaaaaa-1", bot_name: "dev" },
+  ],
   threads: {
     "aaaaaaaa-1": thread(["a/b#1"], "active", "2026-01-01T00:00:03Z"),
     "bbbbbbbb-2": thread(["a/b#2", "a/b#3"], "active", "2026-01-01T00:00:02Z"),
@@ -102,6 +104,7 @@ describe("ThreadsTui", () => {
       "· dev · leased elsewhere: ci",
       "Waiting messages (1)",
       "com.github.push a/b#9",
+      "dev aaaaaaaa working",
       "Working (1)",
       "Waiting (1)",
       "Done (2)",
