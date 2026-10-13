@@ -433,6 +433,22 @@ pre {
   background: currentColor;
 }
 
+.bars-lg {
+  display: flex;
+  width: 100%;
+}
+.bars-lg .bars {
+  flex: 1;
+  gap: 2px;
+}
+.bars-lg .bar-col {
+  flex: 1;
+  width: auto;
+}
+.bars-lg .bar {
+  width: 70%;
+}
+
 .bars-max {
   font-family: var(--font-type);
   font-size: 0.6875rem;
@@ -899,4 +915,97 @@ main.dash {
     padding-right: 0;
     border-left: 0;
   }
+}
+
+.switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-bottom: 16px;
+  font-family: var(--font-type);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.switcher a {
+  color: var(--ink-600);
+  text-decoration: none;
+}
+.switcher a.on {
+  color: var(--ink-900);
+  border-bottom: 2px solid var(--madder-600);
+}
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  color: var(--ink-400);
+}
+.dot.state-working {
+  color: var(--indigo-600);
+}
+.dot.state-limited,
+.dot.state-stranded {
+  color: var(--madder-600);
+}
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 28px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--rule-hair);
+}
+.tabs a {
+  padding: 12px 2px;
+  border-bottom: 2px solid transparent;
+  font-family: var(--font-type);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-600);
+  text-decoration: none;
+}
+.tabs a:hover {
+  color: var(--ink-900);
+}
+.tabs a.on {
+  color: var(--ink-900);
+  border-bottom-color: var(--madder-600);
+}
+.banner {
+  margin-bottom: 24px;
+  padding: 12px 16px;
+  border: 1px solid var(--madder-600);
+  color: var(--madder-600);
+}
+.bot-split {
+  margin-top: 0;
+}
+.figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px 48px;
+  margin-bottom: 32px;
+}
+.figure-value {
+  display: block;
+  font-size: 2.25rem;
+  line-height: 1.1;
+}
+.bars-large {
+  margin-top: 12px;
+}
+.now {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 16px;
+  margin: 0 0 24px;
+}
+.now dd {
+  margin: 0;
+  font-family: var(--font-type);
+  text-align: right;
 }
