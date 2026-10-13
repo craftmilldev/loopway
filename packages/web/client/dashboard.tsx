@@ -3,6 +3,7 @@ import { PRESETS } from "@loopway/presets";
 import { useSourceRequest } from "../ee/client/source-request.js";
 import { DashNav, Layout } from "./layout.js";
 import * as lw from "./lw.js";
+import { track } from "./metrics.js";
 
 export interface Inbox {
   id: string;
@@ -150,11 +151,12 @@ function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: () => 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!checked.size) return setError("Pick at least one inbox.");
-    const r = await lw.api("/bots", {
-      method: "POST",
-      body: { name, ...PRESETS[preset]!, model, inbox_ids: [...checked] },
-    });
+    if (!checked.size) {
+      track("bot_create_no_inbox");
+      return setError("Pick at least one inbox.");
+    }
+    const { prompt, rules } = PRESETS[preset]!;
+    const r = await lw.api("/bots", { method: "POST", body: { name, prompt, rules, model, inbox_ids: [...checked] } });
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) return setError(await lw.message(r));
     onCreated();
@@ -172,11 +174,14 @@ function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: () => 
         <label htmlFor="bot-preset">Start from</label>
         <div className="input-wrap">
           <select id="bot-preset" value={preset} onChange={(e) => setPreset(e.target.value)}>
-            {Object.keys(PRESETS).map((k) => (
-              <option key={k}>{k}</option>
+            {Object.entries(PRESETS).map(([k, p]) => (
+              <option key={k} value={k}>
+                {p.label}
+              </option>
             ))}
           </select>
         </div>
+        <p className="hint">{PRESETS[preset]!.description}</p>
       </div>
       <div className="field">
         <label htmlFor="bot-model">Model</label>

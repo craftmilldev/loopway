@@ -94,7 +94,8 @@ export async function createBot(
   const client = await authedClient(ctx);
   const bot = await client.createBot({
     name: opts.name,
-    ...PRESETS[opts.preset],
+    prompt: PRESETS[opts.preset]?.prompt,
+    rules: PRESETS[opts.preset]?.rules,
     model: opts.model,
     inbox_ids: await resolveInboxes(client, opts.inbox),
   });
