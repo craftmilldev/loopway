@@ -1,7 +1,7 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { PRESETS } from "@loopway/presets";
 import { useSourceRequest } from "../ee/client/source-request.js";
-import { DashNav, Layout } from "./layout.js";
+import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
 
@@ -13,96 +13,39 @@ export interface Inbox {
   config?: { secret?: string | null };
 }
 
-export function Dashboard() {
+/** `/dashboard/bots/new`: the create form, until the new-bot flow lands. */
+export function NewBot() {
   const me = lw.useMe();
-  const ready = !!me;
-  const bots = lw.useList<lw.Bot>("/bots", ready);
-  const runners = lw.useList<lw.Runner>("/runners", ready);
-  const inboxes = lw.useList<Inbox>("/inboxes", ready);
-  const [creatingInbox, setCreatingInbox] = useState(false);
-  const [creatingBot, setCreatingBot] = useState(false);
-  const [active, setActive] = useState<Record<string, number>>({});
-
-  // Each bot's active threads, for the count. One request per bot.
-  useEffect(() => {
-    for (const b of bots.data ?? []) {
-      void lw.api(`/bots/${b.id}/threads?status=active`).then(async (r) => {
-        if (!r.ok) return;
-        const count = ((await r.json()) as { data: unknown[] }).data.length;
-        setActive((a) => ({ ...a, [b.id]: count }));
-      });
-    }
-  }, [bots.data]);
-
-  const runnerName = (id: string | null) => runners.data?.find((r) => r.id === id)?.name;
-
+  const inboxes = lw.useList<Inbox>("/inboxes", !!me);
   return (
-    <Layout title="Dashboard · loopway" nav={<DashNav me={me} />}>
-      <div className="page-head" id="bots">
-        <h1>Bots</h1>
-        <button className="btn btn-md" type="button" onClick={() => setCreatingBot(!creatingBot)}>
-          New bot
-        </button>
+    <DashLayout title="New bot · loopway" me={me}>
+      <div className="page-head">
+        <h1>New bot</h1>
       </div>
-      {creatingBot && (
-        <CreateBot
-          inboxes={inboxes.data ?? []}
-          onCreated={() => {
-            setCreatingBot(false);
-            void bots.reload();
-          }}
-        />
+      {inboxes.data && (
+        <CreateBot inboxes={inboxes.data} onCreated={(id) => location.assign("/dashboard/bots/" + id)} />
       )}
-      <ul className="list">
-        {bots.data?.map((b) => (
-          <li key={b.id}>
-            <a className="title" href={"/dashboard/bots/" + b.id}>
-              {b.name}
-            </a>
-            <div className="meta">
-              {b.inbox_ids.map((i) => inboxes.data?.find((x) => x.id === i)?.name ?? i).join(", ")} ·{" "}
-              {active[b.id] ?? "…"} active threads
-            </div>
-            <div className="meta">{leaseText(b, runnerName(b.runner_id))}</div>
-          </li>
-        ))}
-      </ul>
-      {bots.data?.length === 0 && (
-        <p className="muted" style={{ marginTop: 24 }}>
-          No bots yet.
-        </p>
-      )}
+    </DashLayout>
+  );
+}
 
-      <div className="page-head section" id="runners">
-        <h1>Runners</h1>
-      </div>
-      <ul className="list">
-        {runners.data?.map((r) => (
-          <li key={r.id}>
-            <span className="title">{r.name}</span>
-            <div className="meta">
-              {r.leased_until ? "online" : "offline"} · last seen {lw.when(r.last_seen_at)} · {r.bots.length} bots held
-              · {r.threads} threads owned
-            </div>
-          </li>
-        ))}
-      </ul>
-      {runners.data?.length === 0 && (
-        <p className="muted" style={{ marginTop: 24 }}>
-          No runners yet. Run <code>loopway bots run</code> on a machine.
-        </p>
-      )}
-
-      <div className="page-head section" id="inboxes">
+/** `/dashboard/inboxes`: the inbox list and its create form, until the inboxes page lands. */
+export function Inboxes() {
+  const me = lw.useMe();
+  const inboxes = lw.useList<Inbox>("/inboxes", !!me);
+  const [creating, setCreating] = useState(false);
+  return (
+    <DashLayout title="Inboxes · loopway" me={me}>
+      <div className="page-head">
         <h1>Inboxes</h1>
-        <button className="btn btn-md" type="button" onClick={() => setCreatingInbox(!creatingInbox)}>
+        <button className="btn btn-md" type="button" onClick={() => setCreating(!creating)}>
           New inbox
         </button>
       </div>
-      {creatingInbox && (
+      {creating && (
         <CreateInbox
           onCreated={() => {
-            setCreatingInbox(false);
+            setCreating(false);
             void inboxes.reload();
           }}
         />
@@ -124,7 +67,7 @@ export function Dashboard() {
           No inboxes yet.
         </p>
       )}
-    </Layout>
+    </DashLayout>
   );
 }
 
@@ -134,7 +77,7 @@ export function leaseText(b: lw.Bot, runner: string | undefined) {
   return `running on ${runner ?? "a runner"} until ${lw.when(b.leased_until)}`;
 }
 
-function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: () => void }) {
+function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: (id: string) => void }) {
   const [name, setName] = useState("");
   const [preset, setPreset] = useState(Object.keys(PRESETS)[0]!);
   const [model, setModel] = useState(lw.BOT_MODELS[0]!);
@@ -158,8 +101,11 @@ function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: () => 
     const { prompt, rules } = PRESETS[preset]!;
     const r = await lw.api("/bots", { method: "POST", body: { name, prompt, rules, model, inbox_ids: [...checked] } });
     if (r.status === 401) return lw.expired(r);
-    if (!r.ok) return setError(await lw.message(r));
-    onCreated();
+    if (!r.ok) {
+      track("bot_create_rejected", { status: r.status });
+      return setError(await lw.message(r));
+    }
+    onCreated(((await r.json()) as lw.Bot).id);
   }
 
   return (

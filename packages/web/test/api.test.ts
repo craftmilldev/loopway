@@ -503,7 +503,17 @@ describe("web ui", () => {
 
   it("serves the page shell without auth", async () => {
     const id = randomUUID();
-    const paths = ["/", "/login", "/dashboard", `/dashboard/inboxes/${id}`, `/dashboard/bots/${id}`];
+    const paths = [
+      "/",
+      "/login",
+      "/dashboard",
+      "/dashboard/bots",
+      "/dashboard/bots/new",
+      "/dashboard/inboxes",
+      `/dashboard/inboxes/${id}`,
+      `/dashboard/bots/${id}`,
+      `/dashboard/bots/${id}/prompt`,
+    ];
     for (const path of [...paths, `/dashboard/bots/${id}/threads/${id}`]) {
       const r = await get(path);
       expect(r.status, path).toBe(200);

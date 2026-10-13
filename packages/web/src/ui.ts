@@ -57,9 +57,13 @@ export function createWeb(opts: WebOptions = {}) {
     "/",
     "/login",
     "/dashboard",
-    "/dashboard/inboxes/:inboxId",
+    "/dashboard/bots",
+    "/dashboard/bots/new",
     "/dashboard/bots/:botId",
+    "/dashboard/bots/:botId/prompt",
     "/dashboard/bots/:botId/threads/:threadId",
+    "/dashboard/inboxes",
+    "/dashboard/inboxes/:inboxId",
   ];
   for (const path of pages) app.get(path, (c) => c.html(html));
   // The inbox page used to live at /dashboard/<id>.
