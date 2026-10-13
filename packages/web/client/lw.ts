@@ -209,6 +209,18 @@ export function useList<T>(path: string | null, ready: boolean) {
   return { data: data?.data ?? null, ...rest };
 }
 
+/** One thing that happened to a thread, from `GET /events`. */
+export interface ThreadEvent {
+  id: string;
+  kind: "created" | "started" | "ended" | "interrupted" | "limited" | "limit_cleared";
+  at: string;
+  bot_id: string;
+  bot_name: string;
+  thread_id: string;
+  subjects: string[];
+  title: string | null;
+}
+
 /** What a bot delivered, from `GET /bots/activity` (a list) or `GET /bots/:id/activity`. */
 export interface BotActivity {
   bot_id: string;

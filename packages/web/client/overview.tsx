@@ -29,6 +29,90 @@ function headline(bots: number, working: number, open: number) {
   return `${word(working)} ${working === 1 ? "bot" : "bots"} at work on ${plural(open, "thread")}.`;
 }
 
+const EVENT_TEXT: Record<lw.ThreadEvent["kind"], string> = {
+  created: "was given a thread",
+  started: "started a thread",
+  ended: "ended a thread",
+  interrupted: "was interrupted",
+  limited: "hit its usage limit",
+  limit_cleared: "is clear of its usage limit",
+};
+
+const startOfToday = () => new Date(new Date().setHours(0, 0, 0, 0)).getTime();
+
+/** "What the bots did": today's thread events, newest first, and a control for the days before. */
+export function ThreadEventsFeed({ ready }: { ready: boolean }) {
+  const [events, setEvents] = useState<lw.ThreadEvent[] | null>(null);
+  const [next, setNext] = useState<string | null>(null);
+  const [earlier, setEarlier] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const load = async (before: string | null) => {
+    setLoading(true);
+    const r = await lw.api("/events" + (before ? "?before=" + before : ""));
+    setLoading(false);
+    if (!r.ok) return track("overview_load_failed", { resource: "events", status: r.status });
+    const body = (await r.json()) as { data: lw.ThreadEvent[]; next: string | null };
+    setEvents((e) => [...(e ?? []), ...body.data]);
+    setNext(body.next);
+  };
+
+  useEffect(() => {
+    if (ready) void load(null);
+  }, [ready]);
+
+  // A full page of today's events may not be all of them: keep reading until the page reaches back past midnight.
+  useEffect(() => {
+    const last = events?.[events.length - 1];
+    if (next && last && !earlier && !loading && new Date(last.at).getTime() >= startOfToday()) void load(next);
+  }, [events, next, earlier, loading]);
+
+  const midnight = startOfToday();
+  const shown = (events ?? []).filter((e) => earlier || new Date(e.at).getTime() >= midnight);
+  const hasEarlier = earlier ? !!next : !!events && (shown.length < events.length || !!next);
+
+  const showEarlier = () => {
+    track("overview_events_earlier_clicked", { loaded: events?.length ?? 0 });
+    setEarlier(true);
+    if (next) void load(next);
+  };
+
+  return (
+    <>
+      {events && shown.length === 0 && (
+        <p className="muted">Nothing to show yet. What the bots do will be listed here.</p>
+      )}
+      <ul className="feed">
+        {shown.map((e) => {
+          const at = new Date(e.at);
+          return (
+            <li key={e.id}>
+              <time className="mono" dateTime={e.at} title={at.toLocaleString()}>
+                {earlier && at.getTime() < midnight
+                  ? at.toLocaleDateString([], { month: "short", day: "numeric" }) + " "
+                  : ""}
+                {at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </time>{" "}
+              <a className="bot-link" href={"/dashboard/bots/" + e.bot_id}>
+                {e.bot_name}
+              </a>{" "}
+              {EVENT_TEXT[e.kind]}:{" "}
+              <a href={`/dashboard/bots/${e.bot_id}/threads/${e.thread_id}`}>
+                {e.title ?? (e.subjects.join(", ") || "a thread")}
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+      {hasEarlier && (
+        <button type="button" className="btn btn-md btn-quiet" disabled={loading} onClick={showEarlier}>
+          Show earlier
+        </button>
+      )}
+    </>
+  );
+}
+
 export function Overview() {
   const me = lw.useMe();
   const ready = !!me;
@@ -206,7 +290,7 @@ export function Overview() {
         <div className="ov-main">
           <span className="lbl">Today on the threads</span>
           <h2>What the bots did</h2>
-          <p className="muted">Nothing to show yet. What the bots do will be listed here.</p>
+          <ThreadEventsFeed ready={ready} />
         </div>
         <div id="runners" className="ov-side">
           <span className="lbl">Runners</span>
