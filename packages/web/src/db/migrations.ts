@@ -320,4 +320,25 @@ ALTER TABLE loopway.bots DROP COLUMN kind;
 CREATE INDEX thread_messages_delivered_idx ON loopway.thread_messages (bot_id, delivered_at) WHERE delivered_at IS NOT NULL;
 `,
   },
+  {
+    // What happened to each thread and when, for the overview's feed: threads keep only their current flags. Rows are
+    // written at each transition and die with their thread. No backfill.
+    version: "016_thread_events",
+    sql: `
+CREATE TABLE loopway.thread_events (
+  id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id    uuid NOT NULL,
+  bot_id     uuid NOT NULL,
+  thread_id  uuid NOT NULL,
+  kind       text NOT NULL CHECK (kind IN ('created', 'started', 'ended', 'interrupted', 'limited', 'resumed')),
+  at         timestamptz NOT NULL DEFAULT clock_timestamp(),
+  FOREIGN KEY (thread_id, bot_id) REFERENCES loopway.threads(id, bot_id) ON DELETE CASCADE,
+  FOREIGN KEY (bot_id, user_id) REFERENCES loopway.bots(id, user_id) ON DELETE CASCADE
+);
+
+CREATE INDEX thread_events_user_at_idx ON loopway.thread_events (user_id, at DESC);
+
+ALTER TABLE loopway.thread_events ENABLE ROW LEVEL SECURITY;
+`,
+  },
 ];
