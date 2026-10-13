@@ -1,9 +1,6 @@
 import { useState, type FormEvent } from "react";
-import { PRESETS } from "@loopway/presets";
 import { useSourceRequest } from "../ee/client/source-request.js";
-import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
-import { track } from "./metrics.js";
 
 export interface Inbox {
   id: string;
@@ -13,116 +10,16 @@ export interface Inbox {
   config?: { secret?: string | null; events?: string[] };
 }
 
-/** `/dashboard/bots/new`: the create form, until the new-bot flow lands. */
-export function NewBot() {
-  const me = lw.useMe();
-  const inboxes = lw.useList<Inbox>("/inboxes", !!me);
-  return (
-    <DashLayout title="New bot · loopway" me={me}>
-      <div className="page-head">
-        <h1>New bot</h1>
-      </div>
-      {inboxes.data && (
-        <CreateBot inboxes={inboxes.data} onCreated={(id) => location.assign("/dashboard/bots/" + id)} />
-      )}
-    </DashLayout>
-  );
-}
-
 /** Who holds the bot, in words. */
 export function leaseText(b: lw.Bot, runner: string | undefined) {
   if (!b.leased_until) return "not running";
   return `running on ${runner ?? "a runner"} until ${lw.when(b.leased_until)}`;
 }
 
-function CreateBot({ inboxes, onCreated }: { inboxes: Inbox[]; onCreated: (id: string) => void }) {
-  const [name, setName] = useState("");
-  const [preset, setPreset] = useState(Object.keys(PRESETS)[0]!);
-  const [model, setModel] = useState(lw.BOT_MODELS[0]!);
-  const [checked, setChecked] = useState<Set<string>>(new Set());
-  const [error, setError] = useState<string | null>(null);
-
-  function toggle(id: string, on: boolean) {
-    const next = new Set(checked);
-    if (on) next.add(id);
-    else next.delete(id);
-    setChecked(next);
-  }
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (!checked.size) {
-      track("bot_create_no_inbox");
-      return setError("Pick at least one inbox.");
-    }
-    const { prompt, rules } = PRESETS[preset]!;
-    const r = await lw.api("/bots", { method: "POST", body: { name, prompt, rules, model, inbox_ids: [...checked] } });
-    if (r.status === 401) return lw.expired(r);
-    if (!r.ok) {
-      track("bot_create_rejected", { status: r.status });
-      return setError(await lw.message(r));
-    }
-    onCreated(((await r.json()) as lw.Bot).id);
-  }
-
-  return (
-    <form className="panel" onSubmit={(e) => void submit(e)}>
-      <div className="field">
-        <label htmlFor="bot-name">Name</label>
-        <div className="input-wrap">
-          <input id="bot-name" required maxLength={200} value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
-      </div>
-      <div className="field">
-        <label htmlFor="bot-preset">Start from</label>
-        <div className="input-wrap">
-          <select id="bot-preset" value={preset} onChange={(e) => setPreset(e.target.value)}>
-            {Object.entries(PRESETS).map(([k, p]) => (
-              <option key={k} value={k}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <p className="hint">{PRESETS[preset]!.description}</p>
-      </div>
-      <div className="field">
-        <label htmlFor="bot-model">Model</label>
-        <div className="input-wrap">
-          <select id="bot-model" value={model} onChange={(e) => setModel(e.target.value)}>
-            {lw.BOT_MODELS.map((m) => (
-              <option key={m}>{m}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <div className="field">
-        <label>Inboxes</label>
-        <div className="checks">
-          {inboxes.map((i) => (
-            <label key={i.id} className="check">
-              <input type="checkbox" checked={checked.has(i.id)} onChange={(e) => toggle(i.id, e.target.checked)} />{" "}
-              {i.name}
-            </label>
-          ))}
-        </div>
-        <p className="hint">The bot reads the messages of every inbox it has.</p>
-      </div>
-      <div className="form-actions">
-        <button className="btn" type="submit">
-          Create bot
-        </button>
-      </div>
-      {error && <p className="error">{error}</p>}
-    </form>
-  );
-}
-
 /** The Source option that asks for a new source type instead of creating an inbox. */
 const REQUEST = "request:";
 
-export function CreateInbox({ onCreated }: { onCreated: () => void }) {
+export function CreateInbox({ onCreated }: { onCreated: (inbox: Inbox) => void }) {
   const { data: sources = [], can_request } = lw.useSources() ?? {};
   const [name, setName] = useState("");
   const [type, setType] = useState("");
@@ -160,7 +57,7 @@ export function CreateInbox({ onCreated }: { onCreated: () => void }) {
     const r = await lw.api("/inboxes", { method: "POST", body: { name, source_type: source.type, config } });
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) return setError(await lw.message(r));
-    onCreated();
+    onCreated((await r.json()) as Inbox);
   }
 
   return (
