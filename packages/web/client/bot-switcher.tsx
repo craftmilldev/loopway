@@ -11,14 +11,19 @@ const Dot = ({ state }: { state: BotState | null }) =>
 
 const tabNow = () => new URLSearchParams(location.search).get("tab") ?? "activity";
 
-/** One bot in the open list. Its threads are fetched when it mounts, which is when the list opens. */
+/**
+ * One bot in the open list. Its threads are fetched when it mounts, which is when the list opens. A bot the find box
+ * filters out stays mounted but hidden, so it isn't fetched again when it comes back.
+ */
 function Item({
+  hidden,
   bot,
   href,
   current,
   currentState,
   runners,
 }: {
+  hidden: boolean;
   bot: lw.Bot;
   href: string;
   current: boolean;
@@ -30,6 +35,7 @@ function Item({
   return (
     <a
       role="menuitem"
+      hidden={hidden}
       href={href}
       aria-current={current ? "page" : undefined}
       onClick={() => track("bot_switched", { tab: tabNow() })}
@@ -100,9 +106,10 @@ export function BotSwitcher({
       e.preventDefault();
       return close(true);
     }
+    if (e.key === "Tab") return close(false);
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
     if (finder && (e.key === "Home" || e.key === "End") && document.activeElement?.tagName === "INPUT") return;
-    const stops = Array.from(menu.current?.querySelectorAll<HTMLElement>("input, a") ?? []);
+    const stops = Array.from(menu.current?.querySelectorAll<HTMLElement>("input, a:not([hidden])") ?? []);
     if (!stops.length) return;
     e.preventDefault();
     const at = stops.indexOf(document.activeElement as HTMLElement);
@@ -134,7 +141,7 @@ export function BotSwitcher({
         </span>
       </button>
       {open && (
-        <div className="bot-switch-list" role="menu" aria-label="Bots" ref={menu}>
+        <div className="bot-switch-list" ref={menu}>
           {finder && (
             <input
               type="search"
@@ -145,13 +152,14 @@ export function BotSwitcher({
               onChange={(e) => setFind(e.target.value)}
             />
           )}
-          <div className="bot-switch-items">
+          <div className="bot-switch-items" role="menu" aria-label="Bots">
             <a role="menuitem" href="/dashboard/bots" onClick={() => track("bot_switcher_all_bots")}>
               All bots
             </a>
-            {shown.map((b) => (
+            {bots.map((b) => (
               <Item
                 key={b.id}
+                hidden={!!needle && !shown.includes(b)}
                 bot={b}
                 href={pathFor(b.id)}
                 current={b.id === current}

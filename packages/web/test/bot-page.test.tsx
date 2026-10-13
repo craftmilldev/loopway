@@ -211,6 +211,18 @@ describe("Bot page", () => {
       fireEvent.change(find, { target: { value: "bot 7" } });
       fireEvent.keyDown(find, { key: "ArrowDown" });
       expect(document.activeElement).toBe(items()[0]);
+      const fetched = otherThreadRequests().length;
+      fireEvent.change(find, { target: { value: "" } });
+      expect(items()).toHaveLength(31);
+      expect(otherThreadRequests()).toHaveLength(fetched);
+    });
+
+    it("closes on Tab", async () => {
+      at("");
+      render(<Bot id="b1" />);
+      fireEvent.click(await opener());
+      fireEvent.keyDown(items()[1]!, { key: "Tab" });
+      expect(screen.queryByRole("menu")).toBeNull();
     });
   });
 

@@ -993,6 +993,9 @@ main.dash {
   text-decoration: none;
   overflow-wrap: anywhere;
 }
+.bot-switch-items a[hidden] {
+  display: none;
+}
 .bot-switch-items a:hover,
 .bot-switch-items a:focus {
   color: var(--ink-900);
