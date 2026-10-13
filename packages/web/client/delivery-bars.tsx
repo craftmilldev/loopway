@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { BotActivity } from "./lw.js";
 
 /** The days of deliveries the bars show. */
@@ -23,6 +23,13 @@ interface Tip {
 /** Small bars, one per day, for a bot's deliveries. Words instead for a bot with none in the window. */
 export function DeliveryBars({ activity, days }: { activity: BotActivity | undefined; days: number }) {
   const [tip, setTip] = useState<Tip | null>(null);
+  // The tip is placed once, so hide it if anything scrolls rather than leave it detached from its bar.
+  useEffect(() => {
+    if (!tip) return;
+    const hide = () => setTip(null);
+    window.addEventListener("scroll", hide, true);
+    return () => window.removeEventListener("scroll", hide, true);
+  }, [tip]);
   if (!activity) return <span className="muted">…</span>;
   const shown = activity.days.slice(-days);
   const total = shown.reduce((n, d) => n + d.delivered, 0);
