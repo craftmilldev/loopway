@@ -80,9 +80,11 @@ export function Overview() {
   }, [bots.data, range]);
 
   const loaded = bots.data && runners.data && inboxes.data && bots.data.every((b) => threads[b.id]);
+  const hasBots = (bots.data?.length ?? 0) > 0;
+  const hasRunners = (runners.data?.length ?? 0) > 0;
   useEffect(() => {
-    if (loaded) track("overview_viewed", { has_bots: bots.data!.length > 0, has_runners: runners.data!.length > 0 });
-  }, [loaded]);
+    if (loaded) track("overview_viewed", { has_bots: hasBots, has_runners: hasRunners });
+  }, [loaded, hasBots, hasRunners]);
 
   const pick = (r: (typeof RANGES)[number]) => {
     track("overview_range_changed", { range: r.key });

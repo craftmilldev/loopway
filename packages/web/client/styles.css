@@ -772,6 +772,59 @@ main.dash {
 .add-runner .lbl {
   color: var(--ink-200);
 }
+.bots-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 32px 0 16px;
+  padding-top: 16px;
+  border-top: 2px solid var(--ink-900);
+}
+.bots-find {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bots-find input {
+  width: 240px;
+  max-width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border: 0;
+  border-bottom: 1px solid var(--ink-900);
+  background: var(--paper-100);
+  color: var(--ink-900);
+  font-family: var(--font-type);
+  font-size: 13px;
+}
+.bots-ledger {
+  min-width: 1040px;
+}
+.bots-ledger td {
+  vertical-align: top;
+}
+.why {
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--ink-600);
+}
+.bots-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 28px;
+  padding: 16px 20px;
+  background: var(--paper-100);
+  border-top: 1px solid var(--rule-soft);
+}
+.bots-note-head {
+  font-size: 1.125rem;
+}
 @media (max-width: 760px) {
   .dash-head-row,
   .dash-nav {

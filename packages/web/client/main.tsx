@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { Bot, Thread } from "./bot.js";
+import { Bots } from "./bots.js";
 import { Inboxes, NewBot } from "./dashboard.js";
 import { Home } from "./home.js";
 import { Inbox } from "./inbox.js";
@@ -15,7 +16,7 @@ function page(path: string) {
   if (path === "/") return <Home />;
   if (path === "/login") return <Login />;
   if (path === "/dashboard") return <Overview />;
-  if (path === "/dashboard/bots") return <Placeholder title="Bots" />;
+  if (path === "/dashboard/bots") return <Bots />;
   if (path === "/dashboard/bots/new") return <NewBot />;
   if (path === "/dashboard/inboxes") return <Inboxes />;
   const part = (m: RegExpMatchArray, i: number) => decodeURIComponent(m[i]!);
