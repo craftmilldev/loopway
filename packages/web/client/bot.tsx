@@ -671,6 +671,20 @@ export function Thread({ botId, id }: { botId: string; id: string }) {
     void thread.reload();
   }
 
+  async function end() {
+    if (!t) return;
+    if (!confirm("End this thread? It can't be undone from here.")) return track("thread_end_cancelled");
+    const r = await lw.api(`${threadPath}/end`, { method: "POST", body: {} });
+    if (r.status === 401) return lw.expired(r);
+    if (!r.ok) {
+      track("thread_end_failed", { status: r.status });
+      return setError(await lw.message(r));
+    }
+    track("thread_ended", { runner_online: online });
+    setError(null);
+    void thread.reload();
+  }
+
   return (
     <DashLayout
       title="Thread · loopway"
@@ -703,7 +717,11 @@ export function Thread({ botId, id }: { botId: string; id: string }) {
             >
               Release
             </button>
-            {/* Ending a thread from the web goes here (a later ticket). */}
+            {t.status === "active" && (
+              <button className="btn btn-quiet" type="button" onClick={() => void end()}>
+                End thread
+              </button>
+            )}
           </div>
         )}
       </div>

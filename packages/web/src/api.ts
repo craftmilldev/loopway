@@ -522,6 +522,16 @@ export function createApi(opts: ApiOptions) {
     return c.json(await serializeThread(c.var.db, (await store.getThread(c.var.db, bot.id, thread.id))!));
   });
 
+  // The owner's way to end a thread whose work is done or whose runner is gone. Needs no lease, like release; the
+  // runner's PATCH still does. Waiting and inflight messages stay as they are, as when a runner ends the thread.
+  authed.post("/bots/:botId/threads/:threadId/end", async (c) => {
+    const bot = await ownedBot(c);
+    const thread = await existingThread(c, bot);
+    await store.endThread(c.var.db, bot.id, thread.id);
+    await metrics.capture("thread_ended_by_owner", c.var.user.id, { already_ended: thread.status === "ended" });
+    return c.json(await serializeThread(c.var.db, (await store.getThread(c.var.db, bot.id, thread.id))!));
+  });
+
   authed.post("/bots/:botId/assign", async (c) => {
     const bot = await ownedBot(c);
     const input = z

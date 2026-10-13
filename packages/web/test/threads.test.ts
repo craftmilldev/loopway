@@ -331,6 +331,41 @@ describe("thread writes", () => {
     ).toBe(404);
   });
 
+  it("lets the owner end a thread without a lease, leaving its messages and other threads alone", async () => {
+    const { key, base, messages, assign, thread, leaseThread, lease } = await setup(3);
+    const t = randomUUID();
+    const other = randomUUID();
+    await assign([
+      { message_id: messages[0]!.id, thread_id: t },
+      { message_id: messages[1]!.id, thread_id: t },
+      { message_id: messages[2]!.id, thread_id: other },
+    ]);
+    const runnerLease = await leaseThread(t);
+    await call("POST", `${base}/threads/${t}/deliver`, { key, body: { lease_token: runnerLease } });
+    await assign([]);
+    const end = () => call("POST", `${base}/threads/${t}/end`, { key, body: {} });
+
+    const r = await end();
+    expect(r.status).toBe(200);
+    expect(r.body.status).toBe("ended");
+    // Same as a runner ending it: the inflight messages stay where they were.
+    expect(r.body.inflight).toHaveLength(2);
+    expect((await end()).body.status).toBe("ended");
+    expect((await thread(other)).body.status).toBe("active");
+    expect((await thread(other)).body.waiting).toHaveLength(1);
+    expect(
+      (await call("POST", `${base}/assign`, { key, body: { lease_token: lease, cursor: 0, assignments: [] } })).status,
+    ).toBe(200);
+    expect((await call("POST", `${base}/threads/${randomUUID()}/end`, { key, body: {} })).status).toBe(404);
+
+    // The runner's PATCH still needs its lease.
+    await call("PATCH", `${base}/threads/${t}`, { key, body: { lease_token: runnerLease, status: "active" } });
+    expect(
+      (await call("PATCH", `${base}/threads/${t}`, { key, body: { lease_token: "x", status: "ended" } })).status,
+    ).toBe(409);
+    expect((await thread(t)).body.status).toBe("active");
+  });
+
   it("keeps a bot's threads from other users and other bots", async () => {
     const { key, base, messages, assign, lease } = await setup(1);
     const t = randomUUID();
@@ -344,6 +379,7 @@ describe("thread writes", () => {
       ["PATCH", `${base}/threads/${t}`, { lease_token: lease, status: "ended" }],
       ["POST", `${base}/threads/${t}/deliver`, { lease_token: lease }],
       ["POST", `${base}/threads/${t}/finish`, { lease_token: lease }],
+      ["POST", `${base}/threads/${t}/end`, {}],
       ["POST", `${base}/threads`, { id: randomUUID(), subjects: [], status: "active", started: false, messages: [] }],
     ] as const)
       expect((await call(method, path, { key: stranger, body })).status, `${method} ${path}`).toBe(404);

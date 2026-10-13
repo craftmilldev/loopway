@@ -774,6 +774,15 @@ export async function releaseThread(db: Db, botId: string, id: string): Promise<
   );
 }
 
+/** Ends the thread without its runner's lease. Its messages stay as they are, as when the runner ends it. */
+export async function endThread(db: Db, botId: string, id: string): Promise<void> {
+  await db.query(
+    `UPDATE loopway.threads SET status = 'ended', updated_at = now()
+     WHERE id = $2::uuid AND bot_id = $1::uuid AND status <> 'ended'`,
+    [botId, id],
+  );
+}
+
 export interface Assignment {
   message_id: string;
   thread_id: string;
