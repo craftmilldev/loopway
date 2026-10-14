@@ -48,7 +48,7 @@ The CLI is released on its own, separately from the web deploy. To release:
 
 People install with `curl -fsSL https://loopway.craftmill.dev/install.sh | sh` (`packages/web/content/install.sh`), which installs the latest release with `npm install -g`; `LOOPWAY_VERSION=0.2.0` picks another. It needs Node 22+.
 
-The CLI sends its version in an `x-loopway-cli-version` header on every request. The server labels `api_error` events with it as `cli_version` (`none` for requests without it, `unknown` for one that isn't a version), and the CLI's own events carry `cli_version` too. To stop serving old CLIs, set `MIN_CLI_VERSION` (for example `0.2.0`) on the web deploy: older CLIs then get `426 cli_outdated`, whose message says how to update. Unset, no CLI is turned away. The web app deploys on merge, so keep new API behavior working with the previous CLI release until the minimum is raised.
+The CLI sends its version in an `x-loopway-cli-version` header on every request. The server labels `api_error` events with it as `cli_version` (`none` for requests without it, `unknown` for one that isn't a version), and the CLI's own events carry `cli_version` too. To stop serving old CLIs, set `MIN_CLI_VERSION` (for example `0.2.0`) on the web deploy: older CLIs then get `426 cli_outdated`, whose message says how to update. Unset, no CLI is turned away. CLIs built before the header existed send none, so `MIN_CLI_VERSION` never turns them away; it only applies to releases that send their version. The web app deploys on merge, so keep new API behavior working with the previous CLI release until the minimum is raised.
 
 ## Web UI
 
