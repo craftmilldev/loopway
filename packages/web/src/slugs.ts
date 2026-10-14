@@ -1,9 +1,6 @@
-import { MARKETING_PATHS, marketingSlugs } from "./marketing.js";
-
 /**
  * Org slugs, which are also usernames: a user's personal org has their username as its slug, so both share one
- * namespace. Add the app's own paths to RESERVED_SLUGS as they are claimed; marketing pages (src/marketing.ts) are
- * added automatically.
+ * namespace. Add paths and marketing pages to RESERVED_SLUGS as they are claimed.
  */
 export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   "api",
@@ -26,7 +23,6 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   "orgs",
   "me",
   "loopway",
-  ...marketingSlugs(MARKETING_PATHS),
 ]);
 
 export const SLUG_MIN = 2;
