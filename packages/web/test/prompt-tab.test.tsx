@@ -6,7 +6,12 @@ import { fromDrafts, problem, rulesText, sameRules, toDrafts } from "../client/p
 
 const rule = { types: ["com.github.*"], subject: "data.id", action: "'attach'" };
 const v2 = { version: 2, prompt: "line one\nline two", rules: [rule], created_at: "2026-10-02T00:00:00Z" };
-const v1 = { version: 1, prompt: "line one\nold two", rules: [{ types: ["x.*"] }], created_at: "2026-10-01T00:00:00Z" };
+const v1 = {
+  version: 1,
+  prompt: "line one\nold two",
+  rules: [{ types: ["x.*"], action: "'attach'" }],
+  created_at: "2026-10-01T00:00:00Z",
+};
 const bot = {
   id: "b1",
   name: "dev",
@@ -61,7 +66,7 @@ const type = (el: HTMLElement, value: string) => fireEvent.change(el, { target: 
 
 describe("helpers", () => {
   it("round-trips rules through drafts", () => {
-    const rules = [rule, { types: ["a", "b"] }];
+    const rules = [rule, { types: ["a", "b"], action: "'skip'" }];
     expect(fromDrafts(toDrafts(rules))).toEqual(rules);
     expect(toDrafts(null)).toEqual([]);
   });
@@ -69,7 +74,10 @@ describe("helpers", () => {
   it("names the first problem the way the API would", () => {
     expect(problem("", [rule])?.reason).toBe("no_prompt");
     expect(problem("p", [])?.reason).toBe("no_rules");
-    expect(problem("p", [rule, { types: [] }])?.message).toBe("Rule 2 needs at least one event type.");
+    expect(problem("p", [rule, { types: [], action: "'attach'" }])?.message).toBe(
+      "Rule 2 needs at least one event type.",
+    );
+    expect(problem("p", [rule, { types: ["x"], action: "" }])?.message).toBe("Rule 2 needs an action.");
     expect(problem("p", [rule])).toBeNull();
   });
 
@@ -82,13 +90,26 @@ describe("helpers", () => {
     const full = { types: ["a.*", "b.*"], action: "'skip'", related: "[]", subject: "data.id" };
     const built = { types: ["a.*", "b.*"], subject: "data.id", related: "[]", action: "'skip'" };
     expect(sameRules([full], [built])).toBe(true);
-    expect(sameRules([{ types: ["a"], subject: "  s " }], [{ types: ["a"], subject: "s" }])).toBe(true);
-    expect(sameRules([{ types: ["a"], subject: "" }], [{ types: ["a"] }])).toBe(true);
+    expect(
+      sameRules([{ types: ["a"], subject: "  s ", action: "x" }], [{ types: ["a"], subject: "s", action: "x" }]),
+    ).toBe(true);
+    expect(sameRules([{ types: ["a"], subject: "", action: "x" }], [{ types: ["a"], action: "x" }])).toBe(true);
     expect(sameRules(null, [])).toBe(true);
-    expect(sameRules([{ types: ["a"] }], [])).toBe(false);
+    expect(sameRules([{ types: ["a"], action: "x" }], [])).toBe(false);
     expect(sameRules([{ types: ["a"], action: "x" }], [{ types: ["a"], action: "y" }])).toBe(false);
-    expect(sameRules([{ types: ["a", "b"] }], [{ types: ["b", "a"] }])).toBe(false);
-    expect(sameRules([{ types: ["a"] }, { types: ["b"] }], [{ types: ["b"] }, { types: ["a"] }])).toBe(false);
+    expect(sameRules([{ types: ["a", "b"], action: "x" }], [{ types: ["b", "a"], action: "x" }])).toBe(false);
+    expect(
+      sameRules(
+        [
+          { types: ["a"], action: "x" },
+          { types: ["b"], action: "x" },
+        ],
+        [
+          { types: ["b"], action: "x" },
+          { types: ["a"], action: "x" },
+        ],
+      ),
+    ).toBe(false);
   });
 
   it("puts the prompt tab on its own path", () => {
@@ -155,10 +176,14 @@ describe("Prompt and rules tab", () => {
     type(screen.getByLabelText("Subject"), "data.other");
     fireEvent.click(screen.getByRole("button", { name: "Add rule" }));
     type(screen.getByLabelText("Rule 2 · event types"), "second.*");
+    type(screen.getAllByLabelText("Action")[0]!, "'skip'");
     fireEvent.click(screen.getByRole("button", { name: "Move rule 2 up" }));
     fireEvent.click(screen.getByRole("button", { name: "Save as version 3" }));
     await waitFor(() => expect(posts).toHaveLength(1));
-    expect(posts[0]!.rules).toEqual([{ types: ["second.*"] }, { ...rule, subject: "data.other" }]);
+    expect(posts[0]!.rules).toEqual([
+      { types: ["second.*"], action: "'skip'" },
+      { ...rule, subject: "data.other" },
+    ]);
   });
 
   it("removes a rule", async () => {

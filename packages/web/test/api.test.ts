@@ -151,8 +151,12 @@ describe("bots", () => {
     ).toBe(400);
     expect((await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "" } })).status).toBe(400);
     expect((await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "x", rules: [] } })).status).toBe(400);
+    // Every rule needs an action.
+    expect(
+      (await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "x", rules: [{ types: ["x"] }] } })).status,
+    ).toBe(400);
     // Rules that don't parse are rejected on save, on versions and on create.
-    const bad = [{ types: ["x"], subject: "data.(" }];
+    const bad = [{ types: ["x"], subject: "data.(", action: "'attach'" }];
     const rejected = await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "x", rules: bad } });
     expect(rejected.status).toBe(400);
     expect(rejected.body.error.code).toBe("invalid_rules");

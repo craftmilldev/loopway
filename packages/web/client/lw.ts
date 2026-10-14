@@ -219,7 +219,7 @@ export interface BotRule {
   types: string[];
   subject?: string;
   related?: string;
-  action?: string;
+  action: string;
 }
 
 /** One saved revision of a bot's prompt and rules. Rules are null for versions saved before bots had them. */

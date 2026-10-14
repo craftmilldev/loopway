@@ -14,7 +14,7 @@ export interface RuleDraft {
 const EXPRESSIONS = [
   { key: "subject", label: "Subject", hint: 'CEL: the message\'s own subject, "" for none.' },
   { key: "related", label: "Related", hint: "CEL: a list of other subjects the message names." },
-  { key: "action", label: "Action", hint: "CEL: 'attach' (the default) or 'skip'." },
+  { key: "action", label: "Action", hint: "CEL, required: 'attach' or 'skip'." },
 ] as const;
 
 const blankRule = (): RuleDraft => ({ types: "", subject: "", related: "", action: "" });
@@ -34,8 +34,9 @@ export const fromDrafts = (drafts: RuleDraft[]): lw.BotRule[] =>
         .split("\n")
         .map((t) => t.trim())
         .filter(Boolean),
+      action: d.action.trim(),
     };
-    for (const { key } of EXPRESSIONS) if (d[key].trim()) rule[key] = d[key].trim();
+    for (const { key } of EXPRESSIONS) if (key !== "action" && d[key].trim()) rule[key] = d[key].trim();
     return rule;
   });
 
@@ -78,6 +79,8 @@ export function problem(prompt: string, rules: lw.BotRule[]): { reason: string; 
   if (!rules.length) return { reason: "no_rules", message: "Add at least one rule." };
   const empty = rules.findIndex((r) => !r.types.length);
   if (empty >= 0) return { reason: "rule_missing_types", message: `Rule ${empty + 1} needs at least one event type.` };
+  const noAction = rules.findIndex((r) => !r.action);
+  if (noAction >= 0) return { reason: "rule_missing_action", message: `Rule ${noAction + 1} needs an action.` };
   return null;
 }
 
