@@ -23,7 +23,8 @@ const POLL = 3000;
 export function NewBot() {
   const me = lw.useMe();
   const ready = !!me;
-  const inboxes = lw.useList<Inbox>("/inboxes", ready);
+  // No polling on this page: the flow's pickers and the resumed bot shouldn't change under the user.
+  const inboxes = lw.useList<Inbox>("/inboxes", ready, { poll: false });
   // Read once: creating the bot rewrites the URL, and that must not count as a resume.
   const [resumeId] = useState(() => new URLSearchParams(location.search).get("bot"));
   const [botId, setBotId] = useState(resumeId);
@@ -32,7 +33,9 @@ export function NewBot() {
   const [preset, setPreset] = useState(Object.keys(PRESETS)[0]!);
   const [name, setName] = useState("");
   const [model, setModel] = useState(MODELS[0]!);
-  const bot = lw.useGet<lw.Bot>(botId ? "/bots/" + encodeURIComponent(botId) : null, ready);
+  const bot = lw.useGet<lw.Bot>(botId ? "/bots/" + encodeURIComponent(botId) : null, ready, {
+    poll: false,
+  });
 
   // A reload or a link with `?bot=` lands on the first step that still has something to do.
   const [resumed, setResumed] = useState(false);

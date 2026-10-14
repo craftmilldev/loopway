@@ -46,10 +46,12 @@ export function Bot({ id, view }: { id: string; view?: Tab }) {
   const ready = !!me;
   const tab = view ?? tabOf(new URLSearchParams(location.search).get("tab"));
   const botPath = "/bots/" + encodeURIComponent(id);
-  const bot = lw.useGet<lw.Bot>(botPath, ready);
+  // The bot (its current prompt version, name, inboxes) and the inboxes feed the Prompt and Settings forms, so they
+  // load once; the threads and runners, which give the state, are what refreshes.
+  const bot = lw.useGet<lw.Bot>(botPath, ready, { poll: false });
   const bots = lw.useList<lw.Bot>("/bots", ready);
   const runners = lw.useList<lw.Runner>("/runners", ready);
-  const inboxes = lw.useList<Inbox>("/inboxes", ready);
+  const inboxes = lw.useList<Inbox>("/inboxes", ready, { poll: false });
   const open = lw.useList<lw.Thread>(botPath + "/threads?status=active", ready);
   const [error, setError] = useState<string | null>(null);
 

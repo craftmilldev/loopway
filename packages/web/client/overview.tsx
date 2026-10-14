@@ -6,6 +6,7 @@ import { BAR_DAYS, DeliveryBars } from "./delivery-bars.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
+import { Updated } from "./updated.js";
 
 const RANGES = [
   { key: "24h", label: "24 h", days: 1 },
@@ -60,6 +61,23 @@ export function ThreadEventsFeed({ ready }: { ready: boolean }) {
   useEffect(() => {
     if (ready) void load(null);
   }, [ready]);
+
+  // A refresh reads the newest page and adds only the events it hasn't got, so "Show earlier" and its place stay put.
+  lw.usePoll(async () => {
+    const r = await lw.api("/events");
+    if (!r.ok) {
+      track("overview_load_failed", { resource: "events", status: r.status });
+      return false;
+    }
+    const fresh = ((await r.json()) as { data: lw.ThreadEvent[] }).data;
+    setEvents((e) => {
+      if (!e) return e;
+      const have = new Set(e.map((x) => x.id));
+      const added = fresh.filter((x) => !have.has(x.id));
+      return added.length ? [...added, ...e] : e;
+    });
+    return true;
+  }, ready);
 
   // A full page of today's events may not be all of them: keep reading until the page reaches back past midnight.
   useEffect(() => {
@@ -123,26 +141,43 @@ export function Overview() {
   const [threads, setThreads] = useState<Record<string, lw.Thread[]>>({});
   const [activity, setActivity] = useState<Record<string, lw.BotActivity> | null>(null);
 
-  // Each bot's active threads. One request per bot.
-  useEffect(() => {
-    for (const b of bots.data ?? []) {
-      void lw.api(`/bots/${b.id}/threads?status=active`).then(async (r) => {
-        if (!r.ok) return track("overview_load_failed", { resource: "threads", status: r.status });
+  // Each bot's active threads. One request per bot. A refresh keeps what it has when a request fails.
+  const loadThreads = async () => {
+    let ok = true;
+    await Promise.all(
+      (bots.data ?? []).map(async (b) => {
+        const r = await lw.api(`/bots/${b.id}/threads?status=active`);
+        if (!r.ok) {
+          ok = false;
+          return track("overview_load_failed", { resource: "threads", status: r.status });
+        }
         const data = ((await r.json()) as { data: lw.Thread[] }).data;
-        setThreads((t) => ({ ...t, [b.id]: data }));
-      });
-    }
-  }, [bots.data]);
+        setThreads((t) => (lw.same(t[b.id], data) ? t : { ...t, [b.id]: data }));
+      }),
+    );
+    return ok;
+  };
+  useEffect(() => {
+    void loadThreads();
+  }, [bots.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  lw.usePoll(loadThreads, ready && !!bots.data);
 
   // Every bot's deliveries in one call, as many days as the bars and the longest range need.
+  const loadActivity = async () => {
+    const r = await lw.api("/bots/activity?days=" + Math.max(BAR_DAYS, ...RANGES.map((r) => r.days)));
+    if (!r.ok) {
+      track("overview_load_failed", { resource: "activity", status: r.status });
+      return false;
+    }
+    const data = ((await r.json()) as { data: lw.BotActivity[] }).data;
+    const next = Object.fromEntries(data.map((a) => [a.bot_id, a]));
+    setActivity((a) => (lw.same(a, next) ? a : next));
+    return true;
+  };
   useEffect(() => {
-    if (!ready) return;
-    void lw.api("/bots/activity?days=" + Math.max(BAR_DAYS, ...RANGES.map((r) => r.days))).then(async (r) => {
-      if (!r.ok) return track("overview_load_failed", { resource: "activity", status: r.status });
-      const data = ((await r.json()) as { data: lw.BotActivity[] }).data;
-      setActivity(Object.fromEntries(data.map((a) => [a.bot_id, a])));
-    });
-  }, [ready]);
+    if (ready) void loadActivity();
+  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
+  lw.usePoll(loadActivity, ready);
 
   // The ranges are whole UTC days, so "24 h" is today.
   const delivered = activity ? deliveredIn(Object.values(activity), range.days) : null;
@@ -185,6 +220,7 @@ export function Overview() {
       <section className="ov-top">
         <div>
           <span className="lbl">Overview</span>
+          <Updated />
           <h1 className="ov-headline">{loaded ? headline(bots.data!.length, working, open) : " "}</h1>
         </div>
         <div className="range" role="group" aria-label="Range">

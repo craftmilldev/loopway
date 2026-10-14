@@ -23,14 +23,21 @@ export function Inboxes() {
   const [creating, setCreating] = useState(false);
 
   // Every inbox's messages, in one call.
+  const loadActivity = async () => {
+    const r = await lw.api("/inboxes/activity?days=" + BAR_DAYS);
+    if (!r.ok) {
+      track("inboxes_load_failed", { resource: "activity", status: r.status });
+      return false;
+    }
+    const data = ((await r.json()) as { data: lw.InboxActivity[] }).data;
+    const next = Object.fromEntries(data.map((a) => [a.inbox_id, a]));
+    setActivity((a) => (lw.same(a, next) ? a : next));
+    return true;
+  };
   useEffect(() => {
-    if (!ready) return;
-    void lw.api("/inboxes/activity?days=" + BAR_DAYS).then(async (r) => {
-      if (!r.ok) return track("inboxes_load_failed", { resource: "activity", status: r.status });
-      const data = ((await r.json()) as { data: lw.InboxActivity[] }).data;
-      setActivity(Object.fromEntries(data.map((a) => [a.inbox_id, a])));
-    });
-  }, [ready]);
+    if (ready) void loadActivity();
+  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
+  lw.usePoll(loadActivity, ready);
 
   const rows = inboxes.data;
   const missing = rows?.filter((i) => !i.config?.secret).length ?? 0;

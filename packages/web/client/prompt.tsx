@@ -83,7 +83,6 @@ export function PromptTab({
   current: lw.BotVersion | null;
   onSaved: () => void;
 }) {
-  const history = lw.useList<lw.BotVersion>(botPath + "/versions", true);
   const [prompt, setPrompt] = useState(current?.prompt ?? "");
   const [rules, setRules] = useState(toDrafts(current?.rules ?? null));
   const [editing, setEditing] = useState<number | null>(null);
@@ -105,6 +104,8 @@ export function PromptTab({
   const promptChanged = prompt !== (current?.prompt ?? "");
   const rulesChanged = JSON.stringify(parsed) !== JSON.stringify(current?.rules ?? []);
   const dirty = promptChanged || rulesChanged;
+  // The version list stands still while there is a draft, so a compare or restore doesn't shift under the user.
+  const history = lw.useList<lw.BotVersion>(botPath + "/versions", true, { poll: dirty ? false : undefined });
 
   useEffect(() => {
     if (!dirty) return;
