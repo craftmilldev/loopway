@@ -138,8 +138,8 @@ describe("migration", () => {
   async function migrateWith(emails: string[]) {
     const fresh = await openTestDb();
     try {
-      await fresh.query(`DROP TABLE loopway.org_members`);
-      await fresh.query(`DROP TABLE loopway.orgs`);
+      await fresh.query(`DROP TABLE loopway.org_members CASCADE`);
+      await fresh.query(`DROP TABLE loopway.orgs CASCADE`);
       for (const email of emails) {
         await fresh.query(`INSERT INTO loopway.users (id, name, email) VALUES (gen_random_uuid(), 'u', $1)`, [email]);
       }

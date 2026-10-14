@@ -826,6 +826,7 @@ export function createApi(opts: ApiOptions) {
     const url = webhookUrl(c, inbox.id);
     return {
       id: inbox.id,
+      org_id: inbox.org_id,
       name: inbox.name,
       source_type: inbox.source_type,
       config: source ? source.publicConfig(inbox.config) : inbox.config,
@@ -868,6 +869,7 @@ function threadOwned(t: store.Thread): ApiError {
 function serializeRunner(r: store.Runner) {
   return {
     id: r.id,
+    org_id: r.org_id,
     name: r.name,
     created_at: iso(r.created_at),
     last_seen_at: iso(r.last_seen_at),
@@ -977,6 +979,7 @@ function serializeActivity(a: store.BotActivity) {
 function serializeBot(b: store.Bot) {
   return {
     id: b.id,
+    org_id: b.org_id,
     name: b.name,
     model: b.model,
     inbox_ids: b.inbox_ids,

@@ -379,4 +379,73 @@ SELECT o.id, u.id FROM loopway.users u JOIN loopway.orgs o ON o.personal_user_id
 WHERE lower(u.email) = 'matthew@craftmill.dev';
 `,
   },
+  {
+    // Records which org owns each inbox, bot, bot_inbox, thread and runner. user_id stays and still decides access; this
+    // only adds the data (and the rule that a bot and its inboxes, or a thread and its bot, share an org).
+    // Everything matthew@craftmill.dev owns goes to craftmill, everything else to its owner's personal org. Where those
+    // users or orgs don't exist (tests, fresh databases) there are no rows to backfill. An owner who never picked a
+    // username has no personal org, so one is made for them under a generated slug (they can rename it).
+    version: "018_org_ownership",
+    sql: `
+ALTER TABLE loopway.inboxes      ADD COLUMN org_id uuid REFERENCES loopway.orgs(id);
+
+ALTER TABLE loopway.bots         ADD COLUMN org_id uuid REFERENCES loopway.orgs(id);
+
+ALTER TABLE loopway.bot_inboxes  ADD COLUMN org_id uuid REFERENCES loopway.orgs(id);
+
+ALTER TABLE loopway.threads      ADD COLUMN org_id uuid REFERENCES loopway.orgs(id);
+
+ALTER TABLE loopway.runners      ADD COLUMN org_id uuid REFERENCES loopway.orgs(id);
+
+CREATE TEMP TABLE new_personal_orgs ON COMMIT DROP AS
+SELECT gen_random_uuid() AS org_id, u.id AS user_id, 'user-' || right(replace(u.id::text, '-', ''), 16) AS slug
+FROM loopway.users u
+WHERE NOT EXISTS (SELECT 1 FROM loopway.orgs o WHERE o.personal_user_id = u.id)
+  AND (EXISTS (SELECT 1 FROM loopway.inboxes WHERE user_id = u.id)
+    OR EXISTS (SELECT 1 FROM loopway.bots WHERE user_id = u.id)
+    OR EXISTS (SELECT 1 FROM loopway.runners WHERE user_id = u.id));
+
+INSERT INTO loopway.orgs (id, slug, name, personal_user_id) SELECT org_id, slug, slug, user_id FROM new_personal_orgs;
+
+INSERT INTO loopway.org_members (org_id, user_id) SELECT org_id, user_id FROM new_personal_orgs;
+
+CREATE TEMP TABLE owner_orgs ON COMMIT DROP AS
+SELECT u.id AS user_id,
+       CASE WHEN lower(u.email) = 'matthew@craftmill.dev'
+            THEN (SELECT id FROM loopway.orgs WHERE slug = 'craftmill')
+            ELSE (SELECT id FROM loopway.orgs WHERE personal_user_id = u.id) END AS org_id
+FROM loopway.users u;
+
+UPDATE loopway.inboxes     t SET org_id = x.org_id FROM owner_orgs x WHERE x.user_id = t.user_id;
+
+UPDATE loopway.bots        t SET org_id = x.org_id FROM owner_orgs x WHERE x.user_id = t.user_id;
+
+UPDATE loopway.bot_inboxes t SET org_id = x.org_id FROM owner_orgs x WHERE x.user_id = t.user_id;
+
+UPDATE loopway.threads     t SET org_id = x.org_id FROM owner_orgs x WHERE x.user_id = t.user_id;
+
+UPDATE loopway.runners     t SET org_id = x.org_id FROM owner_orgs x WHERE x.user_id = t.user_id;
+
+ALTER TABLE loopway.inboxes     ALTER COLUMN org_id SET NOT NULL;
+
+ALTER TABLE loopway.bots        ALTER COLUMN org_id SET NOT NULL;
+
+ALTER TABLE loopway.bot_inboxes ALTER COLUMN org_id SET NOT NULL;
+
+ALTER TABLE loopway.threads     ALTER COLUMN org_id SET NOT NULL;
+
+ALTER TABLE loopway.runners     ALTER COLUMN org_id SET NOT NULL;
+
+ALTER TABLE loopway.inboxes ADD CONSTRAINT inboxes_id_org_unique UNIQUE (id, org_id);
+
+ALTER TABLE loopway.bots    ADD CONSTRAINT bots_id_org_unique UNIQUE (id, org_id);
+
+ALTER TABLE loopway.bot_inboxes
+  ADD CONSTRAINT bot_inboxes_bot_org_fkey   FOREIGN KEY (bot_id, org_id)   REFERENCES loopway.bots(id, org_id)    ON DELETE CASCADE,
+  ADD CONSTRAINT bot_inboxes_inbox_org_fkey FOREIGN KEY (inbox_id, org_id) REFERENCES loopway.inboxes(id, org_id) ON DELETE CASCADE;
+
+ALTER TABLE loopway.threads
+  ADD CONSTRAINT threads_bot_org_fkey FOREIGN KEY (bot_id, org_id) REFERENCES loopway.bots(id, org_id) ON DELETE CASCADE;
+`,
+  },
 ];
