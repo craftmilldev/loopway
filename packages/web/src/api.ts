@@ -512,7 +512,7 @@ export function createApi(opts: ApiOptions) {
     const updated = await store.updateBot(c.var.db, bot, {
       name: input.name,
       model: input.model,
-      inboxIds: input.inbox_ids && (await ownedInboxIds(c, input.inbox_ids)),
+      inboxIds: input.inbox_ids && (await ownedInboxIds(c, input.inbox_ids, bot.org_id)),
     });
     return c.json(serializeBot(updated));
   });
@@ -801,11 +801,17 @@ export function createApi(opts: ApiOptions) {
   }
 
   /** The ids, deduped, once they're all the user's inboxes. */
-  async function ownedInboxIds(c: Context<Env>, ids: string[]): Promise<string[]> {
-    const mine = new Set((await store.listInboxes(c.var.db, c.var.user.id)).map((i) => i.id));
+  /** The user's inboxes among `ids`. A bot's inboxes share one org: `orgId` if given (the bot's), else each other's. */
+  async function ownedInboxIds(c: Context<Env>, ids: string[], orgId?: string): Promise<string[]> {
+    const mine = new Map((await store.listInboxes(c.var.db, c.var.user.id)).map((i) => [i.id, i.org_id]));
     const wanted = [...new Set(ids.map((id) => id.toLowerCase()))];
     const unknown = wanted.filter((id) => !mine.has(id));
     if (unknown.length) throw new ApiError(400, "invalid_request", `Unknown inbox id(s): ${unknown.join(", ")}`);
+    const orgs = new Set(wanted.map((id) => mine.get(id)!));
+    if (orgs.size > 1 || (orgId && orgs.size && !orgs.has(orgId))) {
+      await metrics.capture("bot_inboxes_rejected", c.var.user.id, { reason: "inbox_org_mismatch" });
+      throw new ApiError(400, "inbox_org_mismatch", "A bot's inboxes must all belong to the same org as the bot");
+    }
     return wanted;
   }
 

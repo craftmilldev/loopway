@@ -198,3 +198,24 @@ describe("backfill (018_org_ownership)", () => {
     }
   });
 });
+
+describe("inboxes across orgs", () => {
+  it("answers 400 inbox_org_mismatch instead of failing the foreign key", async () => {
+    const key = await newUser();
+    const a = await newInbox(key);
+    const b = await newInbox(key);
+    const other = randomUUID();
+    await rows(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [other, `other-${other.slice(0, 8)}`]);
+    await rows(`UPDATE loopway.inboxes SET org_id = $2 WHERE id = $1`, [b.id, other]);
+
+    const create = await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [a.id, b.id] } });
+    expect([create.status, create.body.error.code]).toEqual([400, "inbox_org_mismatch"]);
+
+    // a bot in the other org takes b but not a
+    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [b.id] } })).body;
+    expect(bot.org_id).toBe(other);
+    const patch = await call("PATCH", `/bots/${bot.id}`, { key, body: { inbox_ids: [b.id, a.id] } });
+    expect([patch.status, patch.body.error.code]).toEqual([400, "inbox_org_mismatch"]);
+    expect((await call("PATCH", `/bots/${bot.id}`, { key, body: { inbox_ids: [b.id] } })).status).toBe(200);
+  });
+});

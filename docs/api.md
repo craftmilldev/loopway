@@ -101,7 +101,7 @@ A bot reads the messages of one or more of your inboxes, in `seq` order, and kee
 | `POST /bots/:id/release` `{lease_token?, force?}`  | Drop the lease, so the next runner needn't wait out the TTL. `409 lease_mismatch` if the token isn't the live lease, `409 not_leased` if there is none. `force: true` drops whoever's lease, no token needed: for a runner that died without releasing. |
 | `POST /bots/:id/cursor` `{seq, lease_token}`       | Move the cursor forward to `seq`; it never moves backwards. Returns the bot. `409` if the token isn't the live lease.                                                                          |
 
-`inbox_ids` must be your inboxes. Bot shape: `{id, org_id, name, model, inbox_ids, cursor, created_at}`; the lease is never part of it.
+`inbox_ids` must be your inboxes, all in one org (the bot's): `400 inbox_org_mismatch` otherwise. Bot shape: `{id, org_id, name, model, inbox_ids, cursor, created_at}`; the lease is never part of it.
 
 Two webhooks landing at once can commit out of `seq` order, and a cursor that had moved past the later one would skip the earlier. So `messages` stops at the first message received in the last few seconds, giving inserts still in flight time to land.
 
