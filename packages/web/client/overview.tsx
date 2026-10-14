@@ -41,6 +41,16 @@ const EVENT_TEXT: Record<lw.ThreadEvent["kind"], string> = {
 
 const startOfToday = () => new Date(new Date().setHours(0, 0, 0, 0)).getTime();
 
+/** The events a refresh read (`fresh`, the newest page) added to the list on screen. `replaced` means the list started over. */
+export function mergeEvents(shown: lw.ThreadEvent[] | null, fresh: lw.ThreadEvent[], next: string | null) {
+  if (!shown) return { events: shown, replaced: false };
+  const have = new Set(shown.map((x) => x.id));
+  const added = fresh.filter((x) => !have.has(x.id));
+  if (!added.length) return { events: shown, replaced: false };
+  if (added.length === fresh.length && shown.length && next) return { events: fresh, replaced: true };
+  return { events: [...added, ...shown], replaced: false };
+}
+
 /** "What the bots did": today's thread events, newest first, and a control for the days before. */
 export function ThreadEventsFeed({ ready }: { ready: boolean }) {
   const [events, setEvents] = useState<lw.ThreadEvent[] | null>(null);
@@ -63,19 +73,17 @@ export function ThreadEventsFeed({ ready }: { ready: boolean }) {
   }, [ready]);
 
   // A refresh reads the newest page and adds only the events it hasn't got, so "Show earlier" and its place stay put.
+  // If the page shares nothing with the list, there may be events in between that it can't reach, so it starts over.
   lw.usePoll(async () => {
     const r = await lw.api("/events");
     if (!r.ok) {
       track("overview_load_failed", { resource: "events", status: r.status });
       return false;
     }
-    const fresh = ((await r.json()) as { data: lw.ThreadEvent[] }).data;
-    setEvents((e) => {
-      if (!e) return e;
-      const have = new Set(e.map((x) => x.id));
-      const added = fresh.filter((x) => !have.has(x.id));
-      return added.length ? [...added, ...e] : e;
-    });
+    const body = (await r.json()) as { data: lw.ThreadEvent[]; next: string | null };
+    const merged = mergeEvents(events, body.data, body.next);
+    if (merged.events !== events) setEvents(merged.events);
+    if (merged.replaced) setNext(body.next);
     return true;
   }, ready);
 

@@ -2,7 +2,11 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as lw from "../client/lw.js";
+import { track } from "../client/metrics.js";
+import { mergeEvents } from "../client/overview.js";
 import { updatedText } from "../client/updated.js";
+
+vi.mock("../client/metrics.js", () => ({ track: vi.fn(), identify: vi.fn(), reset: vi.fn() }));
 
 let visibility: "visible" | "hidden";
 let calls: string[];
@@ -27,6 +31,7 @@ const tick = (ms: number) => act(async () => void (await vi.advanceTimersByTimeA
 
 beforeEach(() => {
   vi.useFakeTimers();
+  vi.mocked(track).mockClear();
   visibility = "visible";
   calls = [];
   renders = 0;
@@ -156,6 +161,82 @@ describe("polling", () => {
     unmount();
     await tick(3 * lw.POLL_MS);
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe("stale responses", () => {
+  it("drops a poll answer that lands after a newer reload", async () => {
+    function Reloader() {
+      const { data, reload } = lw.useGet<{ n: number }>("/bots", true);
+      return <button onClick={() => void reload()}>{data ? "n=" + data.n : "loading"}</button>;
+    }
+    const { getByRole } = render(<Reloader />);
+    await settle();
+    let late: () => void = () => {};
+    respond = () => new Promise<Response>((resolve) => (late = () => resolve(new Response('{"n":1}'))));
+    await tick(lw.POLL_MS); // a poll starts and hangs
+    respond = () => json({ n: 2 });
+    await act(async () => getByRole("button").click()); // the reload lands first
+    await settle();
+    expect(getByRole("button").textContent).toBe("n=2");
+    late();
+    await settle();
+    expect(getByRole("button").textContent).toBe("n=2");
+  });
+});
+
+describe("metrics", () => {
+  it("records one dashboard_refresh for a tab switch with several pollers", async () => {
+    render(
+      <>
+        <Probe path="/a" />
+        <Probe path="/b" />
+      </>,
+    );
+    await settle();
+    setVisibility("hidden");
+    await tick(2 * lw.POLL_MS);
+    setVisibility("visible");
+    await settle();
+    expect(calls).toHaveLength(4);
+    expect(vi.mocked(track).mock.calls.filter(([e]) => e === "dashboard_refresh")).toHaveLength(1);
+  });
+
+  it("records nothing for ordinary polls", async () => {
+    render(<Probe />);
+    await settle();
+    await tick(2 * lw.POLL_MS);
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it("records dashboard_refresh_failed when a poll fails", async () => {
+    render(<Probe />);
+    await settle();
+    respond = () => json({ error: {} }, 500);
+    await tick(lw.POLL_MS);
+    expect(track).toHaveBeenCalledWith("dashboard_refresh_failed");
+  });
+});
+
+describe("mergeEvents", () => {
+  const ev = (id: string) => ({ id }) as never;
+  it("adds only the new events at the front", () => {
+    const shown = [ev("2"), ev("1")];
+    expect(mergeEvents(shown, [ev("3"), ev("2")], "x")).toEqual({
+      events: [ev("3"), ev("2"), ev("1")],
+      replaced: false,
+    });
+  });
+  it("keeps the same list when nothing is new", () => {
+    const shown = [ev("2")];
+    expect(mergeEvents(shown, [ev("2")], null).events).toBe(shown);
+  });
+  it("starts over when the page shares nothing with the list and there is more behind it", () => {
+    const fresh = [ev("9"), ev("8")];
+    expect(mergeEvents([ev("2"), ev("1")], fresh, "cursor")).toEqual({ events: fresh, replaced: true });
+  });
+  it("prepends a page with no overlap when it is the whole history", () => {
+    expect(mergeEvents([ev("1")], [ev("2")], null)).toEqual({ events: [ev("2"), ev("1")], replaced: false });
   });
 });
 

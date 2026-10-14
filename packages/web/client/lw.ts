@@ -300,10 +300,14 @@ export function useGet<T>(path: string | null, ready: boolean, { poll = POLL_MS 
   const [data, setData] = useState<T | null>(null);
   const [missing, setMissing] = useState(false);
   const seen = useRef<string | null>(null);
+  const requests = useRef(0);
 
   const fetchOnce = useCallback(async () => {
     if (!path) return true;
+    const id = ++requests.current;
     const r = await api(path);
+    // A newer request (a reload after a save, or another path) has started: this answer is out of date.
+    if (id !== requests.current) return true;
     if (r.status === 404) {
       setMissing(true);
       return true;
@@ -313,6 +317,7 @@ export function useGet<T>(path: string | null, ready: boolean, { poll = POLL_MS 
       return false;
     }
     const text = await r.text();
+    if (id !== requests.current) return true;
     markUpdated();
     if (text !== seen.current) {
       seen.current = text;
