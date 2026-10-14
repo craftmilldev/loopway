@@ -241,6 +241,20 @@ export function createApi(opts: ApiOptions) {
   // Routes under ee/ are the commercially licensed ones.
   authed.route("/", eeRoutes(opts));
 
+  /** The org a create names: 400 without one, 404 (as for any foreign entity) if the user isn't a member. */
+  async function createOrg(c: Context<Env>, kind: "inbox" | "bot", slug: string | undefined): Promise<store.Org> {
+    if (!slug) {
+      await metrics.capture(`${kind}_create_rejected`, c.var.user.id, { reason: "org_required" });
+      throw new ApiError(400, "org_required", "org is required: the slug of the org to create it in");
+    }
+    const org = await store.memberOrg(c.var.db, c.var.user.id, slug);
+    if (!org) {
+      await metrics.capture(`${kind}_create_rejected`, c.var.user.id, { reason: "org_not_found" });
+      throw new ApiError(404, "not_found", "Org not found");
+    }
+    return org;
+  }
+
   // Inboxes
 
   authed.get("/inboxes", async (c) => {
@@ -250,14 +264,21 @@ export function createApi(opts: ApiOptions) {
 
   authed.post("/inboxes", async (c) => {
     const input = z
-      .object({ name: z.string().min(1).max(200), source_type: z.string(), config: z.unknown().optional() })
+      .object({
+        org: z.string().optional(),
+        name: z.string().min(1).max(200),
+        source_type: z.string(),
+        config: z.unknown().optional(),
+      })
       .parse(await jsonBody(c));
+    const org = await createOrg(c, "inbox", input.org);
     const source = sources.get(input.source_type);
     if (!source) {
       throw new ApiError(400, "invalid_request", `Unknown source_type. Available: ${sources.types().join(", ")}`);
     }
     const inbox = await store.createInbox(c.var.db, {
       userId: c.var.user.id,
+      orgId: org.id,
       name: input.name,
       sourceType: source.type,
       config: source.parseConfig(input.config),
@@ -489,6 +510,7 @@ export function createApi(opts: ApiOptions) {
   authed.post("/bots", async (c) => {
     const input = z
       .object({
+        org: z.string().optional(),
         name: z.string().min(1).max(200),
         model: modelBody,
         inbox_ids: inboxIdsBody,
@@ -496,11 +518,13 @@ export function createApi(opts: ApiOptions) {
         rules: rulesBody.optional(),
       })
       .parse(await jsonBody(c));
+    const org = await createOrg(c, "bot", input.org);
     const bot = await store.createBot(c.var.db, {
       userId: c.var.user.id,
+      orgId: org.id,
       name: input.name,
       model: input.model,
-      inboxIds: await ownedInboxIds(c, input.inbox_ids),
+      inboxIds: await ownedInboxIds(c, input.inbox_ids, org.id),
       prompt: input.prompt,
       rules: await checked(c, input.rules, "create"),
     });

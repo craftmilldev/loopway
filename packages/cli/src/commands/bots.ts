@@ -4,7 +4,7 @@ import { authedClient, UsageError, type Context } from "../context.js";
 import { ago, bold, dim, fields, json, table } from "../format.js";
 import { checkRules, type BotRule } from "@loopway/rules";
 import { PRESETS } from "@loopway/presets";
-import { resolveInbox } from "./inboxes.js";
+import { resolveInbox, resolveOrg } from "./inboxes.js";
 
 interface JsonOpt {
   json?: boolean;
@@ -85,7 +85,7 @@ export async function editBot(ctx: Context, ref: string, opts: JsonOpt & { promp
 
 export async function createBot(
   ctx: Context,
-  opts: JsonOpt & { name?: string; preset?: string; model?: string; inbox?: string[] },
+  opts: JsonOpt & { name?: string; preset?: string; model?: string; inbox?: string[]; org?: string },
 ) {
   if (!opts.name) throw new UsageError("--name is required");
   if (!opts.preset) throw new UsageError(`--preset is required (${Object.keys(PRESETS).join(", ")})`);
@@ -93,6 +93,7 @@ export async function createBot(
   if (!opts.inbox?.length) throw new UsageError("--inbox is required");
   const client = await authedClient(ctx);
   const bot = await client.createBot({
+    org: await resolveOrg(ctx, client, opts.org, "bot"),
     name: opts.name,
     prompt: PRESETS[opts.preset]?.prompt,
     rules: PRESETS[opts.preset]?.rules,

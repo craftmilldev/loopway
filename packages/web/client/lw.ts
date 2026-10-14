@@ -94,6 +94,46 @@ export interface Sources {
   can_request: boolean;
 }
 
+export interface Org {
+  id: string;
+  slug: string;
+  name: string;
+  personal: boolean;
+}
+
+const ORG_KEY = "loopway_last_org";
+
+/** The user's orgs, personal one first, or null while loading. */
+export function useOrgs(ready: boolean) {
+  return useList<Org>("/orgs", ready).data;
+}
+
+/** Remembers the org something was just created in, so the next create form starts there. */
+export function rememberOrg(slug: string) {
+  try {
+    localStorage.setItem(ORG_KEY, slug);
+  } catch {
+    // Storage is blocked; the next form just starts on the personal org.
+  }
+}
+
+/** The org a create form starts on: the last one created in if the user is still in it, else their personal org. */
+export function startOrg(orgs: Org[]): string {
+  let last: string | null = null;
+  try {
+    last = localStorage.getItem(ORG_KEY);
+  } catch {
+    // Storage is blocked.
+  }
+  return (orgs.find((o) => o.slug === last) ?? orgs[0])?.slug ?? "";
+}
+
+/** The org's slug to show next to an entity, only when the listed entities span more than one org. */
+export function orgLabel(orgs: Org[] | null, rows: { org_id: string }[], orgId: string): string | null {
+  if (!orgs || new Set(rows.map((r) => r.org_id)).size < 2) return null;
+  return orgs.find((o) => o.id === orgId)?.slug ?? null;
+}
+
 /** The source types, or null while loading. */
 export function useSources() {
   const [sources, setSources] = useState<Sources | null>(null);
@@ -141,6 +181,7 @@ export interface BotVersion {
 
 export interface Bot {
   id: string;
+  org_id: string;
   name: string;
   model: string;
   prompt_version: BotVersion | null;

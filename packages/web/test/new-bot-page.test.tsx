@@ -4,7 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PRESETS } from "@loopway/presets";
 import { NewBot } from "../client/new-bot.js";
 
-const inbox = { id: "i1", name: "github", source_type: "github", webhook_url: "https://lw.test/in/i1" };
+const orgs = [
+  { id: "o1", slug: "me", name: "me", personal: true },
+  { id: "o2", slug: "craftmill", name: "craftmill", personal: false },
+];
+const inbox = { id: "i1", org_id: "o1", name: "github", source_type: "github", webhook_url: "https://lw.test/in/i1" };
 let bot: { id: string; name: string; model: string; inbox_ids: string[]; leased_until: string | null };
 let threads: object[];
 let posts: { path: string; body: any }[];
@@ -20,6 +24,7 @@ function stubFetch() {
         return json(bot, 201);
       }
       if (path === "/me") return json({ id: "u1", email: null, name: "Me" });
+      if (path === "/orgs") return json({ data: orgs });
       if (path === "/inboxes") return json({ data: [inbox] });
       if (path === "/bots/b1") return json(bot);
       if (path === "/bots/b1/threads") return json({ data: threads });
@@ -68,6 +73,7 @@ describe("New bot flow", () => {
     expect(await screen.findByText("Listening for a runner to take the lease…")).toBeTruthy();
     expect(posts).toHaveLength(1);
     expect(posts[0]!.body).toEqual({
+      org: "me",
       name: "dev",
       model: "sonnet",
       prompt: PRESETS["github-threads"]!.prompt,
@@ -76,6 +82,7 @@ describe("New bot flow", () => {
     });
     expect(location.search).toBe("?bot=b1");
     expect(screen.queryByText("Loading…")).toBeNull();
+    expect(localStorage.getItem("loopway_last_org")).toBe("me");
 
     // Back from the runner step shows the created bot and doesn't make another.
     fireEvent.click(screen.getByText("Back"));
@@ -85,6 +92,17 @@ describe("New bot flow", () => {
 
     fireEvent.click(screen.getByText("Skip for now"));
     expect(await screen.findByText("Waiting for the first thread…")).toBeTruthy();
+  });
+
+  it("starts on the org something was last created in, and lists only its inboxes", async () => {
+    localStorage.setItem("loopway_last_org", "craftmill");
+    at("");
+    render(<NewBot />);
+    expect((await screen.findByLabelText<HTMLSelectElement>("Org")).value).toBe("craftmill");
+    expect(screen.queryByLabelText(/github/)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Org"), { target: { value: "me" } });
+    expect(await screen.findByLabelText(/github/)).toBeTruthy();
   });
 
   it("asks for an inbox before continuing", async () => {

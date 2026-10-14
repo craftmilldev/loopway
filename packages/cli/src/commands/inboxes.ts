@@ -41,6 +41,7 @@ export async function showInbox(ctx: Context, ref: string, opts: { json?: boolea
 // ---------- create ----------
 
 export interface CreateOptions {
+  org?: string;
   name?: string;
   source?: string;
   events?: string[];
@@ -58,6 +59,7 @@ const OTHER = "__other__";
  */
 export async function createInbox(ctx: Context, opts: CreateOptions) {
   const client = await authedClient(ctx);
+  opts = { ...opts, org: await resolveOrg(ctx, client, opts.org, "inbox") };
   const inbox = ctx.interactive ? await createInteractive(client, opts) : await createFromFlags(client, opts);
   if (opts.json) return ctx.out(json(inbox));
   if (!ctx.interactive) ctx.out(`Created inbox ${bold(inbox.name)} (${inbox.id})\n\n${setupText(inbox)}`);
@@ -67,7 +69,7 @@ async function createFromFlags(client: LoopwayClient, opts: CreateOptions) {
   if (!opts.name) throw new UsageError("--name is required when not running in a terminal");
   const source = opts.source ?? (await onlySource(client));
   if (!source) throw new UsageError("--source is required when not running in a terminal");
-  return client.createInbox({ name: opts.name, source_type: source, config: flagConfig(opts) });
+  return client.createInbox({ org: opts.org!, name: opts.name, source_type: source, config: flagConfig(opts) });
 }
 
 async function createInteractive(client: LoopwayClient, opts: CreateOptions): Promise<Inbox> {
@@ -126,7 +128,7 @@ async function createInteractive(client: LoopwayClient, opts: CreateOptions): Pr
   spin.start("Creating inbox");
   let inbox: Inbox;
   try {
-    inbox = await client.createInbox({ name, source_type: source.type, config });
+    inbox = await client.createInbox({ org: opts.org!, name, source_type: source.type, config });
   } catch (err) {
     spin.error("Could not create inbox");
     throw err;
@@ -258,6 +260,38 @@ function cancelled() {
 }
 
 // ---------- shared ----------
+
+/**
+ * The slug of the org to create in: `--org` if given. Otherwise the user's only org, or in a terminal a pick from
+ * their orgs. With several orgs and no terminal there is no safe default, so it names the slugs and the flag.
+ */
+export async function resolveOrg(
+  ctx: Context,
+  client: LoopwayClient,
+  flag: string | undefined,
+  kind: "inbox" | "bot",
+): Promise<string> {
+  if (flag) return flag;
+  const orgs = await client.listOrgs();
+  if (orgs.length === 1) return orgs[0]!.slug;
+  if (!orgs.length) throw new UsageError("You don't belong to any org yet. Choose a username with `loopway username`.");
+  if (!ctx.interactive) {
+    await ctx.metrics?.capture("org_unresolved", { kind, reason: "several_orgs_non_interactive" });
+    throw new UsageError(
+      `You belong to several orgs (${orgs.map((o) => o.slug).join(", ")}). Pass --org <slug> to choose where to create the ${kind}.`,
+    );
+  }
+  const picked = await p.select({
+    message: `Which org should the ${kind} belong to?`,
+    options: orgs.map((o) => ({ value: o.slug, label: o.slug, hint: o.personal ? "personal" : undefined })),
+  });
+  if (p.isCancel(picked)) {
+    await ctx.metrics?.capture("org_unresolved", { kind, reason: "cancelled" });
+    p.cancel(`No ${kind} created.`);
+    throw new CancelledError();
+  }
+  return picked;
+}
 
 export function setupText(inbox: Inbox): string {
   const setup = inbox.setup ?? { webhook_url: inbox.webhook_url };

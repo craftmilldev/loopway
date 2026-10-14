@@ -78,6 +78,9 @@ const savedConfig = (dir = configDir) => readFile(join(dir, "config.json"), "utf
 
 let signups = 0;
 
+const personalSlug = async (key: string) =>
+  (await new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch }).listOrgs()).find((o) => o.personal)!.slug;
+
 /** Signs a new user up through `POST /auth/verify` and saves their session token as the CLI's login. */
 async function configured(name = "Matthew") {
   const n = ++signups;
@@ -327,6 +330,89 @@ describe("inboxes", () => {
   it("requires --name without a terminal", async () => {
     await configured();
     await expect(run("inbox", "create", "--source", "github")).rejects.toThrow(/--name is required/);
+  });
+
+  describe("choosing the org", () => {
+    /** Puts the logged-in user in a second org, so they belong to several. */
+    async function joinSharedOrg(key: string) {
+      const me = await new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch }).me();
+      const id = randomUUID();
+      const slug = `team-${id.slice(0, 8)}`;
+      await db.query(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [id, slug]);
+      await db.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [id, me.id]);
+      return { id, slug };
+    }
+
+    it("uses the only org without a flag", async () => {
+      const key = await configured();
+      const inbox = await runJson("inbox", "create", "--name", "solo", "--source", "github");
+      const orgs = await new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch }).listOrgs();
+      expect(orgs).toHaveLength(1);
+      expect(inbox.org_id).toBe(orgs[0]!.id);
+    });
+
+    it("creates in the --org given, and fails without it when there are several and no terminal", async () => {
+      const key = await configured();
+      const team = await joinSharedOrg(key);
+      await expect(run("inbox", "create", "--name", "x", "--source", "github")).rejects.toThrow(
+        new RegExp(`several orgs \\(.*${team.slug}.*\\).*--org <slug>`),
+      );
+      const inbox = await runJson("inbox", "create", "--name", "x", "--source", "github", "--org", team.slug);
+      expect(inbox.org_id).toBe(team.id);
+
+      await expect(
+        run("bots", "create", "--name", "b", "--preset", "github-threads", "--model", "sonnet", "--inbox", inbox.id),
+      ).rejects.toThrow(/several orgs/);
+      const bot = await runJson(
+        "bots",
+        "create",
+        "--name",
+        "b",
+        "--preset",
+        "github-threads",
+        "--model",
+        "sonnet",
+        "--inbox",
+        inbox.id,
+        "--org",
+        team.slug,
+      );
+      expect(bot.org_id).toBe(team.id);
+    });
+
+    it("words an inbox from another org as the API's error, and an unknown org as not found", async () => {
+      const key = await configured();
+      const team = await joinSharedOrg(key);
+      const mine = await runJson(
+        "inbox",
+        "create",
+        "--name",
+        "mine",
+        "--source",
+        "github",
+        "--org",
+        await personalSlug(key),
+      );
+      await expect(
+        run(
+          "bots",
+          "create",
+          "--name",
+          "b",
+          "--preset",
+          "github-threads",
+          "--model",
+          "sonnet",
+          "--inbox",
+          mine.id,
+          "--org",
+          team.slug,
+        ),
+      ).rejects.toThrow(/same org as the bot/);
+      await expect(run("inbox", "create", "--name", "x", "--source", "github", "--org", "no-such-org")).rejects.toThrow(
+        /Org not found/,
+      );
+    });
   });
 
   it("show resolves names and reports stats", async () => {
@@ -1310,7 +1396,12 @@ describe("threads", () => {
   it("starts running a bot created after the runner started, once it has a prompt and rules", async () => {
     const { inbox, bot, client, out, d } = await setup(3);
     // A bot with no prompt yet is reported once and left alone.
-    const fresh = await client.createBot({ name: "late", model: "sonnet", inbox_ids: [inbox.id] });
+    const fresh = await client.createBot({
+      org: (await client.listOrgs())[0]!.slug,
+      name: "late",
+      model: "sonnet",
+      inbox_ids: [inbox.id],
+    });
     await d.tick();
     await d.tick();
     expect(out.filter((l) => l.startsWith("Skipping bot late"))).toHaveLength(1);
@@ -1324,7 +1415,13 @@ describe("threads", () => {
 
   it("reports a new bot whose rules don't parse once, and runs it when a valid version arrives", async () => {
     const { inbox, client, out, d } = await setup(3);
-    const fresh = await client.createBot({ name: "broken", model: "sonnet", inbox_ids: [inbox.id], prompt: "Draft." });
+    const fresh = await client.createBot({
+      org: (await client.listOrgs())[0]!.slug,
+      name: "broken",
+      model: "sonnet",
+      inbox_ids: [inbox.id],
+      prompt: "Draft.",
+    });
     // The server rejects rules that don't parse, so save the version straight to the database.
     await db.query(
       `INSERT INTO loopway.bot_versions (bot_id, version, prompt, rules)
