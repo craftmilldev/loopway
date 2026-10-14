@@ -1,8 +1,8 @@
 import { execFile } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
-import type { AgentRun, RunWatch } from "../agent.js";
-import { Harness, type Launch } from "../harness.js";
+import type { AgentRun, RunWatch } from "./agent.js";
+import { Harness, type Launch } from "./harness.js";
 
 const exec = promisify(execFile);
 
@@ -51,6 +51,11 @@ export class CursorWatch implements RunWatch {
 export class CursorHarness extends Harness {
   readonly name = "cursor";
   readonly command = "cursor-agent";
+
+  /** Cursor's models change often and depend on the account, so any name goes through and `cursor-agent` has the last word. */
+  modelFits(model: string) {
+    return model.trim().length > 0;
+  }
 
   private workspace = (run: AgentRun) => `${run.logPath}.workspace`;
   private chatFile = (run: AgentRun) => `${run.logPath}.chat`;

@@ -3,9 +3,9 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { AgentRun } from "../src/bots/agent.js";
-import { CursorWatch } from "../src/bots/harnesses/cursor.js";
-import { getHarness, HARNESSES } from "../src/bots/harnesses/index.js";
+import type { AgentRun } from "../src/agent.js";
+import { CursorWatch } from "../src/cursor.js";
+import { getHarness, HARNESSES } from "../src/index.js";
 
 const temp = () => mkdtemp(join(tmpdir(), "lw-harness-"));
 

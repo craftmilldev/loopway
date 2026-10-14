@@ -1,0 +1,31 @@
+{
+  "name": "@loopway/harnesses",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "The coding-agent CLIs a bot can run on (Claude Code, Cursor, ...), shared by the web API and the CLI.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.3"
+  }
+}

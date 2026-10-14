@@ -1,11 +1,27 @@
-import type { AgentRun } from "../agent.js";
+import type { AgentRun } from "./agent.js";
 import { LimitWatch } from "./claude-watch.js";
-import { Harness, type Launch } from "../harness.js";
+import { Harness, type Launch } from "./harness.js";
 
 /** Claude Code, run as `claude -p`. */
 export class ClaudeHarness extends Harness {
   readonly name = "claude";
   readonly command = "claude";
+
+  /** Aliases for the latest of a family, and full ids to pin a version. Add new models here and drop deprecated ones. */
+  readonly models = [
+    "fable",
+    "opus",
+    "sonnet",
+    "haiku",
+    "claude-fable-5-1",
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+    "claude-haiku-5-5",
+  ];
+
+  modelFits(model: string) {
+    return this.models.includes(model);
+  }
 
   launch(run: AgentRun): Launch {
     const mcpConfig = JSON.stringify({ mcpServers: { loopway: { type: "http", url: run.mcpUrl } } });

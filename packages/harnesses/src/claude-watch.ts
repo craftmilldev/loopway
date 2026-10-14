@@ -1,4 +1,4 @@
-import type { RunWatch } from "../agent.js";
+import type { RunWatch } from "./agent.js";
 
 /** How long to wait when a run hit the usage limit but didn't say when it resets. */
 export const LIMIT_FALLBACK_MS = 5 * 60_000;

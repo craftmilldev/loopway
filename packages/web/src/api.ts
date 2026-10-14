@@ -9,7 +9,7 @@ import { consoleSender, type SendEmail } from "./email.js";
 import { ApiError, jsonBody, type Env } from "./http.js";
 import { isUuid, LOGIN_CODE_RE, normalizeLoginCode } from "./ids.js";
 import { ANONYMOUS, noopMetrics, type Metrics } from "./metrics.js";
-import { BOT_HARNESSES, modelFits, type BotHarness } from "./models.js";
+import { getHarness, HARNESSES } from "@loopway/harnesses";
 import { createPosthogProxy } from "./posthog-proxy.js";
 import { ORG_SLUG_PROBLEM_MESSAGES, USERNAME_PROBLEM_MESSAGES, type SlugProblem } from "./slugs.js";
 import { sources } from "./sources.js";
@@ -576,11 +576,12 @@ export function createApi(opts: ApiOptions) {
   const inboxIdsBody = z.array(z.string().refine(isUuid, "must be an inbox id")).min(1).max(100);
 
   const modelBody = z.string().min(1).max(200);
-  const harnessBody = z.enum(BOT_HARNESSES);
+  const harnessNames = HARNESSES.map((h) => h.name);
+  const harnessBody = z.string().refine((n) => harnessNames.includes(n), `must be one of: ${harnessNames.join(", ")}`);
 
   // The model is checked against the harness it will run on, which only the two together can say.
-  const checkedModel = async (c: Context<Env>, harness: BotHarness, model: string) => {
-    if (modelFits(harness, model)) return;
+  const checkedModel = async (c: Context<Env>, harness: string, model: string) => {
+    if (getHarness(harness).modelFits(model)) return;
     await metrics.capture("bot_model_rejected", c.var.user.id, { harness });
     throw new ApiError(400, "invalid_model", `"${model}" is not a model the ${harness} harness takes`);
   };
@@ -731,8 +732,7 @@ export function createApi(opts: ApiOptions) {
       }
     }
     // Changing either one has to leave a pair that fits.
-    if (input.model || input.harness)
-      await checkedModel(c, input.harness ?? (bot.harness as BotHarness), input.model ?? bot.model);
+    if (input.model || input.harness) await checkedModel(c, input.harness ?? bot.harness, input.model ?? bot.model);
     const updated = await store.updateBot(c.var.db, bot, {
       name: input.name,
       model: input.model,

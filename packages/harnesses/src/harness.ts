@@ -26,6 +26,9 @@ export abstract class Harness {
   /** The binary to spawn. */
   abstract readonly command: string;
 
+  /** Whether `model` is one this harness takes (a bot's model is checked against its harness). */
+  abstract modelFits(model: string): boolean;
+
   /** Runs before the process starts, so a harness can write the files it wants (an MCP config, say). */
   async before(run: AgentRun): Promise<void> {
     void run;

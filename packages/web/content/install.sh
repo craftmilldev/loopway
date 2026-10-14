@@ -26,11 +26,11 @@ fi
 DIR=$(mktemp -d)
 trap 'rm -rf "$DIR"' EXIT
 
-# The CLI and the two packages it depends on are release assets, so npm installs them together.
-for name in rules presets cli; do
+# The CLI and the three packages it depends on are release assets, so npm installs them together.
+for name in harnesses rules presets cli; do
   curl -fsSL "$URL/loopway-$name.tgz" -o "$DIR/loopway-$name.tgz" || fail "could not download $URL/loopway-$name.tgz"
 done
 
-npm install -g "$DIR/loopway-rules.tgz" "$DIR/loopway-presets.tgz" "$DIR/loopway-cli.tgz" || fail "npm install failed."
+npm install -g "$DIR/loopway-harnesses.tgz" "$DIR/loopway-rules.tgz" "$DIR/loopway-presets.tgz" "$DIR/loopway-cli.tgz" || fail "npm install failed."
 
 echo "Installed loopway $(loopway --version). Next: loopway login"

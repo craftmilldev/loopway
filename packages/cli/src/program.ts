@@ -17,7 +17,7 @@ import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox
 import { listRunners } from "./commands/runners.js";
 import { runBots } from "./commands/bots-run.js";
 import { addOrgMember, createOrg, leaveOrg, listOrgs, orgMembers, removeOrgMember } from "./commands/orgs.js";
-import { HARNESSES } from "./bots/harnesses/index.js";
+import { HARNESSES } from "@loopway/harnesses";
 import type { Context } from "./context.js";
 import { PRESETS } from "@loopway/presets";
 import { CLI_VERSION } from "./version.js";

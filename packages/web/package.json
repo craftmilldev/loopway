@@ -27,6 +27,7 @@
   "dependencies": {
     "@loopway/presets": "*",
     "@loopway/rules": "*",
+    "@loopway/harnesses": "*",
     "@loopway/sources": "*",
     "ajv": "^8.20.0",
     "hono": "^4.13.13",
