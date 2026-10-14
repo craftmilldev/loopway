@@ -243,7 +243,7 @@ export function createApi(opts: ApiOptions) {
       .object({ slug: usernameParam, name: z.string().trim().min(1).max(100).optional() })
       .parse(await jsonBody(c));
     const result = await store.createSharedOrg(c.var.db, c.var.user.id, input.slug, input.name);
-    if (!result.ok) {
+    if ("problem" in result) {
       await metrics.capture("org_create_rejected", c.var.user.id, { reason: result.problem });
       const { status, code } = USERNAME_ERRORS[result.problem];
       throw new ApiError(status, code, ORG_SLUG_PROBLEM_MESSAGES[result.problem]);
