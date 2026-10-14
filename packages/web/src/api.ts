@@ -163,7 +163,7 @@ export function createApi(opts: ApiOptions) {
       })
       .parse(await jsonBody(c));
     const result = await store.redeemLoginCode(c.var.db, input.email, input.code, input.username);
-    if (!result.ok) {
+    if ("problem" in result) {
       await metrics.capture("verify_rejected", ANONYMOUS, { reason: result.problem });
       if (result.problem === "invalid_code")
         throw new ApiError(401, "invalid_code", "That code is invalid or has expired");
