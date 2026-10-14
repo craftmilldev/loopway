@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { Hono } from "hono";
+import { MARKETING_PATHS } from "./marketing.js";
 
 // The web UI is a React app in client/ that talks to the JSON API on the same origin. scripts/client.ts bundles it
 // into public/app.js and public/app.css. This module returns the HTML shell that loads the bundle, and serves the
@@ -54,7 +55,7 @@ export function createWeb(opts: WebOptions = {}) {
   const app = new Hono();
   const html = shell(posthogMeta(opts.posthogKey, opts.posthogUiHost));
   const pages = [
-    "/",
+    ...MARKETING_PATHS,
     "/login",
     "/dashboard",
     "/dashboard/bots",

@@ -1,10 +1,10 @@
 import { createRoot } from "react-dom/client";
 import { Bot, Thread } from "./bot.js";
 import { Bots } from "./bots.js";
-import { Home } from "./home.js";
 import { Inbox } from "./inbox.js";
 import { Inboxes } from "./inboxes.js";
 import { Login } from "./login.js";
+import { marketingPage } from "./marketing.js";
 import { NewBot } from "./new-bot.js";
 import { startMetrics } from "./metrics.js";
 import { Overview } from "./overview.js";
@@ -13,7 +13,8 @@ import "./styles.css";
 // One bundle for every page. The server sends the same HTML shell for each route (src/ui.ts) and links between
 // pages are plain full-page loads, so picking the page from the path is all the routing there is.
 function page(path: string) {
-  if (path === "/") return <Home />;
+  const marketing = marketingPage(path);
+  if (marketing) return marketing;
   if (path === "/login") return <Login />;
   if (path === "/dashboard") return <Overview />;
   if (path === "/dashboard/bots") return <Bots />;
