@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { Inbox as InboxInfo } from "./dashboard.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
@@ -18,7 +18,10 @@ export function Inbox({ id }: { id: string }) {
   const [messages, setMessages] = useState<InboxMessage[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   // The bots that read this inbox, and how far each has read.
-  const readers = (lw.useList<lw.Bot>("/bots", !!me).data ?? []).filter((b) => b.inbox_ids.includes(id));
+  const bots = lw.useList<lw.Bot>("/bots", !!me);
+  const readers = (bots.data ?? []).filter((b) => b.inbox_ids.includes(id));
+  // The list as last set, for the requests that finish after a render they started in.
+  const listed = useRef<InboxMessage[] | null>(null);
   const source = lw.useSources()?.data.find((s) => s.type === inbox?.source_type);
 
   useEffect(() => {
@@ -45,7 +48,8 @@ export function Inbox({ id }: { id: string }) {
         return lw.expired(r);
       }
       const body = (await r.json()) as { data: InboxMessage[]; next_cursor: string | null };
-      setMessages((prev) => (after && prev ? [...prev, ...body.data] : body.data));
+      listed.current = after && listed.current ? [...listed.current, ...body.data] : body.data;
+      setMessages(listed.current);
       setCursor(body.next_cursor);
     },
     [id],
@@ -54,6 +58,27 @@ export function Inbox({ id }: { id: string }) {
   useEffect(() => {
     if (inbox) void load(null);
   }, [inbox, load]);
+
+  // New messages and how far each reader has read. A refresh adds only the messages it hasn't got to the front, so
+  // the open ones and "Load older" stay as they are. The inbox itself is what Setup and Settings edit: it loads once.
+  lw.usePoll(bots.reload, !!me);
+  lw.usePoll(async () => {
+    const q = new URLSearchParams({ order: "desc", limit: "50" });
+    const r = await lw.api("/inboxes/" + encodeURIComponent(id) + "/messages?" + q.toString());
+    if (!r.ok) {
+      track("inbox_messages_load_failed", { status: r.status });
+      return false;
+    }
+    const body = (await r.json()) as { data: InboxMessage[]; next_cursor: string | null };
+    // Merges into the list as it is now, not as it was when this request started: a page may have loaded since.
+    const merged = lw.mergeNewest(listed.current, body.data, !!body.next_cursor);
+    if (merged.items !== listed.current) {
+      listed.current = merged.items;
+      setMessages(merged.items);
+    }
+    if (merged.replaced) setCursor(body.next_cursor);
+    return true;
+  }, !!inbox);
 
   // A source that makes the secret on its side leaves the inbox rejecting deliveries until it's pasted in.
   const unfinished = !!inbox && !inbox.config?.secret;

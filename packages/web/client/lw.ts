@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { identify, reset } from "./metrics.js";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { identify, reset, track } from "./metrics.js";
 
 // Talks to the JSON API on the same origin with the session token kept in localStorage.
 
@@ -187,20 +187,164 @@ export interface Thread {
   updated_at: string;
 }
 
-/** GETs `path` once `ready`, and again whenever the returned `reload` is called. Null while loading or missing. */
+/** How often a visible page refreshes its data, and the longest a failing refresh waits before it tries again. */
+export const POLL_MS = 15_000;
+const MAX_BACKOFF_MS = 120_000;
+
+/** True when `a` and `b` hold the same JSON, so a refresh that found nothing new can skip its state update. */
+export const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * The newest-first list `shown` with a refresh's newest page (`fresh`) added to the front. `replaced` means the page
+ * shared nothing with the list while more lay behind it, so events in between can't be reached and the list starts over.
+ */
+export function mergeNewest<T extends { id: string }>(shown: T[] | null, fresh: T[], more: boolean) {
+  if (!shown) return { items: shown, replaced: false };
+  const have = new Set(shown.map((x) => x.id));
+  const added = fresh.filter((x) => !have.has(x.id));
+  if (!added.length) return { items: shown, replaced: false };
+  if (added.length === fresh.length && shown.length && more) return { items: fresh, replaced: true };
+  return { items: [...added, ...shown], replaced: false };
+}
+
+// When any load last succeeded. The "updated 12 s ago" label reads it without the pages re-rendering.
+let updatedAt: number | null = null;
+const updatedListeners = new Set<() => void>();
+export function markUpdated() {
+  updatedAt = Date.now();
+  updatedListeners.forEach((l) => l());
+}
+
+/** When data was last loaded or refreshed, in ms since the epoch; null before the first load. */
+export function useUpdatedAt() {
+  return useSyncExternalStore(
+    (l) => {
+      updatedListeners.add(l);
+      return () => void updatedListeners.delete(l);
+    },
+    () => updatedAt,
+  );
+}
+
+// Every active poller, so one switch back to the tab refreshes them all and is counted once.
+interface Poller {
+  onVisible(): boolean;
+}
+const pollers = new Set<Poller>();
+function onVisibility() {
+  if (document.visibilityState !== "visible") return;
+  let refreshed = false;
+  for (const p of pollers) if (p.onVisible()) refreshed = true;
+  if (refreshed) track("dashboard_refresh");
+}
+
+/**
+ * Runs `refresh` every `interval` ms while `enabled` and the tab is visible (a window without focus still counts).
+ * `refresh` resolves true on success. A failure doubles the wait, up to two minutes, and a success resets it.
+ * Refreshes never overlap. When the tab becomes visible again it refreshes at once if the last success is older
+ * than `interval`.
+ */
+export function usePoll(refresh: () => Promise<boolean>, enabled: boolean, every: number = POLL_MS) {
+  const latest = useRef(refresh);
+  latest.current = refresh;
+  useEffect(() => {
+    if (!enabled) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let busy = false;
+    let stopped = false;
+    let delay = every;
+    let last = Date.now();
+    const hidden = () => document.visibilityState === "hidden";
+
+    const schedule = (ms: number) => {
+      clearTimeout(timer);
+      if (!stopped && !hidden()) timer = setTimeout(() => void run(), ms);
+    };
+    async function run() {
+      clearTimeout(timer);
+      if (stopped || hidden() || busy) return;
+      busy = true;
+      let ok = false;
+      try {
+        ok = await latest.current();
+      } catch {
+        // A network error is a failed refresh like any other.
+      }
+      if (!ok) track("dashboard_refresh_failed");
+      busy = false;
+      if (ok) last = Date.now();
+      delay = ok ? every : Math.min(delay * 2, MAX_BACKOFF_MS);
+      schedule(delay);
+    }
+    const poller: Poller = {
+      onVisible() {
+        if (busy) return false;
+        const age = Date.now() - last;
+        if (age >= every) {
+          void run();
+          return true;
+        }
+        schedule(Math.max(0, delay - age));
+        return false;
+      },
+    };
+    const onHide = () => {
+      if (hidden()) clearTimeout(timer);
+    };
+    document.addEventListener("visibilitychange", onHide);
+    if (pollers.size === 0) document.addEventListener("visibilitychange", onVisibility);
+    pollers.add(poller);
+    schedule(delay);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onHide);
+      pollers.delete(poller);
+      if (pollers.size === 0) document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [enabled, every]);
+}
+
+/**
+ * GETs `path` once `ready`, and again whenever the returned `reload` is called. Null while loading or missing.
+ * It never polls by itself: a page that wants this data kept fresh passes `reload` to `usePoll`. `reload` resolves
+ * false when the request failed, keeps what is on screen, and does not touch state when the response is unchanged.
+ */
 export function useGet<T>(path: string | null, ready: boolean) {
   const [data, setData] = useState<T | null>(null);
   const [missing, setMissing] = useState(false);
+  const seen = useRef<string | null>(null);
+  const requests = useRef(0);
+
   const reload = useCallback(async () => {
-    if (!path) return;
+    if (!path) return true;
+    const id = ++requests.current;
     const r = await api(path);
-    if (r.status === 404) return setMissing(true);
-    if (!r.ok) return expired(r);
-    setData((await r.json()) as T);
+    // A newer request (a reload after a save, or another path) has started: this answer is out of date.
+    if (id !== requests.current) return true;
+    if (r.status === 404) {
+      setMissing(true);
+      return true;
+    }
+    if (!r.ok) {
+      expired(r);
+      return false;
+    }
+    const text = await r.text();
+    if (id !== requests.current) return true;
+    markUpdated();
+    if (text !== seen.current) {
+      seen.current = text;
+      setData(JSON.parse(text) as T);
+    }
+    return true;
   }, [path]);
+
   useEffect(() => {
+    seen.current = null;
     if (ready) void reload();
   }, [ready, reload]);
+
   return { data, missing, reload };
 }
 

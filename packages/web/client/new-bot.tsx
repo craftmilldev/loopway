@@ -122,7 +122,7 @@ function Source({
   inboxes: Inbox[];
   picked: Set<string>;
   setPicked: (s: Set<string>) => void;
-  reload: () => Promise<void>;
+  reload: () => Promise<unknown>;
   next: () => void;
 }) {
   const [creating, setCreating] = useState(inboxes.length === 0);
@@ -363,7 +363,7 @@ function Runner({
   next,
 }: {
   bot: lw.Bot | null;
-  reload: () => Promise<void>;
+  reload: () => Promise<unknown>;
   back: () => void;
   next: () => void;
 }) {

@@ -104,7 +104,6 @@ export function PromptTab({
   current: lw.BotVersion | null;
   onSaved: () => void;
 }) {
-  const history = lw.useList<lw.BotVersion>(botPath + "/versions", true);
   const [prompt, setPrompt] = useState(current?.prompt ?? "");
   const [rules, setRules] = useState(toDrafts(current?.rules ?? null));
   const [editing, setEditing] = useState<number | null>(null);
@@ -126,6 +125,7 @@ export function PromptTab({
   const promptChanged = !samePrompt(prompt, current?.prompt ?? "");
   const rulesChanged = !sameRules(parsed, current?.rules ?? null);
   const dirty = promptChanged || rulesChanged;
+  const history = lw.useList<lw.BotVersion>(botPath + "/versions", true);
 
   useEffect(() => {
     if (!dirty) return;

@@ -6,6 +6,7 @@ import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
 import { StateBadge } from "./overview.js";
+import { Updated } from "./updated.js";
 
 const FILTERS: { key: BotFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -22,31 +23,51 @@ export function Bots() {
   const bots = lw.useList<lw.Bot>("/bots", ready);
   const runners = lw.useList<lw.Runner>("/runners", ready);
   const inboxes = lw.useList<Inbox>("/inboxes", ready);
+  lw.usePoll(bots.reload, ready);
+  lw.usePoll(runners.reload, ready);
+  lw.usePoll(inboxes.reload, ready);
   const [threads, setThreads] = useState<Record<string, lw.Thread[]>>({});
   const [activity, setActivity] = useState<Record<string, lw.BotActivity> | null>(null);
   const [filter, setFilter] = useState<BotFilter>("all");
   const [find, setFind] = useState("");
 
-  // Each bot's active threads. One request per bot.
-  useEffect(() => {
-    for (const b of bots.data ?? []) {
-      void lw.api(`/bots/${b.id}/threads?status=active`).then(async (r) => {
-        if (!r.ok) return track("bots_load_failed", { resource: "threads", status: r.status });
+  // Each bot's active threads. One request per bot. A refresh keeps what it has when a request fails.
+  const loadThreads = async () => {
+    let ok = true;
+    await Promise.all(
+      (bots.data ?? []).map(async (b) => {
+        const r = await lw.api(`/bots/${b.id}/threads?status=active`);
+        if (!r.ok) {
+          ok = false;
+          return track("bots_load_failed", { resource: "threads", status: r.status });
+        }
         const data = ((await r.json()) as { data: lw.Thread[] }).data;
-        setThreads((t) => ({ ...t, [b.id]: data }));
-      });
-    }
-  }, [bots.data]);
+        setThreads((t) => (lw.same(t[b.id], data) ? t : { ...t, [b.id]: data }));
+      }),
+    );
+    return ok;
+  };
+  useEffect(() => {
+    void loadThreads();
+  }, [bots.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  lw.usePoll(loadThreads, ready && !!bots.data);
 
   // Every bot's deliveries, in one call.
+  const loadActivity = async () => {
+    const r = await lw.api("/bots/activity?days=" + BAR_DAYS);
+    if (!r.ok) {
+      track("bots_load_failed", { resource: "activity", status: r.status });
+      return false;
+    }
+    const data = ((await r.json()) as { data: lw.BotActivity[] }).data;
+    const next = Object.fromEntries(data.map((a) => [a.bot_id, a]));
+    setActivity((a) => (lw.same(a, next) ? a : next));
+    return true;
+  };
   useEffect(() => {
-    if (!ready) return;
-    void lw.api("/bots/activity?days=" + BAR_DAYS).then(async (r) => {
-      if (!r.ok) return track("bots_load_failed", { resource: "activity", status: r.status });
-      const data = ((await r.json()) as { data: lw.BotActivity[] }).data;
-      setActivity(Object.fromEntries(data.map((a) => [a.bot_id, a])));
-    });
-  }, [ready]);
+    if (ready) void loadActivity();
+  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
+  lw.usePoll(loadActivity, ready);
 
   const loaded = !!(bots.data && runners.data && inboxes.data && bots.data.every((b) => threads[b.id]));
   const total = bots.data?.length ?? 0;
@@ -102,6 +123,7 @@ export function Bots() {
         <div>
           <span className="lbl">Bots</span>
           <h1 className="ov-headline">{headline}</h1>
+          <Updated />
           <p className="muted">
             Each bot reads its inboxes in order and works one thread per issue. Open one to see its threads, prompt and
             rules.
