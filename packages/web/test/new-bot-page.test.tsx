@@ -26,7 +26,8 @@ function stubFetch() {
       if (path === "/me") return json({ id: "u1", email: null, name: "Me" });
       if (path === "/orgs") return json({ data: orgs });
       if (path === "/inboxes") return json({ data: [inbox] });
-      if (path === "/harnesses") return json({ data: [{ id: "claude-code", label: "Claude Code" }], can_request: false });
+      if (path === "/harnesses")
+        return json({ data: [{ id: "claude-code", label: "Claude Code" }], can_request: false });
       if (path === "/bots/b1") return json(bot);
       if (path === "/bots/b1/threads") return json({ data: threads });
       return json({}, 404);
