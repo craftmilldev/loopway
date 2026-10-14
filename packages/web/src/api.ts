@@ -12,7 +12,6 @@ import { BOT_MODELS } from "./models.js";
 import { createPosthogProxy } from "./posthog-proxy.js";
 import { ORG_SLUG_PROBLEM_MESSAGES, USERNAME_PROBLEM_MESSAGES, type SlugProblem } from "./slugs.js";
 import { sources } from "./sources.js";
-import { parseActor } from "./actor.js";
 import * as store from "./store.js";
 import type { MessageRow, Inbox, User } from "./store.js";
 import { signSessionToken, verifyToken } from "./tokens.js";
@@ -108,7 +107,7 @@ export function createApi(opts: ApiOptions) {
     const source = sources.get(inbox.source_type);
     if (!source) throw new ApiError(500, "internal", `Unknown source type ${inbox.source_type}`);
     const received = (outcome: string, extra?: Record<string, unknown>) =>
-      metrics.capture("webhook_received", parseActor(inbox.created_by)?.id ?? inbox.created_by, {
+      metrics.capture("webhook_received", inbox.org_id, {
         source_type: inbox.source_type,
         outcome,
         ...extra,
