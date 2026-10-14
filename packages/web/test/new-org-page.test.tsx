@@ -60,7 +60,7 @@ describe("NewOrg", () => {
     const { container } = render(<NewOrg />);
     await waitFor(() => expect(screen.queryByRole("button", { name: /Org:/ })).toBeNull());
     await waitFor(() => expect(container.querySelector(".dash-nav")).toBeNull());
-    expect(container.querySelector(".dash-word")?.getAttribute("href")).toBe("/dashboard");
+    expect(screen.getByRole("link", { name: "Loopway" }).getAttribute("href")).toBe("/dashboard");
     expect(screen.queryByText("New bot")).toBeNull();
     expect(screen.getByText("Log out")).toBeTruthy();
   });
