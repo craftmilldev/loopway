@@ -6,7 +6,7 @@ import { token } from "./lw.js";
 
 // The markdown for each marketing page, keyed by path. Typed on the path list in src/marketing.ts, so a path added
 // there doesn't compile until its content is here.
-const CONTENT: Record<MarketingPath, string> = {
+export const CONTENT: Record<MarketingPath, string> = {
   "/": home,
 };
 

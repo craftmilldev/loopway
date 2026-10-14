@@ -1,0 +1,2 @@
+# Reserved org slugs: changes need a person to check no existing org or user holds the name.
+/packages/web/src/reserved-slugs.ts @mcwhittemore

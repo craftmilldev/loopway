@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { marketingPage } from "../client/marketing.js";
-import { MARKETING_PATHS } from "../src/marketing.js";
+import { CONTENT, marketingPage } from "../client/marketing.js";
 import { slugProblem } from "../src/slugs.js";
 import { createWeb } from "../src/ui.js";
 
@@ -46,7 +45,7 @@ describe("the marketing home", () => {
 
 describe("marketing pages and org slugs", () => {
   it("reserves the first segment of every marketing path", () => {
-    for (const path of MARKETING_PATHS) {
+    for (const path of Object.keys(CONTENT)) {
       const slug = path.split("/")[1]!;
       if (slug) expect(slugProblem(slug), path).toBe("reserved");
     }

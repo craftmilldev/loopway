@@ -1,29 +1,10 @@
+import { RESERVED_SLUGS } from "./reserved-slugs.js";
+
 /**
  * Org slugs, which are also usernames: a user's personal org has their username as its slug, so both share one
- * namespace. Add paths and marketing pages to RESERVED_SLUGS as they are claimed.
+ * namespace. The reserved names are in reserved-slugs.ts.
  */
-export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
-  "api",
-  "dashboard",
-  "auth",
-  "health",
-  "webhooks",
-  "login",
-  "signup",
-  "settings",
-  "about",
-  "pricing",
-  "blog",
-  "docs",
-  "help",
-  "support",
-  "terms",
-  "privacy",
-  "new",
-  "orgs",
-  "me",
-  "loopway",
-]);
+export { RESERVED_SLUGS };
 
 export const SLUG_MIN = 2;
 export const SLUG_MAX = 39;
