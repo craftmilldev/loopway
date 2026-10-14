@@ -8,7 +8,7 @@ const inbox = (over: object = {}) => ({
   id: "i1",
   name: "loopway-github",
   source_type: "github",
-  webhook_url: "https://loopway.test/webhooks/i1",
+  webhook_url: "https://loopway.test/api/webhooks/i1",
   config: { secret: "s3cret", events: ["issues", "push"] },
   ...over,
 });
@@ -16,7 +16,7 @@ const vercel = inbox({
   id: "i2",
   name: "vercel-prod",
   source_type: "vercel",
-  webhook_url: "https://loopway.test/webhooks/i2",
+  webhook_url: "https://loopway.test/api/webhooks/i2",
   config: { secret: null, events: ["*"] },
 });
 const days = (n: number) =>
@@ -68,7 +68,8 @@ beforeEach(() => {
   patchReply = { status: 200, body: {} };
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (path: string, init?: { method?: string; body?: string }) => {
+    vi.fn(async (apiPath: string, init?: { method?: string; body?: string }) => {
+      const path = apiPath.replace(/^\/api/, "");
       const method = init?.method ?? "GET";
       requests.push({ path, method, body: init?.body ? JSON.parse(init.body) : undefined });
       const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
@@ -157,9 +158,9 @@ describe("Inbox page", () => {
     Object.assign(navigator, { clipboard: { writeText } });
     render(<Inbox id="i1" />);
     const url = await screen.findByLabelText<HTMLInputElement>("Webhook URL");
-    expect(url.value).toBe("https://loopway.test/webhooks/i1");
+    expect(url.value).toBe("https://loopway.test/api/webhooks/i1");
     fireEvent.click(screen.getByRole("button", { name: "Copy" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://loopway.test/webhooks/i1"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://loopway.test/api/webhooks/i1"));
     const on = (name: string) => screen.getByRole<HTMLInputElement>("checkbox", { name }).checked;
     expect([on("issues"), on("push"), on("release")]).toEqual([true, true, false]);
     // A finished inbox has no setup steps.

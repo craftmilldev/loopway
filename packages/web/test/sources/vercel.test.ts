@@ -17,7 +17,7 @@ describe("vercel webhooks", () => {
 
   function sendVercel(inboxId: string, body: unknown, secret = VERCEL_SECRET) {
     const raw = JSON.stringify(body);
-    return app.request(`/webhooks/${inboxId}`, {
+    return app.request(`/api/webhooks/${inboxId}`, {
       method: "POST",
       headers: {
         "content-type": "application/json",

@@ -52,7 +52,8 @@ beforeEach(() => {
   current = thread();
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (path: string, init?: RequestInit) => {
+    vi.fn(async (apiPath: string, init?: RequestInit) => {
+      const path = apiPath.replace(/^\/api/, "");
       requests.push(`${init?.method ?? "GET"} ${path}`);
       const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
       if (path === "/me") return json({ id: "u1", email: null, name: "Me" });

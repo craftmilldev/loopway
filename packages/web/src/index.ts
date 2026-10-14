@@ -5,7 +5,7 @@ import { getDb } from "./db/index.js";
 import { consoleSender, resendSender } from "./email.js";
 import { createMetrics } from "./metrics.js";
 
-/** The /ingest proxy forwards to PostHog's EU cloud when POSTHOG_HOST is an EU host (eu.i.posthog.com), else US. */
+/** The /api/ingest proxy forwards to PostHog's EU cloud when POSTHOG_HOST is an EU host (eu.i.posthog.com), else US. */
 function posthogRegion(host: string | undefined) {
   try {
     return host && new URL(host).hostname.startsWith("eu.") ? "eu" : "us";

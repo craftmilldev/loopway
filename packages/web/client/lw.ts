@@ -44,7 +44,7 @@ export function api(
   if (body !== undefined) headers["content-type"] = "application/json";
   const t = token();
   if (auth && t) headers.authorization = "Bearer " + t;
-  return fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  return fetch("/api" + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
 }
 
 export async function message(r: Response) {

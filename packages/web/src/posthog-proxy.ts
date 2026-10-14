@@ -13,15 +13,15 @@ export interface PosthogProxyOptions {
   fetch?: typeof fetch;
 }
 
-/** A reverse proxy for PostHog under /ingest, so analytics requests come from our own domain (ad blockers skip them). */
+/** A reverse proxy for PostHog under /api/ingest, so analytics requests come from our own domain (ad blockers skip them). */
 export function createPosthogProxy(opts: PosthogProxyOptions = {}) {
   const hosts = HOSTS[opts.region ?? "us"];
   const doFetch = opts.fetch ?? fetch;
   const app = new Hono();
 
-  app.all("/ingest/*", async (c) => {
+  app.all("/api/ingest/*", async (c) => {
     const url = new URL(c.req.url);
-    const path = url.pathname.slice("/ingest".length);
+    const path = url.pathname.slice("/api/ingest".length);
     const host = path.startsWith("/static/") || path.startsWith("/array/") ? hosts.assets : hosts.api;
 
     const headers = new Headers(c.req.raw.headers);

@@ -46,7 +46,7 @@ describe("inboxes", () => {
     const key = await newUser();
     const inbox = await newInbox(key);
     expect(inbox.config.secret).toMatch(/^[0-9a-f]{64}$/);
-    expect(inbox.webhook_url).toBe(`https://loopway.test/webhooks/${inbox.id}`);
+    expect(inbox.webhook_url).toBe(`https://loopway.test/api/webhooks/${inbox.id}`);
     const list = await call("GET", "/inboxes", { key });
     expect(list.body.data).toHaveLength(1);
   });
@@ -413,7 +413,11 @@ describe("login", () => {
   const loginApp = () =>
     createApi({ getDb: async () => db, tokenSecret: SECRET, sendEmail: async (e) => void sent.push(e) });
   const post = (a: ReturnType<typeof createApi>, path: string, body: unknown) =>
-    a.request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    a.request("/api" + path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
   const lastCode = () => sent.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
 
   it("emails a code and trades it for a session token", async () => {
@@ -427,7 +431,7 @@ describe("login", () => {
     const { token, expires_at, user } = await res.json();
     expect(user.email).toBe("login@example.com");
     expect(Date.parse(expires_at) - Date.now()).toBeGreaterThan(29 * 86400_000);
-    const me = (key: string) => a.request("/me", { headers: { authorization: `Bearer ${key}` } });
+    const me = (key: string) => a.request("/api/me", { headers: { authorization: `Bearer ${key}` } });
     expect((await me(token)).status).toBe(200);
 
     // single use
@@ -469,7 +473,7 @@ describe("login", () => {
     const { token: api_key, user, created } = await res.json();
     expect(created).toBe(true);
     expect(user).toMatchObject({ name: "new.person", email: "new.person@example.com", username: "new-person" });
-    expect((await a.request("/me", { headers: { authorization: `Bearer ${api_key}` } })).status).toBe(200);
+    expect((await a.request("/api/me", { headers: { authorization: `Bearer ${api_key}` } })).status).toBe(200);
     const orgs = await call("GET", "/orgs", { key: api_key });
     expect(orgs.body.data).toMatchObject([{ slug: "new-person", personal: true }]);
   });
@@ -582,8 +586,24 @@ describe("web ui", () => {
     }
   });
 
-  it("keeps /api as a bare health check and leaves the JSON routes alone", async () => {
-    expect(await call("GET", "/api")).toEqual({ status: 200, body: { ok: true } });
+  it("keeps /api as a bare health check and serves the JSON routes under it", async () => {
+    expect(await call("GET", "")).toEqual({ status: 200, body: { ok: true } });
+    expect(await call("GET", "/health")).toEqual({ status: 200, body: { ok: true } });
     expect((await call("GET", "/inboxes")).status).toBe(401);
+  });
+
+  it("answers 404 on the old top-level API paths", async () => {
+    const id = "00000000-0000-7000-8000-000000000000";
+    for (const [method, path] of [
+      ["GET", "/health"],
+      ["GET", "/me"],
+      ["GET", "/inboxes"],
+      ["POST", "/auth/login"],
+      ["POST", `/webhooks/${id}`],
+      ["POST", "/ingest/e/"],
+    ] as const) {
+      const res = await app.request(path, { method });
+      expect(res.status, `${method} ${path}`).toBe(404);
+    }
   });
 });

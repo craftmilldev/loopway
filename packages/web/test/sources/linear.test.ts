@@ -17,7 +17,7 @@ describe("linear webhooks", () => {
 
   function sendLinear(inboxId: string, body: unknown, delivery: string = randomUUID(), secret = SECRET) {
     const raw = JSON.stringify(body);
-    return app.request(`/webhooks/${inboxId}`, {
+    return app.request(`/api/webhooks/${inboxId}`, {
       method: "POST",
       headers: {
         "content-type": "application/json",

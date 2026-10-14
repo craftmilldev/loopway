@@ -24,7 +24,8 @@ beforeEach(() => {
   requests = [];
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (path: string) => {
+    vi.fn(async (apiPath: string) => {
+      const path = apiPath.replace(/^\/api/, "");
       requests.push(path);
       const key = path.includes("before=") ? path.split("before=")[1]! : "first";
       return new Response(JSON.stringify(pages[key] ?? { data: [], next: null }), { status: 200 });

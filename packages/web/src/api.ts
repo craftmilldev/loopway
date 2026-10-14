@@ -23,7 +23,7 @@ export interface ApiOptions extends EeOptions {
   publicBaseUrl?: string;
   /** Delivers login codes. Defaults to printing them to the console. */
   sendEmail?: SendEmail;
-  /** PostHog cloud region the /ingest proxy forwards to. Defaults to "us". */
+  /** PostHog cloud region the /api/ingest proxy forwards to. Defaults to "us". */
   posthogRegion?: "us" | "eu";
   /** PostHog project key the browser UI reports to through /ingest. Unset, the UI sends no metrics. */
   posthogKey?: string;
@@ -81,6 +81,9 @@ export function createApi(opts: ApiOptions) {
 
   // ---------- Public ----------
 
+  // Every JSON route lives on `api`, served under /api so it can't clash with a page.
+  const api = new Hono<Env>();
+
   app.route(
     "/",
     createWeb({
@@ -90,14 +93,14 @@ export function createApi(opts: ApiOptions) {
     }),
   );
 
-  app.get("/api", (c) => c.json({ ok: true }));
+  api.get("/", (c) => c.json({ ok: true }));
 
-  app.get("/health", async (c) => {
+  api.get("/health", async (c) => {
     await c.var.db.query("SELECT 1");
     return c.json({ ok: true });
   });
 
-  app.post("/webhooks/:inboxId", async (c) => {
+  api.post("/webhooks/:inboxId", async (c) => {
     const inboxId = c.req.param("inboxId");
     const inbox = isUuid(inboxId) ? await store.getInbox(c.var.db, inboxId) : undefined;
     if (!inbox) throw new ApiError(404, "not_found", "Inbox not found");
@@ -132,7 +135,7 @@ export function createApi(opts: ApiOptions) {
   // the user if the email is new (only after the code proves they own it).
   // The first step answers the same whether or not a code was already sent.
   // An address gets at most one code per TTL; asking again before it expires sends nothing.
-  app.post("/auth/login", async (c) => {
+  api.post("/auth/login", async (c) => {
     const { email } = z.object({ email: z.string().trim().email().max(320) }).parse(await jsonBody(c));
     const login = await store.createLoginCode(c.var.db, email);
     await metrics.capture("login_requested", ANONYMOUS, { sent: !!login.code });
@@ -161,7 +164,7 @@ export function createApi(opts: ApiOptions) {
   const usernameError = (problem: SlugProblem) =>
     new ApiError(USERNAME_ERRORS[problem].status, USERNAME_ERRORS[problem].code, USERNAME_PROBLEM_MESSAGES[problem]);
 
-  app.post("/auth/verify", async (c) => {
+  api.post("/auth/verify", async (c) => {
     const input = z
       .object({
         email: z.string().trim().email().max(320),
@@ -750,7 +753,8 @@ export function createApi(opts: ApiOptions) {
     return c.json({ moved: done.moved });
   });
 
-  app.route("/", authed);
+  api.route("/", authed);
+  app.route("/api", api);
   return app;
 
   // ---------- helpers (closures over opts) ----------
@@ -851,7 +855,7 @@ export function createApi(opts: ApiOptions) {
 
   function webhookUrl(c: Context<Env>, inboxId: string) {
     const base = (opts.publicBaseUrl || new URL(c.req.url).origin).replace(/\/+$/, "");
-    return `${base}/webhooks/${inboxId}`;
+    return `${base}/api/webhooks/${inboxId}`;
   }
 
   function serializeInbox(c: Context<Env>, inbox: Inbox) {

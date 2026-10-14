@@ -50,7 +50,8 @@ let runnerLeased: string | null;
 function stubFetch() {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (path: string) => {
+    vi.fn(async (apiPath: string) => {
+      const path = apiPath.replace(/^\/api/, "");
       requests.push(path);
       const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
       const [p = "", query = ""] = path.split("?");

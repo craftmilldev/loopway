@@ -391,7 +391,7 @@ export class LoopwayClient {
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     let res: Response;
     try {
-      res = await this.fetch(this.baseUrl + path, {
+      res = await this.fetch(this.baseUrl + "/api" + path, {
         method,
         headers: {
           accept: "application/json",

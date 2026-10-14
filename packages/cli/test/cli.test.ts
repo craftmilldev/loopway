@@ -83,7 +83,7 @@ async function configured(name = "Matthew") {
   const n = ++signups;
   const email = `cli${n}@example.com`;
   const { code } = await createLoginCode(db, email);
-  const res = await app.request("/auth/verify", {
+  const res = await app.request("/api/auth/verify", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email, code, username: `${name.toLowerCase().replace(/[^a-z0-9]/g, "")}-${n}` }),
@@ -96,7 +96,7 @@ async function configured(name = "Matthew") {
 
 async function sendGithub(inbox: { id: string; config: { secret: string } }, event: string, payload: unknown) {
   const raw = JSON.stringify(payload);
-  const res = await app.request(`/webhooks/${inbox.id}`, {
+  const res = await app.request(`/api/webhooks/${inbox.id}`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -204,18 +204,18 @@ describe("auth", () => {
     expect(await loadConfig(configDir, {})).toEqual({
       api_url: "https://loopway.craftmill.dev",
       api_key: undefined,
-      posthog_host: "https://loopway.craftmill.dev/ingest",
+      posthog_host: "https://loopway.craftmill.dev/api/ingest",
     });
     await writeConfig(configDir, { api_url: "https://file.test/", api_key: "lw_file" });
     expect(await loadConfig(configDir, {})).toEqual({
       api_url: "https://file.test",
       api_key: "lw_file",
-      posthog_host: "https://file.test/ingest",
+      posthog_host: "https://file.test/api/ingest",
     });
     expect(await loadConfig(configDir, { LOOPWAY_API_URL: "https://env.test", LOOPWAY_API_KEY: "lw_env" })).toEqual({
       api_url: "https://env.test",
       api_key: "lw_env",
-      posthog_host: "https://env.test/ingest",
+      posthog_host: "https://env.test/api/ingest",
     });
     // The metrics host lives in config.json (which login and config keep), and POSTHOG_HOST overrides it.
     await writeConfig(configDir, { api_url: "https://file.test", posthog_host: "https://eu.i.posthog.com" });
@@ -317,7 +317,7 @@ describe("inboxes", () => {
       "push, pull_request",
     );
     expect(inbox.config.events).toEqual(["push", "pull_request"]);
-    expect(inbox.webhook_url).toBe(`${API}/webhooks/${inbox.id}`);
+    expect(inbox.webhook_url).toBe(`${API}/api/webhooks/${inbox.id}`);
 
     const list = await runJson("inbox", "list");
     expect(list.map((i: any) => i.id)).toEqual([inbox.id]);

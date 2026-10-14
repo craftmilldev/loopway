@@ -19,7 +19,7 @@ afterAll(() => db.close());
 
 describe("metrics", () => {
   it("counts API errors by code", async () => {
-    const res = await app.request("/inboxes");
+    const res = await app.request("/api/inboxes");
     expect(res.status).toBe(401);
     expect(events.at(-1)).toMatchObject({
       event: "api_error",
@@ -29,7 +29,7 @@ describe("metrics", () => {
   });
 
   it("counts a webhook for an unknown inbox as an error", async () => {
-    const res = await app.request("/webhooks/00000000-0000-7000-8000-000000000000", { method: "POST", body: "{}" });
+    const res = await app.request("/api/webhooks/00000000-0000-7000-8000-000000000000", { method: "POST", body: "{}" });
     expect(res.status).toBe(404);
     expect(events.at(-1)).toMatchObject({ event: "api_error", properties: { code: "not_found", status: 404 } });
   });

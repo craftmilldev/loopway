@@ -28,7 +28,8 @@ beforeEach(() => {
   window.history.replaceState(null, "", "/dashboard/bots/b1/prompt");
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (path: string, init?: RequestInit) => {
+    vi.fn(async (apiPath: string, init?: RequestInit) => {
+      const path = apiPath.replace(/^\/api/, "");
       const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
       if (path === "/me") return json({ id: "u1", email: null, name: "Me" });
       if (path === "/bots") return json({ data: [bot] });

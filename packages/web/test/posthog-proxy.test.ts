@@ -13,7 +13,7 @@ function setup(region?: "us" | "eu") {
 describe("posthog proxy", () => {
   it("forwards events to the api host with query and body", async () => {
     const { app, calls } = setup();
-    const res = await app.request("/ingest/e/?ip=1", {
+    const res = await app.request("/api/ingest/e/?ip=1", {
       method: "POST",
       body: "payload",
       headers: { cookie: "s=1", "x-forwarded-for": "1.2.3.4, 5.6.7.8" },
@@ -31,8 +31,8 @@ describe("posthog proxy", () => {
 
   it("sends static and array paths to the assets host", async () => {
     const { app, calls } = setup("eu");
-    await app.request("/ingest/static/array.js");
-    await app.request("/ingest/array/phc_x/config");
+    await app.request("/api/ingest/static/array.js");
+    await app.request("/api/ingest/array/phc_x/config");
     expect(calls.map((c) => c.url)).toEqual([
       "https://eu-assets.i.posthog.com/static/array.js",
       "https://eu-assets.i.posthog.com/array/phc_x/config",

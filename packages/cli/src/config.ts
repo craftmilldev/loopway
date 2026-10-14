@@ -42,7 +42,7 @@ export async function loadConfig(
     api_url,
     api_key: env.LOOPWAY_API_KEY || file?.api_key,
     // Metrics go through the API's PostHog reverse proxy unless pointed elsewhere.
-    posthog_host: env.POSTHOG_HOST || file?.posthog_host || `${api_url}/ingest`,
+    posthog_host: env.POSTHOG_HOST || file?.posthog_host || `${api_url}/api/ingest`,
   };
 }
 

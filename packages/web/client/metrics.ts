@@ -1,7 +1,7 @@
 import { posthog } from "posthog-js";
 
 // Product metrics for the web UI. The server puts its PostHog key in a <meta> tag (src/ui.ts); with no key this
-// does nothing. Requests go through our own /ingest proxy (src/posthog-proxy.ts).
+// does nothing. Requests go through our own /api/ingest proxy (src/posthog-proxy.ts).
 
 let on = false;
 
@@ -9,7 +9,7 @@ export function startMetrics() {
   const key = document.querySelector<HTMLMetaElement>('meta[name="posthog-key"]')?.content;
   if (!key) return;
   posthog.init(key, {
-    api_host: "/ingest",
+    api_host: "/api/ingest",
     ui_host: document.querySelector<HTMLMetaElement>('meta[name="posthog-ui-host"]')?.content || undefined,
     person_profiles: "identified_only",
     defaults: "2025-05-24",

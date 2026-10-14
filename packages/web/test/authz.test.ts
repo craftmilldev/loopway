@@ -8,14 +8,16 @@ import { app, call, db, newInbox, newUser, prPayload, sendGithub } from "./helpe
 
 // Public on purpose: the shell, health, signed webhooks, login, and the analytics proxy.
 const PUBLIC = [
-  /^GET \/api$/,
-  /^GET \/health$/,
-  /^POST \/webhooks\/:inboxId$/,
-  /^POST \/auth\/(login|verify)$/,
+  /^GET \/api\/?$/,
+  /^GET \/api\/health$/,
+  /^POST \/api\/webhooks\/:inboxId$/,
+  /^POST \/api\/auth\/(login|verify)$/,
   // The UI shell and its bundle (GETs that serve no account data), and the analytics proxy.
   /^GET \/(login|app\.js|app\.css)?$/,
   /^GET \/dashboard(\/|$)/,
-  /^ALL \/ingest\//,
+  /^ALL \/api\/ingest\//,
+  // The database middleware, which runs for every request and answers nothing itself.
+  /^ALL \/\*$/,
 ];
 
 describe("authentication", () => {
