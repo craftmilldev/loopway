@@ -6,6 +6,8 @@ export interface User {
   id: string;
   name: string;
   email: string | null;
+  /** The slug of their personal org. Null until a new signup has picked one. */
+  username: string | null;
   created_at: string;
 }
 
@@ -191,6 +193,11 @@ export class LoopwayClient {
 
   me() {
     return this.request<User>("GET", "/me");
+  }
+
+  /** Sets the username (the personal org's slug), or renames it. 400/409 `invalid_username`, `username_reserved`, `username_taken`. */
+  setUsername(username: string) {
+    return this.request<User>("PATCH", "/me/username", { username });
   }
 
   async sources() {

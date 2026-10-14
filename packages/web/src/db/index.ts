@@ -63,6 +63,7 @@ export async function migrate(db: Db): Promise<string[]> {
     if (done.has(m.version)) continue;
     // Each statement separately: postgres.js unsafe() with params can't run multi-statement strings.
     for (const stmt of splitSql(m.sql)) await db.query(stmt);
+    await m.after?.(db);
     await db.query(`INSERT INTO loopway.schema_migrations (version) VALUES ($1)`, [m.version]);
     applied.push(m.version);
   }

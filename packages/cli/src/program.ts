@@ -1,5 +1,5 @@
 import { Command, InvalidArgumentError, Option } from "commander";
-import { clearConfig, configure, login, whoami } from "./commands/auth.js";
+import { clearConfig, configure, login, username, whoami } from "./commands/auth.js";
 import { listBotThreads, moveBotSubject, releaseBotThread } from "./commands/botThreads.js";
 import {
   botMessages,
@@ -47,7 +47,13 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .option("--url <url>", "API base URL (default https://loopway.craftmill.dev)")
     .option("--email <email>", "your email (prompted for if omitted)")
     .option("--code <code>", "the 8-character code from the email (prompted for if omitted)")
+    .option("--username <name>", "the username to claim on a new account (prompted for if omitted)")
     .action((opts) => login(ctx, opts));
+
+  program
+    .command("username [name]")
+    .description("set your username (the slug of your personal org), or change it; prompted for if omitted")
+    .action((name) => username(ctx, name));
 
   program
     .command("config")

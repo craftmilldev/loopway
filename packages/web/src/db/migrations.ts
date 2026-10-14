@@ -1,3 +1,6 @@
+import { backfillOrgs } from "./backfill-orgs.js";
+import type { Db } from "./index.js";
+
 /**
  * Migrations live in TS (not .sql files) so they're bundled into the Vercel function.
  * Append new entries; never edit an applied one.
@@ -5,7 +8,7 @@
  * Everything is in a `loopway` schema (not `public`), and RLS is enabled with no policies, so a
  * PostgREST-style Data API (e.g. Neon's, if ever turned on) can't reach it. The app connects as the table owner.
  */
-export const migrations: { version: string; sql: string }[] = [
+export const migrations: { version: string; sql: string; after?: (db: Pick<Db, "query">) => Promise<void> }[] = [
   {
     version: "001_init",
     sql: `
@@ -340,5 +343,33 @@ CREATE INDEX thread_events_user_at_idx ON loopway.thread_events (user_id, at DES
 
 ALTER TABLE loopway.thread_events ENABLE ROW LEVEL SECURITY;
 `,
+  },
+  {
+    // Orgs and their members, with one personal org per user: its slug is the user's username, and
+    // personal_user_id says whose it is. Nothing is owned by an org yet. `after` backfills the existing users.
+    version: "017_orgs",
+    sql: `
+CREATE TABLE loopway.orgs (
+  id                uuid PRIMARY KEY,
+  slug              text NOT NULL UNIQUE CHECK (slug ~ '^[a-z0-9][a-z0-9-]{0,37}[a-z0-9]$'),
+  name              text NOT NULL,
+  personal_user_id  uuid UNIQUE REFERENCES loopway.users(id) ON DELETE CASCADE,
+  created_at        timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE loopway.org_members (
+  org_id      uuid NOT NULL REFERENCES loopway.orgs(id) ON DELETE CASCADE,
+  user_id     uuid NOT NULL REFERENCES loopway.users(id) ON DELETE CASCADE,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (org_id, user_id)
+);
+
+CREATE INDEX org_members_user_idx ON loopway.org_members (user_id);
+
+ALTER TABLE loopway.orgs ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE loopway.org_members ENABLE ROW LEVEL SECURITY;
+`,
+    after: backfillOrgs,
   },
 ];

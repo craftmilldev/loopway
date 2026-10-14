@@ -12,7 +12,10 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `POST /auth/login` `{email}`        | Email an 8-character code (valid 10 min) via Resend. Always `202`. At most one email per address per 10 minutes; asking again sooner sends nothing.                                    |
 | `POST /auth/verify` `{email, code}` | Trade the code for a session token (`201 {token, expires_at, user, created}`). Single use, 5 guesses. If the email has no user yet, creates one (named after the part before the `@`). |
-| `GET /me`                           | Current user.                                                                                                                                                                          |
+| `GET /me` | Current user, with `username` (null until a new signup picks one). |
+| `PATCH /me/username` `{username}` | Set the username, which makes the user's personal org (slug = username); afterwards, rename it. Lowercase `[a-z0-9-]`, 2-39 chars, no leading/trailing `-`, not reserved. `400 invalid_username` / `username_reserved`, `409 username_taken`. |
+| `GET /usernames/:username` | `{username, available, reason?, message?}`: whether the name can be used (your own current one counts as available). |
+| `GET /orgs` | Orgs you belong to: `{data: [{id, slug, name, personal}]}`. |
 
 ## Inboxes
 

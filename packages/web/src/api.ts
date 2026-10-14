@@ -10,6 +10,7 @@ import { isUuid, LOGIN_CODE_RE, normalizeLoginCode } from "./ids.js";
 import { ANONYMOUS, noopMetrics, type Metrics } from "./metrics.js";
 import { BOT_MODELS } from "./models.js";
 import { createPosthogProxy } from "./posthog-proxy.js";
+import { SLUG_PROBLEM_MESSAGES } from "./slugs.js";
 import { sources } from "./sources.js";
 import * as store from "./store.js";
 import type { MessageRow, Inbox, User } from "./store.js";
@@ -179,6 +180,43 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.get("/me", (c) => c.json(serializeUser(c.var.user)));
+
+  // Usernames are personal-org slugs. Checking is separate from setting so a form can say "taken" before submit.
+  const usernameParam = z.string().trim().toLowerCase();
+
+  authed.get("/usernames/:username", async (c) => {
+    const username = usernameParam.parse(c.req.param("username"));
+    const problem = await store.usernameProblem(c.var.db, username, c.var.user.id);
+    await metrics.capture("username_checked", c.var.user.id, { result: problem ?? "available" });
+    return c.json({
+      username,
+      available: !problem,
+      ...(problem && { reason: problem, message: usernameMessage(problem) }),
+    });
+  });
+
+  // Sets the username, which also makes the personal org for a new signup. After that it renames the org's slug.
+  authed.patch("/me/username", async (c) => {
+    const { username } = z.object({ username: usernameParam }).parse(await jsonBody(c));
+    const result = await store.setUsername(c.var.db, c.var.user.id, username);
+    if (!result.ok) {
+      await metrics.capture("username_rejected", c.var.user.id, {
+        reason: result.problem,
+        renaming: !!c.var.user.username,
+      });
+      const code =
+        result.problem === "taken"
+          ? "username_taken"
+          : result.problem === "reserved"
+            ? "username_reserved"
+            : "invalid_username";
+      throw new ApiError(result.problem === "taken" ? 409 : 400, code, usernameMessage(result.problem));
+    }
+    await metrics.capture(result.created ? "username_chosen" : "username_renamed", c.var.user.id);
+    return c.json(serializeUser({ ...c.var.user, username }));
+  });
+
+  authed.get("/orgs", async (c) => c.json({ data: await store.listOrgs(c.var.db, c.var.user.id) }));
 
   authed.get("/sources", (c) => c.json({ data: sources.describe(), can_request: !!opts.sourceRequests }));
 
@@ -902,7 +940,11 @@ function serializeThreadRow(t: store.Thread) {
 }
 
 function serializeUser(u: User) {
-  return { id: u.id, name: u.name, email: u.email, created_at: iso(u.created_at) };
+  return { id: u.id, name: u.name, email: u.email, username: u.username, created_at: iso(u.created_at) };
+}
+
+function usernameMessage(problem: store.UsernameProblem) {
+  return problem === "taken" ? "That username is taken" : SLUG_PROBLEM_MESSAGES[problem];
 }
 
 function serializeMessage(e: MessageRow) {

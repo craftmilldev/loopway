@@ -53,7 +53,7 @@ async function configureGithubBot(
 }
 
 /** Emails a one-time code, trades it for a 30-day session token, and saves it (as `api_key` in the config). Creates the account if the email is new. */
-export async function login(ctx: Context, opts: { url?: string; email?: string; code?: string }) {
+export async function login(ctx: Context, opts: { url?: string; email?: string; code?: string; username?: string }) {
   const current = await loadConfig(ctx.configDir, ctx.env);
   const url = opts.url ?? current.api_url;
   const client = new LoopwayClient({ baseUrl: url, fetch: ctx.fetch });
@@ -82,6 +82,40 @@ export async function login(ctx: Context, opts: { url?: string; email?: string; 
     `${created ? "Created your account and logged in to" : "Logged in to"} ${url} as ${bold(user.name)}${user.email ? ` <${user.email}>` : ""}`,
   );
   ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
+
+  // A new account has no username yet. The token is already saved, so a failure here leaves them logged in.
+  if (!user.username) {
+    const authed = new LoopwayClient({ baseUrl: url, apiKey: token, fetch: ctx.fetch });
+    await chooseUsername(ctx, authed, opts.username);
+  }
+}
+
+/** Sets or renames the username (the slug of your personal org). */
+export async function username(ctx: Context, name: string | undefined) {
+  await chooseUsername(ctx, await authedClient(ctx), name);
+}
+
+const USERNAME_ERRORS = ["invalid_username", "username_reserved", "username_taken"];
+
+/**
+ * Saves `name`, or prompts for one until the server accepts it. Without a terminal and a name there is nothing to
+ * ask, so that's a usage error that says how to finish.
+ */
+async function chooseUsername(ctx: Context, client: LoopwayClient, name: string | undefined) {
+  for (let attempt = name; ; attempt = undefined) {
+    const wanted = attempt ?? (ctx.interactive ? await promptUsername() : undefined);
+    if (!wanted) throw new UsageError("A username is required: run `loopway username <name>` (or pass --username).");
+    try {
+      const user = await client.setUsername(wanted);
+      ctx.out(`Your username is ${bold(user.username ?? wanted)}.`);
+      return;
+    } catch (err) {
+      if (!(err instanceof ApiError) || !USERNAME_ERRORS.includes(err.code)) throw err;
+      await ctx.metrics?.capture("username_rejected", { reason: err.code });
+      if (!ctx.interactive) throw new UsageError(err.message);
+      ctx.out(err.message);
+    }
+  }
 }
 
 export async function clearConfig(ctx: Context) {
@@ -96,6 +130,7 @@ export async function whoami(ctx: Context, opts: { json?: boolean }) {
   ctx.out(
     fields([
       ["name", user.name],
+      ["username", user.username],
       ["email", user.email],
       ["id", user.id],
       ["api", api_url],
@@ -150,4 +185,13 @@ async function promptCode() {
   });
   if (p.isCancel(v)) throw new CancelledError();
   return v.trim();
+}
+
+async function promptUsername() {
+  const v = await p.text({
+    message: "Pick a username (lowercase letters, numbers and hyphens, 2-39 characters)",
+    validate: (v) => (v?.trim() ? undefined : "Enter a username"),
+  });
+  if (p.isCancel(v)) throw new CancelledError();
+  return v.trim().toLowerCase();
 }
