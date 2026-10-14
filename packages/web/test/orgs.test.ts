@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { openTestDb } from "../src/db/testing.js";
 import { migrations } from "../src/db/migrations.js";
 import { RESERVED_SLUGS, slugProblem } from "../src/slugs.js";
-import { call, db, newUser } from "./helpers.js";
+import { call, db, newUser, newUserWithoutOrg } from "./helpers.js";
 
 const rows = <T>(sql: string, params: unknown[] = []) => db.query<T>(sql, params);
 
@@ -33,7 +33,7 @@ describe("slug rules", () => {
 
 describe("choosing a username", () => {
   it("makes a personal org and a membership for a new signup", async () => {
-    const key = await newUser("Fresh");
+    const key = await newUserWithoutOrg("Fresh");
     expect((await call("GET", "/me", { key })).body.username).toBeNull();
     expect((await call("GET", "/orgs", { key })).body.data).toEqual([]);
 
@@ -49,8 +49,8 @@ describe("choosing a username", () => {
   });
 
   it("rejects taken, reserved and malformed names with clear errors", async () => {
-    const a = await newUser();
-    const b = await newUser();
+    const a = await newUserWithoutOrg();
+    const b = await newUserWithoutOrg();
     expect((await call("PATCH", "/me/username", { key: a, body: { username: "taken-name" } })).status).toBe(200);
 
     const taken = await call("PATCH", "/me/username", { key: b, body: { username: "taken-name" } });

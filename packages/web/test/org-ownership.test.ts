@@ -46,20 +46,6 @@ describe("dual-write of org_id", () => {
       ).toEqual([org!.id]);
     }
   });
-
-  it("makes a personal org for a user who hasn't picked a username, and reuses it", async () => {
-    const key = await newUser("NoName");
-    const a = await newInbox(key);
-    const b = await newInbox(key);
-    const orgs = (await call("GET", "/orgs", { key })).body.data;
-    expect(orgs).toHaveLength(1);
-    expect(orgs[0].personal).toBe(true);
-    expect((await call("GET", `/inboxes/${a.id}`, { key })).body.org_id).toBe(orgs[0].id);
-    expect((await call("GET", `/inboxes/${b.id}`, { key })).body.org_id).toBe(orgs[0].id);
-    // picking a username later renames that org rather than adding another
-    expect((await call("PATCH", "/me/username", { key, body: { username: "was-nameless" } })).status).toBe(200);
-    expect((await call("GET", "/orgs", { key })).body.data.map((o: { id: string }) => o.id)).toEqual([orgs[0].id]);
-  });
 });
 
 describe("org constraints", () => {

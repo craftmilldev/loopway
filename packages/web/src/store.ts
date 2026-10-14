@@ -141,27 +141,11 @@ export async function setUsername(
   }
 }
 
-/**
- * The org new things are written into: the user's personal org. A user who never picked a username has none yet, so
- * one is made under a generated slug (renaming it with setUsername keeps the org).
- */
+/** The org new things are written into: the user's personal org, which every user has (signup makes it). */
 export async function personalOrgId(db: Q, userId: string): Promise<string> {
-  const find = async () =>
-    (await db.query<{ id: string }>(`SELECT id FROM loopway.orgs WHERE personal_user_id = $1`, [userId]))[0]?.id;
-  const existing = await find();
-  if (existing) return existing;
-  const id = uuidv7();
-  const slug = `user-${userId.replace(/-/g, "").slice(-16)}`;
-  await db.query(
-    `INSERT INTO loopway.orgs (id, slug, name, personal_user_id) VALUES ($1, $2, $2, $3) ON CONFLICT DO NOTHING`,
-    [id, slug, userId],
-  );
-  const orgId = (await find())!;
-  await db.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
-    orgId,
-    userId,
-  ]);
-  return orgId;
+  const [org] = await db.query<{ id: string }>(`SELECT id FROM loopway.orgs WHERE personal_user_id = $1`, [userId]);
+  if (!org) throw new Error(`User ${userId} has no personal org`);
+  return org.id;
 }
 
 export async function listOrgs(db: Q, userId: string): Promise<Org[]> {
