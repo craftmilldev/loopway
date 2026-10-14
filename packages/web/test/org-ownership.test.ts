@@ -106,9 +106,8 @@ describe("backfill (018_org_ownership)", () => {
       const users = {
         matthew: randomUUID(),
         named: randomUUID(),
-        nameless: randomUUID(),
       };
-      const emails = { matthew: "Matthew@craftmill.dev", named: "named@example.com", nameless: "nameless@example.com" };
+      const emails = { matthew: "Matthew@craftmill.dev", named: "named@example.com" };
       const ids: Record<string, { inbox: string; bot: string; thread: string; runner: string }> = {};
       for (const [who, userId] of Object.entries(users)) {
         await fresh.query(`INSERT INTO loopway.users (id, name, email) VALUES ($1, $2, $3)`, [
@@ -169,23 +168,17 @@ describe("backfill (018_org_ownership)", () => {
           result[who][table] = found.map((r) => r.org_id);
         }
       }
-      const [nameless] = await fresh.query<{ id: string }>(`SELECT id FROM loopway.orgs WHERE personal_user_id = $1`, [
-        users.nameless,
-      ]);
-      return { result, org, namelessOrg: nameless?.id };
+      return { result, org };
     } finally {
       await fresh.close();
     }
   }
 
   it("moves everything matthew@craftmill.dev owned to craftmill and everyone else's to their personal org", async () => {
-    const { result, org, namelessOrg } = await backfill();
+    const { result, org } = await backfill();
     const all = (o: string) => ({ inboxes: [o], bots: [o], bot_inboxes: [o], threads: [o], runners: [o] });
     expect(result.matthew).toEqual(all(org.craftmill));
     expect(result.named).toEqual(all(org.named));
-    // someone who never picked a username gets a personal org made for them
-    expect(namelessOrg).toBeTruthy();
-    expect(result.nameless).toEqual(all(namelessOrg!));
   });
 
   it("is a no-op on a database with no rows", async () => {

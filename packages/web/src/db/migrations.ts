@@ -383,8 +383,7 @@ WHERE lower(u.email) = 'matthew@craftmill.dev';
     // Records which org owns each inbox, bot, bot_inbox, thread and runner. user_id stays and still decides access; this
     // only adds the data (and the rule that a bot and its inboxes, or a thread and its bot, share an org).
     // Everything matthew@craftmill.dev owns goes to craftmill, everything else to its owner's personal org. Where those
-    // users or orgs don't exist (tests, fresh databases) there are no rows to backfill. An owner who never picked a
-    // username has no personal org, so one is made for them under a generated slug (they can rename it).
+    // users or orgs don't exist (tests, fresh databases) there are no rows to backfill.
     version: "018_org_ownership",
     sql: `
 ALTER TABLE loopway.inboxes      ADD COLUMN org_id uuid REFERENCES loopway.orgs(id);
@@ -396,18 +395,6 @@ ALTER TABLE loopway.bot_inboxes  ADD COLUMN org_id uuid REFERENCES loopway.orgs(
 ALTER TABLE loopway.threads      ADD COLUMN org_id uuid REFERENCES loopway.orgs(id);
 
 ALTER TABLE loopway.runners      ADD COLUMN org_id uuid REFERENCES loopway.orgs(id);
-
-CREATE TEMP TABLE new_personal_orgs ON COMMIT DROP AS
-SELECT gen_random_uuid() AS org_id, u.id AS user_id, 'user-' || right(replace(u.id::text, '-', ''), 16) AS slug
-FROM loopway.users u
-WHERE NOT EXISTS (SELECT 1 FROM loopway.orgs o WHERE o.personal_user_id = u.id)
-  AND (EXISTS (SELECT 1 FROM loopway.inboxes WHERE user_id = u.id)
-    OR EXISTS (SELECT 1 FROM loopway.bots WHERE user_id = u.id)
-    OR EXISTS (SELECT 1 FROM loopway.runners WHERE user_id = u.id));
-
-INSERT INTO loopway.orgs (id, slug, name, personal_user_id) SELECT org_id, slug, slug, user_id FROM new_personal_orgs;
-
-INSERT INTO loopway.org_members (org_id, user_id) SELECT org_id, user_id FROM new_personal_orgs;
 
 CREATE TEMP TABLE owner_orgs ON COMMIT DROP AS
 SELECT u.id AS user_id,
