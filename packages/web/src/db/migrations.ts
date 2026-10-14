@@ -449,4 +449,21 @@ ALTER TABLE loopway.threads DROP CONSTRAINT threads_bot_id_user_id_fkey;
 ALTER TABLE loopway.thread_events DROP CONSTRAINT thread_events_bot_id_user_id_fkey;
 `,
   },
+  {
+    // Members added by an email that has no account yet. Whoever first logs in with the email joins the org (and the
+    // row goes). email is stored trimmed and lowercased, as login does.
+    version: "020_org_invites",
+    sql: `
+CREATE TABLE loopway.org_invites (
+  org_id      uuid NOT NULL REFERENCES loopway.orgs(id) ON DELETE CASCADE,
+  email       text NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (org_id, email)
+);
+
+CREATE INDEX org_invites_email_idx ON loopway.org_invites (email);
+
+ALTER TABLE loopway.org_invites ENABLE ROW LEVEL SECURITY;
+`,
+  },
 ];

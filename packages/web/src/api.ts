@@ -182,6 +182,7 @@ export function createApi(opts: ApiOptions) {
       throw usernameError(result.problem);
     }
     await metrics.capture(result.created ? "signed_up" : "logged_in", result.user.id);
+    if (result.joined) await metrics.capture("org_invites_claimed", result.user.id, { orgs: result.joined });
     const { token, expiresAt } = signSessionToken(result.user.id, opts.tokenSecret);
     return c.json(
       { token, expires_at: expiresAt.toISOString(), user: serializeUser(result.user), created: result.created },
@@ -235,6 +236,64 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.get("/orgs", async (c) => c.json({ data: await store.listOrgs(c.var.db, c.var.user.id) }));
+
+  // Org members. Only members may see or change them; anyone else gets the 404 a missing org gets.
+
+  async function memberOrgParam(c: Context<Env>, action: string): Promise<store.Org> {
+    const org = await store.memberOrg(c.var.db, c.var.user.id, c.req.param("slug") ?? "");
+    if (!org) {
+      await metrics.capture("org_member_rejected", c.var.user.id, { action, reason: "org_not_found" });
+      throw new ApiError(404, "not_found", "Org not found");
+    }
+    return org;
+  }
+
+  authed.get("/orgs/:slug/members", async (c) => {
+    const org = await memberOrgParam(c, "list");
+    return c.json(await store.listOrgMembers(c.var.db, org.id));
+  });
+
+  authed.post("/orgs/:slug/members", async (c) => {
+    const org = await memberOrgParam(c, "add");
+    const { email } = z.object({ email: z.string().trim().email().max(320) }).parse(await jsonBody(c));
+    const result = await store.addOrgMember(c.var.db, org.id, email);
+    await metrics.capture("org_member_added", c.var.user.id, { result, personal: org.personal });
+    return c.json(
+      await store.listOrgMembers(c.var.db, org.id),
+      result === "member" || result === "pending" ? 201 : 200,
+    );
+  });
+
+  // Registered before the :userId route, which would take "pending" for an id.
+  authed.delete("/orgs/:slug/members/pending", async (c) => {
+    const org = await memberOrgParam(c, "remove_pending");
+    const { email } = z.object({ email: z.string().trim().email().max(320) }).parse(c.req.query());
+    if (!(await store.removeOrgInvite(c.var.db, org.id, email))) {
+      await metrics.capture("org_member_rejected", c.var.user.id, { action: "remove_pending", reason: "not_pending" });
+      throw new ApiError(404, "not_found", "No pending membership for that email");
+    }
+    await metrics.capture("org_pending_removed", c.var.user.id);
+    return c.body(null, 204);
+  });
+
+  authed.delete("/orgs/:slug/members/:userId", async (c) => {
+    const org = await memberOrgParam(c, "remove");
+    const userId = c.req.param("userId");
+    const result = isUuid(userId)
+      ? await store.removeOrgMember(c.var.db, org.id, userId.toLowerCase())
+      : "not_a_member";
+    if (result !== "removed") {
+      await metrics.capture("org_member_rejected", c.var.user.id, { action: "remove", reason: result });
+      if (result === "last_member")
+        throw new ApiError(409, "last_member", "An org's last member can't be removed or leave");
+      throw new ApiError(404, "not_found", "That user is not a member of this org");
+    }
+    await metrics.capture("org_member_removed", c.var.user.id, {
+      self: userId.toLowerCase() === c.var.user.id,
+      personal: org.personal,
+    });
+    return c.body(null, 204);
+  });
 
   authed.get("/sources", (c) => c.json({ data: sources.describe(), can_request: !!opts.sourceRequests }));
 

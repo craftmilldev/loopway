@@ -60,7 +60,7 @@ export async function createLoginCode(db: Db, email: string): Promise<{ email: s
 
 /** Why a code could not be redeemed: it is wrong or expired, or the email is new and needs a username. */
 export type RedeemResult =
-  | { ok: true; user: User; created: boolean }
+  | { ok: true; user: User; created: boolean; joined: number }
   | { ok: false; problem: "invalid_code" | "username_required" | SlugProblem };
 
 /**
@@ -90,7 +90,9 @@ export async function redeemLoginCode(db: Db, email: string, code: string, usern
     const [used] = await db.query<{ id: string }>(`DELETE FROM loopway.login_codes WHERE id = $1 RETURNING id`, [
       row.id,
     ]);
-    return used ? { ok: true, user: existing, created: false } : { ok: false, problem: "invalid_code" };
+    if (!used) return { ok: false, problem: "invalid_code" };
+    // Normally an invite for an existing user became a membership when it was added; this catches one that raced a signup.
+    return { ok: true, user: existing, created: false, joined: await claimInvites(db, existing.id, addr) };
   }
   if (!username) return refund("username_required");
   const problem = await usernameProblem(db, username);
@@ -107,7 +109,7 @@ export async function redeemLoginCode(db: Db, email: string, code: string, usern
         [uuidv7(), username, addr, username],
       );
       await createPersonalOrg(tx, user!.id, username);
-      return { ok: true as const, user: user!, created: true };
+      return { ok: true as const, user: user!, created: true, joined: await claimInvites(tx, user!.id, addr) };
     });
   } catch (err) {
     // Someone claimed the slug between the check and the insert (the transaction rolled back, code included).
@@ -134,6 +136,17 @@ export async function usernameProblem(db: Q, username: string, userId?: string):
     [username, userId ?? null],
   );
   return row ? "taken" : undefined;
+}
+
+/** Turns the pending memberships for this email into real ones for the user. Returns how many orgs they joined. */
+async function claimInvites(tx: Q, userId: string, email: string): Promise<number> {
+  const joined = await tx.query(
+    `WITH claimed AS (DELETE FROM loopway.org_invites WHERE email = $2 RETURNING org_id)
+     INSERT INTO loopway.org_members (org_id, user_id) SELECT org_id, $1 FROM claimed
+     ON CONFLICT DO NOTHING RETURNING org_id`,
+    [userId, email],
+  );
+  return joined.length;
 }
 
 async function createPersonalOrg(tx: Q, userId: string, username: string) {
@@ -1220,4 +1233,94 @@ export async function finishThread(
     );
     return { moved: moved.length };
   });
+}
+
+// ---------- Org members ----------
+
+/** Emails are keyed the way login keys them: trimmed (by the API) and lowercased. */
+export const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+export interface OrgMember {
+  id: string;
+  username: string | null;
+  email: string | null;
+}
+
+export interface OrgMembers {
+  members: OrgMember[];
+  /** Emails added before they had an account. */
+  pending: string[];
+}
+
+export async function listOrgMembers(db: Q, orgId: string): Promise<OrgMembers> {
+  const members = await db.query<OrgMember>(
+    `SELECT u.id, u.email, (SELECT o.slug FROM loopway.orgs o WHERE o.personal_user_id = u.id) AS username
+     FROM loopway.org_members m JOIN loopway.users u ON u.id = m.user_id
+     WHERE m.org_id = $1 ORDER BY m.created_at, u.id`,
+    [orgId],
+  );
+  const pending = await db.query<{ email: string }>(
+    `SELECT email FROM loopway.org_invites WHERE org_id = $1 ORDER BY created_at, email`,
+    [orgId],
+  );
+  return { members, pending: pending.map((r) => r.email) };
+}
+
+/**
+ * Adds the email to the org: as a member if a user has it, else as a pending membership that their first login
+ * claims. Adding someone already there changes nothing.
+ */
+export async function addOrgMember(
+  db: Db,
+  orgId: string,
+  email: string,
+): Promise<"member" | "pending" | "already_member" | "already_pending"> {
+  const addr = normalizeEmail(email);
+  return db.transaction(async (tx) => {
+    const [user] = await tx.query<{ id: string }>(`SELECT id FROM loopway.users WHERE lower(email) = $1 LIMIT 1`, [
+      addr,
+    ]);
+    if (user) {
+      const added = await tx.query(
+        `INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING user_id`,
+        [orgId, user.id],
+      );
+      // A pending row for the same email (added before they signed up) is now redundant.
+      await tx.query(`DELETE FROM loopway.org_invites WHERE org_id = $1 AND email = $2`, [orgId, addr]);
+      return added.length ? "member" : "already_member";
+    }
+    const added = await tx.query(
+      `INSERT INTO loopway.org_invites (org_id, email) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING email`,
+      [orgId, addr],
+    );
+    return added.length ? "pending" : "already_pending";
+  });
+}
+
+/** Removes a member. "last_member" when they are the only one left, "not_a_member" when they weren't one. */
+export async function removeOrgMember(
+  db: Db,
+  orgId: string,
+  userId: string,
+): Promise<"removed" | "last_member" | "not_a_member"> {
+  return db.transaction(async (tx) => {
+    // Serializes removals from one org, so two members leaving at once can't both pass the count.
+    await tx.query(`SELECT 1 FROM loopway.orgs WHERE id = $1 FOR UPDATE`, [orgId]);
+    const members = await tx.query<{ user_id: string }>(`SELECT user_id FROM loopway.org_members WHERE org_id = $1`, [
+      orgId,
+    ]);
+    if (!members.some((m) => m.user_id === userId)) return "not_a_member";
+    if (members.length <= 1) return "last_member";
+    await tx.query(`DELETE FROM loopway.org_members WHERE org_id = $1 AND user_id = $2`, [orgId, userId]);
+    return "removed";
+  });
+}
+
+/** Withdraws a pending membership. False if the email wasn't pending. */
+export async function removeOrgInvite(db: Q, orgId: string, email: string): Promise<boolean> {
+  const gone = await db.query(`DELETE FROM loopway.org_invites WHERE org_id = $1 AND email = $2 RETURNING email`, [
+    orgId,
+    normalizeEmail(email),
+  ]);
+  return gone.length > 0;
 }

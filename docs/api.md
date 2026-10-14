@@ -18,6 +18,10 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 | `PATCH /api/me/username` `{username}` | Set the username, which makes the user's personal org (slug = username); afterwards, rename it. Lowercase `[a-z0-9-]`, 2-39 chars, no leading/trailing `-`, not reserved. `400 invalid_username` / `username_reserved`, `409 username_taken`. |
 | `GET /api/usernames/:username` | `{username, available, reason?, message?}`: whether the name can be used (your own current one counts as available). |
 | `GET /api/orgs` | Orgs you belong to: `{data: [{id, slug, name, personal}]}`. |
+| `GET /api/orgs/:slug/members` | `{members: [{id, username, email}], pending: [email]}`. `pending` are emails added before they had an account. `404` if you aren't a member of the org. |
+| `POST /api/orgs/:slug/members` `{email}` | Any member can add someone. The email is trimmed and lowercased. If a user has it they become a member at once; otherwise it is stored as pending and becomes a membership when someone first logs in with it (no email is sent, no accept step). `201` with the list as in `GET`, or `200` with it unchanged if they were already a member or pending. `400` for a bad email, `404` for a non-member. |
+| `DELETE /api/orgs/:slug/members/:userId` | Remove a member, yourself included (leaving). `204`. `404` if you aren't a member of the org or `userId` isn't one; `409 last_member` for the org's only member, which also means a personal org can't be left. |
+| `DELETE /api/orgs/:slug/members/pending?email=` | Withdraw a pending email. `204`; `404` if it isn't pending or you aren't a member. |
 
 ## Inboxes
 
