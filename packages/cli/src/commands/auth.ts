@@ -123,7 +123,8 @@ export async function username(ctx: Context, name: string | undefined) {
   await chooseUsername(ctx, await authedClient(ctx), name);
 }
 
-const USERNAME_ERRORS = ["invalid_username", "username_reserved", "username_taken"];
+/** The error codes a refused username or org slug comes back with. */
+export const USERNAME_ERRORS = ["invalid_username", "username_reserved", "username_taken"];
 
 /**
  * Saves `name`, or prompts for one until the server accepts it. Without a terminal and a name there is nothing to

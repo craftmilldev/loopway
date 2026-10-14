@@ -3,6 +3,7 @@ import type { LoopwayClient } from "../client.js";
 import { ApiError } from "../client.js";
 import { authedClient, CancelledError, UsageError, type Context } from "../context.js";
 import { bold, dim, json, table } from "../format.js";
+import { USERNAME_ERRORS } from "./auth.js";
 
 /**
  * The slug of the org to create in: `--org` if given. Otherwise the user's only org, or in a terminal a pick from
@@ -51,8 +52,6 @@ export async function listOrgs(ctx: Context, opts: { json?: boolean }) {
   );
 }
 
-const SLUG_ERRORS = ["invalid_username", "username_reserved", "username_taken"];
-
 export async function createOrg(ctx: Context, slug: string, opts: { name?: string; json?: boolean }) {
   try {
     const org = await (await authedClient(ctx)).createOrg(slug.trim().toLowerCase(), opts.name?.trim());
@@ -60,7 +59,7 @@ export async function createOrg(ctx: Context, slug: string, opts: { name?: strin
     if (opts.json) return ctx.out(json(org));
     ctx.out(`Created ${bold(org.slug)}. Add people with \`loopway orgs add-member ${org.slug} <email>\`.`);
   } catch (err) {
-    if (err instanceof ApiError && SLUG_ERRORS.includes(err.code)) {
+    if (err instanceof ApiError && USERNAME_ERRORS.includes(err.code)) {
       await ctx.metrics?.capture("org_create_rejected", { reason: err.code });
       throw new UsageError(`${err.message}.`);
     }
