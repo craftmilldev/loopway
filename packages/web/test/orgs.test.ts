@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { openTestDb } from "../src/db/testing.js";
 import { migrations } from "../src/db/migrations.js";
-import { RESERVED_SLUGS, slugProblem } from "../src/slugs.js";
+import { RESERVED_SLUGS } from "../src/reserved-slugs.js";
+import { slugProblem } from "../src/slugs.js";
 import { call, db, newUser, newUserWithoutOrg } from "./helpers.js";
 
 const rows = <T>(sql: string, params: unknown[] = []) => db.query<T>(sql, params);
