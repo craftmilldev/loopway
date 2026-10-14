@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { migrations } from "./migrations.js";
 
 /**
@@ -63,15 +64,39 @@ export async function migrate(db: Db): Promise<string[]> {
          applied_at timestamptz NOT NULL DEFAULT now()
        )`,
     );
-    const done = new Set(
-      (await tx.query<{ version: string }>(`SELECT version FROM loopway.schema_migrations`)).map((r) => r.version),
+    await tx.query(`ALTER TABLE loopway.schema_migrations ADD COLUMN IF NOT EXISTS checksum text`);
+    const done = new Map(
+      (
+        await tx.query<{ version: string; checksum: string | null }>(
+          `SELECT version, checksum FROM loopway.schema_migrations`,
+        )
+      ).map((r) => [r.version, r.checksum]),
     );
     const applied: string[] = [];
     for (const m of migrations) {
-      if (done.has(m.version)) continue;
+      const checksum = createHash("sha256").update(m.sql).digest("hex");
+      if (done.has(m.version)) {
+        const recorded = done.get(m.version);
+        if (recorded == null) {
+          // Applied before checksums existed: trust the current SQL and record it from here on.
+          await tx.query(`UPDATE loopway.schema_migrations SET checksum = $1 WHERE version = $2`, [
+            checksum,
+            m.version,
+          ]);
+        } else if (recorded !== checksum) {
+          throw new Error(
+            `Migration ${m.version} was edited after it was applied to this database. ` +
+              `Undo the edit and add a new migration instead, or reset this database if it is a throwaway preview.`,
+          );
+        }
+        continue;
+      }
       // Each statement separately: postgres.js unsafe() with params can't run multi-statement strings.
       for (const stmt of splitSql(m.sql)) await tx.query(stmt);
-      await tx.query(`INSERT INTO loopway.schema_migrations (version) VALUES ($1)`, [m.version]);
+      await tx.query(`INSERT INTO loopway.schema_migrations (version, checksum) VALUES ($1, $2)`, [
+        m.version,
+        checksum,
+      ]);
       applied.push(m.version);
     }
     return applied;

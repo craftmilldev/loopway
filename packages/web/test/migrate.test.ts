@@ -16,4 +16,27 @@ describe("migrate", () => {
       await db.close();
     }
   });
+
+  it("refuses to run when an applied migration's SQL has changed since it was applied", async () => {
+    const db = await openTestDb();
+    const { version } = migrations[0]!;
+    try {
+      await db.query(`UPDATE loopway.schema_migrations SET checksum = 'edited' WHERE version = $1`, [version]);
+      await expect(migrate(db)).rejects.toThrow(new RegExp(`${version} was edited`));
+    } finally {
+      await db.close();
+    }
+  });
+
+  it("records checksums for migrations applied before checksums existed", async () => {
+    const db = await openTestDb();
+    try {
+      await db.query(`UPDATE loopway.schema_migrations SET checksum = NULL`);
+      expect(await migrate(db)).toEqual([]);
+      const rows = await db.query<{ checksum: string | null }>(`SELECT checksum FROM loopway.schema_migrations`);
+      expect(rows.every((r) => r.checksum)).toBe(true);
+    } finally {
+      await db.close();
+    }
+  });
 });
