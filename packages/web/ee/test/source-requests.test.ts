@@ -20,7 +20,7 @@ describe("source requests", () => {
       fetch: viaApp,
     });
     const post = (key: string, body: unknown) =>
-      a.request("/sources/requests", {
+      a.request("/api/sources/requests", {
         method: "POST",
         headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
         body: JSON.stringify(body),
@@ -33,7 +33,7 @@ describe("source requests", () => {
     const { user } = await createUser(db, { name: "Asker", email: "asker@example.com" });
     const key = signSessionToken(user.id, SECRET).token;
 
-    const sources = await a.request("/sources", { headers: { authorization: `Bearer ${key}` } });
+    const sources = await a.request("/api/sources", { headers: { authorization: `Bearer ${key}` } });
     expect((await sources.json()).can_request).toBe(true);
 
     const res = await post(key, { description: "  Linear, https://linear.app/developers/webhooks " });
@@ -62,11 +62,11 @@ describe("source requests", () => {
     const broken = createApi({
       getDb: async () => db,
       tokenSecret: SECRET,
-      sourceRequests: { url: "https://loopway.test/webhooks/nope", token: "wrong" },
+      sourceRequests: { url: "https://loopway.test/api/webhooks/nope", token: "wrong" },
       fetch: viaApp,
     });
     const key = await newUser();
-    const res = await broken.request("/sources/requests", {
+    const res = await broken.request("/api/sources/requests", {
       method: "POST",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
       body: JSON.stringify({ description: "Linear" }),

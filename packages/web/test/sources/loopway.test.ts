@@ -17,7 +17,7 @@ describe("loopway webhooks", () => {
 
   function sendLoopway(inbox: LoopwayInbox, body: unknown, o: { token?: string | null; contentType?: string } = {}) {
     const token = o.token === undefined ? inbox.config.secret : o.token;
-    return app.request(`/webhooks/${inbox.id}`, {
+    return app.request(`/api/webhooks/${inbox.id}`, {
       method: "POST",
       headers: {
         "content-type": o.contentType ?? "application/json",

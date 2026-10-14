@@ -12,7 +12,8 @@ let posts: { path: string; body: any }[];
 function stubFetch() {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (path: string, init?: RequestInit) => {
+    vi.fn(async (apiPath: string, init?: RequestInit) => {
+      const path = apiPath.replace(/^\/api/, "");
       const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
       if (init?.method === "POST") {
         posts.push({ path, body: JSON.parse(init.body as string) });

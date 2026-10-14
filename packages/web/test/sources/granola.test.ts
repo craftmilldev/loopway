@@ -25,7 +25,7 @@ describe("granola webhooks", () => {
     const ts = String(o.timestamp ?? Math.floor(Date.now() / 1000));
     const key = Buffer.from((o.secret ?? GRANOLA_SECRET).slice("whsec_".length), "base64");
     const sig = createHmac("sha256", key).update(`${id}.${ts}.${raw}`).digest("base64");
-    return app.request(`/webhooks/${inboxId}`, {
+    return app.request(`/api/webhooks/${inboxId}`, {
       method: "POST",
       headers: {
         "content-type": "application/json",

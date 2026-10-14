@@ -21,7 +21,7 @@ beforeAll(async () => {
 afterAll(() => db.close());
 
 export async function call(method: string, path: string, opts: { key?: string; body?: unknown } = {}) {
-  const res = await app.request(path, {
+  const res = await app.request("/api" + path, {
     method,
     headers: {
       ...(opts.key ? { authorization: `Bearer ${opts.key}` } : {}),
@@ -72,7 +72,7 @@ export function sendGithub(
     createHmac("sha256", o.secret ?? inbox.config.secret)
       .update(raw)
       .digest("hex");
-  return app.request(`/webhooks/${inbox.id}`, {
+  return app.request(`/api/webhooks/${inbox.id}`, {
     method: "POST",
     headers: {
       "content-type": o.form ? "application/x-www-form-urlencoded" : "application/json",

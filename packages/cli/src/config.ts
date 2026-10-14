@@ -9,7 +9,7 @@ export const defaultConfigDir = () => join(homedir(), ".loopway");
 export interface Config {
   api_url: string;
   api_key: string;
-  /** Where product metrics go; the API's /ingest proxy when unset. Set it to send straight to PostHog (https://us.i.posthog.com), EU or self-hosted. */
+  /** Where product metrics go; the API's /api/ingest proxy when unset. Set it to send straight to PostHog (https://us.i.posthog.com), EU or self-hosted. */
   posthog_host?: string;
   /** The GitHub bot `loopway bots run` sessions act as. Set by `loopway config`; `login` keeps it. */
   github?: GithubBot;
@@ -42,7 +42,7 @@ export async function loadConfig(
     api_url,
     api_key: env.LOOPWAY_API_KEY || file?.api_key,
     // Metrics go through the API's PostHog reverse proxy unless pointed elsewhere.
-    posthog_host: env.POSTHOG_HOST || file?.posthog_host || `${api_url}/ingest`,
+    posthog_host: env.POSTHOG_HOST || file?.posthog_host || `${api_url}/api/ingest`,
   };
 }
 
