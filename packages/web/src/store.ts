@@ -1,6 +1,7 @@
 import type { BotRule } from "@loopway/rules";
 import type { CloudEvent } from "./cloudevents.js";
 import type { Db } from "./db/index.js";
+import { slugProblem, type SlugProblem } from "./slugs.js";
 import { newLockToken, newLoginCode, normalizeLoginCode, safeEqual, sha256, uuidv7 } from "./ids.js";
 
 /** What a transaction body gets: just `query`, bound to the transaction's connection. */
@@ -12,20 +13,25 @@ export interface User {
   id: string;
   name: string;
   email: string | null;
+  /** The slug of their personal org. Null until a new signup has picked one. */
+  username: string | null;
   created_at: Date;
 }
+
+const USER_COLUMNS = `u.id, u.name, u.email, u.created_at,
+  (SELECT o.slug FROM loopway.orgs o WHERE o.personal_user_id = u.id) AS username`;
 
 export async function createUser(db: Db, input: { name: string; email?: string | null }) {
   const [user] = await db.query<User>(
     `INSERT INTO loopway.users (id, name, email) VALUES ($1, $2, $3)
-     RETURNING id, name, email, created_at`,
+     RETURNING id, name, email, created_at, NULL::text AS username`,
     [uuidv7(), input.name, input.email ?? null],
   );
   return { user: user! };
 }
 
 export async function findUserById(db: Db, id: string): Promise<User | undefined> {
-  const [user] = await db.query<User>(`SELECT id, name, email, created_at FROM loopway.users WHERE id = $1`, [id]);
+  const [user] = await db.query<User>(`SELECT ${USER_COLUMNS} FROM loopway.users u WHERE u.id = $1`, [id]);
   return user;
 }
 
@@ -70,15 +76,78 @@ export async function redeemLoginCode(
   if (!row || !safeEqual(row.code_hash, sha256(normalizeLoginCode(code)))) return undefined;
   const [used] = await db.query<{ id: string }>(`DELETE FROM loopway.login_codes WHERE id = $1 RETURNING id`, [row.id]);
   if (!used) return undefined;
-  const [existing] = await db.query<User>(
-    `SELECT id, name, email, created_at FROM loopway.users WHERE lower(email) = $1`,
-    [addr],
-  );
+  const [existing] = await db.query<User>(`SELECT ${USER_COLUMNS} FROM loopway.users u WHERE lower(u.email) = $1`, [
+    addr,
+  ]);
   if (!existing) {
     const { user } = await createUser(db, { name: addr.split("@")[0]!, email: addr });
     return { user, created: true };
   }
   return { user: existing, created: false };
+}
+
+// ---------- Orgs and usernames ----------
+
+export interface Org {
+  id: string;
+  slug: string;
+  name: string;
+  personal: boolean;
+}
+
+/** Undefined when `username` is free to use. `userId` is excluded from the "taken" check, so keeping your own name is fine. */
+export async function usernameProblem(db: Q, username: string, userId?: string): Promise<SlugProblem | undefined> {
+  const rule = slugProblem(username);
+  if (rule) return rule;
+  const [row] = await db.query(
+    `SELECT 1 FROM loopway.orgs WHERE slug = $1 AND personal_user_id IS DISTINCT FROM $2::uuid`,
+    [username, userId ?? null],
+  );
+  return row ? "taken" : undefined;
+}
+
+/**
+ * Sets the user's username: the slug of their personal org, which is created (with them as its member) the first time.
+ * Returns the problem when the name is invalid, reserved or taken; losing a race for it counts as taken.
+ */
+export async function setUsername(
+  db: Db,
+  userId: string,
+  username: string,
+): Promise<{ ok: true; created: boolean } | { ok: false; problem: SlugProblem }> {
+  const problem = await usernameProblem(db, username, userId);
+  if (problem) return { ok: false, problem };
+  try {
+    return await db.transaction(async (tx) => {
+      const [renamed] = await tx.query(
+        `UPDATE loopway.orgs SET slug = $1, name = $1 WHERE personal_user_id = $2 RETURNING id`,
+        [username, userId],
+      );
+      if (renamed) return { ok: true as const, created: false };
+      const orgId = uuidv7();
+      await tx.query(`INSERT INTO loopway.orgs (id, slug, name, personal_user_id) VALUES ($1, $2, $2, $3)`, [
+        orgId,
+        username,
+        userId,
+      ]);
+      await tx.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [orgId, userId]);
+      return { ok: true as const, created: true };
+    });
+  } catch (err) {
+    // 23505 is Postgres's unique_violation. The check above and the write aren't atomic, so if someone else claimed
+    // the slug in between, orgs.slug's unique constraint rejects ours and that is just "taken", not a 500.
+    if ((err as { code?: string }).code === "23505") return { ok: false, problem: "taken" };
+    throw err;
+  }
+}
+
+export async function listOrgs(db: Q, userId: string): Promise<Org[]> {
+  return db.query<Org>(
+    `SELECT o.id, o.slug, o.name, (o.personal_user_id IS NOT NULL) AS personal
+     FROM loopway.orgs o JOIN loopway.org_members m ON m.org_id = o.id
+     WHERE m.user_id = $1 ORDER BY personal DESC, o.slug`,
+    [userId],
+  );
 }
 
 // ---------- Inboxes ----------

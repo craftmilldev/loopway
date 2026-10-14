@@ -341,4 +341,42 @@ CREATE INDEX thread_events_user_at_idx ON loopway.thread_events (user_id, at DES
 ALTER TABLE loopway.thread_events ENABLE ROW LEVEL SECURITY;
 `,
   },
+  {
+    // Orgs and their members, with one personal org per user: its slug is the user's username, and
+    // personal_user_id says whose it is. Nothing is owned by an org yet. Only matthew@craftmill.dev exists to migrate:
+    // he becomes mcwhittemore and joins a craftmill org. Where he doesn't exist (tests, fresh databases) that's a no-op.
+    version: "017_orgs",
+    sql: `
+CREATE TABLE loopway.orgs (
+  id                uuid PRIMARY KEY,
+  slug              text NOT NULL UNIQUE CHECK (slug ~ '^[a-z0-9][a-z0-9-]{0,37}[a-z0-9]$'),
+  name              text NOT NULL,
+  personal_user_id  uuid UNIQUE REFERENCES loopway.users(id) ON DELETE CASCADE,
+  created_at        timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE loopway.org_members (
+  org_id      uuid NOT NULL REFERENCES loopway.orgs(id) ON DELETE CASCADE,
+  user_id     uuid NOT NULL REFERENCES loopway.users(id) ON DELETE CASCADE,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (org_id, user_id)
+);
+
+CREATE INDEX org_members_user_idx ON loopway.org_members (user_id);
+
+ALTER TABLE loopway.orgs ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE loopway.org_members ENABLE ROW LEVEL SECURITY;
+
+INSERT INTO loopway.orgs (id, slug, name, personal_user_id)
+SELECT gen_random_uuid(), 'mcwhittemore', 'mcwhittemore', id FROM loopway.users WHERE lower(email) = 'matthew@craftmill.dev';
+
+INSERT INTO loopway.orgs (id, slug, name)
+SELECT gen_random_uuid(), 'craftmill', 'craftmill' FROM loopway.users WHERE lower(email) = 'matthew@craftmill.dev';
+
+INSERT INTO loopway.org_members (org_id, user_id)
+SELECT o.id, u.id FROM loopway.users u JOIN loopway.orgs o ON o.personal_user_id = u.id OR o.slug = 'craftmill'
+WHERE lower(u.email) = 'matthew@craftmill.dev';
+`,
+  },
 ];

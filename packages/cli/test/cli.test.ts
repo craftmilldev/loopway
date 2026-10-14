@@ -7,7 +7,7 @@ import { createApi } from "@loopway/web/api";
 import { PRESETS } from "@loopway/presets";
 import { type Db } from "@loopway/web/db";
 import { openTestDb } from "@loopway/web/db/testing";
-import { createUser } from "@loopway/web/store";
+import { createUser, setUsername } from "@loopway/web/store";
 import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -106,6 +106,12 @@ async function inboxWithEvents(n: number, name = "gh") {
   return inbox as { id: string; name: string; config: { secret: string } };
 }
 
+/** A user as the orgs migration leaves existing ones: with a username. */
+async function migratedUser(name: string, email: string, username: string) {
+  const { user } = await createUser(db, { name, email });
+  expect(await setUsername(db, user.id, username)).toMatchObject({ ok: true });
+}
+
 // ---------- tests ----------
 
 describe("auth", () => {
@@ -115,7 +121,7 @@ describe("auth", () => {
     expect(await savedConfig()).toEqual({ api_url: API });
     expect((await stat(join(configDir, "config.json"))).mode & 0o777).toBe(0o600);
 
-    await createUser(db, { name: "Matthew", email: "config@example.com" });
+    await migratedUser("Matthew", "config@example.com", "config");
     await expect(run("login", "--email", "config@example.com")).rejects.toThrow(/--code is required/);
     const code = emails.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
     await run("login", "--email", "config@example.com", "--code", code);
@@ -123,7 +129,7 @@ describe("auth", () => {
   });
 
   it("login trades an emailed code for a session token and saves it", async () => {
-    await createUser(db, { name: "Matthew", email: "m@example.com" });
+    await migratedUser("Matthew", "m@example.com", "matthew-m");
     await expect(run("login", "--url", API, "--email", "m@example.com")).rejects.toThrow(/--code is required/);
     const code = emails.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
     expect(await run("login", "--url", API, "--email", "m@example.com", "--code", code)).toMatch(/Logged in/);
@@ -134,10 +140,25 @@ describe("auth", () => {
   it("login creates an account for an unknown email once the code is entered", async () => {
     await expect(run("login", "--url", API, "--email", "fresh@example.com")).rejects.toThrow(/--code is required/);
     const code = emails.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
-    expect(await run("login", "--url", API, "--email", "fresh@example.com", "--code", code)).toMatch(
-      /Created your account/,
+    expect(
+      await run("login", "--url", API, "--email", "fresh@example.com", "--code", code, "--username", "Fresh-1"),
+    ).toMatch(/Created your account/);
+    expect(await runJson("whoami")).toMatchObject({ name: "fresh", email: "fresh@example.com", username: "fresh-1" });
+  });
+
+  it("a new account without a username stays logged in and is told how to finish; `username` sets and renames it", async () => {
+    await expect(run("login", "--url", API, "--email", "nouser@example.com")).rejects.toThrow(/--code is required/);
+    const code = emails.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
+    await expect(run("login", "--url", API, "--email", "nouser@example.com", "--code", code)).rejects.toThrow(
+      /username is required/,
     );
-    expect(await runJson("whoami")).toMatchObject({ name: "fresh", email: "fresh@example.com" });
+    expect(await runJson("whoami")).toMatchObject({ username: null });
+    await expect(run("username", "login")).rejects.toThrow(/reserved/);
+    await expect(run("username", "x")).rejects.toThrow(/at least 2/);
+    await run("username", "nouser");
+    expect(await runJson("whoami")).toMatchObject({ username: "nouser" });
+    await run("username", "nouser-2");
+    expect(await runJson("whoami")).toMatchObject({ username: "nouser-2" });
   });
 
   it("login rejects a wrong code without saving anything", async () => {

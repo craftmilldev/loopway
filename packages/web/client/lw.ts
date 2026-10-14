@@ -9,6 +9,7 @@ export interface Me {
   id: string;
   email: string | null;
   name: string;
+  username: string | null;
 }
 
 export function token() {
