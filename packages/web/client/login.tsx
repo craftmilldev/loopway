@@ -65,9 +65,14 @@ export function Login() {
           if (step === "username") track("username_form_rejected", { status: r.status });
           return setError(await lw.message(r));
         }
-        const body = (await r.json()) as { token: string };
+        const body = (await r.json()) as { token: string; user: { username: string | null } };
         lw.save(body.token);
-        location.replace("/dashboard");
+        // An account from before signup asked for a username still has to pick one (through PATCH, not verify).
+        if (body.user.username) location.replace("/dashboard");
+        else {
+          setCode("");
+          setStep("username");
+        }
       }
     } catch {
       setError("Could not reach the server.");
