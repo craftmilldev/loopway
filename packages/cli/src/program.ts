@@ -98,7 +98,9 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
 
   orgs
     .command("add-member")
-    .description("add someone to an org by email (if they have no account yet, they join when they first log in)")
+    .description(
+      "add someone to an org by email (if they have no account yet, they join when they first log in). Personal orgs can't have other members",
+    )
     .argument("<slug>", "org slug")
     .argument("<email>", "their email")
     .addOption(jsonOpt())

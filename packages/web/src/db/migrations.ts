@@ -466,4 +466,18 @@ CREATE INDEX org_invites_email_idx ON loopway.org_invites (email);
 ALTER TABLE loopway.org_invites ENABLE ROW LEVEL SECURITY;
 `,
   },
+  {
+    // A personal org has exactly one member, its owner. Triggers keep it so for every path that writes members or
+    // invites. The function bodies sit on one line each because migrations are split on line-ending semicolons.
+    version: "021_personal_org_members",
+    sql: `
+CREATE FUNCTION loopway.guard_personal_org_member() RETURNS trigger AS $$ BEGIN IF EXISTS (SELECT 1 FROM loopway.orgs WHERE id = NEW.org_id AND personal_user_id IS NOT NULL AND personal_user_id <> NEW.user_id) THEN RAISE EXCEPTION 'personal orgs can only have their owner as a member'; END IF; RETURN NEW; END $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER org_members_personal_guard BEFORE INSERT OR UPDATE ON loopway.org_members FOR EACH ROW EXECUTE FUNCTION loopway.guard_personal_org_member();
+
+CREATE FUNCTION loopway.guard_personal_org_invite() RETURNS trigger AS $$ BEGIN IF EXISTS (SELECT 1 FROM loopway.orgs WHERE id = NEW.org_id AND personal_user_id IS NOT NULL) THEN RAISE EXCEPTION 'personal orgs can not have pending invites'; END IF; RETURN NEW; END $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER org_invites_personal_guard BEFORE INSERT OR UPDATE ON loopway.org_invites FOR EACH ROW EXECUTE FUNCTION loopway.guard_personal_org_invite();
+`,
+  },
 ];

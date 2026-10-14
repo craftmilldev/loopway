@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createLoginCode } from "../src/store.js";
+import { addOrgMember, createLoginCode } from "../src/store.js";
 import { call, db, newInbox, newUser } from "./helpers.js";
 
 async function me(key: string): Promise<{ id: string; email: string; username: string }> {
@@ -178,16 +178,32 @@ describe("org members", () => {
     expect([r.status, r.body.error.code]).toEqual([409, "last_member"]);
   });
 
-  it("keeps the owner in their personal org even when others have joined it", async () => {
+  it("rejects adding anyone to a personal org, storing nothing", async () => {
     const a = await newUser("a");
     const b = await newUser("b");
     const { id, username } = await me(a);
-    await call("POST", `/orgs/${username}/members`, { key: a, body: { email: (await me(b)).email } });
-    const r = await call("DELETE", `/orgs/${username}/members/${id}`, { key: b });
-    expect([r.status, r.body.error.code]).toEqual([409, "personal_owner"]);
-    const self = await call("DELETE", `/orgs/${username}/members/${id}`, { key: a });
-    expect([self.status, self.body.error.code]).toEqual([409, "personal_owner"]);
-    expect((await call("DELETE", `/orgs/${username}/members/${(await me(b)).id}`, { key: a })).status).toBe(204);
+    for (const email of [(await me(b)).email, "ghost@example.com"]) {
+      const r = await call("POST", `/orgs/${username}/members`, { key: a, body: { email } });
+      expect([r.status, r.body.error.code]).toEqual([409, "personal_org"]);
+    }
+    const list = (await call("GET", `/orgs/${username}/members`, { key: a })).body;
+    expect(list.members.map((m: { id: string }) => m.id)).toEqual([id]);
+    expect(list.pending).toEqual([]);
+  });
+
+  it("refuses a second member or an invite on a personal org in the store and the database", async () => {
+    const a = await newUser("a");
+    const b = await newUser("b");
+    const { username } = await me(a);
+    const [org] = await db.query<{ id: string }>(`SELECT id FROM loopway.orgs WHERE slug = $1`, [username]);
+    expect(await addOrgMember(db, org!.id, (await me(b)).email)).toBe("personal_org");
+    expect(await addOrgMember(db, org!.id, "ghost@example.com")).toBe("personal_org");
+    await expect(
+      db.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [org!.id, (await me(b)).id]),
+    ).rejects.toThrow(/personal orgs/);
+    await expect(
+      db.query(`INSERT INTO loopway.org_invites (org_id, email) VALUES ($1, 'ghost@example.com')`, [org!.id]),
+    ).rejects.toThrow(/personal orgs/);
   });
 
   it("removes a pending email", async () => {
