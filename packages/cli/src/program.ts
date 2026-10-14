@@ -20,6 +20,7 @@ import { addOrgMember, createOrg, leaveOrg, listOrgs, orgMembers, removeOrgMembe
 import { HARNESSES } from "@loopway/harnesses";
 import type { Context } from "./context.js";
 import { PRESETS } from "@loopway/presets";
+import { updateBeforeCommand } from "./update.js";
 import { CLI_VERSION } from "./version.js";
 
 export function createProgram(ctx: Context): Command {
@@ -31,10 +32,13 @@ export function createProgram(ctx: Context): Command {
       "after",
       `
 Credentials are stored in ~/.loopway/config.json by \`loopway login\`.
-LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
+LOOPWAY_API_URL and LOOPWAY_API_KEY override them.
+A CLI installed from a release updates itself to the newest one; turn that off with
+\`loopway config --auto-update off\` or LOOPWAY_NO_UPDATE=1.`,
     );
 
   program.hook("preAction", async (_, action) => {
+    await updateBeforeCommand(ctx);
     await ctx.metrics?.capture("cli_command", { command: action.name() });
   });
 
@@ -67,6 +71,11 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .option("--github-token <token>", "token for the GitHub bot that `loopway bots run` sessions act as")
     .option("--github-name <name>", "the bot's git author name")
     .option("--github-email <email>", "the bot's git author email")
+    .addOption(
+      new Option("--auto-update <on|off>", "whether the CLI updates itself to the latest release (default on)").choices(
+        ["on", "off"],
+      ),
+    )
     .action((opts) => configure(ctx, opts));
 
   program

@@ -214,18 +214,28 @@ describe("auth", () => {
       api_url: "https://loopway.craftmill.dev",
       api_key: undefined,
       posthog_host: "https://loopway.craftmill.dev/api/ingest",
+      auto_update: true,
     });
     await writeConfig(configDir, { api_url: "https://file.test/", api_key: "lw_file" });
     expect(await loadConfig(configDir, {})).toEqual({
       api_url: "https://file.test",
       api_key: "lw_file",
       posthog_host: "https://file.test/api/ingest",
+      auto_update: true,
     });
     expect(await loadConfig(configDir, { LOOPWAY_API_URL: "https://env.test", LOOPWAY_API_KEY: "lw_env" })).toEqual({
       api_url: "https://env.test",
       api_key: "lw_env",
       posthog_host: "https://env.test/api/ingest",
+      auto_update: true,
     });
+    // Self-update is on unless config.json or LOOPWAY_NO_UPDATE turns it off, and `login` keeps the setting.
+    await writeConfig(configDir, { api_url: "https://file.test", auto_update: false });
+    expect((await loadConfig(configDir, {})).auto_update).toBe(false);
+    expect((await loadConfig(configDir, { LOOPWAY_NO_UPDATE: "1" })).auto_update).toBe(false);
+    await writeConfig(configDir, { api_url: "https://file.test", auto_update: true });
+    expect((await loadConfig(configDir, { LOOPWAY_NO_UPDATE: "1" })).auto_update).toBe(false);
+    expect((await loadConfig(configDir, { LOOPWAY_NO_UPDATE: "0" })).auto_update).toBe(true);
     // The metrics host lives in config.json (which login and config keep), and POSTHOG_HOST overrides it.
     await writeConfig(configDir, { api_url: "https://file.test", posthog_host: "https://eu.i.posthog.com" });
     expect((await loadConfig(configDir, {})).posthog_host).toBe("https://eu.i.posthog.com");

@@ -28,9 +28,10 @@ const KIND_STYLE: Record<TranscriptLine["kind"], { color?: string; dimColor?: bo
   meta: { dimColor: true },
 };
 
-/** Runs the TUI full-screen until the user quits. */
-export async function showTui(props: TuiProps): Promise<void> {
+/** Runs the TUI full-screen until the user quits, or `signal` aborts. */
+export async function showTui(props: TuiProps, signal?: AbortSignal): Promise<void> {
   const app = render(<ThreadsTui {...props} />, { alternateScreen: true });
+  signal?.addEventListener("abort", () => app.unmount(), { once: true });
   await app.waitUntilExit();
 }
 

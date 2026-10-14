@@ -13,6 +13,8 @@ export interface Config {
   posthog_host?: string;
   /** The GitHub bot `loopway bots run` sessions act as. Set by `loopway config`; `login` keeps it. */
   github?: GithubBot;
+  /** Whether the CLI updates itself from GitHub releases. On unless this is false (or LOOPWAY_NO_UPDATE is set). */
+  auto_update?: boolean;
 }
 
 /** A GitHub user account, and its token, for sessions to comment, push and commit as. */
@@ -35,7 +37,7 @@ export const configPath = (dir: string) => join(dir, "config.json");
 export async function loadConfig(
   dir: string,
   env: NodeJS.ProcessEnv = process.env,
-): Promise<{ api_url: string; api_key?: string; posthog_host: string }> {
+): Promise<{ api_url: string; api_key?: string; posthog_host: string; auto_update: boolean }> {
   const file = await readConfig(dir);
   const api_url = env.LOOPWAY_API_URL || file?.api_url || DEFAULTS.api_url;
   return {
@@ -43,6 +45,7 @@ export async function loadConfig(
     api_key: env.LOOPWAY_API_KEY || file?.api_key,
     // Metrics go through the API's PostHog reverse proxy unless pointed elsewhere.
     posthog_host: env.POSTHOG_HOST || file?.posthog_host || `${api_url}/api/ingest`,
+    auto_update: !(env.LOOPWAY_NO_UPDATE && env.LOOPWAY_NO_UPDATE !== "0") && file?.auto_update !== false,
   };
 }
 
@@ -83,11 +86,12 @@ export async function readGithubBot(dir: string): Promise<Partial<GithubBot>> {
 async function readConfig(dir: string): Promise<Partial<Config> | undefined> {
   const raw = await readJson(configPath(dir));
   if (!raw || typeof raw !== "object") return undefined;
-  const { api_url, api_key, posthog_host } = raw as Partial<Config>;
+  const { api_url, api_key, posthog_host, auto_update } = raw as Partial<Config>;
   return {
     api_url: typeof api_url === "string" ? api_url : undefined,
     api_key: typeof api_key === "string" ? api_key : undefined,
     posthog_host: typeof posthog_host === "string" && posthog_host ? posthog_host : undefined,
+    auto_update: typeof auto_update === "boolean" ? auto_update : undefined,
   };
 }
 
@@ -97,7 +101,7 @@ async function readConfig(dir: string): Promise<Partial<Config> | undefined> {
  */
 export async function writeConfig(
   dir: string,
-  config: { api_url: string; api_key?: string; posthog_host?: string; github?: GithubBot },
+  config: { api_url: string; api_key?: string; posthog_host?: string; github?: GithubBot; auto_update?: boolean },
 ): Promise<void> {
   const existing = await readJson(configPath(dir));
   const rest = existing && typeof existing === "object" ? existing : {};

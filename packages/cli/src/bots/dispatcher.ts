@@ -107,6 +107,7 @@ export class Dispatcher {
   /** Ids of the bots not running that were already reported, so each is announced once. */
   private readonly seen = new Set<string>();
   private closing?: Promise<void>;
+  private draining = false;
   private readonly max: number;
   private readonly ttl: number;
   /** This machine's runner id (see ensureRunner), recorded on the bot leases it takes. */
@@ -180,15 +181,26 @@ export class Dispatcher {
     this.dir = ctx.configDir;
   }
 
+  /** Stops taking on work: ticks only renew the leases, so the sessions in flight can finish. Not undone. */
+  drain(): void {
+    this.draining = true;
+  }
+
+  /** Whether any session is running. */
+  get busy(): boolean {
+    return this.running.size > 0;
+  }
+
   async tick(): Promise<void> {
     this.freed = false;
     await this.leaseRunner();
-    await this.addNewBots().catch((err) =>
-      this.ctx.out(`error: looking for new bots: ${err instanceof Error ? err.message : String(err)}`),
-    );
+    if (!this.draining)
+      await this.addNewBots().catch((err) =>
+        this.ctx.out(`error: looking for new bots: ${err instanceof Error ? err.message : String(err)}`),
+      );
     for (const bot of this.bots) {
       try {
-        if (await this.lease(bot)) {
+        if ((await this.lease(bot)) && !this.draining) {
           await this.refreshVersion(bot);
           if (!this.reconciled.has(bot.id)) {
             await this.reconcile(bot);
@@ -201,7 +213,7 @@ export class Dispatcher {
         this.ctx.out(`error: bot ${bot.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    await this.deliverAll();
+    if (!this.draining) await this.deliverAll();
   }
 
   /**
