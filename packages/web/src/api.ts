@@ -148,11 +148,18 @@ export function createApi(opts: ApiOptions) {
 
   const usernameParam = z.string().trim().toLowerCase();
 
-  function usernameError(problem: SlugProblem) {
-    const code =
-      problem === "taken" ? "username_taken" : problem === "reserved" ? "username_reserved" : "invalid_username";
-    return new ApiError(problem === "taken" ? 409 : 400, code, USERNAME_PROBLEM_MESSAGES[problem]);
-  }
+  // Every way a username can be refused, as the API reports it.
+  const INVALID = { status: 400, code: "invalid_username" } as const;
+  const USERNAME_ERRORS: Record<SlugProblem, { status: 400 | 409; code: string }> = {
+    too_short: INVALID,
+    too_long: INVALID,
+    invalid_chars: INVALID,
+    edge_hyphen: INVALID,
+    reserved: { status: 400, code: "username_reserved" },
+    taken: { status: 409, code: "username_taken" },
+  };
+  const usernameError = (problem: SlugProblem) =>
+    new ApiError(USERNAME_ERRORS[problem].status, USERNAME_ERRORS[problem].code, USERNAME_PROBLEM_MESSAGES[problem]);
 
   app.post("/auth/verify", async (c) => {
     const input = z
