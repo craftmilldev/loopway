@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { botState, type BotState } from "./bot-state.js";
 import type { Inbox } from "./dashboard.js";
 import { deliveredIn } from "./activity.js";
@@ -57,6 +57,8 @@ export function ThreadEventsFeed({ ready }: { ready: boolean }) {
   const [next, setNext] = useState<string | null>(null);
   const [earlier, setEarlier] = useState(false);
   const [loading, setLoading] = useState(false);
+  // The list as last set, for the requests that finish after a render they started in.
+  const listed = useRef<lw.ThreadEvent[] | null>(null);
 
   const load = async (before: string | null) => {
     setLoading(true);
@@ -64,7 +66,8 @@ export function ThreadEventsFeed({ ready }: { ready: boolean }) {
     setLoading(false);
     if (!r.ok) return track("overview_load_failed", { resource: "events", status: r.status });
     const body = (await r.json()) as { data: lw.ThreadEvent[]; next: string | null };
-    setEvents((e) => [...(e ?? []), ...body.data]);
+    listed.current = [...(listed.current ?? []), ...body.data];
+    setEvents(listed.current);
     setNext(body.next);
   };
 
@@ -81,8 +84,12 @@ export function ThreadEventsFeed({ ready }: { ready: boolean }) {
       return false;
     }
     const body = (await r.json()) as { data: lw.ThreadEvent[]; next: string | null };
-    const merged = mergeEvents(events, body.data, body.next);
-    if (merged.events !== events) setEvents(merged.events);
+    // Merges into the list as it is now, not as it was when this request started: a page may have loaded since.
+    const merged = mergeEvents(listed.current, body.data, body.next);
+    if (merged.events !== listed.current) {
+      listed.current = merged.events;
+      setEvents(merged.events);
+    }
     if (merged.replaced) setNext(body.next);
     return true;
   }, ready);
