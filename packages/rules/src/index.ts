@@ -4,13 +4,13 @@ import { Environment } from "@marcbachmann/cel-js";
 /**
  * One assign rule of a bot. The first rule with a type glob matching a message applies; each field is a CEL
  * expression over the message (see `route`): `subject` gives the message's own subject ("" for none), `related`
- * the subjects it also names, and `action` what to do with what they find (`attach`, the default, or `skip`).
+ * the subjects it also names, and `action` (required) what to do with what they find (`attach` or `skip`).
  */
 export interface BotRule {
   types: string[];
   subject?: string;
   related?: string;
-  action?: string;
+  action: string;
 }
 
 /** What `route` reads of a message: its CloudEvent's type and payload. */
@@ -58,9 +58,12 @@ function matches(glob: string, type: string): boolean {
 export function checkRules(rules: BotRule[]): void {
   if (!Array.isArray(rules) || !rules.every((r) => Array.isArray(r?.types)))
     throw new Error("Rules must be a list of rules, each with a list of types.");
-  for (const rule of rules)
+  rules.forEach((rule, i) => {
+    if (typeof rule.action !== "string" || !rule.action)
+      throw new Error(`Rule ${i + 1} has no action; every rule needs one, such as "'attach'" or "'skip'".`);
     for (const field of ["subject", "related", "action"] as const)
       if (rule[field] !== undefined) base.parse(rule[field]);
+  });
 }
 
 /**
@@ -70,7 +73,7 @@ export function checkRules(rules: BotRule[]): void {
  *
  * - `skip`: move on to the next rule.
  * - `attach`: attach the message to the thread holding the subject (the own one first, then the related ones in
- *   order), or to a new thread if none does, and stop. This is the default.
+ *   order), or to a new thread if none does, and stop.
  *
  * A message that no rule attached is dropped. `add_subjects` is every subject the rule found that no thread holds
  * yet. Ones another thread holds stay there.
@@ -89,10 +92,7 @@ export function route(
     const related = rule.related !== undefined ? (base.evaluate(rule.related, vars) as string[]) : [];
     const subjects = key ? [key, ...related] : [];
     const found = subjects.map((s) => held.get(s)).find(Boolean);
-    const action =
-      rule.action === undefined
-        ? "attach"
-        : (base.evaluate(rule.action, { ...vars, subject: key ?? "", related, held: !!found }) as string);
+    const action = base.evaluate(rule.action, { ...vars, subject: key ?? "", related, held: !!found }) as string;
     if (action === "skip") continue;
     if (action !== "attach") throw new Error(`Unknown rule action "${action}"; use "attach" or "skip".`);
     return {

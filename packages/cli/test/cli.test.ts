@@ -12,7 +12,7 @@ import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { LoopwayClient, type Bot, type Message } from "../src/client.js";
-import { route as routeWith, type BotRule } from "@loopway/rules";
+import { checkRules, route as routeWith, type BotRule } from "@loopway/rules";
 import { LIMIT_FALLBACK_MS, LimitWatch, type AgentRun, type RunOutcome } from "../src/bots/agent.js";
 import { API_ERROR_BACKOFF_MS, Dispatcher, NETWORK_ERROR_MAX_BACKOFF_MS } from "../src/bots/dispatcher.js";
 import { defaultTtl } from "../src/commands/bots-run.js";
@@ -597,7 +597,7 @@ describe("bots", () => {
     expect(await run("bots", "show", bot.id, "--prompt")).toBe("Be brief.");
     expect(JSON.parse(await run("bots", "show", "dev", "--rules"))).toEqual(rules);
     const rulesFile = join(configDir, "rules.json");
-    await writeFile(rulesFile, JSON.stringify([{ types: ["*"], subject: "data.id" }]));
+    await writeFile(rulesFile, JSON.stringify([{ types: ["*"], subject: "data.id", action: "'attach'" }]));
     expect((await runJson("bots", "edit", "dev", "--rules-file", rulesFile)).version).toBe(3);
     expect(await run("bots", "show", "dev", "--prompt")).toBe("Be brief.");
 
@@ -606,7 +606,7 @@ describe("bots", () => {
     expect(await run("bots", "versions", "dev")).toMatch(/VERSION.*\n3\s+1\s+/);
 
     // Rules that don't parse, or no files at all, are refused before anything is saved.
-    await writeFile(rulesFile, JSON.stringify([{ types: ["*"], subject: "data.(" }]));
+    await writeFile(rulesFile, JSON.stringify([{ types: ["*"], subject: "data.(", action: "'attach'" }]));
     await expect(run("bots", "edit", "dev", "--rules-file", rulesFile)).rejects.toThrow(/rules\.json/);
     await expect(run("bots", "edit", "dev")).rejects.toThrow(/--prompt-file or --rules-file/);
     expect(await runJson("bots", "versions", "dev")).toHaveLength(3);
@@ -1313,7 +1313,7 @@ describe("threads", () => {
   });
 
   it("route: regex_all gives the first group (or the match) of every match, with optional flags", () => {
-    const rules = (related: string) => [{ types: ["x.*"], subject: "'s'", related }];
+    const rules = (related: string) => [{ types: ["x.*"], subject: "'s'", related, action: "'attach'" }];
     const route = (related: string) =>
       routeWith(rules(related), new Map(), {
         id: randomUUID(),
@@ -1357,7 +1357,7 @@ describe("threads", () => {
     const msg = { id: randomUUID(), inbox_id: "in", seq: 1, received_at: "", event: { type: "x.y", data: {} } };
     const held = new Map([["b", "t2"]]);
     const go = (rules: BotRule[]) => routeWith(rules, held, msg);
-    const rule = (subject: string, action?: string) => ({ types: ["x.*"], subject: `'${subject}'`, action });
+    const rule = (subject: string, action = "'attach'") => ({ types: ["x.*"], subject: `'${subject}'`, action });
     // skip falls through; a message nothing attaches is dropped.
     expect(go([rule("a", "'skip'")])).toBeUndefined();
     expect(go([rule("a", "'skip'"), rule("b")])).toMatchObject({ thread_id: "t2", key: "b", add_subjects: [] });
@@ -1368,6 +1368,9 @@ describe("threads", () => {
       thread_id: "t2",
     });
     expect(() => go([rule("a", "'nope'")])).toThrow(/Unknown rule action/);
+    // A rule without an action is refused up front.
+    expect(() => checkRules([{ types: ["x.*"] } as BotRule])).toThrow(/Rule 1 has no action/);
+    expect(() => checkRules([rule("a")])).not.toThrow();
   });
 
   it("picks up a new version of the bot's prompt and rules, and ignores one whose rules don't parse", async () => {
@@ -1383,12 +1386,14 @@ describe("threads", () => {
     await finish();
 
     // The server rejects rules that don't parse.
-    await expect(client.addBotVersion(bot.id, "Broken.", [{ types: ["*"], subject: "data.(" }])).rejects.toThrow();
+    await expect(
+      client.addBotVersion(bot.id, "Broken.", [{ types: ["*"], subject: "data.(", action: "'attach'" }]),
+    ).rejects.toThrow();
     // One saved before it checked is reported once, and the version before keeps running.
     await db.query(
       `INSERT INTO loopway.bot_versions (bot_id, version, prompt, rules)
        SELECT bot_id, max(version) + 1, 'Broken.', $2::jsonb FROM loopway.bot_versions WHERE bot_id = $1 GROUP BY bot_id`,
-      [bot.id, JSON.stringify([{ types: ["*"], subject: "data.(" }])],
+      [bot.id, JSON.stringify([{ types: ["*"], subject: "data.(", action: "'attach'" }])],
     );
     await send(inbox, "issues", issue("opened", 2));
     await d.tick();
@@ -1398,7 +1403,7 @@ describe("threads", () => {
     expect(runs[1]!.message).toContain("Be brief.");
 
     // Rules that route everything to one subject: the next two issues share a thread.
-    await client.addBotVersion(bot.id, "Same thread.", [{ types: ["*"], subject: '"one"' }]);
+    await client.addBotVersion(bot.id, "Same thread.", [{ types: ["*"], subject: '"one"', action: "'attach'" }]);
     await send(inbox, "issues", issue("opened", 3));
     await send(inbox, "issues", issue("opened", 4));
     await d.tick();
@@ -1419,7 +1424,7 @@ describe("threads", () => {
     expect(out.filter((l) => l.startsWith("Skipping bot late"))).toHaveLength(1);
     expect((await d.state()).bots.held.map((b) => b.id)).toEqual([bot.id]);
 
-    await client.addBotVersion(fresh.id, "Late bot.", [{ types: ["*"], subject: '"late"' }]);
+    await client.addBotVersion(fresh.id, "Late bot.", [{ types: ["*"], subject: '"late"', action: "'attach'" }]);
     await d.tick();
     expect(out).toContain("bot late: found, now running it");
     expect((await d.state()).bots.held.map((b) => b.id).sort()).toEqual([bot.id, fresh.id].sort());
@@ -1438,14 +1443,14 @@ describe("threads", () => {
     await db.query(
       `INSERT INTO loopway.bot_versions (bot_id, version, prompt, rules)
        SELECT bot_id, max(version) + 1, 'Broken.', $2::jsonb FROM loopway.bot_versions WHERE bot_id = $1 GROUP BY bot_id`,
-      [fresh.id, JSON.stringify([{ types: ["*"], subject: "data.(" }])],
+      [fresh.id, JSON.stringify([{ types: ["*"], subject: "data.(", action: "'attach'" }])],
     );
     await d.tick();
     await d.tick();
     expect(out.filter((l) => l.startsWith("bot broken: not running it"))).toHaveLength(1);
     expect((await d.state()).bots.held.map((b) => b.id)).not.toContain(fresh.id);
 
-    await client.addBotVersion(fresh.id, "Fixed.", [{ types: ["*"], subject: '"fixed"' }]);
+    await client.addBotVersion(fresh.id, "Fixed.", [{ types: ["*"], subject: '"fixed"', action: "'attach'" }]);
     await d.tick();
     expect((await d.state()).bots.held.map((b) => b.id)).toContain(fresh.id);
   });
