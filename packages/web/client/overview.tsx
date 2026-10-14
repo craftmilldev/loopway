@@ -14,6 +14,8 @@ const RANGES = [
   { key: "30d", label: "30 days", days: 30 },
 ];
 
+const SUMMARY_RUNNERS = 4;
+
 const WORDS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
 const word = (n: number) => WORDS[n] ?? String(n);
 const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
@@ -221,6 +223,10 @@ export function Overview() {
     .filter((t) => t.inflight.length).length;
   const online = runners.data?.filter((r) => r.leased_until).length ?? 0;
   const inboxName = (id: string) => inboxes.data?.find((i) => i.id === id)?.name ?? id;
+  // Offline runners first: they are the ones that need a look.
+  const summary = [...(runners.data ?? [])]
+    .sort((a, b) => +!!a.leased_until - +!!b.leased_until)
+    .slice(0, SUMMARY_RUNNERS);
   const botName = (id: string) => bots.data?.find((b) => b.id === id)?.name ?? id;
 
   return (
@@ -337,10 +343,10 @@ export function Overview() {
           <h2>What the bots did</h2>
           <ThreadEventsFeed ready={ready} />
         </div>
-        <div id="runners" className="ov-side">
+        <div className="ov-side">
           <span className="lbl">Runners</span>
           <h2>The machines</h2>
-          {runners.data?.map((r) => (
+          {summary.map((r) => (
             <div key={r.id} className="runner">
               <div className="runner-row">
                 <span className="mono">{r.name}</span>
@@ -350,15 +356,16 @@ export function Overview() {
               </div>
               <div className="runner-note">
                 {r.bots.length ? "Holds " + r.bots.map((b) => botName(b.id)).join(", ") : "Holds no bots"} ·{" "}
-                {plural(r.threads, "thread")} · {r.org} · seen {lw.when(r.last_seen_at)}
+                {plural(r.threads, "thread")} · seen {lw.ago(r.last_seen_at)}
               </div>
             </div>
           ))}
           {runners.data?.length === 0 && <p className="muted">No runners yet.</p>}
-          <div className="add-runner">
-            <span className="lbl">Add a runner</span>
-            <code>$ loopway bots run</code>
-          </div>
+          {runners.data && (
+            <a className="btn btn-md btn-quiet" href={lw.orgBase() + "/runners"}>
+              All runners{runners.data.length ? ` · ${online} of ${runners.data.length} online` : ""}
+            </a>
+          )}
         </div>
       </section>
     </DashLayout>

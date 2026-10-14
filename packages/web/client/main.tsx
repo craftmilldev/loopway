@@ -12,6 +12,7 @@ import { NewOrg } from "./new-org.js";
 import { DashboardRedirect, NotFound, OrgGate } from "./org-pages.js";
 import { startMetrics } from "./metrics.js";
 import { Overview } from "./overview.js";
+import { Runners } from "./runners.js";
 import "./styles.css";
 
 // One bundle for every page. The server sends the same HTML shell for each route (src/ui.ts) and links between
@@ -32,6 +33,7 @@ function page(path: string) {
   if (rest === "/bots") return org(<Bots />);
   if (rest === "/bots/new") return org(<NewBot />);
   if (rest === "/inboxes") return org(<Inboxes />);
+  if (rest === "/runners") return org(<Runners />);
   if (rest === "/members") return org(<MembersPage />);
   const inbox = rest.match(/^\/inboxes\/([^/]+)$/);
   if (inbox) return org(<Inbox id={part(inbox, 1)} />);

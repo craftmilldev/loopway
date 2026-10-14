@@ -228,7 +228,7 @@ export function Bots() {
                 Leave <span className="mono">loopway bots run</span> open on a machine with the repository checked out.
               </div>
             </div>
-            <a className="btn btn-md btn-quiet" href={lw.orgBase() + "#runners"}>
+            <a className="btn btn-md btn-quiet" href={lw.orgBase() + "/runners"}>
               See runners
             </a>
           </section>
