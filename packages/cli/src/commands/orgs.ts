@@ -51,6 +51,23 @@ export async function listOrgs(ctx: Context, opts: { json?: boolean }) {
   );
 }
 
+const SLUG_ERRORS = ["invalid_username", "username_reserved", "username_taken"];
+
+export async function createOrg(ctx: Context, slug: string, opts: { name?: string; json?: boolean }) {
+  try {
+    const org = await (await authedClient(ctx)).createOrg(slug.trim().toLowerCase(), opts.name?.trim());
+    await ctx.metrics?.capture("org_created", { named: !!opts.name });
+    if (opts.json) return ctx.out(json(org));
+    ctx.out(`Created ${bold(org.slug)}. Add people with \`loopway orgs add-member ${org.slug} <email>\`.`);
+  } catch (err) {
+    if (err instanceof ApiError && SLUG_ERRORS.includes(err.code)) {
+      await ctx.metrics?.capture("org_create_rejected", { reason: err.code });
+      throw new UsageError(`${err.message}.`);
+    }
+    throw err;
+  }
+}
+
 export async function orgMembers(ctx: Context, slug: string, opts: { json?: boolean }) {
   const { members, pending } = await (await authedClient(ctx)).listOrgMembers(slug);
   if (opts.json) return ctx.out(json({ members, pending }));

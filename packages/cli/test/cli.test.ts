@@ -1721,6 +1721,20 @@ describe("threads", () => {
   });
 });
 
+describe("orgs create", () => {
+  it("creates a shared org, and refuses a taken or reserved slug", async () => {
+    await configured();
+    const slug = `made-${randomUUID().slice(0, 8)}`;
+    expect(await run("orgs", "create", slug, "--name", "Made Org")).toMatch(new RegExp(`Created ${slug}`));
+    const created = (await runJson("orgs")).find((o: { slug: string }) => o.slug === slug);
+    expect(created).toMatchObject({ name: "Made Org", personal: false });
+    await expect(run("orgs", "create", slug)).rejects.toThrow(/taken/);
+    await expect(run("orgs", "create", "pricing")).rejects.toThrow(/reserved/);
+    const json = await runJson("orgs", "create", `${slug}-2`);
+    expect(json).toMatchObject({ slug: `${slug}-2`, name: `${slug}-2`, personal: false });
+  });
+});
+
 describe("org members", () => {
   it("adds, lists, removes and leaves end to end", async () => {
     const key = await configured();

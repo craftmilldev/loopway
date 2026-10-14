@@ -87,6 +87,9 @@ export function OrgSwitcher({ orgs, current }: { orgs: Org[]; current: string })
                 {o.personal ? " (you)" : ""}
               </a>
             ))}
+            <a role="menuitem" href="/orgs/new" onClick={() => track("org_new_clicked")}>
+              + New org
+            </a>
           </div>
         </div>
       )}

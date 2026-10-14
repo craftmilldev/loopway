@@ -39,6 +39,7 @@ loopway clear-config                   # deletes ~/.loopway/config.json
 
 loopway orgs                           # your orgs
 loopway orgs members <slug>            # members and pending emails
+loopway orgs create <slug> [--name <name>] # a shared org, with you as its only member
 loopway orgs add-member <slug> <email> # no account yet? they join the first time they log in
 loopway orgs remove-member <slug> <username-or-email>
 loopway orgs leave <slug>              # an org's last member can't leave

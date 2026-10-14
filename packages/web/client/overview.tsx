@@ -3,7 +3,7 @@ import { botState, type BotState } from "./bot-state.js";
 import type { Inbox } from "./dashboard.js";
 import { deliveredIn } from "./activity.js";
 import { BAR_DAYS, DeliveryBars } from "./delivery-bars.js";
-import { DashLayout } from "./layout.js";
+import { DashLayout, MembersHint } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
 import { Updated } from "./updated.js";
@@ -249,6 +249,7 @@ export function Overview() {
       {bots.data?.length === 0 && (
         <p className="ov-empty">
           Nothing is running yet. <a href={lw.orgBase() + "/bots/new"}>Create your first bot</a> to start.
+          <MembersHint />
         </p>
       )}
 

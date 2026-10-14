@@ -233,6 +233,11 @@ export class LoopwayClient {
     return (await this.request<{ data: Org[] }>("GET", "/orgs")).data;
   }
 
+  /** Creates a shared org with you as its only member. 400/409 `invalid_username`, `username_reserved`, `username_taken`. */
+  createOrg(slug: string, name?: string) {
+    return this.request<Org>("POST", "/orgs", { slug, ...(name && { name }) });
+  }
+
   /** Members and pending emails of an org you belong to (404 otherwise). */
   listOrgMembers(slug: string) {
     return this.request<OrgMembers>("GET", `/orgs/${enc(slug)}/members`);

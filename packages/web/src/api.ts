@@ -10,7 +10,7 @@ import { isUuid, LOGIN_CODE_RE, normalizeLoginCode } from "./ids.js";
 import { ANONYMOUS, noopMetrics, type Metrics } from "./metrics.js";
 import { BOT_MODELS } from "./models.js";
 import { createPosthogProxy } from "./posthog-proxy.js";
-import { USERNAME_PROBLEM_MESSAGES, type SlugProblem } from "./slugs.js";
+import { ORG_SLUG_PROBLEM_MESSAGES, USERNAME_PROBLEM_MESSAGES, type SlugProblem } from "./slugs.js";
 import { sources } from "./sources.js";
 import * as store from "./store.js";
 import type { MessageRow, Inbox, User } from "./store.js";
@@ -236,6 +236,33 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.get("/orgs", async (c) => c.json({ data: await store.listOrgs(c.var.db, c.var.user.id) }));
+
+  // Creates a shared org with the caller as its only member. Its slug follows the username rules and error codes.
+  authed.post("/orgs", async (c) => {
+    const input = z
+      .object({ slug: usernameParam, name: z.string().trim().min(1).max(100).optional() })
+      .parse(await jsonBody(c));
+    const result = await store.createSharedOrg(c.var.db, c.var.user.id, input.slug, input.name);
+    if (!result.ok) {
+      await metrics.capture("org_create_rejected", c.var.user.id, { reason: result.problem });
+      const { status, code } = USERNAME_ERRORS[result.problem];
+      throw new ApiError(status, code, ORG_SLUG_PROBLEM_MESSAGES[result.problem]);
+    }
+    await metrics.capture("org_created", c.var.user.id, { named: !!input.name });
+    return c.json(result.org, 201);
+  });
+
+  // Whether a slug can be used for a new org, so a form can say "taken" before submit. Your own username is taken.
+  authed.get("/orgs/:slug/available", async (c) => {
+    const slug = usernameParam.parse(c.req.param("slug"));
+    const problem = await store.usernameProblem(c.var.db, slug);
+    await metrics.capture("org_slug_checked", c.var.user.id, { result: problem ?? "available" });
+    return c.json({
+      slug,
+      available: !problem,
+      ...(problem && { reason: problem, message: ORG_SLUG_PROBLEM_MESSAGES[problem] }),
+    });
+  });
 
   // Org members. Only members may see or change them; anyone else gets the 404 a missing org gets.
 

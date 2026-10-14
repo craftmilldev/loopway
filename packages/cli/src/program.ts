@@ -16,7 +16,7 @@ import { getMessage, listMessages } from "./commands/messages.js";
 import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
 import { listRunners } from "./commands/runners.js";
 import { runBots } from "./commands/bots-run.js";
-import { addOrgMember, leaveOrg, listOrgs, orgMembers, removeOrgMember } from "./commands/orgs.js";
+import { addOrgMember, createOrg, leaveOrg, listOrgs, orgMembers, removeOrgMember } from "./commands/orgs.js";
 import type { Context } from "./context.js";
 import { PRESETS } from "@loopway/presets";
 
@@ -88,6 +88,14 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .description("list your orgs (what `loopway orgs` does)")
     .addOption(jsonOpt())
     .action((opts) => listOrgs(ctx, opts));
+
+  orgs
+    .command("create")
+    .description("create a shared org with you as its only member (slugs follow the username rules)")
+    .argument("<slug>", "org slug: lowercase letters, numbers and hyphens")
+    .option("--name <name>", "display name (default: the slug)")
+    .addOption(jsonOpt())
+    .action((slug, opts) => createOrg(ctx, slug, opts));
 
   orgs
     .command("members")

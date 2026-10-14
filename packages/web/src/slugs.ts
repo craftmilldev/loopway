@@ -29,3 +29,13 @@ export const USERNAME_PROBLEM_MESSAGES: Record<SlugProblem, string> = {
   reserved: "That username is reserved",
   taken: "That username is taken",
 };
+
+/** The same problems as USERNAME_PROBLEM_MESSAGES, worded for an org's slug. */
+export const ORG_SLUG_PROBLEM_MESSAGES: Record<SlugProblem, string> = {
+  too_short: `Org slugs are at least ${SLUG_MIN} characters`,
+  too_long: `Org slugs are at most ${SLUG_MAX} characters`,
+  invalid_chars: "Org slugs use only lowercase letters, numbers and hyphens",
+  edge_hyphen: "Org slugs can't start or end with a hyphen",
+  reserved: "That slug is reserved",
+  taken: "That slug is taken",
+};
