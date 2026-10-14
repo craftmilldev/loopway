@@ -52,7 +52,7 @@ export function ThreadEventsFeed({ ready }: { ready: boolean }) {
 
   const load = async (before: string | null) => {
     setLoading(true);
-    const r = await lw.api("/events" + (before ? "?before=" + before : ""));
+    const r = await lw.api(lw.inOrg("/events" + (before ? "?before=" + before : "")));
     setLoading(false);
     if (!r.ok) return track("overview_load_failed", { resource: "events", status: r.status });
     const body = (await r.json()) as { data: lw.ThreadEvent[]; next: string | null };
@@ -68,7 +68,7 @@ export function ThreadEventsFeed({ ready }: { ready: boolean }) {
   // A refresh reads the newest page and adds only the events it hasn't got, so "Show earlier" and its place stay put.
   // If the page shares nothing with the list, there may be events in between that it can't reach, so it starts over.
   lw.usePoll(async () => {
-    const r = await lw.api("/events");
+    const r = await lw.api(lw.inOrg("/events"));
     if (!r.ok) {
       track("overview_load_failed", { resource: "events", status: r.status });
       return false;
@@ -116,11 +116,11 @@ export function ThreadEventsFeed({ ready }: { ready: boolean }) {
                   : ""}
                 {at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
               </time>{" "}
-              <a className="bot-link" href={"/dashboard/bots/" + e.bot_id}>
+              <a className="bot-link" href={lw.orgBase() + "/bots/" + e.bot_id}>
                 {e.bot_name}
               </a>{" "}
               {EVENT_TEXT[e.kind]}:{" "}
-              <a href={`/dashboard/bots/${e.bot_id}/threads/${e.thread_id}`}>
+              <a href={`${lw.orgBase()}/bots/${e.bot_id}/threads/${e.thread_id}`}>
                 {e.title ?? (e.subjects.join(", ") || "a thread")}
               </a>
             </li>
@@ -139,9 +139,9 @@ export function ThreadEventsFeed({ ready }: { ready: boolean }) {
 export function Overview() {
   const me = lw.useMe();
   const ready = !!me;
-  const bots = lw.useList<lw.Bot>("/bots", ready);
-  const runners = lw.useList<lw.Runner>("/runners", ready);
-  const inboxes = lw.useList<Inbox>("/inboxes", ready);
+  const bots = lw.useList<lw.Bot>(lw.inOrg("/bots"), ready);
+  const runners = lw.useList<lw.Runner>(lw.inOrg("/runners"), ready);
+  const inboxes = lw.useList<Inbox>(lw.inOrg("/inboxes"), ready);
   lw.usePoll(bots.reload, ready);
   lw.usePoll(runners.reload, ready);
   lw.usePoll(inboxes.reload, ready);
@@ -172,7 +172,7 @@ export function Overview() {
 
   // Every bot's deliveries in one call, as many days as the bars and the longest range need.
   const loadActivity = async () => {
-    const r = await lw.api("/bots/activity?days=" + Math.max(BAR_DAYS, ...RANGES.map((r) => r.days)));
+    const r = await lw.api(lw.inOrg("/bots/activity?days=" + Math.max(BAR_DAYS, ...RANGES.map((r) => r.days))));
     if (!r.ok) {
       track("overview_load_failed", { resource: "activity", status: r.status });
       return false;
@@ -248,7 +248,7 @@ export function Overview() {
 
       {bots.data?.length === 0 && (
         <p className="ov-empty">
-          Nothing is running yet. <a href="/dashboard/bots/new">Create your first bot</a> to start.
+          Nothing is running yet. <a href={lw.orgBase() + "/bots/new"}>Create your first bot</a> to start.
         </p>
       )}
 
@@ -278,7 +278,7 @@ export function Overview() {
       <section id="bots" className="ov-section">
         <div className="ov-section-head">
           <h2>Who is doing what</h2>
-          <a className="btn btn-md btn-quiet" href="/dashboard/bots/new">
+          <a className="btn btn-md btn-quiet" href={lw.orgBase() + "/bots/new"}>
             New bot
           </a>
         </div>
@@ -307,7 +307,7 @@ export function Overview() {
                 return (
                   <tr key={b.id}>
                     <td>
-                      <a className="bot-link" href={"/dashboard/bots/" + b.id}>
+                      <a className="bot-link" href={lw.orgBase() + "/bots/" + b.id}>
                         {b.name}
                       </a>
                       <div className="lbl small">{b.model}</div>

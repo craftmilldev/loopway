@@ -1,5 +1,6 @@
-import { useEffect, type MouseEvent, type ReactNode } from "react";
-import { logout, useMe, type Me } from "./lw.js";
+import { createContext, useContext, useEffect, type MouseEvent, type ReactNode } from "react";
+import { logout, orgBase, orgSlug, useMe, type Me, type Org } from "./lw.js";
+import { OrgSwitcher } from "./org-switcher.js";
 import wordmark from "./wordmark.svg";
 
 export function Layout({ title, nav, children }: { title: string; nav?: ReactNode; children: ReactNode }) {
@@ -19,11 +20,15 @@ export function Layout({ title, nav, children }: { title: string; nav?: ReactNod
   );
 }
 
-const SECTIONS = [
-  { label: "Overview", href: "/dashboard", on: (p: string) => p === "/dashboard" },
-  { label: "Bots", href: "/dashboard/bots", on: (p: string) => p.startsWith("/dashboard/bots") },
-  { label: "Inboxes", href: "/dashboard/inboxes", on: (p: string) => p.startsWith("/dashboard/inboxes") },
-  { label: "Runners", href: "/dashboard#runners", on: () => false },
+/** The user's orgs, which the page's org gate (main.tsx) has loaded; null where there is no gate. */
+export const OrgsContext = createContext<Org[] | null>(null);
+
+/** The tabs of an org's pages: where each goes, and whether the path `p` is on it. */
+const sections = (base: string) => [
+  { label: "Overview", href: base, on: (p: string) => p === base },
+  { label: "Bots", href: base + "/bots", on: (p: string) => p.startsWith(base + "/bots") },
+  { label: "Inboxes", href: base + "/inboxes", on: (p: string) => p.startsWith(base + "/inboxes") },
+  { label: "Runners", href: base + "#runners", on: () => false },
 ];
 
 /** Frame of every signed-in page: the masthead, then the page at dashboard width. `crumb` sits above the page. */
@@ -41,6 +46,8 @@ export function DashLayout({
   useEffect(() => {
     document.title = title;
   }, [title]);
+  const orgs = useContext(OrgsContext);
+  const base = orgBase();
   const out = (e: MouseEvent) => {
     e.preventDefault();
     logout();
@@ -49,21 +56,22 @@ export function DashLayout({
     <>
       <header className="dash-head">
         <div className="dash-head-row">
-          <a className="dash-word" href="/dashboard">
+          <a className="dash-word" href={base}>
             LOOPWAY
           </a>
           <div className="dash-head-side">
+            {orgs && <OrgSwitcher orgs={orgs} current={orgSlug()} />}
             <span className="dash-account">{me ? me.username || me.email || me.name : ""}</span>
             <a href="#" onClick={out}>
               Log out
             </a>
-            <a className="btn btn-md" href="/dashboard/bots/new">
+            <a className="btn btn-md" href={base + "/bots/new"}>
               New bot
             </a>
           </div>
         </div>
         <nav className="dash-nav" aria-label="Main">
-          {SECTIONS.map((s) => (
+          {sections(base).map((s) => (
             <a key={s.label} href={s.href} className={s.on(location.pathname) ? "on" : undefined}>
               {s.label}
             </a>

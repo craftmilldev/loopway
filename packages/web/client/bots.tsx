@@ -20,9 +20,9 @@ const plural = (n: number, one: string) => `${n} ${n === 1 ? one : one + "s"}`;
 export function Bots() {
   const me = lw.useMe();
   const ready = !!me;
-  const bots = lw.useList<lw.Bot>("/bots", ready);
-  const runners = lw.useList<lw.Runner>("/runners", ready);
-  const inboxes = lw.useList<Inbox>("/inboxes", ready);
+  const bots = lw.useList<lw.Bot>(lw.inOrg("/bots"), ready);
+  const runners = lw.useList<lw.Runner>(lw.inOrg("/runners"), ready);
+  const inboxes = lw.useList<Inbox>(lw.inOrg("/inboxes"), ready);
   const orgs = lw.useOrgs(ready);
   lw.usePoll(bots.reload, ready);
   lw.usePoll(runners.reload, ready);
@@ -55,7 +55,7 @@ export function Bots() {
 
   // Every bot's deliveries, in one call.
   const loadActivity = async () => {
-    const r = await lw.api("/bots/activity?days=" + BAR_DAYS);
+    const r = await lw.api(lw.inOrg("/bots/activity?days=" + BAR_DAYS));
     if (!r.ok) {
       track("bots_load_failed", { resource: "activity", status: r.status });
       return false;
@@ -130,14 +130,14 @@ export function Bots() {
             rules.
           </p>
         </div>
-        <a className="btn btn-md" href="/dashboard/bots/new">
+        <a className="btn btn-md" href={lw.orgBase() + "/bots/new"}>
           New bot
         </a>
       </section>
 
       {loaded && !rows.length && (
         <p className="ov-empty">
-          Nothing is running yet. <a href="/dashboard/bots/new">Create your first bot</a> to start.
+          Nothing is running yet. <a href={lw.orgBase() + "/bots/new"}>Create your first bot</a> to start.
         </p>
       )}
 
@@ -189,7 +189,7 @@ export function Bots() {
                 {shown.map((r) => (
                   <tr key={r.bot.id}>
                     <td>
-                      <a className="bot-link" href={"/dashboard/bots/" + r.bot.id}>
+                      <a className="bot-link" href={lw.orgBase() + "/bots/" + r.bot.id}>
                         {r.bot.name}
                       </a>
                       <div className="lbl small">
@@ -228,7 +228,7 @@ export function Bots() {
                 Leave <span className="mono">loopway bots run</span> open on a machine with the repository checked out.
               </div>
             </div>
-            <a className="btn btn-md btn-quiet" href="/dashboard#runners">
+            <a className="btn btn-md btn-quiet" href={lw.orgBase() + "#runners"}>
               See runners
             </a>
           </section>

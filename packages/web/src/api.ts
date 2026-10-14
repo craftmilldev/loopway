@@ -255,10 +255,25 @@ export function createApi(opts: ApiOptions) {
     return org;
   }
 
+  /**
+   * The id of the org a list endpoint is narrowed to by `?org=<slug>`; undefined without it (all the user's orgs).
+   * A slug the user isn't a member of is a 404, the same whether or not the org exists.
+   */
+  async function listOrg(c: Context<Env>, endpoint: string): Promise<string | undefined> {
+    const slug = c.req.query("org");
+    if (slug === undefined) return undefined;
+    const org = await store.memberOrg(c.var.db, c.var.user.id, slug);
+    if (!org) {
+      await metrics.capture("org_filter_rejected", c.var.user.id, { endpoint, reason: "org_not_found" });
+      throw new ApiError(404, "not_found", "Org not found");
+    }
+    return org.id;
+  }
+
   // Inboxes
 
   authed.get("/inboxes", async (c) => {
-    const rows = await store.listInboxes(c.var.db, c.var.user.id);
+    const rows = await store.listInboxes(c.var.db, c.var.user.id, await listOrg(c, "inboxes"));
     return c.json({ data: rows.map((r) => serializeInbox(c, r)) });
   });
 
@@ -302,7 +317,13 @@ export function createApi(opts: ApiOptions) {
   // Registered before /inboxes/:inboxId, which would take "activity" for an id.
   authed.get("/inboxes/activity", async (c) => {
     const days = await activityDays(c, "inbox", "all");
-    const rows = await store.inboxActivity(c.var.db, c.var.user.id, days);
+    const rows = await store.inboxActivity(
+      c.var.db,
+      c.var.user.id,
+      days,
+      undefined,
+      await listOrg(c, "inbox_activity"),
+    );
     await metrics.capture("inbox_activity_viewed", c.var.user.id, { scope: "all", days, inboxes: rows.length });
     return c.json({ data: rows.map(serializeInboxActivity) });
   });
@@ -374,7 +395,7 @@ export function createApi(opts: ApiOptions) {
   // Runners
 
   authed.get("/runners", async (c) => {
-    const rows = await store.listRunners(c.var.db, c.var.user.id);
+    const rows = await store.listRunners(c.var.db, c.var.user.id, await listOrg(c, "runners"));
     return c.json({ data: rows.map(serializeRunner) });
   });
 
@@ -452,13 +473,13 @@ export function createApi(opts: ApiOptions) {
   }
 
   authed.get("/bots", async (c) => {
-    const rows = await store.listBots(c.var.db, c.var.user.id);
+    const rows = await store.listBots(c.var.db, c.var.user.id, await listOrg(c, "bots"));
     return c.json({ data: rows.map(serializeBot) });
   });
 
   authed.get("/bots/activity", async (c) => {
     const days = await activityDays(c, "bot", "all");
-    const rows = await store.botActivity(c.var.db, c.var.user.id, days);
+    const rows = await store.botActivity(c.var.db, c.var.user.id, days, undefined, await listOrg(c, "bot_activity"));
     await metrics.capture("bot_activity_viewed", c.var.user.id, { scope: "all", days, bots: rows.length });
     return c.json({ data: rows.map(serializeActivity) });
   });
@@ -478,7 +499,13 @@ export function createApi(opts: ApiOptions) {
       await metrics.capture("thread_events_rejected", c.var.user.id, { reason: "invalid_query" });
       throw q.error;
     }
-    const rows = await store.listThreadEvents(c.var.db, c.var.user.id, q.data.limit + 1, q.data.before);
+    const rows = await store.listThreadEvents(
+      c.var.db,
+      c.var.user.id,
+      q.data.limit + 1,
+      q.data.before,
+      await listOrg(c, "events"),
+    );
     const page = rows.slice(0, q.data.limit);
     const newest = await store.threadNewestEvents(c.var.db, [...new Set(page.map((e) => e.thread_id))], TITLE_LOOKBACK);
     const titles = new Map(

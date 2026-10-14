@@ -24,7 +24,7 @@ export function Login() {
         // A signup that stopped before choosing a username picks up here.
         const me = (await r.json().catch(() => null)) as { username?: string | null } | null;
         if (me && !me.username) setStep("username");
-        else location.replace("/dashboard");
+        else void lw.landing().then((to) => location.replace(to));
       });
   }, []);
 
@@ -45,7 +45,7 @@ export function Login() {
           track("username_form_rejected", { status: r.status });
           return setError(await lw.message(r));
         }
-        location.replace("/dashboard");
+        void lw.landing().then((to) => location.replace(to));
       } else if (step === "email") {
         const r = await lw.api("/auth/login", { method: "POST", body: { email }, auth: false });
         if (!r.ok) return setError(await lw.message(r));
@@ -68,7 +68,7 @@ export function Login() {
         const body = (await r.json()) as { token: string; user: { username: string | null } };
         lw.save(body.token);
         // An account from before signup asked for a username still has to pick one (through PATCH, not verify).
-        if (body.user.username) location.replace("/dashboard");
+        if (body.user.username) void lw.landing().then((to) => location.replace(to));
         else {
           setCode("");
           setStep("username");

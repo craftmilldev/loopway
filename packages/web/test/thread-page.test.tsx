@@ -45,6 +45,7 @@ let requests: string[];
 let endFails: boolean;
 
 beforeEach(() => {
+  window.history.replaceState(null, "", "/acme/bots/b1/threads/t1");
   localStorage.setItem("loopway_token", "t");
   online = true;
   endFails = false;
@@ -68,7 +69,7 @@ beforeEach(() => {
         current = thread({ status: "ended" });
         return json(current);
       }
-      if (path === "/runners")
+      if (path === "/runners?org=acme")
         return json({ data: [{ id: "r1", name: "laptop", leased_until: online ? "2026-10-13T00:00:00Z" : null }] });
       if (path === "/inboxes/i1/messages/w1") return json({ event: { type: "x", data: { hello: "world" } } });
       return new Response("{}", { status: 404 });

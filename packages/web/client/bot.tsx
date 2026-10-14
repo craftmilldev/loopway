@@ -25,7 +25,8 @@ export const tabOf = (value: string | null): Tab => (value === "threads" || valu
 
 /** A bot's page on `tab`. Activity is the bare bot URL, and Prompt and rules has a path of its own. */
 export const tabPath = (botId: string, tab: Tab) =>
-  "/dashboard/bots/" +
+  lw.orgBase() +
+  "/bots/" +
   encodeURIComponent(botId) +
   (tab === "activity" ? "" : tab === "prompt" ? "/prompt" : "?tab=" + tab);
 
@@ -47,9 +48,9 @@ export function Bot({ id, view }: { id: string; view?: Tab }) {
   const tab = view ?? tabOf(new URLSearchParams(location.search).get("tab"));
   const botPath = "/bots/" + encodeURIComponent(id);
   const bot = lw.useGet<lw.Bot>(botPath, ready);
-  const bots = lw.useList<lw.Bot>("/bots", ready);
-  const runners = lw.useList<lw.Runner>("/runners", ready);
-  const inboxes = lw.useList<Inbox>("/inboxes", ready);
+  const bots = lw.useList<lw.Bot>(lw.inOrg("/bots"), ready);
+  const runners = lw.useList<lw.Runner>(lw.inOrg("/runners"), ready);
+  const inboxes = lw.useList<Inbox>(lw.inOrg("/inboxes"), ready);
   const open = lw.useList<lw.Thread>(botPath + "/threads?status=active", ready);
   // The bot (its current prompt version, name, inboxes) and the inboxes feed the Prompt and Settings forms, so they
   // load once. The bots, runners and open threads, which give the state, are what refreshes.
@@ -82,7 +83,7 @@ export function Bot({ id, view }: { id: string; view?: Tab }) {
       track("bot_delete_failed", { status: r.status });
       return setError(await lw.message(r));
     }
-    location.assign("/dashboard");
+    location.assign(lw.orgBase());
   }
 
   return (
@@ -109,7 +110,7 @@ export function Bot({ id, view }: { id: string; view?: Tab }) {
                 return (
                   <span key={i}>
                     {n > 0 && ", "}
-                    <a href={"/dashboard/inboxes/" + i}>{inbox?.name ?? i}</a>
+                    <a href={lw.orgBase() + "/inboxes/" + i}>{inbox?.name ?? i}</a>
                   </span>
                 );
               })}{" "}
@@ -308,7 +309,7 @@ function ThreadsTab({
             {threads.data?.map((t) => (
               <tr key={t.id}>
                 <td>
-                  <a href={`/dashboard/bots/${encodeURIComponent(botId)}/threads/${t.id}`}>
+                  <a href={`${lw.orgBase()}/bots/${encodeURIComponent(botId)}/threads/${t.id}`}>
                     {t.title ?? (t.subjects.length ? t.subjects.join(", ") : t.id)}
                   </a>
                   {t.title && (
@@ -449,7 +450,7 @@ export function Thread({ botId, id }: { botId: string; id: string }) {
   const threadPath = `${botPath}/threads/${encodeURIComponent(id)}`;
   const bot = lw.useGet<lw.Bot>(botPath, ready);
   const thread = lw.useGet<lw.Thread>(threadPath, ready);
-  const runners = lw.useList<lw.Runner>("/runners", ready);
+  const runners = lw.useList<lw.Runner>(lw.inOrg("/runners"), ready);
   lw.usePoll(bot.reload, ready);
   lw.usePoll(thread.reload, ready);
   lw.usePoll(runners.reload, ready);
@@ -501,7 +502,7 @@ export function Thread({ botId, id }: { botId: string; id: string }) {
       me={me}
       crumb={
         <p className="crumb">
-          <a href={"/dashboard/bots/" + botId}>← {bot.data?.name ?? "Bot"}</a>
+          <a href={lw.orgBase() + "/bots/" + botId}>← {bot.data?.name ?? "Bot"}</a>
         </p>
       }
     >

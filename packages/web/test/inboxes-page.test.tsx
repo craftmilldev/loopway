@@ -62,6 +62,7 @@ let requests: { path: string; method: string; body: unknown }[];
 let patchReply: { status: number; body: unknown };
 
 beforeEach(() => {
+  window.history.replaceState(null, "", "/acme/inboxes");
   localStorage.setItem("loopway_token", "t");
   inboxes = [inbox(), vercel];
   requests = [];
@@ -118,8 +119,8 @@ describe("Inboxes list", () => {
     const [github, vercelRow] = rows.map((r) => within(r));
     await waitFor(() => expect(github!.getByText("2 event types · 2418 messages")).toBeTruthy());
     expect(github!.getByText("GitHub")).toBeTruthy();
-    expect(github!.getByText("dev").getAttribute("href")).toBe("/dashboard/bots/b1");
-    expect(github!.getByText("reviewer").getAttribute("href")).toBe("/dashboard/bots/b2");
+    expect(github!.getByText("dev").getAttribute("href")).toBe("/acme/bots/b1");
+    expect(github!.getByText("reviewer").getAttribute("href")).toBe("/acme/bots/b2");
     expect(github!.getByRole("group").getAttribute("aria-label")).toBe("3 delivered in 14 days");
     expect(github!.getByText(/\d+ d ago/)).toBeTruthy();
     expect(github!.queryByText("needs its secret")).toBeNull();
@@ -131,12 +132,8 @@ describe("Inboxes list", () => {
 
   it("links Connect a source to the new-bot flow and each name to its page", async () => {
     render(<Inboxes />);
-    expect((await screen.findByRole("link", { name: "Connect a source" })).getAttribute("href")).toBe(
-      "/dashboard/bots/new",
-    );
-    expect((await screen.findByRole("link", { name: "loopway-github" })).getAttribute("href")).toBe(
-      "/dashboard/inboxes/i1",
-    );
+    expect((await screen.findByRole("link", { name: "Connect a source" })).getAttribute("href")).toBe("/acme/bots/new");
+    expect((await screen.findByRole("link", { name: "loopway-github" })).getAttribute("href")).toBe("/acme/inboxes/i1");
   });
 
   it("scrolls the wide table in its own box", async () => {
@@ -232,7 +229,7 @@ describe("Inbox page", () => {
     vi.stubGlobal("location", { ...window.location, assign });
     render(<Inbox id="i1" />);
     fireEvent.click(await screen.findByRole("button", { name: "Delete inbox" }));
-    await waitFor(() => expect(assign).toHaveBeenCalledWith("/dashboard/inboxes"));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith("/acme/inboxes"));
     expect(requests.some((r) => r.method === "DELETE" && r.path === "/inboxes/i1")).toBe(true);
   });
 });

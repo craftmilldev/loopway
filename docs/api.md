@@ -19,6 +19,8 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 | `GET /api/usernames/:username` | `{username, available, reason?, message?}`: whether the name can be used (your own current one counts as available). |
 | `GET /api/orgs` | Orgs you belong to: `{data: [{id, slug, name, personal}]}`. |
 
+The list endpoints `GET /api/inboxes`, `/api/bots`, `/api/runners`, `/api/events`, `/api/inboxes/activity` and `/api/bots/activity` take an optional `?org=<slug>` and then list only that org's entities. A slug you aren't a member of, or that doesn't exist, is a `404`. Without it they list all your orgs'.
+
 ## Inboxes
 
 |                                                |                                                                                                                                                                                                                             |
