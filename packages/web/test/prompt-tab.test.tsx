@@ -51,7 +51,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const editor = async () => await screen.findByLabelText<HTMLTextAreaElement>("Prompt");
+// The textarea can show before the bot and versions finish loading, and late data resets the draft.
+const editor = async () => {
+  await screen.findByRole("link", { name: "Prompt and rules · v2" });
+  return await screen.findByLabelText<HTMLTextAreaElement>("Prompt");
+};
 const type = (el: HTMLElement, value: string) => fireEvent.change(el, { target: { value } });
 
 describe("helpers", () => {
