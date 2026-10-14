@@ -46,7 +46,10 @@ describe("ownership", () => {
     await sendGithub(inbox, "pull_request", prPayload(1));
     const message = (await call("GET", `/inboxes/${inbox.id}/messages`, { key: owner })).body.data[0] as { id: string };
     const bot = (
-      await call("POST", "/bots", { key: owner, body: { name: "b", model: "sonnet", inbox_ids: [inbox.id] } })
+      await call("POST", "/bots", {
+        key: owner,
+        body: { name: "b", model: "sonnet", harness: "claude", inbox_ids: [inbox.id] },
+      })
     ).body;
     const botLease = (await call("POST", `/bots/${bot.id}/lease`, { key: owner, body: {} })).body.lease.token;
     const runner = randomUUID();
@@ -107,7 +110,10 @@ describe("ownership", () => {
     expect((await call("POST", "/runners", { key: stranger, body: { id: runner, name: "mine" } })).status).toBe(409);
     const mineInbox = await newInbox(stranger);
     const mineBot = (
-      await call("POST", "/bots", { key: stranger, body: { name: "m", model: "sonnet", inbox_ids: [mineInbox.id] } })
+      await call("POST", "/bots", {
+        key: stranger,
+        body: { name: "m", model: "sonnet", harness: "claude", inbox_ids: [mineInbox.id] },
+      })
     ).body;
     expect(
       (await call("POST", `/bots/${mineBot.id}/lease`, { key: stranger, body: { runner_id: runner } })).status,
@@ -117,8 +123,12 @@ describe("ownership", () => {
       (await call("PATCH", `/bots/${mineBot.id}`, { key: stranger, body: { inbox_ids: [inbox.id] } })).status,
     ).toBe(400);
     expect(
-      (await call("POST", "/bots", { key: stranger, body: { name: "x", model: "sonnet", inbox_ids: [inbox.id] } }))
-        .status,
+      (
+        await call("POST", "/bots", {
+          key: stranger,
+          body: { name: "x", model: "sonnet", harness: "claude", inbox_ids: [inbox.id] },
+        })
+      ).status,
     ).toBe(400);
     // Activity covers only the caller's own bots.
     const activity = (await call("GET", "/bots/activity", { key: stranger })).body.data as { bot_id: string }[];
@@ -192,7 +202,7 @@ describe("ownership", () => {
       [inbox.id, `user:${aId}`, shared],
     );
     await db.query(
-      `INSERT INTO loopway.bots (id, created_by, org_id, name, model, cursor) VALUES ($1, $2, $3, 'b', 'sonnet', 0)`,
+      `INSERT INTO loopway.bots (id, created_by, org_id, name, model, harness, cursor) VALUES ($1, $2, $3, 'b', 'sonnet', 'claude', 0)`,
       [bot.id, `user:${aId}`, shared],
     );
     await db.query(`INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, org_id) VALUES ($1, $2, $3)`, [

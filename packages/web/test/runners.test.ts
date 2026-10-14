@@ -6,7 +6,9 @@ import { call, db, newInbox, newUser, prPayload, sendGithub } from "./helpers.js
 async function setup() {
   const key = await newUser();
   const inbox = await newInbox(key);
-  const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [inbox.id] } })).body;
+  const bot = (
+    await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", harness: "claude", inbox_ids: [inbox.id] } })
+  ).body;
   for (const n of [1, 2]) await sendGithub(inbox, "pull_request", prPayload(n));
   const messages = (await call("GET", `/inboxes/${inbox.id}/messages?order=asc`, { key })).body.data.map(
     (m: { id: string }) => m.id,
@@ -196,8 +198,12 @@ describe("a runner's org", () => {
   it("can't lease or claim a bot of another org, even for a user in both", async () => {
     const { key, shared, personal } = await twoOrgs();
     const inbox = await newInbox(key);
-    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [inbox.id] } }))
-      .body;
+    const bot = (
+      await call("POST", "/bots", {
+        key,
+        body: { name: "b", model: "sonnet", harness: "claude", inbox_ids: [inbox.id] },
+      })
+    ).body;
     await sendGithub(inbox, "pull_request", prPayload(1));
     const message = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data[0].id;
     const lease = (await call("POST", `/bots/${bot.id}/lease`, { key, body: {} })).body.lease.token;

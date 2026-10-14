@@ -17,6 +17,7 @@ import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox
 import { listRunners } from "./commands/runners.js";
 import { runBots } from "./commands/bots-run.js";
 import { addOrgMember, createOrg, leaveOrg, listOrgs, orgMembers, removeOrgMember } from "./commands/orgs.js";
+import { HARNESSES } from "@loopway/harnesses";
 import type { Context } from "./context.js";
 import { PRESETS } from "@loopway/presets";
 import { CLI_VERSION } from "./version.js";
@@ -211,6 +212,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
   // ---------- bots ----------
 
   const bots = program.command("bots").alias("bot").description("create, list, update and run bots");
+  const harnessOpt = (desc: string) => new Option("--harness <harness>", desc).choices(HARNESSES.map((h) => h.name));
   const inboxesOpt = (desc: string) => new Option("--inbox <list>", desc).argParser(splitList);
 
   bots
@@ -222,6 +224,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
       new Option("--preset <preset>", "template for the bot's first prompt and rules").choices(Object.keys(PRESETS)),
     )
     .option("--model <model>", "model its sessions run on: an alias (sonnet, opus) or a full model id")
+    .addOption(harnessOpt("coding-agent CLI its sessions run in"))
     .addOption(inboxesOpt("comma-separated inbox ids or names"))
     .addOption(jsonOpt())
     .action((opts) => createBot(ctx, opts));
@@ -264,6 +267,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .argument("<bot>", "bot id or name")
     .option("--name <name>", "new name")
     .option("--model <model>", "new model; applies to runs that start after `loopway bots run` is restarted")
+    .addOption(harnessOpt("new harness; applies to runs that start after `loopway bots run` is restarted"))
     .addOption(inboxesOpt("comma-separated inbox ids or names; replaces the bot's inboxes"))
     .addOption(jsonOpt())
     .action((ref, opts) => updateBot(ctx, ref, opts));

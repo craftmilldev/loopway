@@ -14,7 +14,9 @@ const date = (offset: number) => new Date(dayStart(offset)).toISOString().slice(
 async function setup() {
   const key = await newUser();
   const inbox = await newInbox(key);
-  const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [inbox.id] } })).body;
+  const bot = (
+    await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", harness: "claude", inbox_ids: [inbox.id] } })
+  ).body;
   return { key, inbox, bot, threads: new Map<string, string>() };
 }
 
@@ -123,7 +125,10 @@ describe("bot activity", () => {
     await deliver(ctx, "a", dayStart(0));
     await deliver(other, "a", dayStart(0));
     const second = (
-      await call("POST", "/bots", { key: ctx.key, body: { name: "c", model: "sonnet", inbox_ids: [ctx.inbox.id] } })
+      await call("POST", "/bots", {
+        key: ctx.key,
+        body: { name: "c", model: "sonnet", harness: "claude", inbox_ids: [ctx.inbox.id] },
+      })
     ).body;
     const list = (await call("GET", "/bots/activity?days=7", { key: ctx.key })).body.data;
     expect(list.map((a: { bot_id: string }) => a.bot_id).sort()).toEqual([ctx.bot.id, second.id].sort());

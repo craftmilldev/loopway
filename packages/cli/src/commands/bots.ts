@@ -4,6 +4,7 @@ import { authedClient, UsageError, type Context } from "../context.js";
 import { ago, bold, dim, fields, json, table } from "../format.js";
 import { checkRules, type BotRule } from "@loopway/rules";
 import { PRESETS } from "@loopway/presets";
+import { HARNESSES } from "@loopway/harnesses";
 import { resolveInbox } from "./inboxes.js";
 import { resolveOrg } from "./orgs.js";
 
@@ -19,8 +20,8 @@ export async function listBots(ctx: Context, opts: JsonOpt) {
   const names = await inboxNames(client);
   ctx.out(
     table(
-      ["ID", "NAME", "MODEL", "INBOXES", "CREATED"],
-      bots.map((b) => [b.id, b.name, b.model, inboxList(b, names), dim(ago(b.created_at))]),
+      ["ID", "NAME", "HARNESS", "MODEL", "INBOXES", "CREATED"],
+      bots.map((b) => [b.id, b.name, b.harness, b.model, inboxList(b, names), dim(ago(b.created_at))]),
     ),
   );
 }
@@ -86,11 +87,12 @@ export async function editBot(ctx: Context, ref: string, opts: JsonOpt & { promp
 
 export async function createBot(
   ctx: Context,
-  opts: JsonOpt & { name?: string; preset?: string; model?: string; inbox?: string[]; org?: string },
+  opts: JsonOpt & { name?: string; preset?: string; model?: string; harness?: string; inbox?: string[]; org?: string },
 ) {
   if (!opts.name) throw new UsageError("--name is required");
   if (!opts.preset) throw new UsageError(`--preset is required (${Object.keys(PRESETS).join(", ")})`);
   if (!opts.model) throw new UsageError("--model is required (an alias like sonnet or opus, or a full model id)");
+  if (!opts.harness) throw new UsageError(`--harness is required (${HARNESSES.map((h) => h.name).join(", ")})`);
   if (!opts.inbox?.length) throw new UsageError("--inbox is required");
   const client = await authedClient(ctx);
   const bot = await client.createBot({
@@ -99,6 +101,7 @@ export async function createBot(
     prompt: PRESETS[opts.preset]?.prompt,
     rules: PRESETS[opts.preset]?.rules,
     model: opts.model,
+    harness: opts.harness,
     inbox_ids: await resolveInboxes(client, opts.inbox),
   });
   if (opts.json) return ctx.out(json(bot));
@@ -108,15 +111,17 @@ export async function createBot(
 export async function updateBot(
   ctx: Context,
   ref: string,
-  opts: JsonOpt & { name?: string; model?: string; inbox?: string[] },
+  opts: JsonOpt & { name?: string; model?: string; harness?: string; inbox?: string[] },
 ) {
-  if (!opts.name && !opts.model && !opts.inbox) throw new UsageError("Pass --name, --model or --inbox");
+  if (!opts.name && !opts.model && !opts.harness && !opts.inbox)
+    throw new UsageError("Pass --name, --model, --harness or --inbox");
   if (opts.inbox && !opts.inbox.length) throw new UsageError("--inbox needs at least one inbox");
   const client = await authedClient(ctx);
   const id = await resolveBot(client, ref);
   const bot = await client.updateBot(id, {
     name: opts.name,
     model: opts.model,
+    harness: opts.harness,
     inbox_ids: opts.inbox && (await resolveInboxes(client, opts.inbox)),
   });
   if (opts.json) return ctx.out(json(bot));
@@ -170,6 +175,7 @@ function describe(bot: Bot, names: Map<string, string>): string {
     bold(bot.name),
     fields([
       ["id", bot.id],
+      ["harness", bot.harness],
       ["model", bot.model],
       ["prompt", bot.prompt_version ? `version ${bot.prompt_version.version}` : "none"],
       ["rules", bot.prompt_version?.rules ? String(bot.prompt_version.rules.length) : "none"],

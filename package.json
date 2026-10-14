@@ -9,6 +9,7 @@
     "node": ">=22"
   },
   "workspaces": [
+    "packages/harnesses",
     "packages/rules",
     "packages/presets",
     "packages/sources",
@@ -16,7 +17,7 @@
     "packages/cli"
   ],
   "scripts": {
-    "postinstall": "npm run build -w @loopway/sources -w @loopway/rules -w @loopway/presets",
+    "postinstall": "npm run build -w @loopway/sources -w @loopway/harnesses -w @loopway/rules -w @loopway/presets",
     "dev": "npm run dev -w @loopway/web",
     "start": "npm run start -w @loopway/web",
     "db:up": "docker compose -p loopway up -d --wait",
