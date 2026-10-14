@@ -1,5 +1,11 @@
 loopway is a place to build bots and work alongside them. A bot watches the services you already use (GitHub, Vercel and Granola so far), gets each thing that happens there as a message in its inbox, and works through them one at a time. The bot can be a script, a cron job or a Claude agent.
 
+## Install
+
+```
+curl -fsSL https://loopway.craftmill.dev/install.sh | sh
+```
+
 ## Make a bot
 
 1. [Log in](/login) with your email. New emails get an account.

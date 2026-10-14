@@ -38,6 +38,12 @@ describe("the marketing home", () => {
     expect(within(screen.getByRole("navigation")).queryByRole("link", { name: "Log in" })).toBeNull();
   });
 
+  it("shows how to install the CLI with the install.sh link", () => {
+    const { container } = render(marketingPage("/"));
+    expect(screen.getByRole("heading", { name: "Install" })).toBeTruthy();
+    expect(container.textContent).toContain("curl -fsSL https://loopway.craftmill.dev/install.sh | sh");
+  });
+
   it("isn't a page for other paths", () => {
     expect(marketingPage("/nope")).toBeNull();
   });
