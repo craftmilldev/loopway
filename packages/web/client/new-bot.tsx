@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { PRESETS } from "@loopway/presets";
+import { HarnessRequest } from "../ee/client/harness-request.js";
 import { CreateInbox, OrgSelect, type Inbox } from "./shared.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
@@ -312,6 +313,9 @@ function Identity({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const harnesses = lw.useGet<{ data: { id: string; label: string }[]; can_request: boolean }>("/harnesses", true);
+  const [harness, setHarness] = useState("claude-code");
+  const [other, setOther] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -320,7 +324,7 @@ function Identity({
     setError(null);
     setBusy(true);
     const { prompt, rules } = PRESETS[preset]!;
-    const r = await lw.api("/bots", { method: "POST", body: { org, name, prompt, rules, model, inbox_ids } });
+    const r = await lw.api("/bots", { method: "POST", body: { org, name, prompt, rules, model, harness, inbox_ids } });
     setBusy(false);
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) {
@@ -328,7 +332,7 @@ function Identity({
       return setError(await lw.message(r));
     }
     lw.rememberOrg(org);
-    track("new_bot_created", { preset, model });
+    track("new_bot_created", { preset, model, harness });
     created((await r.json()) as lw.Bot);
   }
 
@@ -351,6 +355,39 @@ function Identity({
           Shown on threads and in <code>loopway bots run</code>.
         </p>
       </div>
+      <fieldset className="options">
+        <legend className="lbl">Harness</legend>
+        {(harnesses.data?.data ?? [{ id: "claude-code", label: "Claude Code" }]).map((h) => (
+          <label key={h.id} className="opt">
+            <input
+              type="radio"
+              name="harness"
+              disabled={!!existing}
+              checked={!other && (existing?.harness ?? harness) === h.id}
+              onChange={() => {
+                setHarness(h.id);
+                setOther(false);
+              }}
+            />
+            <span>{h.label}</span>
+          </label>
+        ))}
+        {harnesses.data?.can_request && !existing && (
+          <label className="opt">
+            <input
+              type="radio"
+              name="harness"
+              checked={other}
+              onChange={() => {
+                track("new_bot_harness_other_opened");
+                setOther(true);
+              }}
+            />
+            <span>Something else…</span>
+          </label>
+        )}
+      </fieldset>
+      {other && !existing && <HarnessRequest />}
       <fieldset className="models">
         <legend className="lbl">Model</legend>
         {MODELS.map((m) => (

@@ -26,6 +26,7 @@ function stubFetch() {
       if (path === "/me") return json({ id: "u1", email: null, name: "Me" });
       if (path === "/orgs") return json({ data: orgs });
       if (path === "/inboxes") return json({ data: [inbox] });
+      if (path === "/harnesses") return json({ data: [{ id: "claude-code", label: "Claude Code" }], can_request: false });
       if (path === "/bots/b1") return json(bot);
       if (path === "/bots/b1/threads") return json({ data: threads });
       return json({}, 404);
@@ -63,6 +64,7 @@ describe("New bot flow", () => {
 
     fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "dev" } });
     expect(screen.getAllByRole("radio").map((r) => (r.parentElement as HTMLElement).textContent?.trim())).toEqual([
+      "Claude Code",
       "sonnet",
       "opus",
       "fable",
@@ -76,6 +78,7 @@ describe("New bot flow", () => {
       org: "me",
       name: "dev",
       model: "sonnet",
+      harness: "claude-code",
       prompt: PRESETS["github-threads"]!.prompt,
       rules: PRESETS["github-threads"]!.rules,
       inbox_ids: ["i1"],

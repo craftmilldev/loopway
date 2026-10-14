@@ -8,6 +8,7 @@ import type { Db } from "./db/index.js";
 import { consoleSender, type SendEmail } from "./email.js";
 import { ApiError, jsonBody, type Env } from "./http.js";
 import { isUuid, LOGIN_CODE_RE, normalizeLoginCode } from "./ids.js";
+import { DEFAULT_HARNESS, HARNESSES } from "./harnesses.js";
 import { ANONYMOUS, noopMetrics, type Metrics } from "./metrics.js";
 import { BOT_MODELS } from "./models.js";
 import { createPosthogProxy } from "./posthog-proxy.js";
@@ -352,8 +353,10 @@ export function createApi(opts: ApiOptions) {
 
   authed.get("/sources", (c) => c.json({ data: sources.describe(), can_request: !!opts.sourceRequests }));
 
+  authed.get("/harnesses", (c) => c.json({ data: HARNESSES, can_request: !!opts.sourceRequests }));
+
   // Routes under ee/ are the commercially licensed ones.
-  authed.route("/", eeRoutes(opts));
+  authed.route("/", eeRoutes(opts, metrics));
 
   /** The org a create names: 400 without one, 404 (as for any foreign entity) if the user isn't a member. */
   async function createOrg(
@@ -575,6 +578,7 @@ export function createApi(opts: ApiOptions) {
 
   const inboxIdsBody = z.array(z.string().refine(isUuid, "must be an inbox id")).min(1).max(100);
 
+  const HARNESS_IDS = HARNESSES.map((h) => h.id) as [string, ...string[]];
   const modelBody = z.enum(BOT_MODELS);
 
   const promptBody = z.string().min(1).max(100_000);
@@ -672,6 +676,7 @@ export function createApi(opts: ApiOptions) {
         org: z.string().optional(),
         name: z.string().min(1).max(200),
         model: modelBody,
+        harness: z.enum(HARNESS_IDS).default(DEFAULT_HARNESS),
         inbox_ids: inboxIdsBody,
         prompt: promptBody.optional(),
         rules: rulesBody.optional(),
@@ -683,6 +688,7 @@ export function createApi(opts: ApiOptions) {
       orgId: org.id,
       name: input.name,
       model: input.model,
+      harness: input.harness,
       inboxIds: await memberInboxIds(c, input.inbox_ids, org.id),
       prompt: input.prompt,
       rules: await checked(c, input.rules, "create"),
@@ -1211,6 +1217,7 @@ function serializeBot(b: store.Bot) {
     created_by: b.created_by,
     name: b.name,
     model: b.model,
+    harness: b.harness,
     inbox_ids: b.inbox_ids,
     prompt_version: b.prompt_version,
     cursor: Number(b.cursor),

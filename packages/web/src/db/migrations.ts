@@ -575,4 +575,11 @@ ALTER TABLE loopway.org_members ALTER COLUMN created_by SET NOT NULL;
 ALTER TABLE loopway.org_invites ALTER COLUMN created_by SET NOT NULL;
 `,
   },
+  {
+    // Which agent harness runs a bot's sessions. Claude Code is the only one so far.
+    version: "026_bot_harness",
+    sql: `
+ALTER TABLE loopway.bots ADD COLUMN harness text NOT NULL DEFAULT 'claude-code';
+`,
+  },
 ];

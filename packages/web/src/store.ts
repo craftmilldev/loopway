@@ -466,6 +466,8 @@ export interface Bot {
   name: string;
   /** The model its sessions run on, as `claude --model` takes it. */
   model: string;
+  /** The harness its sessions run in (src/harnesses.ts). */
+  harness: string;
   /** bigint: the `seq` of the last message the bot has read past. */
   cursor: string | bigint;
   inbox_ids: string[];
@@ -479,7 +481,7 @@ export interface Bot {
 }
 
 const BOT_COLS = `
-  b.id, b.created_by, b.org_id, b.name, b.model, b.cursor, b.lock_token, b.locked_until, b.runner_id, b.created_at,
+  b.id, b.created_by, b.org_id, b.name, b.model, b.harness, b.cursor, b.lock_token, b.locked_until, b.runner_id, b.created_at,
   COALESCE((SELECT jsonb_agg(bi.inbox_id ORDER BY bi.inbox_id) FROM loopway.bot_inboxes bi WHERE bi.bot_id = b.id),
            '[]'::jsonb) AS inbox_ids,
   (SELECT jsonb_build_object('version', v.version, 'prompt', v.prompt, 'rules', v.rules, 'created_at', v.created_at)
@@ -504,6 +506,7 @@ export async function createBot(
     orgId: string;
     name: string;
     model: string;
+    harness: string;
     inboxIds: string[];
     prompt?: string;
     rules?: BotRule[];
@@ -512,10 +515,10 @@ export async function createBot(
   const id = uuidv7();
   await db.transaction(async (tx) => {
     await tx.query(
-      `INSERT INTO loopway.bots (id, created_by, org_id, name, model, cursor)
+      `INSERT INTO loopway.bots (id, created_by, org_id, name, model, harness, cursor)
        VALUES ($1, $2, $6::uuid,
-         $3, $5, COALESCE((SELECT max(seq) FROM loopway.messages WHERE inbox_id IN ${inboxIds("$4")}), 0))`,
-      [id, userActor(input.userId), input.name, input.inboxIds, input.model, input.orgId],
+         $3, $5, $7, COALESCE((SELECT max(seq) FROM loopway.messages WHERE inbox_id IN ${inboxIds("$4")}), 0))`,
+      [id, userActor(input.userId), input.name, input.inboxIds, input.model, input.orgId, input.harness],
     );
     await tx.query(
       `INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, org_id)

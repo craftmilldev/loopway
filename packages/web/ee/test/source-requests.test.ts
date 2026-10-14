@@ -73,4 +73,34 @@ describe("source requests", () => {
     });
     expect(res.status).toBe(502);
   });
+
+  it("posts a harness.requested message with the product page's url", async () => {
+    const { owner, inbox, a } = await requestsApp();
+    const key = await newUser();
+    const post = (body: unknown) =>
+      a.request("/api/harnesses/requests", {
+        method: "POST",
+        headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+    expect((await post({ url: "https://example.com/product" })).status).toBe(202);
+    expect((await post({ url: "not a url" })).status).toBe(400);
+    expect((await post({ url: "javascript:alert(1)" })).status).toBe(400);
+
+    const messages = await call("GET", `/inboxes/${inbox.id}/messages`, { key: owner });
+    expect(messages.body.data).toHaveLength(1);
+    expect(messages.body.data[0].event).toMatchObject({
+      type: "harness.requested",
+      data: { url: "https://example.com/product" },
+    });
+  });
+
+  it("lists harnesses and defaults a new bot to Claude Code", async () => {
+    const key = await newUser();
+    const list = await call("GET", "/harnesses", { key });
+    expect(list.body.data).toEqual([{ id: "claude-code", label: "Claude Code" }]);
+    expect(list.body.can_request).toBe(false);
+    expect((await call("POST", "/harnesses/requests", { key, body: { url: "https://example.com" } })).status).toBe(404);
+  });
 });
