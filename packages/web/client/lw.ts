@@ -176,7 +176,7 @@ export async function landing(): Promise<string> {
     const slug = startOrg(((await r.json()) as { data: Org[] }).data);
     if (slug) return "/" + encodeURIComponent(slug);
   }
-  return lastOrgPath();
+  return "/dashboard";
 }
 
 /** The org's slug to show next to an entity, only when the listed entities span more than one org. */
