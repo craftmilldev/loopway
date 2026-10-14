@@ -28,6 +28,18 @@ describe("migrate", () => {
     }
   });
 
+  it("drops every row and re-applies all migrations when reset is set, even if one was edited", async () => {
+    const db = await openTestDb();
+    try {
+      await db.query(`INSERT INTO loopway.users (id, name, email) VALUES (gen_random_uuid(), 'u', 'u@example.com')`);
+      await db.query(`UPDATE loopway.schema_migrations SET checksum = 'edited'`);
+      expect(await migrate(db, { reset: true })).toEqual(migrations.map((m) => m.version));
+      expect(await db.query(`SELECT 1 FROM loopway.users`)).toEqual([]);
+    } finally {
+      await db.close();
+    }
+  });
+
   it("records checksums for migrations applied before checksums existed", async () => {
     const db = await openTestDb();
     try {

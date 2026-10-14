@@ -51,12 +51,18 @@ export async function openDb(opts: DbOptions): Promise<Db> {
 // Arbitrary constant key for the migration advisory lock.
 const MIGRATE_LOCK = 71_000_001;
 
-export async function migrate(db: Db): Promise<string[]> {
+export interface MigrateOptions {
+  /** Drops the whole `loopway` schema (every table and row) before migrating. For throwaway databases only. */
+  reset?: boolean;
+}
+
+export async function migrate(db: Db, opts: MigrateOptions = {}): Promise<string[]> {
   // One transaction (Postgres DDL is transactional), so a failure leaves nothing half-applied and unrecorded.
   // The transaction-scoped advisory lock goes first, so builds that start together against one database
   // queue up: the second one waits, then finds nothing left to apply.
   return db.transaction(async (tx) => {
     await tx.query(`SELECT pg_advisory_xact_lock($1)`, [MIGRATE_LOCK]);
+    if (opts.reset) await tx.query(`DROP SCHEMA IF EXISTS loopway CASCADE`);
     await tx.query(`CREATE SCHEMA IF NOT EXISTS loopway`);
     await tx.query(
       `CREATE TABLE IF NOT EXISTS loopway.schema_migrations (
