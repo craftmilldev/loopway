@@ -245,5 +245,8 @@ async function newOrg(): Promise<string> {
 }
 
 async function join(key: string, orgId: string): Promise<void> {
-  await db.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [orgId, await userId(key)]);
+  await db.query(`INSERT INTO loopway.org_members (org_id, user_id, created_by) VALUES ($1, $2, 'test')`, [
+    orgId,
+    await userId(key),
+  ]);
 }

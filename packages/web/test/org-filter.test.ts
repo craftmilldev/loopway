@@ -10,7 +10,10 @@ async function sharedOrg(...keys: string[]) {
   await db.query(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [id, slug]);
   for (const key of keys) {
     const me = (await call("GET", "/me", { key })).body;
-    await db.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [id, me.id]);
+    await db.query(`INSERT INTO loopway.org_members (org_id, user_id, created_by) VALUES ($1, $2, 'test')`, [
+      id,
+      me.id,
+    ]);
   }
   return { id, slug };
 }

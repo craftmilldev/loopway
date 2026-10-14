@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { botActor, formatActor, parseActor, runnerActor, userActor } from "../src/actor.js";
 import { migrate } from "../src/db/index.js";
 import { openTestDb } from "../src/db/testing.js";
-import { call, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
+import { createLoginCode } from "../src/store.js";
+import { call, db, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
 import { migrateBefore } from "./migrate-before.js";
 
 describe("actor", () => {
@@ -113,7 +114,7 @@ describe("migration 022_created_by", () => {
         [x.claimed, x.bot, user, org, x.runner],
       );
 
-      expect(await migrate(fresh)).toEqual(["022_created_by"]);
+      expect(await migrate(fresh)).toEqual(["022_created_by", "023_member_created_by"]);
 
       const by = async (table: string, id: string) =>
         (await fresh.query<{ created_by: string }>(`SELECT created_by FROM loopway.${table} WHERE id = $1`, [id]))[0]!
@@ -143,5 +144,41 @@ describe("migration 022_created_by", () => {
     } finally {
       await fresh.close();
     }
+  });
+});
+
+describe("created_by of org members and invites", () => {
+  const who = async (key: string) => `user:${(await call("GET", "/me", { key })).body.id}`;
+  const createdBy = async (table: string, where: string, orgId: string) =>
+    (
+      await db.query<{ created_by: string }>(`SELECT created_by FROM loopway.${table} WHERE org_id = $1 AND ${where}`, [
+        orgId,
+      ])
+    )[0]?.created_by;
+
+  it("is the adder, and an invite's adder carries over when the invitee joins", async () => {
+    const a = await newUser("a");
+    const b = await newUser("b");
+    const slug = `cb-${randomUUID().slice(0, 8)}`;
+    expect((await call("POST", "/orgs", { key: a, body: { slug } })).status).toBe(201);
+    const [org] = await db.query<{ id: string }>(`SELECT id FROM loopway.orgs WHERE slug = $1`, [slug]);
+    const me = await who(a);
+    // The creator added themselves.
+    expect(await createdBy("org_members", `user_id = '${me.slice(5)}'`, org!.id)).toBe(me);
+
+    // A member adds an existing user, and an email with no account yet.
+    const bMe = (await call("GET", "/me", { key: b })).body;
+    await call("POST", `/orgs/${slug}/members`, { key: a, body: { email: bMe.email } });
+    await call("POST", `/orgs/${slug}/members`, { key: a, body: { email: "later@example.com" } });
+    expect(await createdBy("org_members", `user_id = '${bMe.id}'`, org!.id)).toBe(me);
+    expect(await createdBy("org_invites", `true`, org!.id)).toBe(me);
+
+    // The invitee signs up: their membership is credited to whoever invited them.
+    const { code } = await createLoginCode(db, "later@example.com");
+    const signup = await call("POST", "/auth/verify", {
+      body: { email: "later@example.com", code, username: `later-${randomUUID().slice(0, 8)}` },
+    });
+    expect(signup.status).toBe(201);
+    expect(await createdBy("org_members", `user_id = '${signup.body.user.id}'`, org!.id)).toBe(me);
   });
 });

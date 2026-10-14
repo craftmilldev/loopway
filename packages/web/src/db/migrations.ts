@@ -543,4 +543,26 @@ ALTER TABLE loopway.bots    DROP COLUMN user_id;
 ALTER TABLE loopway.runners DROP COLUMN user_id;
 `,
   },
+  {
+    // Who added each member and invite, as an actor like the other created_by columns. A member who added themselves
+    // (their personal org, or an org they made) is their own creator; one who joined from an invite keeps the
+    // invite's. Existing rows predate this: members are recorded as their own, invites as their org's first member.
+    version: "023_member_created_by",
+    sql: `
+ALTER TABLE loopway.org_members ADD COLUMN created_by text;
+
+ALTER TABLE loopway.org_invites ADD COLUMN created_by text;
+
+UPDATE loopway.org_members SET created_by = 'user:' || user_id;
+
+DELETE FROM loopway.org_invites i WHERE NOT EXISTS (SELECT 1 FROM loopway.org_members m WHERE m.org_id = i.org_id);
+
+UPDATE loopway.org_invites i SET created_by = 'user:' || (
+  SELECT m.user_id FROM loopway.org_members m WHERE m.org_id = i.org_id ORDER BY m.created_at, m.user_id LIMIT 1);
+
+ALTER TABLE loopway.org_members ALTER COLUMN created_by SET NOT NULL;
+
+ALTER TABLE loopway.org_invites ALTER COLUMN created_by SET NOT NULL;
+`,
+  },
 ];

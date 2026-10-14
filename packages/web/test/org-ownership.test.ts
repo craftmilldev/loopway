@@ -191,7 +191,7 @@ describe("inboxes across orgs", () => {
     const otherSlug = `other-${other.slice(0, 8)}`;
     await rows(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [other, otherSlug]);
     await rows(
-      `INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, (SELECT substring(created_by FROM 6)::uuid FROM loopway.inboxes WHERE id = $2))`,
+      `INSERT INTO loopway.org_members (org_id, user_id, created_by) VALUES ($1, (SELECT substring(created_by FROM 6)::uuid FROM loopway.inboxes WHERE id = $2), 'test')`,
       [other, b.id],
     );
     await rows(`UPDATE loopway.inboxes SET org_id = $2 WHERE id = $1`, [b.id, other]);

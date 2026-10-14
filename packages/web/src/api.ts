@@ -288,7 +288,7 @@ export function createApi(opts: ApiOptions) {
   authed.post("/orgs/:slug/members", async (c) => {
     const org = await memberOrgParam(c, "add");
     const { email } = z.object({ email: z.string().trim().email().max(320) }).parse(await jsonBody(c));
-    const result = await store.addOrgMember(c.var.db, org.id, email);
+    const result = await store.addOrgMember(c.var.db, org.id, c.var.user.id, email);
     if (result === "personal_org") {
       await metrics.capture("org_member_rejected", c.var.user.id, { action: "add", reason: "personal_org" });
       throw new ApiError(409, "personal_org", "A personal org can't have other members");

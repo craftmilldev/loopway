@@ -149,9 +149,9 @@ const LIVE_INVITE = `created_at > now() - make_interval(days => ${INVITE_TTL_DAY
  */
 async function claimInvites(tx: Q, userId: string, email: string): Promise<number> {
   const joined = await tx.query(
-    `WITH claimed AS (DELETE FROM loopway.org_invites WHERE email = $2 RETURNING org_id, ${LIVE_INVITE} AS live)
-     INSERT INTO loopway.org_members (org_id, user_id)
-       SELECT c.org_id, $1 FROM claimed c JOIN loopway.orgs o ON o.id = c.org_id
+    `WITH claimed AS (DELETE FROM loopway.org_invites WHERE email = $2 RETURNING org_id, created_by, ${LIVE_INVITE} AS live)
+     INSERT INTO loopway.org_members (org_id, user_id, created_by)
+       SELECT c.org_id, $1, c.created_by FROM claimed c JOIN loopway.orgs o ON o.id = c.org_id
        WHERE c.live AND o.personal_user_id IS NULL
      ON CONFLICT DO NOTHING RETURNING org_id`,
     [userId, email],
@@ -166,7 +166,11 @@ async function createPersonalOrg(tx: Q, userId: string, username: string) {
     username,
     userId,
   ]);
-  await tx.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [orgId, userId]);
+  await tx.query(`INSERT INTO loopway.org_members (org_id, user_id, created_by) VALUES ($1, $2, $3)`, [
+    orgId,
+    userId,
+    userActor(userId),
+  ]);
 }
 
 /**
@@ -230,7 +234,11 @@ export async function createSharedOrg(
     return await db.transaction(async (tx) => {
       const id = uuidv7();
       await tx.query(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $3)`, [id, slug, name || slug]);
-      await tx.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [id, userId]);
+      await tx.query(`INSERT INTO loopway.org_members (org_id, user_id, created_by) VALUES ($1, $2, $3)`, [
+        id,
+        userId,
+        userActor(userId),
+      ]);
       return { ok: true as const, org: { id, slug, name: name || slug, personal: false } };
     });
   } catch (err) {
@@ -1348,12 +1356,13 @@ export async function listOrgMembers(db: Q, orgId: string): Promise<OrgMembers> 
 
 /**
  * Adds the email to the org: as a member if a user has it, else as a pending membership that their first login
- * claims. Adding someone already there changes nothing.
+ * claims (the member then keeps the invite's `created_by`). Adding someone already there changes nothing.
  * A personal org takes no one: "personal_org", and nothing is stored (the database refuses it too).
  */
 export async function addOrgMember(
   db: Db,
   orgId: string,
+  addedBy: string,
   email: string,
 ): Promise<"member" | "pending" | "already_member" | "already_pending" | "personal_org"> {
   const addr = normalizeEmail(email);
@@ -1368,8 +1377,9 @@ export async function addOrgMember(
     ]);
     if (user) {
       const added = await tx.query(
-        `INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING user_id`,
-        [orgId, user.id],
+        `INSERT INTO loopway.org_members (org_id, user_id, created_by) VALUES ($1, $2, $3)
+         ON CONFLICT DO NOTHING RETURNING user_id`,
+        [orgId, user.id, userActor(addedBy)],
       );
       // A pending row for the same email (added before they signed up) is now redundant.
       await tx.query(`DELETE FROM loopway.org_invites WHERE org_id = $1 AND email = $2`, [orgId, addr]);
@@ -1381,8 +1391,9 @@ export async function addOrgMember(
       addr,
     ]);
     const added = await tx.query(
-      `INSERT INTO loopway.org_invites (org_id, email) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING email`,
-      [orgId, addr],
+      `INSERT INTO loopway.org_invites (org_id, email, created_by) VALUES ($1, $2, $3)
+       ON CONFLICT DO NOTHING RETURNING email`,
+      [orgId, addr, userActor(addedBy)],
     );
     return added.length ? "pending" : "already_pending";
   });
