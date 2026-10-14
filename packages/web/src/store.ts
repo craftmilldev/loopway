@@ -185,14 +185,18 @@ export async function createInbox(
   return row!;
 }
 
+/** SQL for "`col` is the org of one the user (param `p`) belongs to": how access to any org-owned row is decided. */
+const inOrgOf = (col: string, p: string) =>
+  `${col} IN (SELECT m.org_id FROM loopway.org_members m WHERE m.user_id = ${p}::uuid)`;
+
 export async function listInboxes(db: Db, userId: string): Promise<Inbox[]> {
-  return db.query<Inbox>(`SELECT * FROM loopway.inboxes WHERE user_id = $1 ORDER BY id`, [userId]);
+  return db.query<Inbox>(`SELECT * FROM loopway.inboxes WHERE ${inOrgOf("org_id", "$1")} ORDER BY id`, [userId]);
 }
 
-/** Without userId: for webhook ingestion. With userId: enforces ownership. */
+/** Without userId: for webhook ingestion. With userId: only if the user is a member of its org. */
 export async function getInbox(db: Db, id: string, userId?: string): Promise<Inbox | undefined> {
   const [row] = userId
-    ? await db.query<Inbox>(`SELECT * FROM loopway.inboxes WHERE id = $1 AND user_id = $2`, [id, userId])
+    ? await db.query<Inbox>(`SELECT * FROM loopway.inboxes WHERE id = $1 AND ${inOrgOf("org_id", "$2")}`, [id, userId])
     : await db.query<Inbox>(`SELECT * FROM loopway.inboxes WHERE id = $1`, [id]);
   return row;
 }
@@ -236,7 +240,7 @@ export interface InboxActivity {
 export async function inboxActivity(db: Db, userId: string, days: number, inboxId?: string): Promise<InboxActivity[]> {
   const dates = windowDates(days);
   const since = dates[0] + "T00:00:00Z";
-  const scope = `i.user_id = $1 AND ($2::uuid IS NULL OR i.id = $2::uuid)`;
+  const scope = `${inOrgOf("i.org_id", "$1")} AND ($2::uuid IS NULL OR i.id = $2::uuid)`;
   const [inboxes, perDay, totals] = await Promise.all([
     db.query<{ id: string }>(`SELECT i.id FROM loopway.inboxes i WHERE ${scope} ORDER BY i.id`, [
       userId,
@@ -386,7 +390,7 @@ export const MESSAGE_HOLDBACK_SECONDS = 5;
 const inboxIds = (param: string) => `(SELECT value::uuid FROM jsonb_array_elements_text(${param}::jsonb))`;
 
 /**
- * The inboxes must belong to the user (bot_inboxes' keys enforce it). The bot joins its inboxes' org (they must share
+ * The inboxes must be in the user's orgs (the caller checks; bot_inboxes' keys enforce they share the bot's org). The bot joins its inboxes' org (they must share
  * one), or the user's personal org when it has none. The cursor starts at their newest message. */
 export async function createBot(
   db: Db,
@@ -424,7 +428,7 @@ export async function createBot(
 
 export async function listBots(db: Db, userId: string): Promise<Bot[]> {
   return db.query<Bot>(
-    `SELECT ${BOT_COLS} FROM loopway.bots b WHERE b.user_id = $1 AND b.deleted_at IS NULL ORDER BY b.id`,
+    `SELECT ${BOT_COLS} FROM loopway.bots b WHERE ${inOrgOf("b.org_id", "$1")} AND b.deleted_at IS NULL ORDER BY b.id`,
     [userId],
   );
 }
@@ -432,7 +436,7 @@ export async function listBots(db: Db, userId: string): Promise<Bot[]> {
 export async function getBot(db: Db, id: string, userId?: string): Promise<Bot | undefined> {
   const [row] = userId
     ? await db.query<Bot>(
-        `SELECT ${BOT_COLS} FROM loopway.bots b WHERE b.id = $1 AND b.user_id = $2 AND b.deleted_at IS NULL`,
+        `SELECT ${BOT_COLS} FROM loopway.bots b WHERE b.id = $1 AND ${inOrgOf("b.org_id", "$2")} AND b.deleted_at IS NULL`,
         [id, userId],
       )
     : await db.query<Bot>(`SELECT ${BOT_COLS} FROM loopway.bots b WHERE b.id = $1 AND b.deleted_at IS NULL`, [id]);
@@ -468,7 +472,7 @@ export interface BotActivity {
 export async function botActivity(db: Db, userId: string, days: number, botId?: string): Promise<BotActivity[]> {
   const dates = windowDates(days);
   const since = dates[0] + "T00:00:00Z";
-  const scope = `b.user_id = $1 AND b.deleted_at IS NULL AND ($2::uuid IS NULL OR b.id = $2::uuid)`;
+  const scope = `${inOrgOf("b.org_id", "$1")} AND b.deleted_at IS NULL AND ($2::uuid IS NULL OR b.id = $2::uuid)`;
   const [bots, perDay, totals] = await Promise.all([
     db.query<{ id: string }>(`SELECT b.id FROM loopway.bots b WHERE ${scope} ORDER BY b.id`, [userId, botId ?? null]),
     db.query<{ bot_id: string; day: string; n: number }>(
@@ -660,7 +664,7 @@ export async function upsertRunner(db: Db, userId: string, id: string, name: str
   const rows = await db.query<{ id: string }>(
     `INSERT INTO loopway.runners (id, user_id, org_id, name) VALUES ($1, $2, $4, $3)
      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, last_seen_at = now()
-     WHERE loopway.runners.user_id = EXCLUDED.user_id
+     WHERE ${inOrgOf("loopway.runners.org_id", "EXCLUDED.user_id")}
      RETURNING id`,
     [id, userId, name, await personalOrgId(db, userId)],
   );
@@ -669,7 +673,7 @@ export async function upsertRunner(db: Db, userId: string, id: string, name: str
 
 export async function getRunner(db: Db, userId: string, id: string): Promise<Runner | undefined> {
   const [row] = await db.query<Runner>(
-    `SELECT ${RUNNER_COLS} FROM loopway.runners r WHERE r.id = $1 AND r.user_id = $2`,
+    `SELECT ${RUNNER_COLS} FROM loopway.runners r WHERE r.id = $1 AND ${inOrgOf("r.org_id", "$2")}`,
     [id, userId],
   );
   return row;
@@ -677,7 +681,7 @@ export async function getRunner(db: Db, userId: string, id: string): Promise<Run
 
 export async function listRunners(db: Db, userId: string): Promise<Runner[]> {
   return db.query<Runner>(
-    `SELECT ${RUNNER_COLS} FROM loopway.runners r WHERE r.user_id = $1 ORDER BY r.created_at, r.id`,
+    `SELECT ${RUNNER_COLS} FROM loopway.runners r WHERE ${inOrgOf("r.org_id", "$1")} ORDER BY r.created_at, r.id`,
     [userId],
   );
 }
@@ -702,7 +706,7 @@ export async function leaseRunner(
        lock_token   = CASE WHEN r.lock_token = $4 THEN r.lock_token ELSE $3 END,
        locked_until = now() + $5::int * interval '1 second',
        last_seen_at = now()
-     WHERE r.id = $1 AND r.user_id = $2
+     WHERE r.id = $1 AND ${inOrgOf("r.org_id", "$2")}
        AND (r.locked_until IS NULL OR r.locked_until <= now() OR r.lock_token = $4)
      RETURNING r.id`,
     [id, userId, newLockToken(), currentToken, ttlSeconds],
@@ -714,7 +718,7 @@ export async function leaseRunner(
 export async function releaseRunner(db: Db, userId: string, id: string, token: string | null): Promise<boolean> {
   const rows = await db.query<{ id: string }>(
     `UPDATE loopway.runners SET lock_token = NULL, locked_until = NULL
-     WHERE id = $1 AND user_id = $2 AND ($3::text IS NULL OR lock_token = $3)
+     WHERE id = $1 AND ${inOrgOf("org_id", "$2")} AND ($3::text IS NULL OR lock_token = $3)
      RETURNING id`,
     [id, userId, token],
   );
@@ -724,7 +728,7 @@ export async function releaseRunner(db: Db, userId: string, id: string, token: s
 /** The runner whose live lease has this token. */
 export async function runnerByToken(db: Db, userId: string, token: string): Promise<Runner | undefined> {
   const [row] = await db.query<Runner>(
-    `SELECT ${RUNNER_COLS} FROM loopway.runners r WHERE r.user_id = $1 AND r.lock_token = $2 AND r.locked_until > now()`,
+    `SELECT ${RUNNER_COLS} FROM loopway.runners r WHERE ${inOrgOf("r.org_id", "$1")} AND r.lock_token = $2 AND r.locked_until > now()`,
     [userId, token],
   );
   return row;
@@ -903,7 +907,7 @@ export async function claimThread(
   const rows = await db.query<{ id: string }>(
     `UPDATE loopway.threads t SET runner_id = r.id, updated_at = now()
      FROM loopway.runners r
-     WHERE t.id = $4::uuid AND t.bot_id = $1::uuid AND r.user_id = $2::uuid AND t.user_id = r.user_id
+     WHERE t.id = $4::uuid AND t.bot_id = $1::uuid AND ${inOrgOf("r.org_id", "$2")} AND t.org_id = r.org_id
        AND r.lock_token = $3 AND r.locked_until > now() AND (t.runner_id IS NULL OR t.runner_id = r.id)
      RETURNING t.id`,
     [botId, userId, token, id],
@@ -966,9 +970,9 @@ export async function listThreadEvents(db: Db, userId: string, limit: number, be
             COALESCE((SELECT jsonb_agg(k.subject ORDER BY k.subject) FROM loopway.thread_subjects k
                       WHERE k.thread_id = e.thread_id), '[]'::jsonb) AS subjects
      FROM loopway.thread_events e JOIN loopway.bots b ON b.id = e.bot_id
-     WHERE e.user_id = $1::uuid AND b.deleted_at IS NULL
+     WHERE ${inOrgOf("b.org_id", "$1")} AND b.deleted_at IS NULL
        AND ($3::bigint IS NULL
-            OR (e.at, e.id) < (SELECT p.at, p.id FROM loopway.thread_events p WHERE p.id = $3::bigint AND p.user_id = $1::uuid))
+            OR (e.at, e.id) < (SELECT p.at, p.id FROM loopway.thread_events p WHERE p.id = $3::bigint))
      ORDER BY e.at DESC, e.id DESC LIMIT $2`,
     [userId, limit, before ?? null],
   );

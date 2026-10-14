@@ -435,4 +435,18 @@ ALTER TABLE loopway.threads
   ADD CONSTRAINT threads_bot_org_fkey FOREIGN KEY (bot_id, org_id) REFERENCES loopway.bots(id, org_id) ON DELETE CASCADE;
 `,
   },
+  {
+    // Access is by org membership now, so a bot, its inboxes and its threads may have different user_ids as long as
+    // they share an org (which 018's keys enforce). Drops the keys that tied them to one user. user_id stays as the creator.
+    version: "019_org_access",
+    sql: `
+ALTER TABLE loopway.bot_inboxes
+  DROP CONSTRAINT bot_inboxes_bot_id_user_id_fkey,
+  DROP CONSTRAINT bot_inboxes_inbox_id_user_id_fkey;
+
+ALTER TABLE loopway.threads DROP CONSTRAINT threads_bot_id_user_id_fkey;
+
+ALTER TABLE loopway.thread_events DROP CONSTRAINT thread_events_bot_id_user_id_fkey;
+`,
+  },
 ];
