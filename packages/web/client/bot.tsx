@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { botState } from "./bot-state.js";
+import { botState, countThreads } from "./bot-state.js";
 import { BotSwitcher } from "./bot-switcher.js";
 import { DeliveryBars } from "./delivery-bars.js";
 import { StateBadge } from "./overview.js";
@@ -62,7 +62,7 @@ export function Bot({ id, view }: { id: string; view?: Tab }) {
   const runner = (rid: string | null) => runners.data?.find((r) => r.id === rid);
   const b = bot.data;
   const state = open.data && runners.data ? botState(open.data, runners.data) : null;
-  const waiting = open.data?.reduce((n, t) => n + t.waiting.length, 0) ?? 0;
+  const waiting = countThreads(open.data ?? []).waiting;
   const stopped = state === "limited" || state === "stranded";
 
   useEffect(() => {
@@ -182,7 +182,7 @@ function ActivityTab({ botId, botPath, threads }: { botId: string; botPath: stri
   const m = month.data;
   const today = m?.days[m.days.length - 1]?.delivered;
   const inflight = threads?.reduce((n, t) => n + t.inflight.length, 0);
-  const waiting = threads?.reduce((n, t) => n + t.waiting.length, 0);
+  const waiting = threads && countThreads(threads).waiting;
 
   return (
     <div className="ov-split bot-split">
@@ -204,9 +204,9 @@ function ActivityTab({ botId, botPath, threads }: { botId: string; botPath: stri
       <aside className="ov-side">
         <h2>Right now</h2>
         <dl className="now">
-          <dt>Waiting</dt>
+          <dt>Messages waiting</dt>
           <dd>{waiting ?? "…"}</dd>
-          <dt>Inflight</dt>
+          <dt>Messages inflight</dt>
           <dd>{inflight ?? "…"}</dd>
           <dt>Delivered today</dt>
           <dd>{today ?? "…"}</dd>
@@ -296,7 +296,7 @@ function ThreadsTab({
               <th scope="col">Thread</th>
               <th scope="col">State</th>
               <th scope="col" className="num">
-                Waiting
+                Messages waiting
               </th>
               <th scope="col" className="num">
                 Delivered
