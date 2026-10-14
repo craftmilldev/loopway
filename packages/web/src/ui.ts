@@ -53,6 +53,7 @@ const ORG_PAGES = [
   "/:org/bots/:botId/prompt",
   "/:org/bots/:botId/threads/:threadId",
   "/:org/inboxes",
+  "/:org/runners",
   "/:org/inboxes/:inboxId",
 ];
 
@@ -78,6 +79,7 @@ export function createWeb(opts: WebOptions = {}) {
     "/dashboard/bots/:botId/prompt",
     "/dashboard/bots/:botId/threads/:threadId",
     "/dashboard/inboxes",
+    "/dashboard/runners",
     "/dashboard/inboxes/:inboxId",
   ];
   for (const path of pages) app.get(path, (c) => c.html(html));

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { botState, filterOf, stateReason, type BotFilter } from "./bot-state.js";
+import { botState, countThreads, filterOf, stateReason, type BotFilter } from "./bot-state.js";
 import type { Inbox } from "./shared.js";
 import { BAR_DAYS, DeliveryBars } from "./delivery-bars.js";
 import { DashLayout } from "./layout.js";
@@ -87,8 +87,7 @@ export function Bots() {
           reason: stateReason(state, ts),
           inboxes: b.inbox_ids.map(inboxName),
           runner: runners.data!.find((r) => r.id === b.runner_id)?.name ?? null,
-          open: ts.length,
-          waiting: ts.reduce((n, t) => n + t.waiting.length, 0),
+          ...countThreads(ts),
         };
       })
     : [];
@@ -174,10 +173,10 @@ export function Bots() {
                   <th scope="col">Reads</th>
                   <th scope="col">Runner</th>
                   <th scope="col" className="num">
-                    Open
+                    Open threads
                   </th>
                   <th scope="col" className="num">
-                    Waiting
+                    Messages waiting
                   </th>
                   <th scope="col">Deliveries, {BAR_DAYS} days</th>
                   <th scope="col" className="num">
@@ -228,7 +227,7 @@ export function Bots() {
                 Leave <span className="mono">loopway bots run</span> open on a machine with the repository checked out.
               </div>
             </div>
-            <a className="btn btn-md btn-quiet" href={lw.orgBase() + "#runners"}>
+            <a className="btn btn-md btn-quiet" href={lw.orgBase() + "/runners"}>
               See runners
             </a>
           </section>
