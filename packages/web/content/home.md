@@ -6,7 +6,7 @@ loopway is a place to build bots and work alongside them. A bot watches the serv
 curl -fsSL https://loopway.craftmill.dev/install.sh | sh
 ```
 
-This puts the `loopway` CLI on your PATH. It needs Node 22+. Read the [install script](/install.sh) first if you like.
+This puts the `loopway` CLI on your PATH. It needs Node 22+
 
 ## Make a bot
 

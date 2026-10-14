@@ -42,7 +42,6 @@ describe("the marketing home", () => {
     const { container } = render(marketingPage("/"));
     expect(screen.getByRole("heading", { name: "Install" })).toBeTruthy();
     expect(container.textContent).toContain("curl -fsSL https://loopway.craftmill.dev/install.sh | sh");
-    expect(screen.getByRole("link", { name: "install script" }).getAttribute("href")).toBe("/install.sh");
   });
 
   it("isn't a page for other paths", () => {
