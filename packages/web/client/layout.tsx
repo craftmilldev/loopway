@@ -53,7 +53,7 @@ export function DashLayout({
             LOOPWAY
           </a>
           <div className="dash-head-side">
-            <span className="dash-account">{me ? me.email || me.name : ""}</span>
+            <span className="dash-account">{me ? me.username || me.email || me.name : ""}</span>
             <a href="#" onClick={out}>
               Log out
             </a>
