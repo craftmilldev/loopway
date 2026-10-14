@@ -345,7 +345,10 @@ describe("inboxes", () => {
       const id = randomUUID();
       const slug = `team-${id.slice(0, 8)}`;
       await db.query(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [id, slug]);
-      await db.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [id, me.id]);
+      await db.query(`INSERT INTO loopway.org_members (org_id, user_id, created_by) VALUES ($1, $2, 'test')`, [
+        id,
+        me.id,
+      ]);
       return { id, slug };
     }
 
@@ -1669,7 +1672,7 @@ describe("threads", () => {
       const shared = `team-${id.slice(0, 8)}`;
       await db.query(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [id, shared]);
       await db.query(
-        `INSERT INTO loopway.org_members (org_id, user_id) SELECT $1, o.personal_user_id FROM loopway.orgs o WHERE o.slug = $2`,
+        `INSERT INTO loopway.org_members (org_id, user_id, created_by) SELECT $1, o.personal_user_id, 'test' FROM loopway.orgs o WHERE o.slug = $2`,
         [id, personal],
       );
       return { client, personal, shared };
@@ -1742,7 +1745,10 @@ describe("org members", () => {
     const id = randomUUID();
     const slug = `team-${id.slice(0, 8)}`;
     await db.query(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [id, slug]);
-    await db.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [id, me.id]);
+    await db.query(`INSERT INTO loopway.org_members (org_id, user_id, created_by) VALUES ($1, $2, 'test')`, [
+      id,
+      me.id,
+    ]);
 
     expect(await run("orgs")).toContain(slug);
     expect(await run("orgs", "add-member", slug, "Ghost@Example.com")).toMatch(/no account yet/);

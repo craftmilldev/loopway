@@ -160,7 +160,7 @@ describe("a runner's org", () => {
     const slug = `shared-${id.slice(0, 8)}`;
     await db.query(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [id, slug]);
     const me = (await call("GET", "/me", { key })).body.id;
-    await db.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [id, me]);
+    await db.query(`INSERT INTO loopway.org_members (org_id, user_id, created_by) VALUES ($1, $2, 'test')`, [id, me]);
     const orgs = (await call("GET", "/orgs", { key })).body.data as { slug: string; personal: boolean }[];
     return { key, shared: slug, personal: orgs.find((o) => o.personal)!.slug };
   }

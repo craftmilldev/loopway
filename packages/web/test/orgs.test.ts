@@ -127,8 +127,8 @@ describe("GET /orgs", () => {
     const shared = "00000000-0000-4000-8000-0000000000aa";
     await rows(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, 'team-a', 'Team A')`, [shared]);
     await rows(
-      `INSERT INTO loopway.org_members (org_id, user_id)
-       SELECT $1, m.user_id FROM loopway.org_members m JOIN loopway.orgs o ON o.id = m.org_id WHERE o.slug = 'orgs-a'`,
+      `INSERT INTO loopway.org_members (org_id, user_id, created_by)
+       SELECT $1, m.user_id, 'test' FROM loopway.org_members m JOIN loopway.orgs o ON o.id = m.org_id WHERE o.slug = 'orgs-a'`,
       [shared],
     );
 

@@ -248,11 +248,10 @@ describe("bots", () => {
 
     // The table refuses it too, not just the API.
     await expect(
-      db.query(`INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id) VALUES ($1, $2, $3)`, [
-        bot.id,
-        theirs.id,
-        (await call("GET", "/me", { key: a })).body.id,
-      ]),
+      db.query(
+        `INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, org_id) VALUES ($1, $2, (SELECT org_id FROM loopway.bots WHERE id = $1))`,
+        [bot.id, theirs.id],
+      ),
     ).rejects.toThrow();
   });
 

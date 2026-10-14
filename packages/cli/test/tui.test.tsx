@@ -15,6 +15,7 @@ const thread = (
 ): Thread => ({
   id: "",
   bot_id: "dev",
+  created_by: "bot:dev",
   status,
   started: true,
   interrupted: false,

@@ -27,6 +27,8 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 
 The list endpoints `GET /api/inboxes`, `/api/bots`, `/api/runners`, `/api/events`, `/api/inboxes/activity` and `/api/bots/activity` take an optional `?org=<slug>` and then list only that org's entities. A slug you aren't a member of, or that doesn't exist, is a `404`. Without it they list all your orgs'.
 
+Org memberships and pending invites record `created_by` too (the member who added them; yourself for an org you made; an invitee who joins keeps their invite's), but the members endpoints don't return it. Inboxes, bots, runners and threads carry `created_by`, who made them as an actor: `user:<uuid>`, `bot:<uuid>` or `runner:<id>`. A user makes inboxes, bots and runners through the API; a thread is made by the runner whose lease on the bot assigned it (`bot:<uuid>` if the lease named no runner). It is informational only and never decides access (membership of the entity's org does).
+
 ## Inboxes
 
 |                                                |                                                                                                                                                                                                                             |
@@ -91,7 +93,7 @@ A runner is a machine running loopway, and belongs to one org for good: it only 
 | `POST /api/runners` `{org, id, name}` | Register the runner in the org (a slug), or rename it and mark it seen; safe to repeat. `400 org_required` without `org`, `404` if you aren't in the org, `409 runner_org_mismatch` (with `details.org`, the runner's org) if the id is already a runner of another org of yours, `409 runner_exists` if the id is another user's. |
 | `POST /api/runners/:id/lease` `{ttl_seconds?, lease_token?}` | Take the runner's lease, or renew it by passing your current token. Returns `{lease: {token, expires_at}}`. `409 runner_leased` while another process holds a live lease, with `details.expires_at`. `ttl_seconds` defaults to 300, max 43200. |
 | `POST /api/runners/:id/release` `{lease_token?, force?}` | Drop the lease. `409 runner_lease_mismatch` if the token isn't the live lease. `force: true` drops whoever's, for a process that died without releasing. |
-| `GET /api/runners` | Your runners: `{id, org_id, org, name, created_at, last_seen_at, leased_until, bots, threads}` (`org` is the org's slug). `leased_until` is null unless a process holds the lease, `bots` is `[{id, name}]` for the bot leases it holds now, and `threads` counts the threads it owns. The lease token is never part of it. |
+| `GET /api/runners` | Your runners: `{id, org_id, created_by, org, name, created_at, last_seen_at, leased_until, bots, threads}` (`org` is the org's slug). `leased_until` is null unless a process holds the lease, `bots` is `[{id, name}]` for the bot leases it holds now, and `threads` counts the threads it owns. The lease token is never part of it. |
 
 ## Bots
 
@@ -111,7 +113,7 @@ A bot reads the messages of one or more of your inboxes, in `seq` order, and kee
 | `POST /api/bots/:id/release` `{lease_token?, force?}`  | Drop the lease, so the next runner needn't wait out the TTL. `409 lease_mismatch` if the token isn't the live lease, `409 not_leased` if there is none. `force: true` drops whoever's lease, no token needed: for a runner that died without releasing. |
 | `POST /api/bots/:id/cursor` `{seq, lease_token}`       | Move the cursor forward to `seq`; it never moves backwards. Returns the bot. `409` if the token isn't the live lease.                                                                          |
 
-Inboxes, bots and runners name their org, so before the user has chosen a username (that makes their personal org) they answer `404`. A bot's `inbox_ids` must be your inboxes, all in the bot's org: `400 inbox_org_mismatch` otherwise. Bot shape: `{id, org_id, name, model, inbox_ids, cursor, created_at}`; the lease is never part of it.
+Inboxes, bots and runners name their org, so before the user has chosen a username (that makes their personal org) they answer `404`. A bot's `inbox_ids` must be your inboxes, all in the bot's org: `400 inbox_org_mismatch` otherwise. Bot shape: `{id, org_id, created_by, name, model, inbox_ids, cursor, created_at}`; the lease is never part of it.
 
 Two webhooks landing at once can commit out of `seq` order, and a cursor that had moved past the later one would skip the earlier. So `messages` stops at the first message received in the last few seconds, giving inserts still in flight time to land.
 
@@ -120,7 +122,7 @@ Two webhooks landing at once can commit out of `seq` order, and a cursor that ha
 
 A thread is an agent session working on one or more issues and PRs. It belongs to one bot, and its id is the Claude session id (a UUID made by the client). A message is assigned to at most one thread per bot. Transcripts and the Claude session itself stay on one machine, so a thread belongs to the [runner](#runners) that claimed it, until someone releases it. Only that runner, holding its live lease, changes the thread, so a thread can't run twice. The bot's lease covers reading its messages and assigning them to threads.
 
-Thread shape: `{id, bot_id, status, started, interrupted, limited, runner_id, subjects, waiting, inflight, delivered, created_at, updated_at}`. `runner_id` is the owning runner, null until one claims the thread.
+Thread shape: `{id, bot_id, created_by, status, started, interrupted, limited, runner_id, subjects, waiting, inflight, delivered, created_at, updated_at}`. `runner_id` is the owning runner, null until one claims the thread.
 
 - `status` is `active` or `ended`.
 - `subjects` are the things the thread works on. For GitHub, its issues and PRs (`owner/repo#number`). Assigning a message means working out the message's subjects and finding the thread that has one of them. A subject belongs to one thread per bot.

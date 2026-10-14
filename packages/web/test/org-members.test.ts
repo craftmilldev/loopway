@@ -13,7 +13,10 @@ async function sharedOrg(...keys: string[]): Promise<string> {
   const slug = `team-${id.slice(0, 8)}`;
   await db.query(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [id, slug]);
   for (const key of keys)
-    await db.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [id, (await me(key)).id]);
+    await db.query(`INSERT INTO loopway.org_members (org_id, user_id, created_by) VALUES ($1, $2, 'test')`, [
+      id,
+      (await me(key)).id,
+    ]);
   return slug;
 }
 
@@ -82,7 +85,10 @@ describe("org members", () => {
     const b = await newUser("b");
     const bUser = await me(b);
     const [org] = await db.query<{ id: string }>(`SELECT id FROM loopway.orgs WHERE slug = $1`, [slug]);
-    await db.query(`INSERT INTO loopway.org_invites (org_id, email) VALUES ($1, $2)`, [org!.id, bUser.email]);
+    await db.query(`INSERT INTO loopway.org_invites (org_id, email, created_by) VALUES ($1, $2, 'test')`, [
+      org!.id,
+      bUser.email,
+    ]);
     const { code } = await createLoginCode(db, bUser.email);
     expect((await call("POST", "/auth/verify", { body: { email: bUser.email, code } })).status).toBe(201);
     const orgs = (await call("GET", "/orgs", { key: b })).body.data as { slug: string }[];
@@ -196,13 +202,18 @@ describe("org members", () => {
     const b = await newUser("b");
     const { username } = await me(a);
     const [org] = await db.query<{ id: string }>(`SELECT id FROM loopway.orgs WHERE slug = $1`, [username]);
-    expect(await addOrgMember(db, org!.id, (await me(b)).email)).toBe("personal_org");
-    expect(await addOrgMember(db, org!.id, "ghost@example.com")).toBe("personal_org");
+    expect(await addOrgMember(db, org!.id, (await me(a)).id, (await me(b)).email)).toBe("personal_org");
+    expect(await addOrgMember(db, org!.id, (await me(a)).id, "ghost@example.com")).toBe("personal_org");
     await expect(
-      db.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [org!.id, (await me(b)).id]),
+      db.query(`INSERT INTO loopway.org_members (org_id, user_id, created_by) VALUES ($1, $2, 'test')`, [
+        org!.id,
+        (await me(b)).id,
+      ]),
     ).rejects.toThrow(/personal orgs/);
     await expect(
-      db.query(`INSERT INTO loopway.org_invites (org_id, email) VALUES ($1, 'ghost@example.com')`, [org!.id]),
+      db.query(`INSERT INTO loopway.org_invites (org_id, email, created_by) VALUES ($1, 'ghost@example.com', 'test')`, [
+        org!.id,
+      ]),
     ).rejects.toThrow(/personal orgs/);
   });
 

@@ -107,7 +107,11 @@ export function createApi(opts: ApiOptions) {
     const source = sources.get(inbox.source_type);
     if (!source) throw new ApiError(500, "internal", `Unknown source type ${inbox.source_type}`);
     const received = (outcome: string, extra?: Record<string, unknown>) =>
-      metrics.capture("webhook_received", inbox.user_id, { source_type: inbox.source_type, outcome, ...extra });
+      metrics.capture("webhook_received", inbox.org_id, {
+        source_type: inbox.source_type,
+        outcome,
+        ...extra,
+      });
 
     const result = await source.receive(
       {
@@ -283,7 +287,7 @@ export function createApi(opts: ApiOptions) {
   authed.post("/orgs/:slug/members", async (c) => {
     const org = await memberOrgParam(c, "add");
     const { email } = z.object({ email: z.string().trim().email().max(320) }).parse(await jsonBody(c));
-    const result = await store.addOrgMember(c.var.db, org.id, email);
+    const result = await store.addOrgMember(c.var.db, org.id, c.var.user.id, email);
     if (result === "personal_org") {
       await metrics.capture("org_member_rejected", c.var.user.id, { action: "add", reason: "personal_org" });
       throw new ApiError(409, "personal_org", "A personal org can't have other members");
@@ -1026,6 +1030,7 @@ export function createApi(opts: ApiOptions) {
     return {
       id: inbox.id,
       org_id: inbox.org_id,
+      created_by: inbox.created_by,
       name: inbox.name,
       source_type: inbox.source_type,
       config: source ? source.publicConfig(inbox.config) : inbox.config,
@@ -1069,6 +1074,7 @@ function serializeRunner(r: store.Runner) {
   return {
     id: r.id,
     org_id: r.org_id,
+    created_by: r.created_by,
     org: r.org_slug,
     name: r.name,
     created_at: iso(r.created_at),
@@ -1128,6 +1134,7 @@ function serializeThreadRow(t: store.Thread) {
   return {
     id: t.id,
     bot_id: t.bot_id,
+    created_by: t.created_by,
     status: t.status,
     started: t.started,
     interrupted: t.interrupted,
@@ -1180,6 +1187,7 @@ function serializeBot(b: store.Bot) {
   return {
     id: b.id,
     org_id: b.org_id,
+    created_by: b.created_by,
     name: b.name,
     model: b.model,
     inbox_ids: b.inbox_ids,
