@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Layout } from "./layout.js";
+import { DashLayout, OrgsContext } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
 
@@ -9,6 +9,7 @@ const CHECK_DELAY = 300;
 /** `/orgs/new`: the form for a shared org. The slug is checked as it's typed, so "taken" shows before submit. */
 export function NewOrg() {
   const me = lw.useMe();
+  const orgs = lw.useOrgs(true);
   const [slug, setSlug] = useState("");
   const [name, setName] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -61,49 +62,52 @@ export function NewOrg() {
   }
 
   return (
-    <Layout title="New org · loopway" nav={<a href={lw.lastOrgPath()}>Dashboard</a>}>
-      <div className="narrow">
-        <p className="eyebrow">new org</p>
-        <h1>Start an org</h1>
-        <p className="hint muted" style={{ marginTop: 12 }}>
-          A shared org holds bots and inboxes for the people in it. Lowercase letters, numbers and hyphens, 2-39
-          characters. You'll be its first member; add the others afterwards.
-        </p>
-        <form onSubmit={(e) => void submit(e)} style={{ marginTop: 24 }}>
-          <div className="field">
-            <label htmlFor="org-slug">Slug</label>
-            <div className="input-wrap">
-              <input
-                id="org-slug"
-                required
-                autoFocus
-                autoCapitalize="none"
-                spellCheck={false}
-                aria-describedby="org-slug-status"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value.trim().toLowerCase())}
-              />
+    <OrgsContext.Provider value={orgs}>
+      <DashLayout title="New org · loopway" me={me} orgless>
+        <div className="page-head">
+          <h1>Start an org</h1>
+        </div>
+        <div className="narrow" style={{ margin: "0" }}>
+          <p className="hint muted" style={{ marginTop: 12 }}>
+            A shared org holds bots and inboxes for the people in it. Lowercase letters, numbers and hyphens, 2-39
+            characters. You'll be its first member; add the others afterwards.
+          </p>
+          <form onSubmit={(e) => void submit(e)} style={{ marginTop: 24 }}>
+            <div className="field">
+              <label htmlFor="org-slug">Slug</label>
+              <div className="input-wrap">
+                <input
+                  id="org-slug"
+                  required
+                  autoFocus
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  aria-describedby="org-slug-status"
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value.trim().toLowerCase())}
+                />
+              </div>
+              <p id="org-slug-status" className="hint muted" role="status">
+                {problem ?? (available ? "Available" : "")}
+              </p>
             </div>
-            <p id="org-slug-status" className="hint muted" role="status">
-              {problem ?? (available ? "Available" : "")}
-            </p>
-          </div>
-          <div className="field">
-            <label htmlFor="org-name">Display name (optional)</label>
-            <div className="input-wrap">
-              <input id="org-name" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
+            <div className="field">
+              <label htmlFor="org-name">Display name (optional)</label>
+              <div className="input-wrap">
+                <input id="org-name" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
             </div>
-          </div>
-          {error && (
-            <p className="error" role="alert">
-              {error}
-            </p>
-          )}
-          <button className="btn btn-md" type="submit" disabled={busy || !me || !slug || !!problem}>
-            Create org
-          </button>
-        </form>
-      </div>
-    </Layout>
+            {error && (
+              <p className="error" role="alert">
+                {error}
+              </p>
+            )}
+            <button className="btn btn-md" type="submit" disabled={busy || !me || !slug || !!problem}>
+              Create org
+            </button>
+          </form>
+        </div>
+      </DashLayout>
+    </OrgsContext.Provider>
   );
 }

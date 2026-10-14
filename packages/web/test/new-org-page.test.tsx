@@ -8,8 +8,13 @@ vi.mock("../client/metrics.js", () => ({ track: vi.fn(), identify: vi.fn(), rese
 
 let posts: unknown[];
 let assigned: string[];
+let userOrgs: { id: string; slug: string; name: string; personal: boolean }[];
 
 beforeEach(() => {
+  userOrgs = [
+    { id: "o1", slug: "me", name: "me", personal: true },
+    { id: "o2", slug: "acme", name: "acme", personal: false },
+  ];
   localStorage.setItem("loopway_token", "t");
   posts = [];
   assigned = [];
@@ -27,6 +32,7 @@ beforeEach(() => {
       const path = apiPath.replace(/^\/api/, "");
       const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
       if (path === "/me") return json({ id: "u1", email: null, name: "Me", username: "me" });
+      if (path === "/orgs" && init?.method === "GET") return json({ data: userOrgs });
       if (init?.method === "POST") {
         const body = JSON.parse(init.body as string);
         posts.push(body);
@@ -48,6 +54,36 @@ afterEach(() => {
 });
 
 describe("NewOrg", () => {
+  it("shows only the masthead for a user with no org", async () => {
+    userOrgs = [];
+    localStorage.removeItem("loopway_last_org");
+    const { container } = render(<NewOrg />);
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Org:/ })).toBeNull());
+    await waitFor(() => expect(container.querySelector(".dash-nav")).toBeNull());
+    expect(container.querySelector(".dash-word")?.getAttribute("href")).toBe("/dashboard");
+    expect(screen.queryByText("New bot")).toBeNull();
+    expect(screen.getByText("Log out")).toBeTruthy();
+  });
+
+  it("has the dashboard masthead, with every link pointing at the last org", async () => {
+    localStorage.setItem("loopway_last_org", "acme");
+    const { container } = render(<NewOrg />);
+    await screen.findByRole("button", { name: /Org: acme/ });
+    expect(container.querySelector(".post-nav")).toBeNull();
+    expect(container.querySelector(".dash-head")).toBeTruthy();
+    expect(screen.getByText("Log out")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Start an org" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Org: acme/ }));
+    const hrefs = Array.from(container.querySelectorAll("a[href]"), (a) => a.getAttribute("href")!).filter(
+      (h) => h !== "#",
+    );
+    expect(hrefs).toContain("/acme/bots/new");
+    expect(hrefs).toContain("/acme/bots");
+    expect(hrefs).toContain("/me");
+    for (const h of hrefs) expect(h).toMatch(/^\/(acme|me|orgs\/new)(\/|$)/);
+    expect(container.querySelector(".dash-nav .on")).toBeNull();
+  });
+
   it("shows a taken slug before submit and blocks it", async () => {
     render(<NewOrg />);
     fireEvent.change(screen.getByLabelText("Slug"), { target: { value: "taken" } });

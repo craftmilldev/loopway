@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, type MouseEvent, type ReactNode } from "react";
-import { logout, orgBase, orgSlug, useMe, type Me, type Org } from "./lw.js";
+import { lastOrgPath, logout, orgBase, orgSlug, startOrg, useMe, type Me, type Org } from "./lw.js";
 import { OrgSwitcher } from "./org-switcher.js";
 import wordmark from "./wordmark.svg";
 
@@ -50,18 +50,22 @@ export function DashLayout({
   title,
   me,
   crumb,
+  orgless,
   children,
 }: {
   title: string;
   me: Me | null;
   crumb?: ReactNode;
+  /** For a page with no org in its path (/orgs/new): links go to the user's last org and no tab is current. */
+  orgless?: boolean;
   children: ReactNode;
 }) {
   useEffect(() => {
     document.title = title;
   }, [title]);
   const orgs = useContext(OrgsContext);
-  const base = orgBase();
+  const slug = orgless ? (orgs ? startOrg(orgs) : null) : orgSlug();
+  const base = !orgless ? orgBase() : !orgs ? lastOrgPath() : slug ? "/" + encodeURIComponent(slug) : "/dashboard";
   const out = (e: MouseEvent) => {
     e.preventDefault();
     logout();
@@ -74,23 +78,27 @@ export function DashLayout({
             LOOPWAY
           </a>
           <div className="dash-head-side">
-            {orgs && <OrgSwitcher orgs={orgs} current={orgSlug()} />}
+            {orgs && slug && <OrgSwitcher orgs={orgs} current={slug} />}
             <span className="dash-account">{me ? me.username || me.email || me.name : ""}</span>
             <a href="#" onClick={out}>
               Log out
             </a>
-            <a className="btn btn-md" href={base + "/bots/new"}>
-              New bot
-            </a>
+            {(!orgless || slug !== "") && (
+              <a className="btn btn-md" href={base + "/bots/new"}>
+                New bot
+              </a>
+            )}
           </div>
         </div>
-        <nav className="dash-nav" aria-label="Main">
-          {sections(base).map((s) => (
-            <a key={s.label} href={s.href} className={s.on(location.pathname) ? "on" : undefined}>
-              {s.label}
-            </a>
-          ))}
-        </nav>
+        {(!orgless || slug !== "") && (
+          <nav className="dash-nav" aria-label="Main">
+            {sections(base).map((s) => (
+              <a key={s.label} href={s.href} className={!orgless && s.on(location.pathname) ? "on" : undefined}>
+                {s.label}
+              </a>
+            ))}
+          </nav>
+        )}
       </header>
       <main className="dash">
         {crumb}
