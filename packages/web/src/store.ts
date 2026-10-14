@@ -149,7 +149,9 @@ const LIVE_INVITE = `created_at > now() - make_interval(days => ${INVITE_TTL_DAY
 async function claimInvites(tx: Q, userId: string, email: string): Promise<number> {
   const joined = await tx.query(
     `WITH claimed AS (DELETE FROM loopway.org_invites WHERE email = $2 RETURNING org_id, ${LIVE_INVITE} AS live)
-     INSERT INTO loopway.org_members (org_id, user_id) SELECT org_id, $1 FROM claimed WHERE live
+     INSERT INTO loopway.org_members (org_id, user_id)
+       SELECT c.org_id, $1 FROM claimed c JOIN loopway.orgs o ON o.id = c.org_id
+       WHERE c.live AND o.personal_user_id IS NULL
      ON CONFLICT DO NOTHING RETURNING org_id`,
     [userId, email],
   );
@@ -1276,14 +1278,20 @@ export async function listOrgMembers(db: Q, orgId: string): Promise<OrgMembers> 
 /**
  * Adds the email to the org: as a member if a user has it, else as a pending membership that their first login
  * claims. Adding someone already there changes nothing.
+ * A personal org takes no one: "personal_org", and nothing is stored (the database refuses it too).
  */
 export async function addOrgMember(
   db: Db,
   orgId: string,
   email: string,
-): Promise<"member" | "pending" | "already_member" | "already_pending"> {
+): Promise<"member" | "pending" | "already_member" | "already_pending" | "personal_org"> {
   const addr = normalizeEmail(email);
   return db.transaction(async (tx) => {
+    const [org] = await tx.query<{ personal_user_id: string | null }>(
+      `SELECT personal_user_id FROM loopway.orgs WHERE id = $1`,
+      [orgId],
+    );
+    if (org?.personal_user_id) return "personal_org";
     const [user] = await tx.query<{ id: string }>(`SELECT id FROM loopway.users WHERE lower(email) = $1 LIMIT 1`, [
       addr,
     ]);

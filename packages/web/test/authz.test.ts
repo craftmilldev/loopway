@@ -154,7 +154,10 @@ describe("ownership", () => {
 
     // A member of the owner's org reaches every one of those, and sees them in lists.
     const member = await newUser("member");
-    await join(member, await personalOrg(owner));
+    // A personal org takes no other member, so the owner's org stops being personal for this check.
+    const ownerOrg = await personalOrg(owner);
+    await db.query(`UPDATE loopway.orgs SET personal_user_id = NULL WHERE id = $1`, [ownerOrg]);
+    await join(member, ownerOrg);
     for (const [method, path, body] of attempts) {
       if (method === "DELETE" || path.endsWith("/release") || path.endsWith("/end")) continue;
       const res = await call(method, path, { key: member, body });
