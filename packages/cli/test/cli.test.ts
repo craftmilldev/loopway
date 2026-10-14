@@ -11,11 +11,11 @@ import { createLoginCode, createUser, setUsername } from "@loopway/web/store";
 import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { LoopwayClient, type Bot, type Message } from "../src/client.js";
+import { ApiError, LoopwayClient, type Bot, type Message } from "../src/client.js";
 import { checkRules, route as routeWith, type BotRule } from "@loopway/rules";
 import { getHarness, type AgentRun, type RunOutcome } from "@loopway/harnesses";
 import { API_ERROR_BACKOFF_MS, Dispatcher, NETWORK_ERROR_MAX_BACKOFF_MS } from "../src/bots/dispatcher.js";
-import { defaultTtl } from "../src/commands/bots-run.js";
+import { defaultTtl, pollUntilUpdate } from "../src/commands/bots-run.js";
 import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
 import { botEnv } from "../src/bots/github.js";
 import { UsageError, type Context } from "../src/context.js";
@@ -940,6 +940,45 @@ describe("threads", () => {
     });
     return ((await res.json()) as { result: any }).result;
   }
+
+  it("keeps sessions from updating the CLI, and drains before an update: no new work, and it waits for running sessions", async () => {
+    const { inbox, runs, out, d, finish, cursor, newest } = await setup(3);
+    await send(inbox, "issues", issue("opened", 1));
+    await d.tick();
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.env).toMatchObject({ LOOPWAY_NO_UPDATE: "1" });
+
+    let checks = 0;
+    let version: string | undefined;
+    // A comment arrives just as the release is found, so the drained ticks after it have something to skip.
+    const polling = pollUntilUpdate(ctxOf(out), d, 1, async () => {
+      if (checks++ === 0) await send(inbox, "issue_comment", comment(1));
+      return "9.9.9";
+    }).then((v) => (version = v));
+    await new Promise((r) => setTimeout(r, 1500));
+    // Found the release, but a session is still running, and the new comment isn't read or delivered.
+    expect(checks).toBeGreaterThan(0);
+    expect(version).toBeUndefined();
+    expect(runs).toHaveLength(1);
+    expect(await cursor()).not.toBe(await newest());
+
+    await finish();
+    await polling;
+    expect(version).toBe("9.9.9");
+    expect(out.join("\n")).toContain("loopway 9.9.9 is out");
+  });
+
+  it("looks for a release at once, but only once, when the server turns the CLI away", async () => {
+    const { d, out } = await setup(3);
+    const forced: (boolean | undefined)[] = [];
+    vi.spyOn(d, "tick").mockRejectedValue(new ApiError(426, "cli_outdated", "update the CLI"));
+    const polling = pollUntilUpdate(ctxOf(out), d, 1, async (_, opts) => {
+      forced.push(opts?.force);
+      return forced.length >= 3 ? "9.9.9" : undefined;
+    });
+    expect(await polling).toBe("9.9.9");
+    expect(forced).toEqual([true, false, false]);
+  });
 
   it("routes messages by issue/PR, batches while busy, follows Closes #N, and ends when the session says so", async () => {
     const { inbox, runs, out, d, finish, cursor, newest } = await setup(3);

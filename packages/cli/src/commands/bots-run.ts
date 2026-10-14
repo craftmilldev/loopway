@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { ApiError, type LoopwayClient } from "../client.js";
-import { applyUpdate, availableUpdate } from "../update.js";
+import { applyUpdate, availableUpdate as availableUpdateNow } from "../update.js";
 import { authedClient, type Context } from "../context.js";
 import { DEFAULTS, Dispatcher, type ThreadsOptions } from "../bots/dispatcher.js";
 import { ensureRunner, savedRunnerOrg } from "../bots/runner.js";
@@ -129,7 +129,12 @@ function releaseOnExit(dispatcher: Dispatcher): () => Promise<void> {
  * On finding one it stops taking on work, so the sessions in flight can end. The server turning this version away
  * (`cli_outdated`) is a reason to look right away; otherwise the lookup is the update module's cached one.
  */
-async function pollUntilUpdate(ctx: Context, dispatcher: Dispatcher, interval: number): Promise<string> {
+export async function pollUntilUpdate(
+  ctx: Context,
+  dispatcher: Dispatcher,
+  interval: number,
+  availableUpdate: typeof availableUpdateNow = availableUpdateNow,
+): Promise<string> {
   let updating: string | undefined;
   let outdated = false;
   let forced = false;

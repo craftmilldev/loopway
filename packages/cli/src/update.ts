@@ -66,6 +66,8 @@ async function latestVersion(ctx: Context, force: boolean, deps: UpdateDeps): Pr
   if (!force && cached && deps.now() - cached.checked_at < CHECK_TTL_MS) return cached.latest;
   let latest = cached?.latest;
   try {
+    // The repo's latest release is the CLI's only while release-cli.yml is the one thing that publishes releases here
+    // (as install.sh also assumes); a release of anything else would hide newer CLI ones.
     const res = await (ctx.fetch ?? fetch)(`https://api.github.com/repos/${REPO}/releases/latest`, {
       headers: { accept: "application/vnd.github+json", "user-agent": "loopway-cli" },
       signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
