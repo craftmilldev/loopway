@@ -21,6 +21,7 @@ export function Inboxes() {
   lw.usePoll(inboxes.reload, ready);
   lw.usePoll(bots.reload, ready);
   const sources = lw.useSources();
+  const orgs = lw.useOrgs(ready);
   const [activity, setActivity] = useState<Record<string, lw.InboxActivity> | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -110,6 +111,7 @@ export function Inboxes() {
                         {i.name}
                       </a>
                       <div className="lbl small">
+                        {lw.orgLabel(orgs, rows, i.org_id) ? lw.orgLabel(orgs, rows, i.org_id) + " · " : ""}
                         {eventsText(i.config?.events)}
                         {a ? " · " + plural(a.messages, "message") : ""}
                       </div>

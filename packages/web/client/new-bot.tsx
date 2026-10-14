@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { PRESETS } from "@loopway/presets";
-import { CreateInbox, type Inbox } from "./dashboard.js";
+import { CreateInbox, OrgSelect, type Inbox } from "./dashboard.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
@@ -24,6 +24,9 @@ export function NewBot() {
   const me = lw.useMe();
   const ready = !!me;
   const inboxes = lw.useList<Inbox>("/inboxes", ready);
+  const orgs = lw.useOrgs(ready);
+  const [chosenOrg, setOrg] = useState<string | null>(null);
+  const org = chosenOrg ?? (orgs ? lw.startOrg(orgs) : "");
   // Read once: creating the bot rewrites the URL, and that must not count as a resume.
   const [resumeId] = useState(() => new URLSearchParams(location.search).get("bot"));
   const [botId, setBotId] = useState(resumeId);
@@ -72,10 +75,13 @@ export function NewBot() {
           ))}
         </ol>
         <div className="step-body">
-          {loading || !inboxes.data ? (
+          {loading || !inboxes.data || !orgs ? (
             <p className="muted">Loading…</p>
           ) : step === 1 ? (
             <Source
+              orgs={orgs}
+              org={org}
+              setOrg={setOrg}
               inboxes={inboxes.data}
               picked={picked}
               setPicked={setPicked}
@@ -91,6 +97,7 @@ export function NewBot() {
               model={model}
               setModel={setModel}
               preset={preset}
+              org={org}
               inbox_ids={[...picked]}
               existing={bot.data}
               back={() => setStep(2)}
@@ -113,19 +120,28 @@ export function NewBot() {
 }
 
 function Source({
+  orgs,
+  org,
+  setOrg,
   inboxes,
   picked,
   setPicked,
   reload,
   next,
 }: {
+  orgs: lw.Org[];
+  org: string;
+  setOrg: (slug: string) => void;
   inboxes: Inbox[];
   picked: Set<string>;
   setPicked: (s: Set<string>) => void;
   reload: () => Promise<unknown>;
   next: () => void;
 }) {
-  const [creating, setCreating] = useState(inboxes.length === 0);
+  // A bot reads inboxes of its own org only, so the list is the chosen org's.
+  const orgId = orgs.find((o) => o.slug === org)?.id;
+  const inOrg = inboxes.filter((i) => i.org_id === orgId);
+  const [creating, setCreating] = useState(inOrg.length === 0);
   const [error, setError] = useState<string | null>(null);
 
   function toggle(id: string, on: boolean) {
@@ -146,9 +162,18 @@ function Source({
   return (
     <section>
       <h2>Where do its messages come from?</h2>
-      {inboxes.length > 0 && (
+      <OrgSelect
+        orgs={orgs}
+        value={org}
+        onChange={(slug) => {
+          setOrg(slug);
+          setPicked(new Set());
+          setCreating(!inboxes.some((i) => i.org_id === orgs.find((o) => o.slug === slug)?.id));
+        }}
+      />
+      {inOrg.length > 0 && (
         <div className="options">
-          {inboxes.map((i) => (
+          {inOrg.map((i) => (
             <label key={i.id} className="opt">
               <input type="checkbox" checked={picked.has(i.id)} onChange={(e) => toggle(i.id, e.target.checked)} />
               <span>
@@ -161,6 +186,7 @@ function Source({
       )}
       {creating ? (
         <CreateInbox
+          org={org}
           onCreated={(i) => {
             track("new_bot_inbox_created", { source_type: i.source_type });
             setCreating(false);
@@ -173,7 +199,7 @@ function Source({
           Create a new inbox
         </button>
       )}
-      {inboxes
+      {inOrg
         .filter((i) => picked.has(i.id))
         .map((i) => (
           <div key={i.id} className="field">
@@ -265,6 +291,7 @@ function Identity({
   model,
   setModel,
   preset,
+  org,
   inbox_ids,
   existing,
   back,
@@ -276,6 +303,7 @@ function Identity({
   model: string;
   setModel: (m: string) => void;
   preset: string;
+  org: string;
   inbox_ids: string[];
   existing: lw.Bot | null;
   back: () => void;
@@ -292,13 +320,14 @@ function Identity({
     setError(null);
     setBusy(true);
     const { prompt, rules } = PRESETS[preset]!;
-    const r = await lw.api("/bots", { method: "POST", body: { name, prompt, rules, model, inbox_ids } });
+    const r = await lw.api("/bots", { method: "POST", body: { org, name, prompt, rules, model, inbox_ids } });
     setBusy(false);
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) {
       track("bot_create_rejected", { status: r.status });
       return setError(await lw.message(r));
     }
+    lw.rememberOrg(org);
     track("new_bot_created", { preset, model });
     created((await r.json()) as lw.Bot);
   }

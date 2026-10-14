@@ -4,6 +4,8 @@ import type { Inbox, LoopwayClient, Source } from "../client.js";
 import { authedClient, CancelledError, UsageError, type Context } from "../context.js";
 import { ago, bold, dim, fields, humanize, json, table } from "../format.js";
 
+import { resolveOrg } from "./orgs.js";
+
 // ---------- list / show ----------
 
 export async function listInboxes(ctx: Context, opts: { json?: boolean }) {
@@ -41,6 +43,7 @@ export async function showInbox(ctx: Context, ref: string, opts: { json?: boolea
 // ---------- create ----------
 
 export interface CreateOptions {
+  org?: string;
   name?: string;
   source?: string;
   events?: string[];
@@ -58,6 +61,7 @@ const OTHER = "__other__";
  */
 export async function createInbox(ctx: Context, opts: CreateOptions) {
   const client = await authedClient(ctx);
+  opts = { ...opts, org: await resolveOrg(ctx, client, opts.org, "inbox") };
   const inbox = ctx.interactive ? await createInteractive(client, opts) : await createFromFlags(client, opts);
   if (opts.json) return ctx.out(json(inbox));
   if (!ctx.interactive) ctx.out(`Created inbox ${bold(inbox.name)} (${inbox.id})\n\n${setupText(inbox)}`);
@@ -67,7 +71,7 @@ async function createFromFlags(client: LoopwayClient, opts: CreateOptions) {
   if (!opts.name) throw new UsageError("--name is required when not running in a terminal");
   const source = opts.source ?? (await onlySource(client));
   if (!source) throw new UsageError("--source is required when not running in a terminal");
-  return client.createInbox({ name: opts.name, source_type: source, config: flagConfig(opts) });
+  return client.createInbox({ org: opts.org!, name: opts.name, source_type: source, config: flagConfig(opts) });
 }
 
 async function createInteractive(client: LoopwayClient, opts: CreateOptions): Promise<Inbox> {
@@ -126,7 +130,7 @@ async function createInteractive(client: LoopwayClient, opts: CreateOptions): Pr
   spin.start("Creating inbox");
   let inbox: Inbox;
   try {
-    inbox = await client.createInbox({ name, source_type: source.type, config });
+    inbox = await client.createInbox({ org: opts.org!, name, source_type: source.type, config });
   } catch (err) {
     spin.error("Could not create inbox");
     throw err;

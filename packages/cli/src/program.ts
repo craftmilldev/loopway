@@ -85,6 +85,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .command("create")
     .description("create an inbox (interactive; pass flags to skip prompts)")
     .option("--name <name>", "inbox name")
+    .option("--org <slug>", "org to create it in (your only org by default; prompted for if you have several)")
     .option("--source <type>", "source type (run without it to pick from the list)")
     .option("--events <list>", "comma-separated event names to accept (default all)", splitList)
     .option(
@@ -165,6 +166,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .command("create")
     .description("create a bot that reads the given inboxes, starting from their newest message")
     .option("--name <name>", "bot name")
+    .option("--org <slug>", "org to create it in (your only org by default; prompted for if you have several)")
     .addOption(
       new Option("--preset <preset>", "template for the bot's first prompt and rules").choices(Object.keys(PRESETS)),
     )

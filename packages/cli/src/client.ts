@@ -23,6 +23,13 @@ export interface Source {
   webhook_settings: string;
 }
 
+export interface Org {
+  id: string;
+  slug: string;
+  name: string;
+  personal: boolean;
+}
+
 export interface Inbox {
   id: string;
   name: string;
@@ -205,6 +212,10 @@ export class LoopwayClient {
     return this.request<User>("PATCH", "/me/username", { username });
   }
 
+  async listOrgs() {
+    return (await this.request<{ data: Org[] }>("GET", "/orgs")).data;
+  }
+
   async sources() {
     return (await this.request<{ data: Source[] }>("GET", "/sources")).data;
   }
@@ -215,7 +226,7 @@ export class LoopwayClient {
     return (await this.request<{ data: Inbox[] }>("GET", "/inboxes")).data;
   }
 
-  createInbox(input: { name: string; source_type: string; config?: unknown }) {
+  createInbox(input: { org: string; name: string; source_type: string; config?: unknown }) {
     return this.request<Inbox>("POST", "/inboxes", input);
   }
 
@@ -274,7 +285,14 @@ export class LoopwayClient {
     return (await this.request<{ data: Bot[] }>("GET", "/bots")).data;
   }
 
-  createBot(input: { name: string; model: string; inbox_ids: string[]; prompt?: string; rules?: BotRule[] }) {
+  createBot(input: {
+    org: string;
+    name: string;
+    model: string;
+    inbox_ids: string[];
+    prompt?: string;
+    rules?: BotRule[];
+  }) {
     return this.request<Bot>("POST", "/bots", input);
   }
 

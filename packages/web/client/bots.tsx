@@ -23,6 +23,7 @@ export function Bots() {
   const bots = lw.useList<lw.Bot>("/bots", ready);
   const runners = lw.useList<lw.Runner>("/runners", ready);
   const inboxes = lw.useList<Inbox>("/inboxes", ready);
+  const orgs = lw.useOrgs(ready);
   lw.usePoll(bots.reload, ready);
   lw.usePoll(runners.reload, ready);
   lw.usePoll(inboxes.reload, ready);
@@ -192,6 +193,9 @@ export function Bots() {
                         {r.bot.name}
                       </a>
                       <div className="lbl small">
+                        {lw.orgLabel(orgs, bots.data!, r.bot.org_id)
+                          ? lw.orgLabel(orgs, bots.data!, r.bot.org_id) + " · "
+                          : ""}
                         {r.bot.model}
                         {r.bot.prompt_version ? ` · prompt v${r.bot.prompt_version.version}` : ""}
                       </div>

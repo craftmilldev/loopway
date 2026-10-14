@@ -194,6 +194,11 @@ export async function listOrgs(db: Q, userId: string): Promise<Org[]> {
   );
 }
 
+/** The org with this slug, if the user is a member of it. */
+export async function memberOrg(db: Q, userId: string, slug: string): Promise<Org | undefined> {
+  return (await listOrgs(db, userId)).find((o) => o.slug === slug);
+}
+
 // ---------- Inboxes ----------
 
 export interface Inbox {
@@ -208,12 +213,12 @@ export interface Inbox {
 
 export async function createInbox(
   db: Db,
-  input: { userId: string; name: string; sourceType: string; config: unknown },
+  input: { userId: string; orgId: string; name: string; sourceType: string; config: unknown },
 ): Promise<Inbox> {
   const [row] = await db.query<Inbox>(
     `INSERT INTO loopway.inboxes (id, user_id, org_id, name, source_type, config)
      VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING *`,
-    [uuidv7(), input.userId, await personalOrgId(db, input.userId), input.name, input.sourceType, input.config],
+    [uuidv7(), input.userId, input.orgId, input.name, input.sourceType, input.config],
   );
   return row!;
 }
@@ -423,12 +428,13 @@ export const MESSAGE_HOLDBACK_SECONDS = 5;
 const inboxIds = (param: string) => `(SELECT value::uuid FROM jsonb_array_elements_text(${param}::jsonb))`;
 
 /**
- * The inboxes must be in the user's orgs (the caller checks; bot_inboxes' keys enforce they share the bot's org). The bot joins its inboxes' org (they must share
- * one), or the user's personal org when it has none. The cursor starts at their newest message. */
+ * The org must be one the user belongs to, and so must the inboxes, which share the bot's org (the caller checks;
+ * bot_inboxes' keys enforce it too). The cursor starts at their newest message. */
 export async function createBot(
   db: Db,
   input: {
     userId: string;
+    orgId: string;
     name: string;
     model: string;
     inboxIds: string[];
@@ -438,13 +444,11 @@ export async function createBot(
 ): Promise<Bot> {
   const id = uuidv7();
   await db.transaction(async (tx) => {
-    const orgId = await personalOrgId(tx, input.userId);
     await tx.query(
       `INSERT INTO loopway.bots (id, user_id, org_id, name, model, cursor)
-       VALUES ($1, $2,
-         COALESCE((SELECT min(org_id::text)::uuid FROM loopway.inboxes WHERE id IN ${inboxIds("$4")}), $6::uuid),
+       VALUES ($1, $2, $6::uuid,
          $3, $5, COALESCE((SELECT max(seq) FROM loopway.messages WHERE inbox_id IN ${inboxIds("$4")}), 0))`,
-      [id, input.userId, input.name, input.inboxIds, input.model, orgId],
+      [id, input.userId, input.name, input.inboxIds, input.model, input.orgId],
     );
     await tx.query(
       `INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id, org_id)

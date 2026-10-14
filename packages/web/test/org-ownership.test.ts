@@ -189,18 +189,24 @@ describe("inboxes across orgs", () => {
     const a = await newInbox(key);
     const b = await newInbox(key);
     const other = randomUUID();
-    await rows(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [other, `other-${other.slice(0, 8)}`]);
+    const otherSlug = `other-${other.slice(0, 8)}`;
+    await rows(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [other, otherSlug]);
     await rows(
       `INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, (SELECT user_id FROM loopway.inboxes WHERE id = $2))`,
       [other, b.id],
     );
     await rows(`UPDATE loopway.inboxes SET org_id = $2 WHERE id = $1`, [b.id, other]);
 
-    const create = await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [a.id, b.id] } });
+    const create = await call("POST", "/bots", {
+      key,
+      body: { org: otherSlug, name: "b", model: "sonnet", inbox_ids: [a.id, b.id] },
+    });
     expect([create.status, create.body.error.code]).toEqual([400, "inbox_org_mismatch"]);
 
     // a bot in the other org takes b but not a
-    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [b.id] } })).body;
+    const bot = (
+      await call("POST", "/bots", { key, body: { org: otherSlug, name: "b", model: "sonnet", inbox_ids: [b.id] } })
+    ).body;
     expect(bot.org_id).toBe(other);
     const patch = await call("PATCH", `/bots/${bot.id}`, { key, body: { inbox_ids: [b.id, a.id] } });
     expect([patch.status, patch.body.error.code]).toEqual([400, "inbox_org_mismatch"]);
@@ -209,10 +215,13 @@ describe("inboxes across orgs", () => {
 });
 
 describe("before a username is chosen", () => {
-  it("answers 403 username_required for inboxes and runners, and works after", async () => {
+  it("has no org to create an inbox in and answers 403 username_required for runners, and works after", async () => {
     const key = await newUserWithoutOrg();
-    const inbox = await call("POST", "/inboxes", { key, body: { name: "gh", source_type: "github" } });
-    expect([inbox.status, inbox.body.error.code]).toEqual([403, "username_required"]);
+    const inbox = await call("POST", "/inboxes", {
+      key,
+      body: { org: "now-named", name: "gh", source_type: "github" },
+    });
+    expect([inbox.status, inbox.body.error.code]).toEqual([404, "not_found"]);
     const runner = await call("POST", "/runners", { key, body: { id: randomUUID(), name: "laptop" } });
     expect([runner.status, runner.body.error.code]).toEqual([403, "username_required"]);
 
