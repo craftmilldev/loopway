@@ -115,7 +115,7 @@ describe("choosing a username", () => {
 
     const orgs = (await call("GET", "/orgs", { key: a })).body.data;
     expect(orgs).toHaveLength(1);
-    expect(orgs[0]).toMatchObject({ id: orgId, slug: "new-name", personal: true });
+    expect(orgs[0]).toMatchObject({ id: orgId, slug: "new-name", name: "new-name", personal: true });
     expect((await call("GET", "/me", { key: a })).body.username).toBe("new-name");
     // the old slug is free again, with no redirect
     expect((await call("GET", "/usernames/old-name", { key: b })).body.available).toBe(true);

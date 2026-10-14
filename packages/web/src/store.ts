@@ -122,10 +122,10 @@ export async function setUsername(
   if (problem) return { ok: false, problem };
   try {
     return await db.transaction(async (tx) => {
-      const [renamed] = await tx.query(`UPDATE loopway.orgs SET slug = $1 WHERE personal_user_id = $2 RETURNING id`, [
-        username,
-        userId,
-      ]);
+      const [renamed] = await tx.query(
+        `UPDATE loopway.orgs SET slug = $1, name = $1 WHERE personal_user_id = $2 RETURNING id`,
+        [username, userId],
+      );
       if (renamed) return { ok: true as const, created: false };
       const orgId = uuidv7();
       await tx.query(`INSERT INTO loopway.orgs (id, slug, name, personal_user_id) VALUES ($1, $2, $2, $3)`, [
