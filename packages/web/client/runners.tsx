@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { botState, type BotState } from "./bot-state.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
@@ -88,7 +88,7 @@ export function Runners() {
   };
   useEffect(() => {
     void loadStates();
-  }, [held.join(","), runners.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [held.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
   lw.usePoll(loadStates, ready && !!runners.data);
 
   const loaded = !!runners.data;
@@ -107,9 +107,13 @@ export function Runners() {
   );
   const stranded = list.filter((r) => !isOnline(r) && r.threads > 0).length;
 
+  // Once per visit, not again as the polled data changes.
+  const viewed = useRef(false);
   useEffect(() => {
-    if (loaded) track("runners_viewed", { count: list.length, online: counts.online, stranded });
-  }, [loaded, list.length, counts.online, stranded]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!loaded || viewed.current) return;
+    viewed.current = true;
+    track("runners_viewed", { count: list.length, online: counts.online, stranded });
+  }, [loaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pick = (key: RunnerFilter) => {
     track("runners_filter_changed", { filter: key });
