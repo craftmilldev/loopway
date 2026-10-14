@@ -1432,3 +1432,18 @@ fieldset {
   margin: 32px 0 12px;
   font-size: 1.625rem;
 }
+.runner-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 28px;
+}
+.runners-ledger {
+  min-width: 860px;
+}
+.runners-ledger td {
+  vertical-align: top;
+}
+.runner-bot + .runner-bot {
+  margin-top: 4px;
+}

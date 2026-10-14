@@ -42,7 +42,7 @@ const sections = (base: string) => [
   { label: "Bots", href: base + "/bots", on: (p: string) => p.startsWith(base + "/bots") },
   { label: "Inboxes", href: base + "/inboxes", on: (p: string) => p.startsWith(base + "/inboxes") },
   { label: "Members", href: base + "/members", on: (p: string) => p === base + "/members" },
-  { label: "Runners", href: base + "#runners", on: () => false },
+  { label: "Runners", href: base + "/runners", on: (p: string) => p === base + "/runners" },
 ];
 
 /** Frame of every signed-in page: the masthead, then the page at dashboard width. `crumb` sits above the page. */
