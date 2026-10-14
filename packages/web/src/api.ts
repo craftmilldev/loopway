@@ -199,7 +199,7 @@ export function createApi(opts: ApiOptions) {
   authed.patch("/me/username", async (c) => {
     const { username } = z.object({ username: usernameParam }).parse(await jsonBody(c));
     const result = await store.setUsername(c.var.db, c.var.user.id, username);
-    if (!result.ok) {
+    if ("problem" in result) {
       await metrics.capture("username_rejected", c.var.user.id, {
         reason: result.problem,
         renaming: !!c.var.user.username,
