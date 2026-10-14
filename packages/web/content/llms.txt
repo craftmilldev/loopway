@@ -31,7 +31,7 @@ The default `github-threads` preset routes every GitHub issue, PR, comment and r
 Install and log in:
 
 ```
-git clone <repo> && cd loopway && npm install && npm run build -w @loopway/cli && npm link -w @loopway/cli
+curl -fsSL https://loopway.craftmill.dev/install.sh | sh   # needs Node 22+
 loopway login              # emails a one-time code; new emails get an account
 loopway whoami
 ```

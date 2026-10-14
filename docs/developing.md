@@ -29,13 +29,26 @@ To receive real GitHub webhooks locally, expose the port (e.g. `cloudflared tunn
 
 1. In Neon → Connect, copy both connection strings: the **direct** one and the **pooled** one (host contains `-pooler`).
 2. Run migrations once from your machine against the direct URL: `DATABASE_URL='postgresql://...' npm run db:migrate`. Or put the direct URL in `packages/web/.env.production` (gitignored; `db:migrate` reads it ahead of `.env`), which also makes `npm run update` migrate prod
-3. In Vercel, import the repo, set **Root Directory** to `packages/web`, and set env vars: `DATABASE_URL_POOLED` (the pooled URL), `DATABASE_URL` (the direct URL), `TOKEN_SECRET` (signs session tokens; `openssl rand -hex 32`), and optionally `PUBLIC_BASE_URL`. The server uses `DATABASE_URL_POOLED` when it's set. Craftmill's own deployment also sets `SOURCE_REQUEST_URL` and `SOURCE_REQUEST_TOKEN` (the webhook URL and inbox token of its `source-requests` loopway inbox); without them the dashboard doesn't offer source requests.
+3. In Vercel, import the repo, set **Root Directory** to `packages/web`, and set env vars: `DATABASE_URL_POOLED` (the pooled URL), `DATABASE_URL` (the direct URL), `TOKEN_SECRET` (signs session tokens; `openssl rand -hex 32`), and optionally `PUBLIC_BASE_URL` and `MIN_CLI_VERSION` (see [Releasing the CLI](#releasing-the-cli)). The server uses `DATABASE_URL_POOLED` when it's set. Craftmill's own deployment also sets `SOURCE_REQUEST_URL` and `SOURCE_REQUEST_TOKEN` (the webhook URL and inbox token of its `source-requests` loopway inbox); without them the dashboard doesn't offer source requests.
 4. Deploy. Vercel picks up `packages/web/src/index.ts` as a Hono app automatically, and runs `npm run build` to bundle the web UI into `packages/web/public/`. The app serves `app.js` and `app.css` itself, since Vercel's CDN only serves the files in `public/` that are committed.
 5. Create users with `loopway login` pointed at your deployment (`loopway config` sets the URL).
 
-Optionally set `POSTHOG_API_KEY` (and `POSTHOG_HOST` for EU or self-hosted PostHog; an `eu.*` host also points the `/api/ingest` reverse proxy at PostHog EU) to send product metrics, from the server and from the web UI in the browser; without a key nothing is sent. The CLI reads the same two variables (its host can also be `posthog_host` in `~/.loopway/config.json`; the default is this API's `/api/ingest` proxy), and stays silent when `DO_NOT_TRACK` or `LOOPWAY_TELEMETRY=0` is set. Events: web `webhook_received` (by source and outcome), `api_error` (by code), `login_requested`, `signed_up`, `logged_in`, `inbox_created`; CLI `cli_command`, `cli_error`, `bot_session_stopped` (by how it stopped). The CLI identifies the logged-in user (from its session token), or a random id in `~/.loopway/install-id` before login.
+Optionally set `POSTHOG_API_KEY` (and `POSTHOG_HOST` for EU or self-hosted PostHog; an `eu.*` host also points the `/api/ingest` reverse proxy at PostHog EU) to send product metrics, from the server and from the web UI in the browser; without a key nothing is sent. The CLI reads the same two variables (its host can also be `posthog_host` in `~/.loopway/config.json`; the default is this API's `/api/ingest` proxy), and stays silent when `DO_NOT_TRACK` or `LOOPWAY_TELEMETRY=0` is set. Events: web `webhook_received` (by source and outcome), `api_error` (by code and `cli_version`), `install_sh_served`, `install_sh_missing`, `login_requested`, `signed_up`, `logged_in`, `inbox_created`; CLI `cli_command`, `cli_error`, `bot_session_stopped` (by how it stopped). The CLI identifies the logged-in user (from its session token), or a random id in `~/.loopway/install-id` before login.
 
 Tables live in a `loopway` schema (not `public`) with RLS enabled and no policies, so a Data API (Neon's is opt-in) can't reach them.
+
+## Releasing the CLI
+
+The CLI is released on its own, separately from the web deploy. To release:
+
+1. Set the new version in `packages/cli/package.json` and merge it.
+2. Tag the merge commit `cli-v<version>` (for example `cli-v0.2.0`) and push the tag. Anyone who can push tags can release.
+
+`.github/workflows/release-cli.yml` checks that the tag matches `packages/cli/package.json`, builds, packs `@loopway/cli` with `@loopway/presets` and `@loopway/rules` as `loopway-cli.tgz`, `loopway-presets.tgz` and `loopway-rules.tgz`, checks that they install and run, and publishes them as a GitHub release. Nothing goes to npm.
+
+People install with `curl -fsSL https://loopway.craftmill.dev/install.sh | sh` (`packages/web/content/install.sh`), which installs the latest release with `npm install -g`; `LOOPWAY_VERSION=0.2.0` picks another. It needs Node 22+.
+
+The CLI sends its version in an `x-loopway-cli-version` header on every request. The server labels `api_error` events with it as `cli_version` (`none` for requests without it, `unknown` for one that isn't a version), and the CLI's own events carry `cli_version` too. To stop serving old CLIs, set `MIN_CLI_VERSION` (for example `0.2.0`) on the web deploy: older CLIs then get `426 cli_outdated`, whose message says how to update. Unset, no CLI is turned away. CLIs built before the header existed send none, so `MIN_CLI_VERSION` never turns them away; it only applies to releases that send their version. The web app deploys on merge, so keep new API behavior working with the previous CLI release until the minimum is raised.
 
 ## Web UI
 

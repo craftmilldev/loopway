@@ -1,6 +1,7 @@
 // Typed client for the loopway HTTP API (see docs/api.md for the contract).
 
 import type { BotRule } from "@loopway/rules";
+import { CLI_VERSION, VERSION_HEADER } from "./version.js";
 
 export interface User {
   id: string;
@@ -462,6 +463,7 @@ export class LoopwayClient {
         method,
         headers: {
           accept: "application/json",
+          [VERSION_HEADER]: CLI_VERSION,
           ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}),
           ...(body !== undefined ? { "content-type": "application/json" } : {}),
         },
