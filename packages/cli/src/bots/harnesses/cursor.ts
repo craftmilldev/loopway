@@ -61,7 +61,9 @@ export class CursorHarness extends Harness {
     await writeFile(`${workspace}/.cursor/mcp.json`, JSON.stringify({ mcpServers: { loopway: { url: run.mcpUrl } } }), {
       mode: 0o600,
     });
-    if (run.resume) return;
+    // A resumed session whose chat id is gone (the log directory was cleaned, or another runner made it) starts a
+    // new chat; the message still goes in, but without the old conversation.
+    if (run.resume && (await readFile(this.chatFile(run), "utf8").catch(() => ""))) return;
     const { stdout } = await exec(this.command, ["create-chat"], { cwd: workspace, env: run.env });
     const chat = stdout.trim().split("\n").pop()!.trim();
     if (!chat) throw new Error("cursor-agent create-chat printed no chat id");

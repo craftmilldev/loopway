@@ -234,6 +234,26 @@ describe("thread assignment", () => {
 });
 
 describe("thread writes", () => {
+  it("won't switch a bot's harness while a started thread is active", async () => {
+    const { key, bot, base, messages, assign, leaseThread } = await setup(1);
+    const t = randomUUID();
+    await assign([{ message_id: messages[0]!.id, thread_id: t, add_subjects: ["a#1"] }]);
+    const lease = await leaseThread(t);
+    const switchTo = () => call("PATCH", `/bots/${bot.id}`, { key, body: { harness: "cursor" } });
+    // Not started yet: nothing to resume, so it may switch.
+    expect((await switchTo()).body.harness).toBe("cursor");
+    await call("PATCH", `/bots/${bot.id}`, { key, body: { harness: "claude" } });
+
+    await call("PATCH", `${base}/threads/${t}`, { key, body: { lease_token: lease, started: true } });
+    const r = await switchTo();
+    expect([r.status, r.body.error.code]).toEqual([409, "harness_in_use"]);
+    // Re-sending the current harness is not a change.
+    expect((await call("PATCH", `/bots/${bot.id}`, { key, body: { harness: "claude" } })).status).toBe(200);
+
+    await call("PATCH", `${base}/threads/${t}`, { key, body: { lease_token: lease, status: "ended" } });
+    expect((await switchTo()).body.harness).toBe("cursor");
+  });
+
   it("patches flags, status and subjects under the lease", async () => {
     const { key, base, messages, assign, thread, leaseThread } = await setup(2);
     const t = randomUUID();

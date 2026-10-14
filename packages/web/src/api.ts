@@ -722,6 +722,14 @@ export function createApi(opts: ApiOptions) {
         inbox_ids: inboxIdsBody.optional(),
       })
       .parse(await jsonBody(c));
+    // A started thread's session lives in the harness that made it, and another harness can't resume it.
+    if (input.harness && input.harness !== bot.harness) {
+      const live = (await store.listThreads(c.var.db, bot.id, "active")).filter((t) => t.started).length;
+      if (live > 0) {
+        await metrics.capture("bot_harness_change_rejected", c.var.user.id, { from: bot.harness, to: input.harness });
+        throw new ApiError(409, "harness_in_use", `${live} started thread(s) are still active in ${bot.harness}`);
+      }
+    }
     // Changing either one has to leave a pair that fits.
     if (input.model || input.harness)
       await checkedModel(c, input.harness ?? (bot.harness as BotHarness), input.model ?? bot.model);

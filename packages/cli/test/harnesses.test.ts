@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -64,8 +64,13 @@ echo '{"type":"result","is_error":false,"result":"ok"}'
     expect(await harness.run({ ...base, resume: true })).toMatchObject({ code: 0, finished: true });
     expect(started).toBe(2);
 
+    // A resumed session whose chat id is gone gets a new chat rather than an ENOENT.
+    await rm(`${logPath}.chat`);
+    expect(await harness.run({ ...base, resume: true })).toMatchObject({ code: 0, finished: true });
+    expect(await readFile(`${logPath}.chat`, "utf8")).toBe("chat-123\n");
+
     const args = (await readFile(join(out, "args"), "utf8")).trim().split("\n");
-    expect(args).toHaveLength(2);
+    expect(args).toHaveLength(3);
     for (const a of args) expect(a).toContain("--resume chat-123 --model auto");
     expect(args[0]).toMatch(/hello$/);
     expect(await readFile(join(out, "mcp"), "utf8")).toContain('"url":"http://127.0.0.1:1/mcp/t1"');
