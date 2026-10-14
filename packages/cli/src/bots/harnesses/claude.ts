@@ -1,4 +1,5 @@
-import { LimitWatch, type AgentRun } from "../agent.js";
+import type { AgentRun } from "../agent.js";
+import { LimitWatch } from "./claude-watch.js";
 import { Harness, type Launch } from "../harness.js";
 
 /** Claude Code, run as `claude -p`. */
