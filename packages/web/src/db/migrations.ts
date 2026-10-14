@@ -483,9 +483,8 @@ CREATE TRIGGER org_invites_personal_guard BEFORE INSERT OR UPDATE ON loopway.org
   {
     // user_id only recorded who made a row, but it read as ownership and forced a user where the maker may be a bot or
     // a runner. created_by replaces it on inboxes, bots, runners and threads: an actor reference (user:<uuid>,
-    // bot:<uuid> or runner:<id>) with no foreign key. Nothing reads it for access. bot_inboxes and thread_events only
-    // carried user_id for access or listing, so they lose it; thread_events gets org_id (from its bot) and an
-    // org-scoped index in place of the per-user one.
+    // bot:<uuid> or runner:<id>) with no foreign key. Nothing reads it for access. This adds and fills the column;
+    // 023 and 024 finish the move off user_id.
     version: "022_created_by",
     sql: `
 ALTER TABLE loopway.inboxes ADD COLUMN created_by text;
@@ -511,7 +510,13 @@ ALTER TABLE loopway.bots    ALTER COLUMN created_by SET NOT NULL;
 ALTER TABLE loopway.runners ALTER COLUMN created_by SET NOT NULL;
 
 ALTER TABLE loopway.threads ALTER COLUMN created_by SET NOT NULL;
-
+`,
+  },
+  {
+    // thread_events and bot_inboxes only carried user_id for access or listing. thread_events reads by org now, so it
+    // gets org_id (from its bot) and an org-scoped index in place of the per-user one.
+    version: "023_thread_events_org",
+    sql: `
 ALTER TABLE loopway.thread_events ADD COLUMN org_id uuid REFERENCES loopway.orgs(id);
 
 UPDATE loopway.thread_events e SET org_id = b.org_id FROM loopway.bots b WHERE b.id = e.bot_id;
@@ -521,7 +526,12 @@ ALTER TABLE loopway.thread_events ALTER COLUMN org_id SET NOT NULL;
 CREATE INDEX thread_events_org_at_idx ON loopway.thread_events (org_id, at DESC);
 
 DROP INDEX loopway.thread_events_user_at_idx;
-
+`,
+  },
+  {
+    // Nothing reads user_id any more: drops it, and the key and indexes that used it, from every table but org_members.
+    version: "024_drop_user_id",
+    sql: `
 ALTER TABLE loopway.thread_events DROP COLUMN user_id;
 
 ALTER TABLE loopway.bot_inboxes DROP COLUMN user_id;
@@ -547,7 +557,7 @@ ALTER TABLE loopway.runners DROP COLUMN user_id;
     // Who added each member and invite, as an actor like the other created_by columns. A member who added themselves
     // (their personal org, or an org they made) is their own creator; one who joined from an invite keeps the
     // invite's. Existing rows predate this: members are recorded as their own, invites as their org's first member.
-    version: "023_member_created_by",
+    version: "025_member_created_by",
     sql: `
 ALTER TABLE loopway.org_members ADD COLUMN created_by text;
 

@@ -114,7 +114,12 @@ describe("migration 022_created_by", () => {
         [x.claimed, x.bot, user, org, x.runner],
       );
 
-      expect(await migrate(fresh)).toEqual(["022_created_by", "023_member_created_by"]);
+      expect(await migrate(fresh)).toEqual([
+        "022_created_by",
+        "023_thread_events_org",
+        "024_drop_user_id",
+        "025_member_created_by",
+      ]);
 
       const by = async (table: string, id: string) =>
         (await fresh.query<{ created_by: string }>(`SELECT created_by FROM loopway.${table} WHERE id = $1`, [id]))[0]!
