@@ -972,7 +972,8 @@ export async function listThreadEvents(db: Db, userId: string, limit: number, be
      FROM loopway.thread_events e JOIN loopway.bots b ON b.id = e.bot_id
      WHERE ${inOrgOf("b.org_id", "$1")} AND b.deleted_at IS NULL
        AND ($3::bigint IS NULL
-            OR (e.at, e.id) < (SELECT p.at, p.id FROM loopway.thread_events p WHERE p.id = $3::bigint))
+            OR (e.at, e.id) < (SELECT p.at, p.id FROM loopway.thread_events p JOIN loopway.bots pb ON pb.id = p.bot_id
+                                WHERE p.id = $3::bigint AND ${inOrgOf("pb.org_id", "$1")}))
      ORDER BY e.at DESC, e.id DESC LIMIT $2`,
     [userId, limit, before ?? null],
   );
