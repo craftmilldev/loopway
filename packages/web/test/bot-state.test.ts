@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { botState, filterOf, stateReason, type BotState } from "../client/bot-state.js";
+import { botState, countThreads, filterOf, stateReason, sumCounts, type BotState } from "../client/bot-state.js";
 
 const runners = [
   { id: "on", leased_until: "2030-01-01T00:00:00Z" },
@@ -47,6 +47,32 @@ describe("stateReason", () => {
     expect(stateReason("working", [t(1)])).toBe("1 message in flight");
     expect(stateReason("working", [t(2), t(1)])).toBe("3 messages in flight");
     expect(stateReason("idle", [])).toBe("");
+  });
+});
+
+describe("countThreads and sumCounts", () => {
+  const msg = inflight[0]!;
+  const t = (nInflight: number, nWaiting: number) => ({
+    inflight: Array(nInflight).fill(msg),
+    waiting: Array(nWaiting).fill(msg),
+  });
+  it("counts nothing for no threads", () => {
+    expect(countThreads([])).toEqual({ open: 0, working: 0, quiet: 0, waiting: 0 });
+    expect(sumCounts([])).toEqual({ open: 0, working: 0, quiet: 0, waiting: 0 });
+  });
+  it("counts a thread with nothing inflight or queued as quiet", () => {
+    expect(countThreads([t(0, 0), t(0, 0)])).toEqual({ open: 2, working: 0, quiet: 2, waiting: 0 });
+  });
+  it("counts threads with inflight messages as working", () => {
+    expect(countThreads([t(2, 0), t(1, 0), t(0, 0)])).toEqual({ open: 3, working: 2, quiet: 1, waiting: 0 });
+  });
+  it("counts queued messages, not threads, as waiting", () => {
+    expect(countThreads([t(0, 3), t(1, 2), t(0, 0)])).toEqual({ open: 3, working: 1, quiet: 2, waiting: 5 });
+  });
+  it("adds several bots up, with working and quiet adding to open", () => {
+    const sum = sumCounts([countThreads([t(1, 1), t(0, 4)]), countThreads([]), countThreads([t(0, 0), t(3, 2)])]);
+    expect(sum).toEqual({ open: 4, working: 2, quiet: 2, waiting: 7 });
+    expect(sum.working + sum.quiet).toBe(sum.open);
   });
 });
 

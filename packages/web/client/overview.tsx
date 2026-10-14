@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { botState, type BotState } from "./bot-state.js";
+import { botState, countThreads, sumCounts, type BotState, type ThreadCounts } from "./bot-state.js";
 import type { Inbox } from "./dashboard.js";
 import { deliveredIn } from "./activity.js";
 import { BAR_DAYS, DeliveryBars } from "./delivery-bars.js";
@@ -203,22 +203,15 @@ export function Overview() {
   };
 
   const states = new Map<string, BotState>();
-  let open = 0;
-  let waitingMessages = 0;
-  const waitingBy = new Map<string, number>();
+  const countBy = new Map<string, ThreadCounts>();
   for (const b of bots.data ?? []) {
     const ts = threads[b.id];
     if (!ts || !runners.data) continue;
     states.set(b.id, botState(ts, runners.data));
-    open += ts.length;
-    const w = ts.reduce((n, t) => n + t.waiting.length, 0);
-    waitingBy.set(b.id, w);
-    waitingMessages += w;
+    countBy.set(b.id, countThreads(ts));
   }
   const working = [...states.values()].filter((s) => s === "working").length;
-  const inflightThreads = Object.values(threads)
-    .flat()
-    .filter((t) => t.inflight.length).length;
+  const { open, working: workingThreads, quiet, waiting: waitingMessages } = sumCounts([...countBy.values()]);
   const online = runners.data?.filter((r) => r.leased_until).length ?? 0;
   const inboxName = (id: string) => inboxes.data?.find((i) => i.id === id)?.name ?? id;
   const botName = (id: string) => bots.data?.find((b) => b.id === id)?.name ?? id;
@@ -257,9 +250,12 @@ export function Overview() {
         <div className="figure">
           <span className="lbl">Open threads</span>
           <span className="figure-n">{loaded ? open : "…"}</span>
-          <span className="figure-note">
-            {loaded ? `${inflightThreads} working, ${open - inflightThreads} waiting` : ""}
-          </span>
+          <span className="figure-note">{loaded ? `${workingThreads} working · ${quiet} quiet` : ""}</span>
+        </div>
+        <div className="figure">
+          <span className="lbl">Messages waiting</span>
+          <span className="figure-n">{loaded ? waitingMessages : "…"}</span>
+          <span className="figure-note">queued on open threads</span>
         </div>
         <div className="figure">
           <span className="lbl">Messages delivered</span>
@@ -272,7 +268,6 @@ export function Overview() {
             {runners.data ? online : "…"}
             {runners.data && <span className="figure-of"> of {runners.data.length}</span>}
           </span>
-          <span className="figure-note">{waitingMessages ? plural(waitingMessages, "message") + " waiting" : ""}</span>
         </div>
       </section>
 
@@ -291,10 +286,10 @@ export function Overview() {
                 <th scope="col">State</th>
                 <th scope="col">Reads</th>
                 <th scope="col" className="num">
-                  Open
+                  Open threads
                 </th>
                 <th scope="col" className="num">
-                  Waiting
+                  Messages waiting
                 </th>
                 <th scope="col">Deliveries, {BAR_DAYS} days</th>
                 <th scope="col" className="num">
@@ -315,8 +310,8 @@ export function Overview() {
                     </td>
                     <td>{state ? <StateBadge state={state} /> : "…"}</td>
                     <td className="mono">{b.inbox_ids.map(inboxName).join(", ")}</td>
-                    <td className="num">{threads[b.id]?.length ?? "…"}</td>
-                    <td className="num">{waitingBy.get(b.id) ?? "…"}</td>
+                    <td className="num">{countBy.get(b.id)?.open ?? "…"}</td>
+                    <td className="num">{countBy.get(b.id)?.waiting ?? "…"}</td>
                     <td>
                       <DeliveryBars activity={activity?.[b.id]} days={BAR_DAYS} />
                     </td>
