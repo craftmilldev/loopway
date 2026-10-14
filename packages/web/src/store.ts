@@ -65,7 +65,7 @@ export type RedeemResult =
 
 /**
  * Trades a valid, unexpired code for the user. An email with no user needs a `username`: the user, their personal
- * org and its membership are created together (the user named after the part before the @). If the username is
+ * org and its membership are created together (the user is named after the username). If the username is
  * missing or unusable the code is left valid, with the guess refunded, so they can retry. Codes are single-use
  * and die after too many wrong guesses.
  */
@@ -104,7 +104,7 @@ export async function redeemLoginCode(db: Db, email: string, code: string, usern
       const [user] = await tx.query<User>(
         `INSERT INTO loopway.users (id, name, email) VALUES ($1, $2, $3)
          RETURNING id, name, email, created_at, $4::text AS username`,
-        [uuidv7(), addr.split("@")[0]!, addr, username],
+        [uuidv7(), username, addr, username],
       );
       await createPersonalOrg(tx, user!.id, username);
       return { ok: true as const, user: user!, created: true };

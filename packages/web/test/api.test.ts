@@ -472,7 +472,7 @@ describe("login", () => {
     expect(res.status).toBe(201);
     const { token: api_key, user, created } = await res.json();
     expect(created).toBe(true);
-    expect(user).toMatchObject({ name: "new.person", email: "new.person@example.com", username: "new-person" });
+    expect(user).toMatchObject({ name: "new-person", email: "new.person@example.com", username: "new-person" });
     expect((await a.request("/api/me", { headers: { authorization: `Bearer ${api_key}` } })).status).toBe(200);
     const orgs = await call("GET", "/orgs", { key: api_key });
     expect(orgs.body.data).toMatchObject([{ slug: "new-person", personal: true }]);

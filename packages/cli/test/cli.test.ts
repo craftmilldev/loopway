@@ -154,7 +154,7 @@ describe("auth", () => {
     expect(
       await run("login", "--url", API, "--email", "fresh@example.com", "--code", code, "--username", "Fresh-1"),
     ).toMatch(/Created your account/);
-    expect(await runJson("whoami")).toMatchObject({ name: "fresh", email: "fresh@example.com", username: "fresh-1" });
+    expect(await runJson("whoami")).toMatchObject({ name: "fresh-1", email: "fresh@example.com", username: "fresh-1" });
   });
 
   it("a new account needs a username to sign up; the code survives a refused one, and `username` renames it", async () => {
