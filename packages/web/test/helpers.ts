@@ -1,11 +1,11 @@
 // Shared setup for the API tests. Importing this gives the test file its own app and database.
 
-import { createHmac, randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect } from "vitest";
 import { createApi } from "../src/api.js";
 import { type Db } from "../src/db/index.js";
 import { openTestDb } from "../src/db/testing.js";
-import { createUser } from "../src/store.js";
+import { createUser, setUsername } from "../src/store.js";
 import { signSessionToken } from "../src/tokens.js";
 
 export const SECRET = "test-secret";
@@ -33,7 +33,16 @@ export async function call(method: string, path: string, opts: { key?: string; b
   return { status: res.status, body: text ? JSON.parse(text) : null };
 }
 
+/** A user with a personal org, as signup makes them. */
 export async function newUser(name = "Matthew") {
+  const { user } = await createUser(db, { name });
+  const username = `u-${randomBytes(6).toString("hex")}`;
+  expect(await setUsername(db, user.id, username)).toMatchObject({ ok: true });
+  return signSessionToken(user.id, SECRET).token;
+}
+
+/** A user who hasn't picked a username yet, so has no personal org. */
+export async function newUserWithoutOrg(name = "Matthew") {
   const { user } = await createUser(db, { name });
   return signSessionToken(user.id, SECRET).token;
 }

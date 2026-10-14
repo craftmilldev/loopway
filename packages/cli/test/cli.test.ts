@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { createHmac, randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -78,6 +78,7 @@ const savedConfig = (dir = configDir) => readFile(join(dir, "config.json"), "utf
 
 async function configured(name = "Matthew") {
   const { user } = await createUser(db, { name });
+  expect(await setUsername(db, user.id, `u-${randomBytes(6).toString("hex")}`)).toMatchObject({ ok: true });
   const key = signSessionToken(user.id, SECRET).token;
   await writeConfig(configDir, { api_url: API, api_key: key });
   return key;

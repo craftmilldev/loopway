@@ -1,6 +1,7 @@
 import type { BotRule } from "@loopway/rules";
 import type { CloudEvent } from "./cloudevents.js";
 import type { Db } from "./db/index.js";
+import { ApiError } from "./http.js";
 import { slugProblem, type SlugProblem } from "./slugs.js";
 import { newLockToken, newLoginCode, normalizeLoginCode, safeEqual, sha256, uuidv7 } from "./ids.js";
 
@@ -141,6 +142,16 @@ export async function setUsername(
   }
 }
 
+/**
+ * The org new things are written into: the user's personal org, which choosing a username makes. Until then there is
+ * none, and nothing can be created.
+ */
+export async function personalOrgId(db: Q, userId: string): Promise<string> {
+  const [org] = await db.query<{ id: string }>(`SELECT id FROM loopway.orgs WHERE personal_user_id = $1`, [userId]);
+  if (!org) throw new ApiError(403, "username_required", "Choose a username before creating anything");
+  return org.id;
+}
+
 export async function listOrgs(db: Q, userId: string): Promise<Org[]> {
   return db.query<Org>(
     `SELECT o.id, o.slug, o.name, (o.personal_user_id IS NOT NULL) AS personal
@@ -155,6 +166,7 @@ export async function listOrgs(db: Q, userId: string): Promise<Org[]> {
 export interface Inbox {
   id: string;
   user_id: string;
+  org_id: string;
   name: string;
   source_type: string;
   config: unknown;
@@ -166,9 +178,9 @@ export async function createInbox(
   input: { userId: string; name: string; sourceType: string; config: unknown },
 ): Promise<Inbox> {
   const [row] = await db.query<Inbox>(
-    `INSERT INTO loopway.inboxes (id, user_id, name, source_type, config)
-     VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING *`,
-    [uuidv7(), input.userId, input.name, input.sourceType, input.config],
+    `INSERT INTO loopway.inboxes (id, user_id, org_id, name, source_type, config)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING *`,
+    [uuidv7(), input.userId, await personalOrgId(db, input.userId), input.name, input.sourceType, input.config],
   );
   return row!;
 }
@@ -341,6 +353,7 @@ export interface BotVersion {
 export interface Bot {
   id: string;
   user_id: string;
+  org_id: string;
   name: string;
   /** The model its sessions run on, as `claude --model` takes it. */
   model: string;
@@ -357,7 +370,7 @@ export interface Bot {
 }
 
 const BOT_COLS = `
-  b.id, b.user_id, b.name, b.model, b.cursor, b.lock_token, b.locked_until, b.runner_id, b.created_at,
+  b.id, b.user_id, b.org_id, b.name, b.model, b.cursor, b.lock_token, b.locked_until, b.runner_id, b.created_at,
   COALESCE((SELECT jsonb_agg(bi.inbox_id ORDER BY bi.inbox_id) FROM loopway.bot_inboxes bi WHERE bi.bot_id = b.id),
            '[]'::jsonb) AS inbox_ids,
   (SELECT jsonb_build_object('version', v.version, 'prompt', v.prompt, 'rules', v.rules, 'created_at', v.created_at)
@@ -372,7 +385,9 @@ export const MESSAGE_HOLDBACK_SECONDS = 5;
 // Inbox ids go in as a jsonb array, which both drivers serialize the same way.
 const inboxIds = (param: string) => `(SELECT value::uuid FROM jsonb_array_elements_text(${param}::jsonb))`;
 
-/** The inboxes must belong to the user (bot_inboxes' keys enforce it). The cursor starts at their newest message. */
+/**
+ * The inboxes must belong to the user (bot_inboxes' keys enforce it). The bot joins its inboxes' org (they must share
+ * one), or the user's personal org when it has none. The cursor starts at their newest message. */
 export async function createBot(
   db: Db,
   input: {
@@ -386,14 +401,18 @@ export async function createBot(
 ): Promise<Bot> {
   const id = uuidv7();
   await db.transaction(async (tx) => {
+    const orgId = await personalOrgId(tx, input.userId);
     await tx.query(
-      `INSERT INTO loopway.bots (id, user_id, name, model, cursor)
-       VALUES ($1, $2, $3, $5, COALESCE((SELECT max(seq) FROM loopway.messages WHERE inbox_id IN ${inboxIds("$4")}), 0))`,
-      [id, input.userId, input.name, input.inboxIds, input.model],
+      `INSERT INTO loopway.bots (id, user_id, org_id, name, model, cursor)
+       VALUES ($1, $2,
+         COALESCE((SELECT min(org_id::text)::uuid FROM loopway.inboxes WHERE id IN ${inboxIds("$4")}), $6::uuid),
+         $3, $5, COALESCE((SELECT max(seq) FROM loopway.messages WHERE inbox_id IN ${inboxIds("$4")}), 0))`,
+      [id, input.userId, input.name, input.inboxIds, input.model, orgId],
     );
     await tx.query(
-      `INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id)
-       SELECT $1, ids.value, $2 FROM ${inboxIds("$3")} AS ids(value)`,
+      `INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id, org_id)
+       SELECT $1, ids.value, $2, (SELECT org_id FROM loopway.bots WHERE id = $1)
+       FROM ${inboxIds("$3")} AS ids(value)`,
       [id, input.userId, input.inboxIds],
     );
     if (input.prompt !== undefined) await addBotVersion(tx, id, input.prompt, input.rules);
@@ -503,10 +522,10 @@ export async function updateBot(
         patch.inboxIds,
       ]);
       await tx.query(
-        `INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id)
-         SELECT $1, ids.value, $2 FROM ${inboxIds("$3")} AS ids(value)
+        `INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id, org_id)
+         SELECT $1, ids.value, $2, $4 FROM ${inboxIds("$3")} AS ids(value)
          ON CONFLICT DO NOTHING`,
-        [bot.id, bot.user_id, patch.inboxIds],
+        [bot.id, bot.user_id, patch.inboxIds, bot.org_id],
       );
     }
   });
@@ -617,6 +636,7 @@ export async function botMessages(db: Db, botId: string, limit: number): Promise
 export interface Runner {
   id: string;
   user_id: string;
+  org_id: string;
   name: string;
   /** The runner's lease: see leaseRunner(). */
   lock_token: string | null;
@@ -630,7 +650,7 @@ export interface Runner {
 }
 
 const RUNNER_COLS = `
-  r.id, r.user_id, r.name, r.lock_token, r.locked_until, r.created_at, r.last_seen_at,
+  r.id, r.user_id, r.org_id, r.name, r.lock_token, r.locked_until, r.created_at, r.last_seen_at,
   COALESCE((SELECT jsonb_agg(jsonb_build_object('id', b.id, 'name', b.name) ORDER BY b.id) FROM loopway.bots b
             WHERE b.runner_id = r.id AND b.deleted_at IS NULL AND b.locked_until > now()), '[]'::jsonb) AS bots,
   (SELECT count(*)::int FROM loopway.threads t WHERE t.runner_id = r.id) AS threads`;
@@ -638,11 +658,11 @@ const RUNNER_COLS = `
 /** Registers the runner, or renames it and notes it was seen. Undefined if the id is another user's. */
 export async function upsertRunner(db: Db, userId: string, id: string, name: string): Promise<Runner | undefined> {
   const rows = await db.query<{ id: string }>(
-    `INSERT INTO loopway.runners (id, user_id, name) VALUES ($1, $2, $3)
+    `INSERT INTO loopway.runners (id, user_id, org_id, name) VALUES ($1, $2, $4, $3)
      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, last_seen_at = now()
      WHERE loopway.runners.user_id = EXCLUDED.user_id
      RETURNING id`,
-    [id, userId, name],
+    [id, userId, name, await personalOrgId(db, userId)],
   );
   return rows.length ? getRunner(db, userId, id) : undefined;
 }
@@ -974,9 +994,9 @@ export async function assignMessages(
   assignments: Assignment[],
 ): Promise<{ assigned: number } | undefined> {
   return db.transaction(async (tx) => {
-    const [bot] = await tx.query<{ user_id: string }>(
+    const [bot] = await tx.query<{ user_id: string; org_id: string }>(
       `UPDATE loopway.bots b SET cursor = GREATEST(b.cursor, $3::bigint)
-       WHERE ${LEASED} RETURNING b.user_id`,
+       WHERE ${LEASED} RETURNING b.user_id, b.org_id`,
       [botId, token, cursor],
     );
     if (!bot) return undefined;
@@ -985,10 +1005,10 @@ export async function assignMessages(
                        x->'add_subjects' AS add_subjects, x->>'subject' AS subject
                 FROM jsonb_array_elements($1::jsonb) x)`;
     const created = await tx.query<{ id: string }>(
-      `INSERT INTO loopway.threads (id, bot_id, user_id)
-       SELECT DISTINCT a.thread_id, $2::uuid, $3::uuid FROM ${a} a
+      `INSERT INTO loopway.threads (id, bot_id, user_id, org_id)
+       SELECT DISTINCT a.thread_id, $2::uuid, $3::uuid, $4::uuid FROM ${a} a
        ON CONFLICT (id) DO NOTHING RETURNING id`,
-      [assignments, botId, bot.user_id],
+      [assignments, botId, bot.user_id, bot.org_id],
     );
     for (const t of created) await recordThreadEvents(tx, bot.user_id, botId, t.id, ["created"]);
     await tx.query(
