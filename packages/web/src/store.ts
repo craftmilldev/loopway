@@ -95,11 +95,8 @@ export interface Org {
   personal: boolean;
 }
 
-/** Why a username can't be used: a slug rule, or `taken` by another user's or an org's slug. */
-export type UsernameProblem = SlugProblem | "taken";
-
 /** Undefined when `username` is free to use. `userId` is excluded from the "taken" check, so keeping your own name is fine. */
-export async function usernameProblem(db: Q, username: string, userId?: string): Promise<UsernameProblem | undefined> {
+export async function usernameProblem(db: Q, username: string, userId?: string): Promise<SlugProblem | undefined> {
   const rule = slugProblem(username);
   if (rule) return rule;
   const [row] = await db.query(
@@ -117,7 +114,7 @@ export async function setUsername(
   db: Db,
   userId: string,
   username: string,
-): Promise<{ ok: true; created: boolean } | { ok: false; problem: UsernameProblem }> {
+): Promise<{ ok: true; created: boolean } | { ok: false; problem: SlugProblem }> {
   const problem = await usernameProblem(db, username, userId);
   if (problem) return { ok: false, problem };
   try {

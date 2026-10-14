@@ -28,10 +28,11 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
 export const SLUG_MIN = 2;
 export const SLUG_MAX = 39;
 
-export type SlugProblem = "too_short" | "too_long" | "invalid_chars" | "edge_hyphen" | "reserved";
+/** Why a slug can't be used. `taken` isn't something slugProblem can see: it takes the database (see usernameProblem). */
+export type SlugProblem = "too_short" | "too_long" | "invalid_chars" | "edge_hyphen" | "reserved" | "taken";
 
 /** Lowercase `[a-z0-9-]`, 2-39 characters, no leading or trailing `-`, not reserved. Undefined when it's fine. */
-export function slugProblem(slug: string): SlugProblem | undefined {
+export function slugProblem(slug: string): Exclude<SlugProblem, "taken"> | undefined {
   if (slug.length < SLUG_MIN) return "too_short";
   if (slug.length > SLUG_MAX) return "too_long";
   if (!/^[a-z0-9-]+$/.test(slug)) return "invalid_chars";
@@ -40,7 +41,7 @@ export function slugProblem(slug: string): SlugProblem | undefined {
   return undefined;
 }
 
-export const USERNAME_PROBLEM_MESSAGES: Record<SlugProblem | "taken", string> = {
+export const USERNAME_PROBLEM_MESSAGES: Record<SlugProblem, string> = {
   too_short: `Usernames are at least ${SLUG_MIN} characters`,
   too_long: `Usernames are at most ${SLUG_MAX} characters`,
   invalid_chars: "Usernames use only lowercase letters, numbers and hyphens",
