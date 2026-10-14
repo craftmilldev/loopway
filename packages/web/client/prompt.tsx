@@ -39,9 +39,30 @@ export const fromDrafts = (drafts: RuleDraft[]): lw.BotRule[] =>
     return rule;
   });
 
+/** Rules in one canonical shape: types and expressions trimmed, empty ones dropped, keys in a fixed order. */
+export const normalizeRules = (rules: lw.BotRule[] | null): lw.BotRule[] => fromDrafts(toDrafts(rules));
+
+/** Whether two rule lists are the same rules in the same order, ignoring key order, padding and null versus []. */
+export const sameRules = (a: lw.BotRule[] | null, b: lw.BotRule[] | null) => {
+  const x = normalizeRules(a);
+  const y = normalizeRules(b);
+  return (
+    x.length === y.length &&
+    x.every(
+      (r, i) =>
+        r.types.length === y[i]!.types.length &&
+        r.types.every((t, n) => t === y[i]!.types[n]) &&
+        EXPRESSIONS.every(({ key }) => r[key] === y[i]![key]),
+    )
+  );
+};
+
+/** Whether two prompts are the same text, ignoring the line endings a textarea normalizes. */
+export const samePrompt = (a: string, b: string) => a.replace(/\r\n?/g, "\n") === b.replace(/\r\n?/g, "\n");
+
 /** Rules as plain lines, one block per rule, for diffing. */
 export const rulesText = (rules: lw.BotRule[] | null) =>
-  (rules ?? [])
+  normalizeRules(rules)
     .map((r, i) =>
       [
         `Rule ${i + 1}`,
@@ -102,8 +123,8 @@ export function PromptTab({
   }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const parsed = fromDrafts(rules);
-  const promptChanged = prompt !== (current?.prompt ?? "");
-  const rulesChanged = JSON.stringify(parsed) !== JSON.stringify(current?.rules ?? []);
+  const promptChanged = !samePrompt(prompt, current?.prompt ?? "");
+  const rulesChanged = !sameRules(parsed, current?.rules ?? null);
   const dirty = promptChanged || rulesChanged;
 
   useEffect(() => {
