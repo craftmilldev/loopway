@@ -65,7 +65,6 @@ export async function migrate(db: Db): Promise<string[]> {
     // One transaction (Postgres DDL is transactional), so a failure leaves nothing half-applied and unrecorded.
     await db.transaction(async (tx) => {
       for (const stmt of splitSql(m.sql)) await tx.query(stmt);
-      await m.after?.(tx);
       await tx.query(`INSERT INTO loopway.schema_migrations (version) VALUES ($1)`, [m.version]);
     });
     applied.push(m.version);

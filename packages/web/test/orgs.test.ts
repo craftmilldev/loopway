@@ -1,17 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { openTestDb } from "../src/db/testing.js";
-import { backfillOrgs } from "../src/db/backfill-orgs.js";
-import { RESERVED_SLUGS, sanitizeSlug, slugProblem } from "../src/slugs.js";
-import { createUser } from "../src/store.js";
-import { signSessionToken } from "../src/tokens.js";
-import { call, db, newUser, SECRET } from "./helpers.js";
+import { migrations } from "../src/db/migrations.js";
+import { RESERVED_SLUGS, slugProblem } from "../src/slugs.js";
+import { call, db, newUser } from "./helpers.js";
 
 const rows = <T>(sql: string, params: unknown[] = []) => db.query<T>(sql, params);
-
-async function userWithEmail(email: string, name = email.split("@")[0]!) {
-  const { user } = await createUser(db, { name, email });
-  return { id: user.id, key: signSessionToken(user.id, SECRET).token };
-}
 
 describe("slug rules", () => {
   it("accepts lowercase letters, digits and inner hyphens, 2-39 chars", () => {
@@ -35,12 +28,6 @@ describe("slug rules", () => {
     for (const word of ["api", "dashboard", "auth", "health", "webhooks", "login", "signup", "me", "orgs", "new"]) {
       expect(RESERVED_SLUGS.has(word)).toBe(true);
     }
-  });
-
-  it("sanitizes an email local part", () => {
-    expect(sanitizeSlug("First.Last+tag")).toBe("first-last-tag");
-    expect(sanitizeSlug("__x__")).toBe("x");
-    expect(sanitizeSlug("a".repeat(60))).toHaveLength(34);
   });
 });
 
@@ -146,65 +133,42 @@ describe("GET /orgs", () => {
   });
 });
 
-describe("migration backfill", () => {
-  it("gives every existing user exactly one personal org and a membership", async () => {
-    const plain = await userWithEmail("plain@example.com");
-    const dotted = await userWithEmail("First.Last+x@example.com");
-    const dup1 = await userWithEmail("dup@one.example");
-    const dup2 = await userWithEmail("dup@two.example");
-    const reserved = await userWithEmail("settings@example.com");
-    const short = await userWithEmail("a@example.com");
-    const noEmail = await createUser(db, { name: "No Email!" });
-
-    await backfillOrgs(db);
-    await backfillOrgs(db); // running again changes nothing
-
-    const slugOf = async (id: string) =>
-      (await rows<{ slug: string }>(`SELECT slug FROM loopway.orgs WHERE personal_user_id = $1`, [id])).map(
-        (r) => r.slug,
-      );
-    expect(await slugOf(plain.id)).toEqual(["plain"]);
-    expect(await slugOf(dotted.id)).toEqual(["first-last-x"]);
-    expect(await slugOf(dup1.id)).toEqual(["dup"]);
-    expect(await slugOf(dup2.id)).toEqual(["dup2"]);
-    expect(await slugOf(reserved.id)).toEqual(["settings2"]);
-    expect(await slugOf(short.id)).toEqual(["a2"]);
-    expect(await slugOf(noEmail.user.id)).toEqual(["no-email"]);
-
-    const lonely = await rows(
-      `SELECT u.id FROM loopway.users u
-       WHERE (SELECT count(*) FROM loopway.orgs o WHERE o.personal_user_id = u.id) <> 1
-          OR NOT EXISTS (SELECT 1 FROM loopway.org_members m JOIN loopway.orgs o ON o.id = m.org_id
-                         WHERE m.user_id = u.id AND o.personal_user_id = u.id)`,
-    );
-    // users made by earlier tests in this file's database have been backfilled too
-    expect(lonely).toEqual([]);
-    expect((await call("GET", "/me", { key: plain.key })).body.username).toBe("plain");
-  });
-
-  it("gives matthew@craftmill.dev mcwhittemore and a craftmill org", async () => {
-    // someone else already using the local part must not take the founder's name
-    await userWithEmail("mcwhittemore@example.com");
-    const founder = await userWithEmail("Matthew@craftmill.dev");
-    await backfillOrgs(db);
-
-    const [personal] = await rows<{ slug: string }>(`SELECT slug FROM loopway.orgs WHERE personal_user_id = $1`, [
-      founder.id,
-    ]);
-    expect(personal!.slug).toBe("mcwhittemore");
-    const orgs = (await call("GET", "/orgs", { key: founder.key })).body.data;
-    expect(orgs.map((o: { slug: string; personal: boolean }) => [o.slug, o.personal])).toEqual([
-      ["mcwhittemore", true],
-      ["craftmill", false],
-    ]);
-  });
-
-  it("is a no-op on a fresh database", async () => {
+describe("migration", () => {
+  // Runs 017's statements again on a fresh database that has these users in it, as the real one did before migrating.
+  async function migrateWith(emails: string[]) {
     const fresh = await openTestDb();
     try {
-      expect(await fresh.query(`SELECT 1 FROM loopway.orgs`)).toEqual([]);
+      await fresh.query(`DROP TABLE loopway.org_members`);
+      await fresh.query(`DROP TABLE loopway.orgs`);
+      for (const email of emails) {
+        await fresh.query(`INSERT INTO loopway.users (id, name, email) VALUES (gen_random_uuid(), 'u', $1)`, [email]);
+      }
+      const m = migrations.find((x) => x.version === "017_orgs")!;
+      for (const stmt of m.sql
+        .split(/;\s*$/m)
+        .map((x) => x.trim())
+        .filter(Boolean))
+        await fresh.query(stmt);
+      return await fresh.query<{ email: string; slug: string; personal: boolean }>(
+        `SELECT u.email, o.slug, (o.personal_user_id IS NOT NULL) AS personal
+         FROM loopway.org_members m JOIN loopway.users u ON u.id = m.user_id JOIN loopway.orgs o ON o.id = m.org_id
+         ORDER BY o.slug`,
+      );
     } finally {
       await fresh.close();
     }
+  }
+
+  it("gives matthew@craftmill.dev the personal org mcwhittemore and membership in craftmill", async () => {
+    const members = await migrateWith(["Matthew@craftmill.dev"]);
+    expect(members.map((r) => [r.slug, r.personal])).toEqual([
+      ["craftmill", false],
+      ["mcwhittemore", true],
+    ]);
+  });
+
+  it("is a no-op where that user doesn't exist", async () => {
+    expect(await migrateWith([])).toEqual([]);
+    expect(await migrateWith(["someone@example.com"])).toEqual([]);
   });
 });

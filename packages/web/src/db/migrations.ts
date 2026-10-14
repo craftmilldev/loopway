@@ -1,6 +1,3 @@
-import { backfillOrgs } from "./backfill-orgs.js";
-import type { Db } from "./index.js";
-
 /**
  * Migrations live in TS (not .sql files) so they're bundled into the Vercel function.
  * Append new entries; never edit an applied one.
@@ -8,7 +5,7 @@ import type { Db } from "./index.js";
  * Everything is in a `loopway` schema (not `public`), and RLS is enabled with no policies, so a
  * PostgREST-style Data API (e.g. Neon's, if ever turned on) can't reach it. The app connects as the table owner.
  */
-export const migrations: { version: string; sql: string; after?: (db: Pick<Db, "query">) => Promise<void> }[] = [
+export const migrations: { version: string; sql: string }[] = [
   {
     version: "001_init",
     sql: `
@@ -346,7 +343,8 @@ ALTER TABLE loopway.thread_events ENABLE ROW LEVEL SECURITY;
   },
   {
     // Orgs and their members, with one personal org per user: its slug is the user's username, and
-    // personal_user_id says whose it is. Nothing is owned by an org yet. `after` backfills the existing users.
+    // personal_user_id says whose it is. Nothing is owned by an org yet. Only matthew@craftmill.dev exists to migrate:
+    // he becomes mcwhittemore and joins a craftmill org. Where he doesn't exist (tests, fresh databases) that's a no-op.
     version: "017_orgs",
     sql: `
 CREATE TABLE loopway.orgs (
@@ -369,7 +367,16 @@ CREATE INDEX org_members_user_idx ON loopway.org_members (user_id);
 ALTER TABLE loopway.orgs ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE loopway.org_members ENABLE ROW LEVEL SECURITY;
+
+INSERT INTO loopway.orgs (id, slug, name, personal_user_id)
+SELECT gen_random_uuid(), 'mcwhittemore', 'mcwhittemore', id FROM loopway.users WHERE lower(email) = 'matthew@craftmill.dev';
+
+INSERT INTO loopway.orgs (id, slug, name)
+SELECT gen_random_uuid(), 'craftmill', 'craftmill' FROM loopway.users WHERE lower(email) = 'matthew@craftmill.dev';
+
+INSERT INTO loopway.org_members (org_id, user_id)
+SELECT o.id, u.id FROM loopway.users u JOIN loopway.orgs o ON o.personal_user_id = u.id OR o.slug = 'craftmill'
+WHERE lower(u.email) = 'matthew@craftmill.dev';
 `,
-    after: backfillOrgs,
   },
 ];
