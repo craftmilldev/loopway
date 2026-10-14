@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { botState, type BotState } from "./bot-state.js";
-import type { Inbox } from "./dashboard.js";
+import type { Inbox } from "./shared.js";
 import { deliveredIn } from "./activity.js";
 import { BAR_DAYS, DeliveryBars } from "./delivery-bars.js";
 import { DashLayout, MembersHint } from "./layout.js";

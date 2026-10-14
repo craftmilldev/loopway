@@ -3,7 +3,7 @@ import { botState } from "./bot-state.js";
 import { BotSwitcher } from "./bot-switcher.js";
 import { DeliveryBars } from "./delivery-bars.js";
 import { StateBadge } from "./overview.js";
-import { leaseText, type Inbox } from "./dashboard.js";
+import { leaseText, type Inbox } from "./shared.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";

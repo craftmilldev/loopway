@@ -6,7 +6,7 @@ import { track } from "./metrics.js";
 /** The page for a path nothing is at. An org the user isn't in gets this too, so it can't tell them the org exists. */
 export function NotFound() {
   return (
-    <Layout title="Not found · loopway" nav={<a href="/dashboard">Dashboard</a>}>
+    <Layout title="Not found · loopway" nav={<a href={lw.lastOrgPath()}>Dashboard</a>}>
       <div className="narrow">
         <p className="eyebrow">404</p>
         <h1>Page not found</h1>

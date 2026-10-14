@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { PRESETS } from "@loopway/presets";
-import { CreateInbox, OrgSelect, type Inbox } from "./dashboard.js";
+import { CreateInbox, OrgSelect, type Inbox } from "./shared.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";

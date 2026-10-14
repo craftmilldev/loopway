@@ -90,7 +90,7 @@ A runner is a machine running loopway, and belongs to one org for good: it only 
 
 | Endpoint | |
 | --- | --- |
-| `POST /api/runners` `{org, id, name}` | Register the runner in the org (a slug), or rename it and mark it seen; safe to repeat. `400 org_required` without `org`, `404` if you aren't in the org, `409 runner_org_mismatch` (with `details.org`, the runner's org) if the id is already a runner of another org of yours, `409 runner_exists` if the id is another user's. |
+| `POST /api/runners` `{org, id, name}` | Register the runner in the org (a slug), or rename it and mark it seen; safe to repeat. `400 org_required` without `org`, `404` if you aren't in the org, `409 runner_org_mismatch` (with `details.org`, the runner's org) if the id is already a runner of another org of yours, `409 runner_exists` if the id is already in use by a runner you can't use. |
 | `POST /api/runners/:id/lease` `{ttl_seconds?, lease_token?}` | Take the runner's lease, or renew it by passing your current token. Returns `{lease: {token, expires_at}}`. `409 runner_leased` while another process holds a live lease, with `details.expires_at`. `ttl_seconds` defaults to 300, max 43200. |
 | `POST /api/runners/:id/release` `{lease_token?, force?}` | Drop the lease. `409 runner_lease_mismatch` if the token isn't the live lease. `force: true` drops whoever's, for a process that died without releasing. |
 | `GET /api/runners` | Your runners: `{id, org_id, created_by, org, name, created_at, last_seen_at, leased_until, bots, threads}` (`org` is the org's slug). `leased_until` is null unless a process holds the lease, `bots` is `[{id, name}]` for the bot leases it holds now, and `threads` counts the threads it owns. The lease token is never part of it. |

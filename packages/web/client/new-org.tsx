@@ -61,7 +61,7 @@ export function NewOrg() {
   }
 
   return (
-    <Layout title="New org · loopway" nav={<a href="/dashboard">Dashboard</a>}>
+    <Layout title="New org · loopway" nav={<a href={lw.lastOrgPath()}>Dashboard</a>}>
       <div className="narrow">
         <p className="eyebrow">new org</p>
         <h1>Start an org</h1>
