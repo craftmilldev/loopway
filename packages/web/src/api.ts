@@ -557,7 +557,7 @@ export function createApi(opts: ApiOptions) {
     const input = ttlBody
       .extend({ lease_token: z.string().optional(), runner_id: runnerId.optional() })
       .parse(await jsonBody(c));
-    if (input.runner_id) await ownedRunner(c, input.runner_id);
+    if (input.runner_id) await sameOrgRunner(c, bot, input.runner_id);
     const row = await store.leaseBot(c.var.db, bot.id, input.ttl_seconds, input.lease_token ?? null, input.runner_id);
     if (!row) {
       const until = iso(bot.locked_until);
@@ -621,6 +621,7 @@ export function createApi(opts: ApiOptions) {
     const thread = await existingThread(c, bot);
     const { lease_token } = z.object({ lease_token: leaseToken }).parse(await jsonBody(c));
     const runner = await liveRunner(c, lease_token);
+    requireSameOrg(bot, runner);
     if (thread.runner_id && thread.runner_id !== runner.id) throw threadOwned(thread);
     const claimed = await store.claimThread(c.var.db, c.var.user.id, bot.id, thread.id, lease_token);
     if (!claimed) throw runnerNotLeased();
@@ -761,7 +762,7 @@ export function createApi(opts: ApiOptions) {
     return bot;
   }
 
-  /** The runner must be the user's; using it counts as seeing it. */
+  /** The runner must be in one of the user's orgs; using it counts as seeing it. */
   async function ownedRunner(c: Context<Env>, id: string): Promise<store.Runner> {
     const runner = await store.getRunner(c.var.db, c.var.user.id, id);
     if (!runner) throw new ApiError(404, "not_found", "Runner not found; register it with POST /runners");
@@ -769,7 +770,19 @@ export function createApi(opts: ApiOptions) {
     return runner;
   }
 
-  /** The runner in the path, if it's the user's. */
+  /** A bot only runs on a runner of its own org: 400 otherwise. */
+  function requireSameOrg(bot: store.Bot, runner: store.Runner) {
+    if (runner.org_id === bot.org_id) return;
+    throw new ApiError(400, "runner_org_mismatch", "A bot can only use a runner from its own org");
+  }
+
+  async function sameOrgRunner(c: Context<Env>, bot: store.Bot, id: string): Promise<store.Runner> {
+    const runner = await ownedRunner(c, id);
+    requireSameOrg(bot, runner);
+    return runner;
+  }
+
+  /** The runner in the path, if it's in one of the user's orgs. */
   async function routeRunner(c: Context<Env>): Promise<store.Runner> {
     const id = c.req.param("runnerId") ?? "";
     const runner = isUuid(id) ? await store.getRunner(c.var.db, c.var.user.id, id.toLowerCase()) : undefined;
@@ -815,8 +828,7 @@ export function createApi(opts: ApiOptions) {
     }
   }
 
-  /** The ids, deduped, once they're all the user's inboxes. */
-  /** The user's inboxes among `ids`. A bot's inboxes share one org: `orgId` if given (the bot's), else each other's. */
+  /** The ids, deduped, once they're all inboxes in the user's orgs. A bot's inboxes share one org: `orgId` if given (the bot's), else each other's. */
   async function ownedInboxIds(c: Context<Env>, ids: string[], orgId?: string): Promise<string[]> {
     const mine = new Map((await store.listInboxes(c.var.db, c.var.user.id)).map((i) => [i.id, i.org_id]));
     const wanted = [...new Set(ids.map((id) => id.toLowerCase()))];

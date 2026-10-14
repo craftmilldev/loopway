@@ -148,5 +148,96 @@ describe("ownership", () => {
       bot.id,
     ]);
     expect(row?.deleted_at).toBeNull();
+    expect((await call("GET", "/events", { key: stranger })).body.data).toEqual([]);
+
+    // A member of the owner's org reaches every one of those, and sees them in lists.
+    const member = await newUser("member");
+    await join(member, await personalOrg(owner));
+    for (const [method, path, body] of attempts) {
+      if (method === "DELETE" || path.endsWith("/release") || path.endsWith("/end")) continue;
+      const res = await call(method, path, { key: member, body });
+      expect(res.status, `member ${method} ${path}`).not.toBe(404);
+      expect(res.status, `member ${method} ${path}`).toBeLessThan(500);
+    }
+    for (const list of ["/inboxes", "/bots", "/runners"]) {
+      const ids = ((await call("GET", list, { key: member })).body.data as { id: string }[]).map((r) => r.id);
+      expect(ids.length, list).toBeGreaterThan(0);
+    }
+    const memberActivity = (await call("GET", "/bots/activity", { key: member })).body.data as { bot_id: string }[];
+    expect(memberActivity.map((a) => a.bot_id)).toContain(bot.id);
+    expect((await call("GET", `/inboxes/${inbox.id}/activity`, { key: member })).status).toBe(200);
+    expect((await call("GET", "/events", { key: member })).body.data.length).toBeGreaterThan(0);
+    expect((await call("DELETE", b, { key: member })).status).toBe(204);
+  });
+
+  it("shares an org's entities between its members, and keeps orgs apart", async () => {
+    const a = await newUser("a");
+    const b = await newUser("b");
+    const shared = await newOrg();
+    await join(a, shared);
+    await join(b, shared);
+    // Fixtures in the shared org, which nothing can create into yet.
+    const aId = await userId(a);
+    const inbox = { id: randomUUID() };
+    const bot = { id: randomUUID() };
+    await db.query(
+      `INSERT INTO loopway.inboxes (id, user_id, org_id, name, source_type, config) VALUES ($1, $2, $3, 'gh', 'github', '{"secret":"s3cret","events":["pull_request"]}')`,
+      [inbox.id, aId, shared],
+    );
+    await db.query(
+      `INSERT INTO loopway.bots (id, user_id, org_id, name, model, cursor) VALUES ($1, $2, $3, 'b', 'sonnet', 0)`,
+      [bot.id, aId, shared],
+    );
+    await db.query(`INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id, org_id) VALUES ($1, $2, $3, $4)`, [
+      bot.id,
+      inbox.id,
+      aId,
+      shared,
+    ]);
+
+    // Both members operate on the shared bot; what b creates goes to b's personal org.
+    for (const key of [a, b]) {
+      expect((await call("GET", `/bots/${bot.id}`, { key })).status).toBe(200);
+      expect((await call("PATCH", `/bots/${bot.id}`, { key, body: { name: "n" } })).status).toBe(200);
+    }
+    const mine = await newInbox(b);
+    expect((await call("GET", `/inboxes/${mine.id}`, { key: b })).body.org_id).toBe(await personalOrg(b));
+    const ids = ((await call("GET", "/inboxes", { key: b })).body.data as { id: string }[]).map((i) => i.id);
+    expect(ids).toEqual(expect.arrayContaining([inbox.id, mine.id]));
+    const aIds = ((await call("GET", "/inboxes", { key: a })).body.data as { id: string }[]).map((i) => i.id);
+    expect(aIds).not.toContain(mine.id);
+
+    // Tying entities of different orgs together is a 400, not a 500.
+    expect((await call("PATCH", `/bots/${bot.id}`, { key: b, body: { inbox_ids: [mine.id] } })).status).toBe(400);
+    const runner = randomUUID();
+    await call("POST", "/runners", { key: b, body: { id: runner, name: "laptop" } });
+    const lease = await call("POST", `/bots/${bot.id}/lease`, { key: b, body: { runner_id: runner } });
+    expect(lease.status).toBe(400);
+    expect(lease.body.error.code).toBe("runner_org_mismatch");
+
+    // Someone who leaves the org loses it.
+    await db.query(`DELETE FROM loopway.org_members WHERE org_id = $1 AND user_id = $2`, [shared, await userId(b)]);
+    expect((await call("GET", `/bots/${bot.id}`, { key: b })).status).toBe(404);
   });
 });
+
+async function userId(key: string): Promise<string> {
+  return (await call("GET", "/me", { key })).body.id;
+}
+
+async function personalOrg(key: string): Promise<string> {
+  const [org] = await db.query<{ id: string }>(`SELECT id FROM loopway.orgs WHERE personal_user_id = $1`, [
+    await userId(key),
+  ]);
+  return org!.id;
+}
+
+async function newOrg(): Promise<string> {
+  const id = randomUUID();
+  await db.query(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [id, `org-${id.slice(0, 8)}`]);
+  return id;
+}
+
+async function join(key: string, orgId: string): Promise<void> {
+  await db.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [orgId, await userId(key)]);
+}

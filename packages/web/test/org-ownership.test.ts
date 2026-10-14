@@ -190,6 +190,10 @@ describe("inboxes across orgs", () => {
     const b = await newInbox(key);
     const other = randomUUID();
     await rows(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [other, `other-${other.slice(0, 8)}`]);
+    await rows(
+      `INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, (SELECT user_id FROM loopway.inboxes WHERE id = $2))`,
+      [other, b.id],
+    );
     await rows(`UPDATE loopway.inboxes SET org_id = $2 WHERE id = $1`, [b.id, other]);
 
     const create = await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [a.id, b.id] } });
