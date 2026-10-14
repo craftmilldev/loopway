@@ -4,6 +4,7 @@ import { authedClient, UsageError, type Context } from "../context.js";
 import { ago, bold, dim, fields, json, table } from "../format.js";
 import { checkRules, type BotRule } from "@loopway/rules";
 import { PRESETS } from "@loopway/presets";
+import { HARNESSES } from "../bots/harnesses/index.js";
 import { resolveInbox } from "./inboxes.js";
 import { resolveOrg } from "./orgs.js";
 
@@ -91,6 +92,7 @@ export async function createBot(
   if (!opts.name) throw new UsageError("--name is required");
   if (!opts.preset) throw new UsageError(`--preset is required (${Object.keys(PRESETS).join(", ")})`);
   if (!opts.model) throw new UsageError("--model is required (an alias like sonnet or opus, or a full model id)");
+  if (!opts.harness) throw new UsageError(`--harness is required (${HARNESSES.map((h) => h.name).join(", ")})`);
   if (!opts.inbox?.length) throw new UsageError("--inbox is required");
   const client = await authedClient(ctx);
   const bot = await client.createBot({

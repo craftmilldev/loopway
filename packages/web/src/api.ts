@@ -680,7 +680,7 @@ export function createApi(opts: ApiOptions) {
         org: z.string().optional(),
         name: z.string().min(1).max(200),
         model: modelBody,
-        harness: harnessBody.default("claude"),
+        harness: harnessBody,
         inbox_ids: inboxIdsBody,
         prompt: promptBody.optional(),
         rules: rulesBody.optional(),

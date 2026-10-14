@@ -224,7 +224,7 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
       new Option("--preset <preset>", "template for the bot's first prompt and rules").choices(Object.keys(PRESETS)),
     )
     .option("--model <model>", "model its sessions run on: an alias (sonnet, opus) or a full model id")
-    .addOption(harnessOpt("coding-agent CLI its sessions run in (claude by default)"))
+    .addOption(harnessOpt("coding-agent CLI its sessions run in"))
     .addOption(inboxesOpt("comma-separated inbox ids or names"))
     .addOption(jsonOpt())
     .action((opts) => createBot(ctx, opts));

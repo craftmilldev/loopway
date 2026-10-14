@@ -76,6 +76,7 @@ describe("New bot flow", () => {
       org: "me",
       name: "dev",
       model: "sonnet",
+      harness: "claude",
       prompt: PRESETS["github-threads"]!.prompt,
       rules: PRESETS["github-threads"]!.rules,
       inbox_ids: ["i1"],

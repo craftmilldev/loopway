@@ -7,7 +7,9 @@ import { call, db, newInbox, newUser, prPayload, sendGithub } from "./helpers.js
 async function setup(count = 3) {
   const key = await newUser();
   const inbox = await newInbox(key);
-  const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [inbox.id] } })).body;
+  const bot = (
+    await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", harness: "claude", inbox_ids: [inbox.id] } })
+  ).body;
   for (let i = 1; i <= count; i++) await sendGithub(inbox, "pull_request", prPayload(i));
   const messages = (await call("GET", `/inboxes/${inbox.id}/messages?order=asc`, { key })).body.data as {
     id: string;
@@ -158,8 +160,12 @@ describe("thread assignment", () => {
 
   it("rolls back everything if the statement fails part-way", async () => {
     const { key, base, bot, messages, lease } = await setup(1);
-    const other = (await call("POST", "/bots", { key, body: { name: "o", model: "sonnet", inbox_ids: bot.inbox_ids } }))
-      .body;
+    const other = (
+      await call("POST", "/bots", {
+        key,
+        body: { name: "o", model: "sonnet", harness: "claude", inbox_ids: bot.inbox_ids },
+      })
+    ).body;
     const tid = randomUUID();
     await db.query(
       `INSERT INTO loopway.threads (id, bot_id, created_by, org_id) SELECT $1, id, 'bot:' || id, org_id FROM loopway.bots WHERE id = $2`,
@@ -201,8 +207,12 @@ describe("thread assignment", () => {
     expect(dup.status).toBe(409);
 
     // Another bot can use the same key.
-    const other = (await call("POST", "/bots", { key, body: { name: "o", model: "sonnet", inbox_ids: bot.inbox_ids } }))
-      .body;
+    const other = (
+      await call("POST", "/bots", {
+        key,
+        body: { name: "o", model: "sonnet", harness: "claude", inbox_ids: bot.inbox_ids },
+      })
+    ).body;
     const lease = (await call("POST", `/bots/${other.id}/lease`, { key, body: {} })).body.lease.token;
     const ok = await call("POST", `/bots/${other.id}/assign`, {
       key,
@@ -408,7 +418,12 @@ describe("thread writes", () => {
     const sibling = (
       await call("POST", "/bots", {
         key,
-        body: { name: "s", model: "sonnet", inbox_ids: (await call("GET", base, { key })).body.inbox_ids },
+        body: {
+          name: "s",
+          model: "sonnet",
+          harness: "claude",
+          inbox_ids: (await call("GET", base, { key })).body.inbox_ids,
+        },
       })
     ).body;
     const sLease = (await call("POST", `/bots/${sibling.id}/lease`, { key, body: {} })).body.lease.token;
@@ -450,7 +465,9 @@ describe("thread writes", () => {
     const { key, messages, assign } = await setup(1);
     const t1 = randomUUID();
     await assign([{ message_id: messages[0]!.id, thread_id: t1, add_subjects: ["o/r#1"] }]);
-    const sibling = (await call("POST", "/bots", { key, body: { name: "s", model: "sonnet", inbox_ids: [] } })).body;
+    const sibling = (
+      await call("POST", "/bots", { key, body: { name: "s", model: "sonnet", harness: "claude", inbox_ids: [] } })
+    ).body;
     const r = await call("POST", `/bots/${sibling.id}/threads/${t1}/move-subject`, {
       key,
       body: { subject: "o/r#1", to_thread_id: randomUUID() },

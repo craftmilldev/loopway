@@ -341,7 +341,7 @@ export class LoopwayClient {
     org: string;
     name: string;
     model: string;
-    harness?: string;
+    harness: string;
     inbox_ids: string[];
     prompt?: string;
     rules?: BotRule[];

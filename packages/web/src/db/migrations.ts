@@ -576,10 +576,12 @@ ALTER TABLE loopway.org_invites ALTER COLUMN created_by SET NOT NULL;
 `,
   },
   {
-    // Which coding-agent CLI a bot's sessions run in. Until now every bot ran in Claude Code.
+    // Which coding-agent CLI a bot's sessions run in. Until now every bot ran in Claude Code, so existing bots get claude; new ones must say.
     version: "026_bot_harness",
     sql: `
 ALTER TABLE loopway.bots ADD COLUMN harness text NOT NULL DEFAULT 'claude';
+
+ALTER TABLE loopway.bots ALTER COLUMN harness DROP DEFAULT;
 `,
   },
 ];

@@ -371,7 +371,20 @@ describe("inboxes", () => {
       expect(inbox.org_id).toBe(team.id);
 
       await expect(
-        run("bots", "create", "--name", "b", "--preset", "github-threads", "--model", "sonnet", "--inbox", inbox.id),
+        run(
+          "bots",
+          "create",
+          "--name",
+          "b",
+          "--preset",
+          "github-threads",
+          "--model",
+          "sonnet",
+          "--harness",
+          "claude",
+          "--inbox",
+          inbox.id,
+        ),
       ).rejects.toThrow(/several orgs/);
       const bot = await runJson(
         "bots",
@@ -382,6 +395,8 @@ describe("inboxes", () => {
         "github-threads",
         "--model",
         "sonnet",
+        "--harness",
+        "claude",
         "--inbox",
         inbox.id,
         "--org",
@@ -413,6 +428,8 @@ describe("inboxes", () => {
           "github-threads",
           "--model",
           "sonnet",
+          "--harness",
+          "claude",
           "--inbox",
           mine.id,
           "--org",
@@ -525,6 +542,8 @@ describe("bots", () => {
       "github-threads",
       "--model",
       "sonnet",
+      "--harness",
+      "claude",
       "--inbox",
       inbox.name,
     );
@@ -553,6 +572,8 @@ describe("bots", () => {
       "github-threads",
       "--model",
       "sonnet",
+      "--harness",
+      "claude",
       "--inbox",
       a.id,
     );
@@ -584,6 +605,8 @@ describe("bots", () => {
       "github-threads",
       "--model",
       "sonnet",
+      "--harness",
+      "claude",
       "--inbox",
       a.id,
     );
@@ -617,14 +640,40 @@ describe("bots", () => {
     await configured();
     await inboxWithEvents(0, "a");
     await expect(
-      run("bots", "create", "--name", "x", "--preset", "nope", "--model", "sonnet", "--inbox", "a"),
+      run(
+        "bots",
+        "create",
+        "--name",
+        "x",
+        "--preset",
+        "nope",
+        "--model",
+        "sonnet",
+        "--harness",
+        "claude",
+        "--inbox",
+        "a",
+      ),
     ).rejects.toThrow(/Allowed choices are github-threads/);
     await expect(run("bots", "create", "--name", "x", "--inbox", "a")).rejects.toThrow(/--preset is required/);
     await expect(run("bots", "create", "--name", "x", "--preset", "github-threads", "--inbox", "a")).rejects.toThrow(
       /--model is required/,
     );
     await expect(
-      run("bots", "create", "--name", "x", "--preset", "github-threads", "--model", "sonnet", "--inbox", "zzz"),
+      run(
+        "bots",
+        "create",
+        "--name",
+        "x",
+        "--preset",
+        "github-threads",
+        "--model",
+        "sonnet",
+        "--harness",
+        "claude",
+        "--inbox",
+        "zzz",
+      ),
     ).rejects.toThrow(/No inbox with id or name "zzz"/);
   });
 });
@@ -652,6 +701,8 @@ describe("runners", () => {
       "github-threads",
       "--model",
       "sonnet",
+      "--harness",
+      "claude",
       "--inbox",
       inbox.id,
     );
@@ -674,6 +725,8 @@ describe("runners", () => {
       "github-threads",
       "--model",
       "sonnet",
+      "--harness",
+      "claude",
       "--inbox",
       inbox.id,
     );
@@ -706,6 +759,8 @@ describe("runners", () => {
       "github-threads",
       "--model",
       "sonnet",
+      "--harness",
+      "claude",
       "--inbox",
       inbox.id,
     );
@@ -743,6 +798,8 @@ describe("runners", () => {
       "github-threads",
       "--model",
       "sonnet",
+      "--harness",
+      "claude",
       "--inbox",
       inbox.id,
     );
@@ -831,6 +888,8 @@ describe("threads", () => {
           "github-threads",
           "--model",
           "sonnet",
+          "--harness",
+          "claude",
           "--inbox",
           inbox.id,
         ),
@@ -1419,6 +1478,7 @@ describe("threads", () => {
       org: (await client.listOrgs())[0]!.slug,
       name: "late",
       model: "sonnet",
+      harness: "claude",
       inbox_ids: [inbox.id],
     });
     await d.tick();
@@ -1438,6 +1498,7 @@ describe("threads", () => {
       org: (await client.listOrgs())[0]!.slug,
       name: "broken",
       model: "sonnet",
+      harness: "claude",
       inbox_ids: [inbox.id],
       prompt: "Draft.",
     });

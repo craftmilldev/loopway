@@ -320,7 +320,10 @@ function Identity({
     setError(null);
     setBusy(true);
     const { prompt, rules } = PRESETS[preset]!;
-    const r = await lw.api("/bots", { method: "POST", body: { org, name, prompt, rules, model, inbox_ids } });
+    const r = await lw.api("/bots", {
+      method: "POST",
+      body: { org, name, prompt, rules, model, harness: "claude", inbox_ids },
+    });
     setBusy(false);
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) {
