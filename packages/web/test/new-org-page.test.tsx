@@ -27,6 +27,13 @@ beforeEach(() => {
       const path = apiPath.replace(/^\/api/, "");
       const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
       if (path === "/me") return json({ id: "u1", email: null, name: "Me", username: "me" });
+      if (path === "/orgs" && init?.method === "GET")
+        return json({
+          data: [
+            { id: "o1", slug: "me", name: "me", personal: true },
+            { id: "o2", slug: "acme", name: "acme", personal: false },
+          ],
+        });
       if (init?.method === "POST") {
         const body = JSON.parse(init.body as string);
         posts.push(body);
@@ -48,6 +55,25 @@ afterEach(() => {
 });
 
 describe("NewOrg", () => {
+  it("has the dashboard masthead, with every link pointing at the last org", async () => {
+    localStorage.setItem("loopway_last_org", "acme");
+    const { container } = render(<NewOrg />);
+    await screen.findByRole("button", { name: /Org: acme/ });
+    expect(container.querySelector(".post-nav")).toBeNull();
+    expect(container.querySelector(".dash-head")).toBeTruthy();
+    expect(screen.getByText("Log out")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Start an org" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Org: acme/ }));
+    const hrefs = Array.from(container.querySelectorAll("a[href]"), (a) => a.getAttribute("href")!).filter(
+      (h) => h !== "#",
+    );
+    expect(hrefs).toContain("/acme/bots/new");
+    expect(hrefs).toContain("/acme/bots");
+    expect(hrefs).toContain("/me");
+    for (const h of hrefs) expect(h).toMatch(/^\/(acme|me|orgs\/new)(\/|$)/);
+    expect(container.querySelector(".dash-nav .on")).toBeNull();
+  });
+
   it("shows a taken slug before submit and blocks it", async () => {
     render(<NewOrg />);
     fireEvent.change(screen.getByLabelText("Slug"), { target: { value: "taken" } });
