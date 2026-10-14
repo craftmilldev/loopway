@@ -25,7 +25,7 @@ beforeEach(() => {
   localStorage.setItem("loopway_token", "t");
   posts = [];
   postStatus = 201;
-  window.history.replaceState(null, "", "/dashboard/bots/b1/prompt");
+  window.history.replaceState(null, "", "/acme/bots/b1/prompt");
   vi.stubGlobal(
     "fetch",
     vi.fn(async (apiPath: string, init?: RequestInit) => {
@@ -92,7 +92,7 @@ describe("helpers", () => {
   });
 
   it("puts the prompt tab on its own path", () => {
-    expect(tabPath("b 1", "prompt")).toBe("/dashboard/bots/b%201/prompt");
+    expect(tabPath("b 1", "prompt")).toBe("/acme/bots/b%201/prompt");
   });
 });
 
@@ -108,7 +108,7 @@ describe("Prompt and rules tab", () => {
   });
 
   it("no longer edits the prompt on the Settings tab", async () => {
-    window.history.replaceState(null, "", "/dashboard/bots/b1?tab=settings");
+    window.history.replaceState(null, "", "/acme/bots/b1?tab=settings");
     render(<Bot id="b1" />);
     await screen.findByLabelText("Name");
     expect(screen.queryByLabelText("Prompt")).toBeNull();

@@ -18,7 +18,7 @@ export function Inbox({ id }: { id: string }) {
   const [messages, setMessages] = useState<InboxMessage[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   // The bots that read this inbox, and how far each has read.
-  const bots = lw.useList<lw.Bot>("/bots", !!me);
+  const bots = lw.useList<lw.Bot>(lw.inOrg("/bots"), !!me);
   const readers = (bots.data ?? []).filter((b) => b.inbox_ids.includes(id));
   // The list as last set, for the requests that finish after a render they started in.
   const listed = useRef<InboxMessage[] | null>(null);
@@ -142,7 +142,7 @@ function ReadMarkers({ readers, seq, newer }: { readers: lw.Bot[]; seq: number; 
     <>
       {here.map((b) => (
         <div key={b.id} className="read-marker">
-          <a href={"/dashboard/bots/" + b.id}>{b.name}</a> has read up to here (#{b.cursor})
+          <a href={lw.orgBase() + "/bots/" + b.id}>{b.name}</a> has read up to here (#{b.cursor})
         </div>
       ))}
     </>
@@ -382,7 +382,7 @@ function Settings({ inbox, onSaved }: { inbox: InboxInfo; onSaved: (inbox: Inbox
       return setError(await lw.message(r));
     }
     track("inbox_deleted");
-    location.assign("/dashboard/inboxes");
+    location.assign(lw.orgBase() + "/inboxes");
   }
 
   return (

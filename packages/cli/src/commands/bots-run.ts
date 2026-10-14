@@ -1,18 +1,23 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import type { LoopwayClient } from "../client.js";
 import { authedClient, type Context } from "../context.js";
 import { DEFAULTS, Dispatcher, type ThreadsOptions } from "../bots/dispatcher.js";
-import { ensureRunner } from "../bots/runner.js";
+import { ensureRunner, savedRunnerOrg } from "../bots/runner.js";
+import { resolveOrg } from "./orgs.js";
 import { showTui } from "../bots/tui.js";
 
 export interface RunBotsOptions extends ThreadsOptions {
+  /** The slug of the org to run bots for; remembered with the runner. */
+  org?: string;
   /** false with --no-tui; the TUI only shows in an interactive terminal either way. */
   tui?: boolean;
 }
 
-/** `loopway bots run`: run every bot on the account, handing each message to its thread's session, forever. */
+/** `loopway bots run`: run every bot of one org, handing each message to its thread's session, forever. */
 export async function runBots(ctx: Context, opts: RunBotsOptions) {
   const client = await authedClient(ctx);
-  const all = await client.listBots();
+  const runner = await ensureRunner(ctx, client, await runnerOrg(ctx, client, opts.org));
+  const all = (await client.listBots()).filter((b) => b.org_id === runner.org_id);
   const bots = all.filter((b) => b.prompt_version?.rules);
   for (const b of all)
     if (!b.prompt_version?.rules) {
@@ -26,7 +31,6 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     return;
   }
   const interval = opts.interval ?? DEFAULTS.interval;
-  const runner = await ensureRunner(ctx.configDir, client);
   const dispatcherOpts = {
     ...opts,
     ttl: opts.ttl ?? defaultTtl(interval),
@@ -64,6 +68,14 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
   // Quitting stops everything, as Ctrl-C does without the TUI: interrupt the whole process group so
   // the claude sessions this dispatcher started stop with it.
   process.kill(0, "SIGINT");
+}
+
+/** The org to run for: --org, else the one this machine's runner already has (if the user is still in it), else a pick. */
+async function runnerOrg(ctx: Context, client: LoopwayClient, flag: string | undefined): Promise<string> {
+  if (flag) return flag;
+  const saved = await savedRunnerOrg(ctx.configDir);
+  const member = saved && (await client.listOrgs()).some((o) => o.slug === saved);
+  return resolveOrg(ctx, client, member ? saved : undefined, "runner");
 }
 
 /**

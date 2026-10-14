@@ -324,6 +324,10 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
         "how long each bot lease lasts; it is renewed every poll (default 6 × --interval, at least 30; max 43200)",
       ).argParser(positiveInt),
     )
+    .option(
+      "--org <slug>",
+      "org whose bots to run (your only org by default; prompted for if you have several, then remembered). A runner belongs to one org: another --org starts a new runner",
+    )
     .option("--no-tui", "print a plain log instead of the full-screen view of threads and their transcripts")
     .action((opts) => runBots(ctx, opts));
 

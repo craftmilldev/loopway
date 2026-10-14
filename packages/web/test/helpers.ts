@@ -23,11 +23,16 @@ afterAll(() => db.close());
 const personalOrgs = new Map<string, string>();
 
 /**
- * Calls the API as `key`. Creating an inbox or bot needs an `org`; unless the body names one (or `noOrg` is set,
+ * Calls the API as `key`. Creating an inbox, bot or runner needs an `org`; unless the body names one (or `noOrg` is set,
  * to test its absence) the caller's personal org is filled in, so tests needn't repeat it.
  */
 export async function call(method: string, path: string, opts: { key?: string; body?: unknown; noOrg?: boolean } = {}) {
-  if (method === "POST" && (path === "/inboxes" || path === "/bots") && opts.key && !opts.noOrg) {
+  if (
+    method === "POST" &&
+    (path === "/inboxes" || path === "/bots" || path === "/runners") &&
+    opts.key &&
+    !opts.noOrg
+  ) {
     const body = opts.body as Record<string, unknown>;
     if (body && !("org" in body)) {
       if (!personalOrgs.has(opts.key)) {

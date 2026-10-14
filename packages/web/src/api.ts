@@ -307,7 +307,11 @@ export function createApi(opts: ApiOptions) {
   authed.route("/", eeRoutes(opts));
 
   /** The org a create names: 400 without one, 404 (as for any foreign entity) if the user isn't a member. */
-  async function createOrg(c: Context<Env>, kind: "inbox" | "bot", slug: string | undefined): Promise<store.Org> {
+  async function createOrg(
+    c: Context<Env>,
+    kind: "inbox" | "bot" | "runner",
+    slug: string | undefined,
+  ): Promise<store.Org> {
     if (!slug) {
       await metrics.capture(`${kind}_create_rejected`, c.var.user.id, { reason: "org_required" });
       throw new ApiError(400, "org_required", "org is required: the slug of the org to create it in");
@@ -320,10 +324,25 @@ export function createApi(opts: ApiOptions) {
     return org;
   }
 
+  /**
+   * The id of the org a list endpoint is narrowed to by `?org=<slug>`; undefined without it (all the user's orgs).
+   * A slug the user isn't a member of is a 404, the same whether or not the org exists.
+   */
+  async function listOrg(c: Context<Env>, endpoint: string): Promise<string | undefined> {
+    const slug = c.req.query("org");
+    if (slug === undefined) return undefined;
+    const org = await store.memberOrg(c.var.db, c.var.user.id, slug);
+    if (!org) {
+      await metrics.capture("org_filter_rejected", c.var.user.id, { endpoint, reason: "org_not_found" });
+      throw new ApiError(404, "not_found", "Org not found");
+    }
+    return org.id;
+  }
+
   // Inboxes
 
   authed.get("/inboxes", async (c) => {
-    const rows = await store.listInboxes(c.var.db, c.var.user.id);
+    const rows = await store.listInboxes(c.var.db, c.var.user.id, await listOrg(c, "inboxes"));
     return c.json({ data: rows.map((r) => serializeInbox(c, r)) });
   });
 
@@ -367,7 +386,13 @@ export function createApi(opts: ApiOptions) {
   // Registered before /inboxes/:inboxId, which would take "activity" for an id.
   authed.get("/inboxes/activity", async (c) => {
     const days = await activityDays(c, "inbox", "all");
-    const rows = await store.inboxActivity(c.var.db, c.var.user.id, days);
+    const rows = await store.inboxActivity(
+      c.var.db,
+      c.var.user.id,
+      days,
+      undefined,
+      await listOrg(c, "inbox_activity"),
+    );
     await metrics.capture("inbox_activity_viewed", c.var.user.id, { scope: "all", days, inboxes: rows.length });
     return c.json({ data: rows.map(serializeInboxActivity) });
   });
@@ -439,15 +464,29 @@ export function createApi(opts: ApiOptions) {
   // Runners
 
   authed.get("/runners", async (c) => {
-    const rows = await store.listRunners(c.var.db, c.var.user.id);
+    const rows = await store.listRunners(c.var.db, c.var.user.id, await listOrg(c, "runners"));
     return c.json({ data: rows.map(serializeRunner) });
   });
 
   // The CLI makes the id and calls this on startup; it is safe to repeat.
   authed.post("/runners", async (c) => {
-    const input = z.object({ id: runnerId, name: z.string().min(1).max(200) }).parse(await jsonBody(c));
-    const runner = await store.upsertRunner(c.var.db, c.var.user.id, input.id, input.name);
-    if (!runner) throw new ApiError(409, "runner_exists", "That runner id belongs to another user");
+    const input = z
+      .object({ org: z.string().optional(), id: runnerId, name: z.string().min(1).max(200) })
+      .parse(await jsonBody(c));
+    const org = await createOrg(c, "runner", input.org);
+    const runner = await store.upsertRunner(c.var.db, c.var.user.id, org.id, input.id, input.name);
+    if (!runner) {
+      // Only a runner of one of the user's own orgs can be told apart from one that isn't theirs.
+      const existing = await store.getRunner(c.var.db, c.var.user.id, input.id);
+      await metrics.capture("runner_create_rejected", c.var.user.id, {
+        reason: existing ? "org_mismatch" : "id_taken",
+      });
+      if (existing)
+        throw new ApiError(409, "runner_org_mismatch", "That runner belongs to another org; it can't be moved", {
+          org: existing.org_slug,
+        });
+      throw new ApiError(409, "runner_exists", "That runner id belongs to another user");
+    }
     return c.json(serializeRunner(runner));
   });
 
@@ -517,13 +556,13 @@ export function createApi(opts: ApiOptions) {
   }
 
   authed.get("/bots", async (c) => {
-    const rows = await store.listBots(c.var.db, c.var.user.id);
+    const rows = await store.listBots(c.var.db, c.var.user.id, await listOrg(c, "bots"));
     return c.json({ data: rows.map(serializeBot) });
   });
 
   authed.get("/bots/activity", async (c) => {
     const days = await activityDays(c, "bot", "all");
-    const rows = await store.botActivity(c.var.db, c.var.user.id, days);
+    const rows = await store.botActivity(c.var.db, c.var.user.id, days, undefined, await listOrg(c, "bot_activity"));
     await metrics.capture("bot_activity_viewed", c.var.user.id, { scope: "all", days, bots: rows.length });
     return c.json({ data: rows.map(serializeActivity) });
   });
@@ -543,7 +582,13 @@ export function createApi(opts: ApiOptions) {
       await metrics.capture("thread_events_rejected", c.var.user.id, { reason: "invalid_query" });
       throw q.error;
     }
-    const rows = await store.listThreadEvents(c.var.db, c.var.user.id, q.data.limit + 1, q.data.before);
+    const rows = await store.listThreadEvents(
+      c.var.db,
+      c.var.user.id,
+      q.data.limit + 1,
+      q.data.before,
+      await listOrg(c, "events"),
+    );
     const page = rows.slice(0, q.data.limit);
     const newest = await store.threadNewestEvents(c.var.db, [...new Set(page.map((e) => e.thread_id))], TITLE_LOOKBACK);
     const titles = new Map(
@@ -713,7 +758,7 @@ export function createApi(opts: ApiOptions) {
     const thread = await existingThread(c, bot);
     const { lease_token } = z.object({ lease_token: leaseToken }).parse(await jsonBody(c));
     const runner = await liveRunner(c, lease_token);
-    requireSameOrg(bot, runner);
+    await requireSameOrg(c, bot, runner, "thread_claim");
     if (thread.runner_id && thread.runner_id !== runner.id) throw threadOwned(thread);
     const claimed = await store.claimThread(c.var.db, c.var.user.id, bot.id, thread.id, lease_token);
     if (!claimed) throw runnerNotLeased();
@@ -864,14 +909,15 @@ export function createApi(opts: ApiOptions) {
   }
 
   /** A bot only runs on a runner of its own org: 400 otherwise. */
-  function requireSameOrg(bot: store.Bot, runner: store.Runner) {
+  async function requireSameOrg(c: Context<Env>, bot: store.Bot, runner: store.Runner, action: string) {
     if (runner.org_id === bot.org_id) return;
+    await metrics.capture("runner_org_mismatch_rejected", c.var.user.id, { action });
     throw new ApiError(400, "runner_org_mismatch", "A bot can only use a runner from its own org");
   }
 
   async function sameOrgRunner(c: Context<Env>, bot: store.Bot, id: string): Promise<store.Runner> {
     const runner = await ownedRunner(c, id);
-    requireSameOrg(bot, runner);
+    await requireSameOrg(c, bot, runner, "bot_lease");
     return runner;
   }
 
@@ -996,6 +1042,7 @@ function serializeRunner(r: store.Runner) {
   return {
     id: r.id,
     org_id: r.org_id,
+    org: r.org_slug,
     name: r.name,
     created_at: iso(r.created_at),
     last_seen_at: iso(r.last_seen_at),

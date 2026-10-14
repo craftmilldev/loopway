@@ -19,7 +19,7 @@ const MODELS = lw.BOT_MODELS.filter((m) => m in MODEL_USE);
 /** How often steps 4 and 5 look at the bot again, in milliseconds. */
 const POLL = 3000;
 
-/** `/dashboard/bots/new`: the guided flow from a source to a bot's first thread. `?bot=<id>` resumes a created bot. */
+/** `/<org>/bots/new`: the guided flow from a source to a bot's first thread. `?bot=<id>` resumes a created bot. */
 export function NewBot() {
   const me = lw.useMe();
   const ready = !!me;
@@ -103,7 +103,7 @@ export function NewBot() {
               back={() => setStep(2)}
               next={() => setStep(4)}
               created={(b) => {
-                history.replaceState(null, "", "/dashboard/bots/new?bot=" + encodeURIComponent(b.id));
+                history.replaceState(null, "", lw.orgBase() + "/bots/new?bot=" + encodeURIComponent(b.id));
                 setBotId(b.id);
                 setStep(4);
               }}
@@ -455,7 +455,7 @@ function FirstRun({ botId }: { botId: string }) {
         <p>
           <a
             className="btn"
-            href={`/dashboard/bots/${encodeURIComponent(botId)}/threads/${encodeURIComponent(first.id)}`}
+            href={`${lw.orgBase()}/bots/${encodeURIComponent(botId)}/threads/${encodeURIComponent(first.id)}`}
           >
             Open the first thread
           </a>
@@ -466,7 +466,7 @@ function FirstRun({ botId }: { botId: string }) {
         </p>
       )}
       <p>
-        <a href={`/dashboard/bots/${encodeURIComponent(botId)}`}>Go to the bot's page</a>
+        <a href={`${lw.orgBase()}/bots/${encodeURIComponent(botId)}`}>Go to the bot's page</a>
       </p>
     </section>
   );

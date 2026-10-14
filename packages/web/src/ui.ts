@@ -44,6 +44,18 @@ const BUNDLE = {
   "/app.css": { url: new URL("../public/app.css", import.meta.url), type: "text/css; charset=utf-8" },
 };
 
+/** The pages of an org. Whether the org exists, and the user is in it, is decided in the browser. */
+const ORG_PAGES = [
+  "/:org",
+  "/:org/bots",
+  "/:org/bots/new",
+  "/:org/bots/:botId",
+  "/:org/bots/:botId/prompt",
+  "/:org/bots/:botId/threads/:threadId",
+  "/:org/inboxes",
+  "/:org/inboxes/:inboxId",
+];
+
 export interface WebOptions {
   /** PostHog project key for the browser. Unset, the UI sends no metrics. */
   posthogKey?: string;
@@ -54,6 +66,7 @@ export interface WebOptions {
 export function createWeb(opts: WebOptions = {}) {
   const app = new Hono();
   const html = shell(posthogMeta(opts.posthogKey, opts.posthogUiHost));
+  // The signed-in pages live under /<org-slug>; /dashboard/... are their old addresses, which the page redirects.
   const pages = [
     ...MARKETING_PATHS,
     "/login",
@@ -76,5 +89,8 @@ export function createWeb(opts: WebOptions = {}) {
       return c.body(body, 200, { "content-type": type });
     });
   }
+  // Registered after the fixed paths above, which win over an org of the same name (RESERVED_SLUGS keeps orgs off
+  // them). This app is mounted before the API, so /api/... is passed on to it.
+  for (const path of ORG_PAGES) app.get(path, (c, next) => (c.req.param("org") === "api" ? next() : c.html(html)));
   return app;
 }

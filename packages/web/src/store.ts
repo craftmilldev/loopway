@@ -249,8 +249,12 @@ export async function createInbox(
 const inOrgOf = (col: string, p: string) =>
   `${col} IN (SELECT m.org_id FROM loopway.org_members m WHERE m.user_id = ${p}::uuid)`;
 
-export async function listInboxes(db: Db, userId: string): Promise<Inbox[]> {
-  return db.query<Inbox>(`SELECT * FROM loopway.inboxes WHERE ${inOrgOf("org_id", "$1")} ORDER BY id`, [userId]);
+/** The user's inboxes, or only those of `orgId` (an org the caller has checked the user is a member of). */
+export async function listInboxes(db: Db, userId: string, orgId?: string): Promise<Inbox[]> {
+  return db.query<Inbox>(
+    `SELECT * FROM loopway.inboxes WHERE ${inOrgOf("org_id", "$1")} AND ($2::uuid IS NULL OR org_id = $2::uuid) ORDER BY id`,
+    [userId, orgId ?? null],
+  );
 }
 
 /** Without userId: for webhook ingestion. With userId: only if the user is a member of its org. */
@@ -297,28 +301,35 @@ export interface InboxActivity {
 }
 
 /** What the user's inboxes received in the last `days` UTC days (today included), for one inbox or all. */
-export async function inboxActivity(db: Db, userId: string, days: number, inboxId?: string): Promise<InboxActivity[]> {
+export async function inboxActivity(
+  db: Db,
+  userId: string,
+  days: number,
+  inboxId?: string,
+  orgId?: string,
+): Promise<InboxActivity[]> {
   const dates = windowDates(days);
   const since = dates[0] + "T00:00:00Z";
-  const scope = `${inOrgOf("i.org_id", "$1")} AND ($2::uuid IS NULL OR i.id = $2::uuid)`;
+  const scope = `${inOrgOf("i.org_id", "$1")} AND ($2::uuid IS NULL OR i.id = $2::uuid) AND ($3::uuid IS NULL OR i.org_id = $3::uuid)`;
   const [inboxes, perDay, totals] = await Promise.all([
     db.query<{ id: string }>(`SELECT i.id FROM loopway.inboxes i WHERE ${scope} ORDER BY i.id`, [
       userId,
       inboxId ?? null,
+      orgId ?? null,
     ]),
     db.query<{ inbox_id: string; day: string; n: number }>(
       `SELECT m.inbox_id, to_char(m.received_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, count(*)::int AS n
        FROM loopway.messages m JOIN loopway.inboxes i ON i.id = m.inbox_id
-       WHERE ${scope} AND m.received_at >= $3::timestamptz
+       WHERE ${scope} AND m.received_at >= $4::timestamptz
        GROUP BY 1, 2`,
-      [userId, inboxId ?? null, since],
+      [userId, inboxId ?? null, orgId ?? null, since],
     ),
     db.query<{ inbox_id: string; messages: number; last: Date }>(
       `SELECT m.inbox_id, count(*)::int AS messages, max(m.received_at) AS last
        FROM loopway.messages m JOIN loopway.inboxes i ON i.id = m.inbox_id
        WHERE ${scope}
        GROUP BY 1`,
-      [userId, inboxId ?? null],
+      [userId, inboxId ?? null, orgId ?? null],
     ),
   ]);
   return inboxes.map(({ id }) => {
@@ -485,10 +496,12 @@ export async function createBot(
 
 // Deleted bots keep their row (deleted_at is set), and nothing reads them.
 
-export async function listBots(db: Db, userId: string): Promise<Bot[]> {
+/** The user's bots, or only those of `orgId` (an org the caller has checked the user is a member of). */
+export async function listBots(db: Db, userId: string, orgId?: string): Promise<Bot[]> {
   return db.query<Bot>(
-    `SELECT ${BOT_COLS} FROM loopway.bots b WHERE ${inOrgOf("b.org_id", "$1")} AND b.deleted_at IS NULL ORDER BY b.id`,
-    [userId],
+    `SELECT ${BOT_COLS} FROM loopway.bots b
+     WHERE ${inOrgOf("b.org_id", "$1")} AND ($2::uuid IS NULL OR b.org_id = $2::uuid) AND b.deleted_at IS NULL ORDER BY b.id`,
+    [userId, orgId ?? null],
   );
 }
 
@@ -528,28 +541,38 @@ export interface BotActivity {
  * What the user's bots delivered in the last `days` UTC days (today included), for one bot or all. A run is the
  * messages of one thread delivered at the same instant.
  */
-export async function botActivity(db: Db, userId: string, days: number, botId?: string): Promise<BotActivity[]> {
+export async function botActivity(
+  db: Db,
+  userId: string,
+  days: number,
+  botId?: string,
+  orgId?: string,
+): Promise<BotActivity[]> {
   const dates = windowDates(days);
   const since = dates[0] + "T00:00:00Z";
-  const scope = `${inOrgOf("b.org_id", "$1")} AND b.deleted_at IS NULL AND ($2::uuid IS NULL OR b.id = $2::uuid)`;
+  const scope = `${inOrgOf("b.org_id", "$1")} AND b.deleted_at IS NULL AND ($2::uuid IS NULL OR b.id = $2::uuid) AND ($3::uuid IS NULL OR b.org_id = $3::uuid)`;
   const [bots, perDay, totals] = await Promise.all([
-    db.query<{ id: string }>(`SELECT b.id FROM loopway.bots b WHERE ${scope} ORDER BY b.id`, [userId, botId ?? null]),
+    db.query<{ id: string }>(`SELECT b.id FROM loopway.bots b WHERE ${scope} ORDER BY b.id`, [
+      userId,
+      botId ?? null,
+      orgId ?? null,
+    ]),
     db.query<{ bot_id: string; day: string; n: number }>(
       `SELECT tm.bot_id, to_char(tm.delivered_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, count(*)::int AS n
        FROM loopway.thread_messages tm JOIN loopway.bots b ON b.id = tm.bot_id
-       WHERE ${scope} AND tm.delivered_at >= $3::timestamptz
+       WHERE ${scope} AND tm.delivered_at >= $4::timestamptz
        GROUP BY 1, 2`,
-      [userId, botId ?? null, since],
+      [userId, botId ?? null, orgId ?? null, since],
     ),
     db.query<{ bot_id: string; last: Date; runs: number; median: number | null }>(
       `SELECT tm.bot_id, max(tm.delivered_at) AS last,
-              count(DISTINCT (tm.thread_id, tm.delivered_at)) FILTER (WHERE tm.delivered_at >= $3::timestamptz)::int AS runs,
+              count(DISTINCT (tm.thread_id, tm.delivered_at)) FILTER (WHERE tm.delivered_at >= $4::timestamptz)::int AS runs,
               (percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM tm.delivered_at - tm.assigned_at))
-                 FILTER (WHERE tm.delivered_at >= $3::timestamptz))::float8 AS median
+                 FILTER (WHERE tm.delivered_at >= $4::timestamptz))::float8 AS median
        FROM loopway.thread_messages tm JOIN loopway.bots b ON b.id = tm.bot_id
        WHERE ${scope} AND tm.delivered_at IS NOT NULL
        GROUP BY 1`,
-      [userId, botId ?? null, since],
+      [userId, botId ?? null, orgId ?? null, since],
     ),
   ]);
   return bots.map(({ id }) => {
@@ -700,6 +723,8 @@ export interface Runner {
   id: string;
   user_id: string;
   org_id: string;
+  /** The slug of its org. */
+  org_slug: string;
   name: string;
   /** The runner's lease: see leaseRunner(). */
   lock_token: string | null;
@@ -713,19 +738,29 @@ export interface Runner {
 }
 
 const RUNNER_COLS = `
-  r.id, r.user_id, r.org_id, r.name, r.lock_token, r.locked_until, r.created_at, r.last_seen_at,
+  r.id, r.user_id, r.org_id, (SELECT o.slug FROM loopway.orgs o WHERE o.id = r.org_id) AS org_slug,
+  r.name, r.lock_token, r.locked_until, r.created_at, r.last_seen_at,
   COALESCE((SELECT jsonb_agg(jsonb_build_object('id', b.id, 'name', b.name) ORDER BY b.id) FROM loopway.bots b
             WHERE b.runner_id = r.id AND b.deleted_at IS NULL AND b.locked_until > now()), '[]'::jsonb) AS bots,
   (SELECT count(*)::int FROM loopway.threads t WHERE t.runner_id = r.id) AS threads`;
 
-/** Registers the runner, or renames it and notes it was seen. Undefined if the id is another user's. */
-export async function upsertRunner(db: Db, userId: string, id: string, name: string): Promise<Runner | undefined> {
+/**
+ * Registers the runner in the org, or renames it and notes it was seen. A runner keeps its org: undefined if the id
+ * is already in use by a runner of another org (or one the user can't see).
+ */
+export async function upsertRunner(
+  db: Db,
+  userId: string,
+  orgId: string,
+  id: string,
+  name: string,
+): Promise<Runner | undefined> {
   const rows = await db.query<{ id: string }>(
     `INSERT INTO loopway.runners (id, user_id, org_id, name) VALUES ($1, $2, $4, $3)
      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, last_seen_at = now()
-     WHERE ${inOrgOf("loopway.runners.org_id", "EXCLUDED.user_id")}
+     WHERE loopway.runners.org_id = EXCLUDED.org_id AND ${inOrgOf("loopway.runners.org_id", "EXCLUDED.user_id")}
      RETURNING id`,
-    [id, userId, name, await personalOrgId(db, userId)],
+    [id, userId, name, orgId],
   );
   return rows.length ? getRunner(db, userId, id) : undefined;
 }
@@ -738,10 +773,11 @@ export async function getRunner(db: Db, userId: string, id: string): Promise<Run
   return row;
 }
 
-export async function listRunners(db: Db, userId: string): Promise<Runner[]> {
+export async function listRunners(db: Db, userId: string, orgId?: string): Promise<Runner[]> {
   return db.query<Runner>(
-    `SELECT ${RUNNER_COLS} FROM loopway.runners r WHERE ${inOrgOf("r.org_id", "$1")} ORDER BY r.created_at, r.id`,
-    [userId],
+    `SELECT ${RUNNER_COLS} FROM loopway.runners r
+     WHERE ${inOrgOf("r.org_id", "$1")} AND ($2::uuid IS NULL OR r.org_id = $2::uuid) ORDER BY r.created_at, r.id`,
+    [userId, orgId ?? null],
   );
 }
 
@@ -1023,18 +1059,24 @@ export interface ThreadEvent {
 }
 
 /** The user's thread events, newest first, after the event `before` (an id from a previous page) if given. */
-export async function listThreadEvents(db: Db, userId: string, limit: number, before?: string): Promise<ThreadEvent[]> {
+export async function listThreadEvents(
+  db: Db,
+  userId: string,
+  limit: number,
+  before?: string,
+  orgId?: string,
+): Promise<ThreadEvent[]> {
   return db.query<ThreadEvent>(
     `SELECT e.id::text, e.kind, e.at, e.bot_id, b.name AS bot_name, e.thread_id,
             COALESCE((SELECT jsonb_agg(k.subject ORDER BY k.subject) FROM loopway.thread_subjects k
                       WHERE k.thread_id = e.thread_id), '[]'::jsonb) AS subjects
      FROM loopway.thread_events e JOIN loopway.bots b ON b.id = e.bot_id
-     WHERE ${inOrgOf("b.org_id", "$1")} AND b.deleted_at IS NULL
+     WHERE ${inOrgOf("b.org_id", "$1")} AND b.deleted_at IS NULL AND ($4::uuid IS NULL OR b.org_id = $4::uuid)
        AND ($3::bigint IS NULL
             OR (e.at, e.id) < (SELECT p.at, p.id FROM loopway.thread_events p JOIN loopway.bots pb ON pb.id = p.bot_id
                                 WHERE p.id = $3::bigint AND ${inOrgOf("pb.org_id", "$1")}))
      ORDER BY e.at DESC, e.id DESC LIMIT $2`,
-    [userId, limit, before ?? null],
+    [userId, limit, before ?? null, orgId ?? null],
   );
 }
 

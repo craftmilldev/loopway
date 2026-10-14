@@ -12,12 +12,12 @@ export function eventsText(events: string[] | undefined) {
   return !events || events.includes("*") ? "every event" : plural(events.length, "event type");
 }
 
-/** `/dashboard/inboxes`: what each inbox receives, who reads it, and a way to its page. */
+/** `/<org>/inboxes`: what each inbox receives, who reads it, and a way to its page. */
 export function Inboxes() {
   const me = lw.useMe();
   const ready = !!me;
-  const inboxes = lw.useList<Inbox>("/inboxes", ready);
-  const bots = lw.useList<lw.Bot>("/bots", ready);
+  const inboxes = lw.useList<Inbox>(lw.inOrg("/inboxes"), ready);
+  const bots = lw.useList<lw.Bot>(lw.inOrg("/bots"), ready);
   lw.usePoll(inboxes.reload, ready);
   lw.usePoll(bots.reload, ready);
   const sources = lw.useSources();
@@ -27,7 +27,7 @@ export function Inboxes() {
 
   // Every inbox's messages, in one call.
   const loadActivity = async () => {
-    const r = await lw.api("/inboxes/activity?days=" + BAR_DAYS);
+    const r = await lw.api(lw.inOrg("/inboxes/activity?days=" + BAR_DAYS));
     if (!r.ok) {
       track("inboxes_load_failed", { resource: "activity", status: r.status });
       return false;
@@ -65,7 +65,7 @@ export function Inboxes() {
           <button className="btn btn-md btn-quiet" type="button" onClick={() => setCreating(!creating)}>
             New inbox
           </button>
-          <a className="btn btn-md" href="/dashboard/bots/new" onClick={() => track("inboxes_connect_clicked")}>
+          <a className="btn btn-md" href={lw.orgBase() + "/bots/new"} onClick={() => track("inboxes_connect_clicked")}>
             Connect a source
           </a>
         </div>
@@ -82,7 +82,7 @@ export function Inboxes() {
 
       {rows?.length === 0 && (
         <p className="ov-empty">
-          No inboxes yet. <a href="/dashboard/bots/new">Connect a source</a> to start.
+          No inboxes yet. <a href={lw.orgBase() + "/bots/new"}>Connect a source</a> to start.
         </p>
       )}
 
@@ -107,7 +107,7 @@ export function Inboxes() {
                 return (
                   <tr key={i.id}>
                     <td>
-                      <a className="bot-link" href={"/dashboard/inboxes/" + i.id}>
+                      <a className="bot-link" href={lw.orgBase() + "/inboxes/" + i.id}>
                         {i.name}
                       </a>
                       <div className="lbl small">
@@ -123,7 +123,7 @@ export function Inboxes() {
                         readers.map((b, n) => (
                           <span key={b.id}>
                             {n > 0 && ", "}
-                            <a href={"/dashboard/bots/" + b.id}>{b.name}</a>
+                            <a href={lw.orgBase() + "/bots/" + b.id}>{b.name}</a>
                           </span>
                         ))
                       ) : (
