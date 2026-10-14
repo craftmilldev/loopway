@@ -22,8 +22,10 @@ const reset = process.env.MIGRATE_RESET === "drop-all-data";
 if (process.env.MIGRATE_RESET && !reset) {
   throw new Error(`MIGRATE_RESET must be "drop-all-data" or unset, got "${process.env.MIGRATE_RESET}".`);
 }
-if (reset && process.env.VERCEL_ENV === "production") {
-  throw new Error("MIGRATE_RESET=drop-all-data is set on the production environment. Refusing to drop its data.");
+if (reset && process.env.VERCEL_ENV !== "preview") {
+  throw new Error(
+    `MIGRATE_RESET=drop-all-data only runs on Vercel's Preview environment (VERCEL_ENV=preview), not "${process.env.VERCEL_ENV ?? "unset"}". Refusing to drop data.`,
+  );
 }
 if (reset) console.log("MIGRATE_RESET=drop-all-data: dropping the loopway schema before migrating.");
 
