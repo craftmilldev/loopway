@@ -59,7 +59,8 @@ describe("OrgGate", () => {
     window.history.replaceState(null, "", "/craftmill/bots");
     render(<OrgGate>the page</OrgGate>);
     expect(await screen.findByText("the page")).toBeTruthy();
-    expect(localStorage.getItem("loopway_last_org")).toBe("craftmill");
+    // OrgGate remembers the org in a passive effect, which can run after the page has appeared.
+    await waitFor(() => expect(localStorage.getItem("loopway_last_org")).toBe("craftmill"));
   });
 
   it("shows the same not-found page for an org that doesn't exist and one the user isn't in", async () => {
