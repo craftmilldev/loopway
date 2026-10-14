@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { migrate } from "../src/db/index.js";
 import { openTestDb } from "../src/db/testing.js";
-import { call, db, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
+import { call, db, newInbox, newUser, newUserWithoutOrg, prPayload, sendGithub } from "./helpers.js";
 
 const rows = <T>(sql: string, params: unknown[] = []) => db.query<T>(sql, params);
 
@@ -55,28 +55,33 @@ describe("org constraints", () => {
     return id;
   }
 
+  const fkViolation = { code: "23503" };
+
   it("rejects linking a bot and an inbox from different orgs", async () => {
     const key = await newUser();
-    const inbox = await newInbox(key);
-    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [] } })).body;
-    await rows(`UPDATE loopway.inboxes SET org_id = $2 WHERE id = $1`, [inbox.id, await otherOrg()]);
+    const mine = await newInbox(key);
+    const moved = await newInbox(key);
+    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [mine.id] } })).body;
+    await rows(`UPDATE loopway.inboxes SET org_id = $2 WHERE id = $1`, [moved.id, await otherOrg()]);
     await expect(
       rows(
         `INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id, org_id) SELECT id, $2, user_id, org_id FROM loopway.bots WHERE id = $1`,
-        [bot.id, inbox.id],
+        [bot.id, moved.id],
       ),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject(fkViolation);
   });
 
   it("rejects a thread whose org differs from its bot's", async () => {
     const key = await newUser();
-    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [] } })).body;
+    const inbox = await newInbox(key);
+    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [inbox.id] } }))
+      .body;
     await expect(
       rows(
         `INSERT INTO loopway.threads (id, bot_id, user_id, org_id) SELECT $2, id, user_id, $3 FROM loopway.bots WHERE id = $1`,
         [bot.id, randomUUID(), await otherOrg()],
       ),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject(fkViolation);
   });
 });
 
@@ -196,5 +201,18 @@ describe("inboxes across orgs", () => {
     const patch = await call("PATCH", `/bots/${bot.id}`, { key, body: { inbox_ids: [b.id, a.id] } });
     expect([patch.status, patch.body.error.code]).toEqual([400, "inbox_org_mismatch"]);
     expect((await call("PATCH", `/bots/${bot.id}`, { key, body: { inbox_ids: [b.id] } })).status).toBe(200);
+  });
+});
+
+describe("before a username is chosen", () => {
+  it("answers 403 username_required for inboxes and runners, and works after", async () => {
+    const key = await newUserWithoutOrg();
+    const inbox = await call("POST", "/inboxes", { key, body: { name: "gh", source_type: "github" } });
+    expect([inbox.status, inbox.body.error.code]).toEqual([403, "username_required"]);
+    const runner = await call("POST", "/runners", { key, body: { id: randomUUID(), name: "laptop" } });
+    expect([runner.status, runner.body.error.code]).toEqual([403, "username_required"]);
+
+    expect((await call("PATCH", "/me/username", { key, body: { username: "now-named" } })).status).toBe(200);
+    expect((await call("POST", "/inboxes", { key, body: { name: "gh", source_type: "github" } })).status).toBe(201);
   });
 });

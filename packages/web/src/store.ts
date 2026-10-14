@@ -1,6 +1,7 @@
 import type { BotRule } from "@loopway/rules";
 import type { CloudEvent } from "./cloudevents.js";
 import type { Db } from "./db/index.js";
+import { ApiError } from "./http.js";
 import { slugProblem, type SlugProblem } from "./slugs.js";
 import { newLockToken, newLoginCode, normalizeLoginCode, safeEqual, sha256, uuidv7 } from "./ids.js";
 
@@ -141,10 +142,13 @@ export async function setUsername(
   }
 }
 
-/** The org new things are written into: the user's personal org, which every user has (signup makes it). */
+/**
+ * The org new things are written into: the user's personal org, which choosing a username makes. Until then there is
+ * none, and nothing can be created.
+ */
 export async function personalOrgId(db: Q, userId: string): Promise<string> {
   const [org] = await db.query<{ id: string }>(`SELECT id FROM loopway.orgs WHERE personal_user_id = $1`, [userId]);
-  if (!org) throw new Error(`User ${userId} has no personal org`);
+  if (!org) throw new ApiError(403, "username_required", "Choose a username before creating anything");
   return org.id;
 }
 
