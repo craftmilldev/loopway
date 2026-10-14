@@ -25,6 +25,7 @@ const offline = runner({
 const idle = runner({ id: "r3", name: "spare", bots: [], threads: 0 });
 
 let runners: object[];
+let writeText: ReturnType<typeof vi.fn>;
 const thread = (runner_id: string) => ({
   id: "t",
   status: "active",
@@ -50,7 +51,8 @@ beforeEach(() => {
       return json({ data: [] });
     }),
   );
-  Object.assign(navigator, { clipboard: { writeText: vi.fn(async () => {}) } });
+  writeText = vi.fn(async () => {});
+  Object.assign(navigator, { clipboard: { writeText } });
 });
 afterEach(() => {
   cleanup();
@@ -64,7 +66,7 @@ describe("Runners page", () => {
     expect(await screen.findByText("No runners yet.")).toBeTruthy();
     expect(screen.getByText(/Nothing is running your bots/)).toBeTruthy();
     fireEvent.click(screen.getAllByText("Copy")[2]!);
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith("cd ~/code/your-repo && loopway bots run");
+    expect(writeText).toHaveBeenCalledWith("cd ~/code/your-repo && loopway bots run");
     expect(screen.queryByRole("table")).toBeNull();
   });
 
