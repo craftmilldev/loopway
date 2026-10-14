@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { Hono } from "hono";
 import { MARKETING_PATHS } from "./marketing.js";
+import { ANONYMOUS, noopMetrics, type Metrics } from "./metrics.js";
 
 // The web UI is a React app in client/ that talks to the JSON API on the same origin. scripts/client.ts bundles it
 // into public/app.js and public/app.css. This module returns the HTML shell that loads the bundle, and serves the
@@ -39,6 +40,9 @@ function posthogMeta(key: string | undefined, uiHost: string | undefined) {
   return `<meta name="posthog-key" content="${escapeAttr(key)}">${ui}`;
 }
 
+// For tools like Codex and Claude Code to learn about loopway (https://llmstxt.org). The URL is literal for file tracing.
+const LLMS_TXT = new URL("../content/llms.txt", import.meta.url);
+
 const BUNDLE = {
   "/app.js": { url: new URL("../public/app.js", import.meta.url), type: "text/javascript; charset=utf-8" },
   "/app.css": { url: new URL("../public/app.css", import.meta.url), type: "text/css; charset=utf-8" },
@@ -61,10 +65,13 @@ export interface WebOptions {
   posthogKey?: string;
   /** Where PostHog's own UI lives, for links from the browser. Optional. */
   posthogUiHost?: string;
+  /** Product metrics. Defaults to recording nothing. */
+  metrics?: Metrics;
 }
 
 export function createWeb(opts: WebOptions = {}) {
   const app = new Hono();
+  const metrics = opts.metrics ?? noopMetrics;
   const html = shell(posthogMeta(opts.posthogKey, opts.posthogUiHost));
   // The signed-in pages live under /<org-slug>; /dashboard/... are their old addresses, which the page redirects.
   const pages = [
@@ -83,6 +90,15 @@ export function createWeb(opts: WebOptions = {}) {
   for (const path of pages) app.get(path, (c) => c.html(html));
   // The inbox page used to live at /dashboard/<id>.
   app.get("/dashboard/:inboxId", (c) => c.redirect("/dashboard/inboxes/" + c.req.param("inboxId")));
+  app.get("/llms.txt", async (c) => {
+    const body = await readFile(LLMS_TXT, "utf8").catch(() => undefined);
+    if (body === undefined) {
+      await metrics.capture("llms_txt_missing", ANONYMOUS);
+      return c.notFound();
+    }
+    await metrics.capture("llms_txt_served", ANONYMOUS);
+    return c.body(body, 200, { "content-type": "text/plain; charset=utf-8" });
+  });
   for (const [path, { url, type }] of Object.entries(BUNDLE)) {
     app.get(path, async (c) => {
       const body = await readFile(url).catch(() => undefined);
