@@ -83,7 +83,7 @@ export function DashLayout({
             <a href="#" onClick={out}>
               Log out
             </a>
-            {(!orgless || slug) && (
+            {(!orgless || slug !== "") && (
               <a className="btn btn-md" href={base + "/bots/new"}>
                 New bot
               </a>
