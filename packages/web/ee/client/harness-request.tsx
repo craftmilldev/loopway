@@ -30,6 +30,12 @@ export function HarnessRequest() {
           maxLength={500}
           placeholder="https://"
           value={url}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (url) void send();
+            }
+          }}
           onChange={(e) => {
             setUrl(e.target.value);
             setRequested(false);

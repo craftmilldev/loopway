@@ -96,7 +96,7 @@ describe("source requests", () => {
     });
   });
 
-  it("lists harnesses and defaults a new bot to Claude Code", async () => {
+  it("lists harnesses, and 404s requests where they are off", async () => {
     const key = await newUser();
     const list = await call("GET", "/harnesses", { key });
     expect(list.body.data).toEqual([{ id: "claude-code", label: "Claude Code" }]);

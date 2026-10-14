@@ -118,6 +118,18 @@ describe("bots", () => {
     ]);
   const seqs = (r: { body: { data: { seq: number }[] } }) => r.body.data.map((e) => e.seq);
 
+  it("defaults a bot's harness to Claude Code and rejects unknown ones", async () => {
+    const key = await newUser();
+    const a = await newInbox(key);
+    const body = { name: "h", model: "sonnet", inbox_ids: [a.id] };
+    const bot = await call("POST", "/bots", { key, body });
+    expect(bot.status).toBe(201);
+    expect(bot.body.harness).toBe("claude-code");
+    expect((await call("GET", `/bots/${bot.body.id}`, { key })).body.harness).toBe("claude-code");
+    expect((await call("POST", "/bots", { key, body: { ...body, harness: "claude-code" } })).status).toBe(201);
+    expect((await call("POST", "/bots", { key, body: { ...body, harness: "nope" } })).status).toBe(400);
+  });
+
   it("versions a bot's prompt", async () => {
     const key = await newUser();
     const a = await newInbox(key);
