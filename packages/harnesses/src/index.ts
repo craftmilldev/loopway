@@ -18,4 +18,3 @@ export const runHarness: RunAgent = (run: AgentRun) => getHarness(run.harness).r
 export { Harness } from "./harness.js";
 export type { Launch } from "./harness.js";
 export type { AgentRun, RunAgent, RunOutcome, RunWatch } from "./agent.js";
-export { LIMIT_FALLBACK_MS, LimitWatch } from "./claude-watch.js";

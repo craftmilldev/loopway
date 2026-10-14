@@ -13,7 +13,7 @@ import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { LoopwayClient, type Bot, type Message } from "../src/client.js";
 import { checkRules, route as routeWith, type BotRule } from "@loopway/rules";
-import { LIMIT_FALLBACK_MS, LimitWatch, type AgentRun, type RunOutcome } from "@loopway/harnesses";
+import { getHarness, type AgentRun, type RunOutcome } from "@loopway/harnesses";
 import { API_ERROR_BACKOFF_MS, Dispatcher, NETWORK_ERROR_MAX_BACKOFF_MS } from "../src/bots/dispatcher.js";
 import { defaultTtl } from "../src/commands/bots-run.js";
 import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
@@ -1163,40 +1163,6 @@ describe("threads", () => {
     await finish();
   });
 
-  it("LimitWatch: sees our message echoed; a rejected rate_limit_event plus a usage_limit_reached result say when to retry", () => {
-    const now = 1_700_000_000_000;
-    const rejected = JSON.stringify({
-      type: "rate_limit_event",
-      rate_limit_info: { status: "rejected", resetsAt: now / 1000 + 3600 },
-    });
-    const limited = JSON.stringify({ type: "result", is_error: true, api_error: "usage_limit_reached" });
-
-    const w = new LimitWatch();
-    w.line(JSON.stringify({ type: "rate_limit_event", rate_limit_info: { status: "allowed", resetsAt: 1 } }));
-    w.line("not json (stderr noise)");
-    // Tool results and subagent turns are user records too; only our echoed message counts as delivered.
-    w.line(JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "tool_result" }] } }));
-    w.line(JSON.stringify({ type: "user", parent_tool_use_id: "t1", message: { role: "user", content: "sub" } }));
-    expect(w.delivered).toBe(false);
-    w.line(JSON.stringify({ type: "user", parent_tool_use_id: null, message: { role: "user", content: "hi" } }));
-    expect(w.delivered).toBe(true);
-    w.line(JSON.stringify({ type: "result", is_error: true, api_error: "other" }));
-    expect(w.limitedUntil(now)).toBeUndefined();
-    w.line(rejected);
-    expect(w.limitedUntil(now)).toBeUndefined();
-    w.line(limited);
-    expect(w.limitedUntil(now)).toBe(now + 3600_000);
-
-    // Without a reset time, or with one already past, it falls back to a fixed wait.
-    const bare = new LimitWatch();
-    bare.line(limited);
-    expect(bare.limitedUntil(now)).toBe(now + LIMIT_FALLBACK_MS);
-    const stale = new LimitWatch();
-    stale.line(JSON.stringify({ type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt: 1 } }));
-    stale.line(limited);
-    expect(stale.limitedUntil(now)).toBe(now + LIMIT_FALLBACK_MS);
-  });
-
   it("retries a session whose run ended on an API error, with a backoff and a cap", async () => {
     const { inbox, runs, out, d, finish } = await setup(3);
     await send(inbox, "issues", issue("opened", 1));
@@ -1284,26 +1250,6 @@ describe("threads", () => {
     } finally {
       vi.restoreAllMocks();
     }
-  });
-
-  it("LimitWatch: a result that is an API error is reported, unless it is the usage limit", () => {
-    const w = new LimitWatch();
-    expect(w.apiError()).toBeUndefined();
-    w.line(
-      JSON.stringify({
-        type: "result",
-        subtype: "success",
-        is_error: true,
-        result: "API Error: Your computer went to sleep",
-      }),
-    );
-    expect(w.apiError()).toBe("API Error: Your computer went to sleep");
-    const limited = new LimitWatch();
-    limited.line(JSON.stringify({ type: "result", is_error: true, api_error: "usage_limit_reached", result: "limit" }));
-    expect(limited.apiError()).toBeUndefined();
-    const fine = new LimitWatch();
-    fine.line(JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "done" }));
-    expect(fine.apiError()).toBeUndefined();
   });
 
   it("runs every bot, sharing --max across them", async () => {
@@ -1637,7 +1583,7 @@ describe("threads", () => {
 
     // Claude Code created the session, then the runner died before the run produced a result.
     let started = 0;
-    const watch = new LimitWatch(() => started++);
+    const watch = getHarness("claude").watch(() => started++);
     watch.line(JSON.stringify({ type: "system", subtype: "init" }));
     expect([started, watch.finished]).toEqual([1, false]);
     await mkdir(join(configDir, "threads"), { recursive: true });
