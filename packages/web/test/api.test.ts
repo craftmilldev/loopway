@@ -460,12 +460,51 @@ describe("login", () => {
     expect((await post(a, "/auth/verify", { email: "new.person@example.com", code: "ABCD2345" })).status).toBe(401);
     expect(await db.query(`SELECT 1 FROM loopway.users WHERE email = 'new.person@example.com'`)).toHaveLength(0);
 
-    const res = await post(a, "/auth/verify", { email: "new.person@example.com", code: lastCode() });
+    const res = await post(a, "/auth/verify", {
+      email: "new.person@example.com",
+      code: lastCode(),
+      username: "  New-Person ",
+    });
     expect(res.status).toBe(201);
     const { token: api_key, user, created } = await res.json();
     expect(created).toBe(true);
-    expect(user).toMatchObject({ name: "new.person", email: "new.person@example.com" });
+    expect(user).toMatchObject({ name: "new.person", email: "new.person@example.com", username: "new-person" });
     expect((await a.request("/me", { headers: { authorization: `Bearer ${api_key}` } })).status).toBe(200);
+    const orgs = await call("GET", "/orgs", { key: api_key });
+    expect(orgs.body.data).toMatchObject([{ slug: "new-person", personal: true }]);
+  });
+
+  it("needs a free username to sign up, and keeps the code valid so they can retry", async () => {
+    const a = loginApp();
+    await newUser("Holder");
+    const slug = (await db.query<{ slug: string }>(`SELECT slug FROM loopway.orgs ORDER BY id DESC LIMIT 1`))[0]!.slug;
+    await post(a, "/auth/login", { email: "retry@example.com" });
+    const code = lastCode();
+    const verify = async (username?: string) => {
+      const res = await post(a, "/auth/verify", { email: "retry@example.com", code, username });
+      return { status: res.status, code: (await res.json()).error?.code };
+    };
+    const users = () => db.query(`SELECT 1 FROM loopway.users WHERE email = 'retry@example.com'`);
+
+    // More failures than the 5-guess limit: username problems don't spend guesses.
+    expect(await verify()).toEqual({ status: 400, code: "username_required" });
+    expect(await verify("x")).toEqual({ status: 400, code: "invalid_username" });
+    expect(await verify("login")).toEqual({ status: 400, code: "username_reserved" });
+    expect(await verify(slug)).toEqual({ status: 409, code: "username_taken" });
+    expect(await verify()).toEqual({ status: 400, code: "username_required" });
+    expect(await verify("x")).toEqual({ status: 400, code: "invalid_username" });
+    expect(await users()).toHaveLength(0);
+
+    expect((await verify("retry-user")).status).toBe(201);
+    expect(await users()).toHaveLength(1);
+    expect(await db.query(`SELECT 1 FROM loopway.login_codes WHERE email = 'retry@example.com'`)).toHaveLength(0);
+  });
+
+  it("checks the code before asking for a username", async () => {
+    const a = loginApp();
+    await post(a, "/auth/login", { email: "ghost@example.com" });
+    const res = await post(a, "/auth/verify", { email: "ghost@example.com", code: "ABCD2345" });
+    expect(res.status).toBe(401);
   });
 
   it("does not report existing users as created", async () => {

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,7 +7,7 @@ import { createApi } from "@loopway/web/api";
 import { PRESETS } from "@loopway/presets";
 import { type Db } from "@loopway/web/db";
 import { openTestDb } from "@loopway/web/db/testing";
-import { createUser, setUsername } from "@loopway/web/store";
+import { createLoginCode, createUser, setUsername } from "@loopway/web/store";
 import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -76,10 +76,20 @@ const runJson = async (...args: string[]) => JSON.parse(await run(...args, "--js
 /** What's on disk in config.json, or undefined if it wasn't written. */
 const savedConfig = (dir = configDir) => readFile(join(dir, "config.json"), "utf8").then(JSON.parse, () => undefined);
 
+let signups = 0;
+
+/** Signs a new user up through `POST /auth/verify` and saves their session token as the CLI's login. */
 async function configured(name = "Matthew") {
-  const { user } = await createUser(db, { name });
-  expect(await setUsername(db, user.id, `u-${randomBytes(6).toString("hex")}`)).toMatchObject({ ok: true });
-  const key = signSessionToken(user.id, SECRET).token;
+  const n = ++signups;
+  const email = `cli${n}@example.com`;
+  const { code } = await createLoginCode(db, email);
+  const res = await app.request("/auth/verify", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, code, username: `${name.toLowerCase().replace(/[^a-z0-9]/g, "")}-${n}` }),
+  });
+  expect(res.status).toBe(201);
+  const key = ((await res.json()) as { token: string }).token;
   await writeConfig(configDir, { api_url: API, api_key: key });
   return key;
 }
@@ -147,19 +157,32 @@ describe("auth", () => {
     expect(await runJson("whoami")).toMatchObject({ name: "fresh", email: "fresh@example.com", username: "fresh-1" });
   });
 
-  it("a new account without a username stays logged in and is told how to finish; `username` sets and renames it", async () => {
+  it("a new account needs a username to sign up; the code survives a refused one, and `username` renames it", async () => {
     await expect(run("login", "--url", API, "--email", "nouser@example.com")).rejects.toThrow(/--code is required/);
     const code = emails.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
-    await expect(run("login", "--url", API, "--email", "nouser@example.com", "--code", code)).rejects.toThrow(
-      /username is required/,
-    );
-    expect(await runJson("whoami")).toMatchObject({ username: null });
-    await expect(run("username", "login")).rejects.toThrow(/reserved/);
-    await expect(run("username", "x")).rejects.toThrow(/at least 2/);
-    await run("username", "nouser");
+    const login = (...extra: string[]) =>
+      run("login", "--url", API, "--email", "nouser@example.com", "--code", code, ...extra);
+    await expect(login()).rejects.toThrow(/pass --username/);
+    await expect(login("--username", "login")).rejects.toThrow(/reserved/);
+    await expect(login("--username", "x")).rejects.toThrow(/at least 2/);
+    expect(await savedConfig()).toBeUndefined();
+    expect(await db.query(`SELECT 1 FROM loopway.users WHERE email = 'nouser@example.com'`)).toHaveLength(0);
+
+    expect(await login("--username", "nouser")).toMatch(/Created your account/);
     expect(await runJson("whoami")).toMatchObject({ username: "nouser" });
     await run("username", "nouser-2");
     expect(await runJson("whoami")).toMatchObject({ username: "nouser-2" });
+  });
+
+  it("login refuses a taken username without using up the code", async () => {
+    await configured("Holder");
+    const [row] = await db.query<{ slug: string }>(`SELECT slug FROM loopway.orgs ORDER BY id DESC LIMIT 1`);
+    await expect(run("login", "--url", API, "--email", "taken@example.com")).rejects.toThrow(/--code is required/);
+    const code = emails.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
+    const login = (u: string) =>
+      run("login", "--url", API, "--email", "taken@example.com", "--code", code, "--username", u);
+    await expect(login(row!.slug)).rejects.toThrow(/taken/);
+    expect(await login("free-one")).toMatch(/Created your account/);
   });
 
   it("login rejects a wrong code without saving anything", async () => {

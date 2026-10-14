@@ -183,11 +183,16 @@ export class LoopwayClient {
     await this.request("POST", "/auth/login", { email });
   }
 
-  /** Trades the emailed code for a session token. */
-  verifyLoginCode(email: string, code: string) {
+  /**
+   * Trades the emailed code for a session token. An email with no account needs a `username`: without one this is
+   * 400 `username_required`, and a bad one is 400/409 `invalid_username`, `username_reserved`, `username_taken`.
+   * The code stays valid after those, so the call can be repeated.
+   */
+  verifyLoginCode(email: string, code: string, username?: string) {
     return this.request<{ token: string; expires_at: string; user: User; created: boolean }>("POST", "/auth/verify", {
       email,
       code,
+      ...(username && { username }),
     });
   }
 

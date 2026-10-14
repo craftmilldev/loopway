@@ -1,11 +1,11 @@
 // Shared setup for the API tests. Importing this gives the test file its own app and database.
 
-import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect } from "vitest";
 import { createApi } from "../src/api.js";
 import { type Db } from "../src/db/index.js";
 import { openTestDb } from "../src/db/testing.js";
-import { createUser, setUsername } from "../src/store.js";
+import { createLoginCode, createUser } from "../src/store.js";
 import { signSessionToken } from "../src/tokens.js";
 
 export const SECRET = "test-secret";
@@ -33,12 +33,17 @@ export async function call(method: string, path: string, opts: { key?: string; b
   return { status: res.status, body: text ? JSON.parse(text) : null };
 }
 
-/** A user with a personal org, as signup makes them. */
+let signups = 0;
+
+/** Signs a new user up through `POST /auth/verify`, as a real signup does, and returns their session token. */
 export async function newUser(name = "Matthew") {
-  const { user } = await createUser(db, { name });
-  const username = `u-${randomBytes(6).toString("hex")}`;
-  expect(await setUsername(db, user.id, username)).toMatchObject({ ok: true });
-  return signSessionToken(user.id, SECRET).token;
+  const n = ++signups;
+  const email = `user${n}@example.com`;
+  const { code } = await createLoginCode(db, email);
+  const username = `${name.toLowerCase().replace(/[^a-z0-9]/g, "")}-${n}`;
+  const res = await call("POST", "/auth/verify", { body: { email, code, username } });
+  expect(res.status).toBe(201);
+  return res.body.token as string;
 }
 
 /** A user who hasn't picked a username yet, so has no personal org. */

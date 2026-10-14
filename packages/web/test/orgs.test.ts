@@ -32,7 +32,7 @@ describe("slug rules", () => {
 });
 
 describe("choosing a username", () => {
-  it("makes a personal org and a membership for a new signup", async () => {
+  it("makes a personal org and a membership for a user who has none", async () => {
     const key = await newUserWithoutOrg("Fresh");
     expect((await call("GET", "/me", { key })).body.username).toBeNull();
     expect((await call("GET", "/orgs", { key })).body.data).toEqual([]);
@@ -46,6 +46,14 @@ describe("choosing a username", () => {
     expect(orgs).toEqual([{ id: expect.any(String), slug: "fresh-one", name: "fresh-one", personal: true }]);
     const members = await rows(`SELECT user_id FROM loopway.org_members WHERE org_id = $1`, [orgs[0].id]);
     expect(members).toHaveLength(1);
+  });
+
+  it("signup makes the personal org and membership in one go", async () => {
+    const key = await newUser("Signup");
+    const me = (await call("GET", "/me", { key })).body;
+    const orgs = (await call("GET", "/orgs", { key })).body.data;
+    expect(orgs).toEqual([{ id: expect.any(String), slug: me.username, name: me.username, personal: true }]);
+    expect(await rows(`SELECT 1 FROM loopway.org_members WHERE org_id = $1`, [orgs[0].id])).toHaveLength(1);
   });
 
   it("rejects taken, reserved and malformed names with clear errors", async () => {
