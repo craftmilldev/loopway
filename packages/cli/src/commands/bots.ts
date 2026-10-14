@@ -4,7 +4,8 @@ import { authedClient, UsageError, type Context } from "../context.js";
 import { ago, bold, dim, fields, json, table } from "../format.js";
 import { checkRules, type BotRule } from "@loopway/rules";
 import { PRESETS } from "@loopway/presets";
-import { resolveInbox, resolveOrg } from "./inboxes.js";
+import { resolveInbox } from "./inboxes.js";
+import { resolveOrg } from "./orgs.js";
 
 interface JsonOpt {
   json?: boolean;
