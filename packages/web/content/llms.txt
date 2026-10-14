@@ -1,0 +1,76 @@
+# loopway
+
+> loopway is a place to build bots and work alongside them. It accepts webhooks from services you already use (GitHub, Vercel and Granola, plus loopway itself so bots can message each other), stores each delivery as a CloudEvent in an inbox, and lets a bot work through the messages one at a time. A bot can be a script, a cron job or a Claude agent.
+
+If a person asks you to set up loopway, make an inbox, or make a bot, the steps are below. Everything is done with the `loopway` CLI, which talks to https://loopway.craftmill.dev.
+
+## Concepts
+
+- **Org**: owns inboxes and bots. Every user has a personal org; shared orgs can have several members.
+- **Inbox**: listens to one source (`github`, `vercel`, `granola` or `loopway`). The source's webhook points at the inbox, which checks the signature and keeps the message. `loopway inbox show <inbox>` prints the webhook URL and secret to paste into the sender.
+- **Message**: one stored delivery: the CloudEvent (its `type`, e.g. `com.github.issues.opened`, and `data`), when it arrived, and its place in arrival order. Nothing is marked done.
+- **Bot**: reads the messages of one or more inboxes in arrival order and keeps a cursor, so it knows where it left off. A bot has a prompt, a model and rules. A new bot starts at the newest message, so it doesn't replay history.
+- **Thread**: one agent session working on a related set of messages. For GitHub, a thread is an issue and the PRs linked to it.
+- **Runner**: a machine running `loopway bots run`. It belongs to one org and runs that org's bots.
+
+## How a bot's rules work
+
+Rules decide which thread each message goes to. A bot's rules are a list; the first rule whose `types` globs match the message's type applies (`*` matches any run of characters). Each rule has:
+
+- `types`: list of event-type globs, e.g. `["com.github.*"]`.
+- `subject`: a CEL expression over the message returning the thread key it belongs to (e.g. `owner/repo#12`), or `''` for none.
+- `related`: optional CEL expression returning more thread keys the message also names (e.g. issues a PR body closes), so they join the same thread.
+- `action`: a CEL expression returning `'attach'` (deliver the message to the thread, creating it if needed) or `'skip'` (drop the message). Always set it, even to `'attach'`, so the rule says what it does (loopway treats a missing `action` as `'attach'`).
+
+In expressions, `data` is the event payload and `event_type` its type; `action` can also read `subject`, `related` and `held` (whether a thread already holds one of those subjects). `regex_all(text, pattern[, flags])` returns every match of a JavaScript regex as a list of strings. A message with an empty subject and no related keys belongs to no thread.
+
+The default `github-threads` preset routes every GitHub issue, PR, comment and review to a thread per issue or PR, attaches CI runs to their PR, and starts a Claude Code session per thread. It is a good starting point: `loopway bots create --preset github-threads` copies its prompt and rules, and they can be edited afterwards on the bot's page.
+
+## CLI
+
+Install and log in:
+
+```
+git clone <repo> && cd loopway && npm install && npm run build -w @loopway/cli && npm link -w @loopway/cli
+loopway login              # emails a one-time code; new emails get an account
+loopway whoami
+```
+
+Core commands:
+
+```
+loopway orgs                                  # your orgs
+loopway orgs create <slug>                    # a shared org
+loopway orgs add-member <slug> <email>
+
+loopway inbox create --name <n> --source github --events issues,pull_request --secret <s> [--org <slug>]
+loopway inbox list
+loopway inbox show <inbox>                    # webhook URL, secret setup, message count
+loopway inbox update <inbox> [--name n] [--events a,b] [--secret s]
+
+loopway messages list <inbox> [--type 'com.github.pull_request.*'] [--limit 20]
+loopway messages get <inbox> <message> --data
+
+loopway bots create --name <n> --preset github-threads --model sonnet --inbox <inbox>[,<inbox>] [--org <slug>]
+loopway bots list
+loopway bots show <bot>
+loopway bots update <bot> [--name n] [--model m] [--inbox a,b]
+loopway bots messages <bot>                   # what the bot would read next
+loopway bots threads <bot>                    # the bot's threads
+loopway bots run [--max 3] [--interval 5]     # run all your bots in the current directory
+```
+
+`<inbox>` and `<bot>` are an id or an exact name. Read commands take `--json`. Without a terminal, `inbox create` runs from flags alone, so pass every flag. For `vercel` and `granola` inboxes the sender makes the secret: add the webhook in the sender, then give loopway the secret with `loopway inbox update <inbox> --secret <s>`.
+
+## Typical setup
+
+1. `loopway login`
+2. `loopway inbox create` for the source, then add the webhook URL and secret from `loopway inbox show` in the sender (for GitHub, a repo or org webhook with JSON content type).
+3. `loopway bots create --preset github-threads --inbox <inbox>`
+4. In the directory the bot should work in, run `loopway bots run`.
+
+## Docs
+
+- Source pages (config, connecting, CloudEvent mapping): https://github.com/craftmilldev/loopway/tree/main/docs/sources
+- HTTP API: https://github.com/craftmilldev/loopway/blob/main/docs/api.md
+- README: https://github.com/craftmilldev/loopway#readme

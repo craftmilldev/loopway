@@ -12,8 +12,8 @@ const PUBLIC = [
   /^GET \/api\/health$/,
   /^POST \/api\/webhooks\/:inboxId$/,
   /^POST \/api\/auth\/(login|verify)$/,
-  // The UI shell and its bundle (GETs that serve no account data), and the analytics proxy.
-  /^GET \/(login|orgs\/new|app\.js|app\.css)?$/,
+  // The UI shell, its bundle and llms.txt (GETs that serve no account data), and the analytics proxy.
+  /^GET \/(login|orgs\/new|app\.js|app\.css|llms\.txt)?$/,
   /^GET \/dashboard(\/|$)/,
   // The pages of an org, which show nothing until the browser has loaded the org from the API.
   /^GET \/:org(\/|$)/,

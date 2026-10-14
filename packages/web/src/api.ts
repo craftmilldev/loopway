@@ -87,6 +87,7 @@ export function createApi(opts: ApiOptions) {
   app.route(
     "/",
     createWeb({
+      metrics,
       posthogKey: opts.posthogKey,
       posthogUiHost:
         opts.posthogUiHost ?? (opts.posthogRegion === "eu" ? "https://eu.posthog.com" : "https://us.posthog.com"),
