@@ -58,6 +58,7 @@ const ORG_PAGES = [
   "/:org/bots/:botId/threads/:threadId",
   "/:org/inboxes",
   "/:org/runners",
+  "/:org/members",
   "/:org/inboxes/:inboxId",
 ];
 
