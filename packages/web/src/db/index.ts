@@ -47,29 +47,35 @@ export async function openDb(opts: DbOptions): Promise<Db> {
   };
 }
 
+// Arbitrary constant key for the migration advisory lock.
+const MIGRATE_LOCK = 71_000_001;
+
 export async function migrate(db: Db): Promise<string[]> {
-  await db.query(`CREATE SCHEMA IF NOT EXISTS loopway`);
-  await db.query(
-    `CREATE TABLE IF NOT EXISTS loopway.schema_migrations (
-       version text PRIMARY KEY,
-       applied_at timestamptz NOT NULL DEFAULT now()
-     )`,
-  );
-  const done = new Set(
-    (await db.query<{ version: string }>(`SELECT version FROM loopway.schema_migrations`)).map((r) => r.version),
-  );
-  const applied: string[] = [];
-  for (const m of migrations) {
-    if (done.has(m.version)) continue;
-    // Each statement separately: postgres.js unsafe() with params can't run multi-statement strings.
-    // One transaction (Postgres DDL is transactional), so a failure leaves nothing half-applied and unrecorded.
-    await db.transaction(async (tx) => {
+  // One transaction (Postgres DDL is transactional), so a failure leaves nothing half-applied and unrecorded.
+  // The transaction-scoped advisory lock goes first, so builds that start together against one database
+  // queue up: the second one waits, then finds nothing left to apply.
+  return db.transaction(async (tx) => {
+    await tx.query(`SELECT pg_advisory_xact_lock($1)`, [MIGRATE_LOCK]);
+    await tx.query(`CREATE SCHEMA IF NOT EXISTS loopway`);
+    await tx.query(
+      `CREATE TABLE IF NOT EXISTS loopway.schema_migrations (
+         version text PRIMARY KEY,
+         applied_at timestamptz NOT NULL DEFAULT now()
+       )`,
+    );
+    const done = new Set(
+      (await tx.query<{ version: string }>(`SELECT version FROM loopway.schema_migrations`)).map((r) => r.version),
+    );
+    const applied: string[] = [];
+    for (const m of migrations) {
+      if (done.has(m.version)) continue;
+      // Each statement separately: postgres.js unsafe() with params can't run multi-statement strings.
       for (const stmt of splitSql(m.sql)) await tx.query(stmt);
       await tx.query(`INSERT INTO loopway.schema_migrations (version) VALUES ($1)`, [m.version]);
-    });
-    applied.push(m.version);
-  }
-  return applied;
+      applied.push(m.version);
+    }
+    return applied;
+  });
 }
 
 function splitSql(sql: string): string[] {
