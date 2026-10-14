@@ -86,7 +86,7 @@ export async function migrate(db: Db): Promise<string[]> {
         } else if (recorded !== checksum) {
           throw new Error(
             `Migration ${m.version} was edited after it was applied to this database. ` +
-              `Undo the edit and add a new migration instead, or reset this database if it is a throwaway preview.`,
+              `Undo the edit and add a new migration instead, or reset this database if it is a throwaway one (a local dev database or a preview branch).`,
           );
         }
         continue;
