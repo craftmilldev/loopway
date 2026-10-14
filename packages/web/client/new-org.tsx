@@ -81,7 +81,7 @@ export function NewOrg() {
                 spellCheck={false}
                 aria-describedby="org-slug-status"
                 value={slug}
-                onChange={(e) => setSlug(e.target.value.toLowerCase())}
+                onChange={(e) => setSlug(e.target.value.trim().toLowerCase())}
               />
             </div>
             <p id="org-slug-status" className="hint muted" role="status">
