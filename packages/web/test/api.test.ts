@@ -196,8 +196,27 @@ describe("bots", () => {
       body: { name: "y", model: "sonet", inbox_ids: [a.id] },
     });
     expect(unknown.status).toBe(400);
+
+    // Cursor takes any model name; the pair is checked again whenever either half changes.
+    const cursor = await call("POST", "/bots", {
+      key,
+      body: { name: "cur", model: "auto", harness: "cursor", inbox_ids: [a.id] },
+    });
+    expect(cursor.body).toMatchObject({ harness: "cursor", model: "auto" });
+    const back = await call("PATCH", `/bots/${cursor.body.id}`, { key, body: { harness: "claude" } });
+    expect([back.status, back.body.error.code]).toEqual([400, "invalid_model"]);
+    const both = await call("PATCH", `/bots/${cursor.body.id}`, { key, body: { harness: "claude", model: "opus" } });
+    expect(both.body).toMatchObject({ harness: "claude", model: "opus" });
+    const codex = await call("POST", "/bots", {
+      key,
+      body: { name: "z", model: "sonnet", harness: "codex", inbox_ids: [a.id] },
+    });
+    expect(codex.status).toBe(400);
+    await call("DELETE", `/bots/${cursor.body.id}`, { key });
+
     expect(created.body).toMatchObject({
       name: "dev",
+      harness: "claude",
       model: "sonnet",
       inbox_ids: [a.id],
       cursor: 0,

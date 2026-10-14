@@ -14,7 +14,8 @@ import { loadGithubBot } from "../config.js";
 import { UsageError, type Context } from "../context.js";
 import { clock, dim } from "../format.js";
 import { startMcpServer, type McpServer } from "../mcp.js";
-import { spawnClaude, type RunAgent, type RunOutcome } from "./agent.js";
+import type { RunAgent, RunOutcome } from "./agent.js";
+import { runHarness } from "./harnesses/index.js";
 import { botEnv } from "./github.js";
 import { checkRules, route, type BotRule } from "@loopway/rules";
 import { sessionTools } from "./tools.js";
@@ -176,7 +177,7 @@ export class Dispatcher {
     this.max = opts.max ?? DEFAULTS.max;
     this.ttl = opts.ttl ?? DEFAULTS.ttl;
     this.runnerId = opts.runnerId;
-    this.runAgent = ctx.runAgent ?? spawnClaude;
+    this.runAgent = ctx.runAgent ?? runHarness;
     this.dir = ctx.configDir;
   }
 
@@ -512,12 +513,14 @@ export class Dispatcher {
       messages.length > 0 && describeMessages(messages),
     ];
     const message = parts.filter((p): p is string => typeof p === "string").join("\n\n");
+    const bot = this.bots.find((b) => b.id === thread.bot_id)!;
     const attempt = (resume: boolean) =>
       this.runAgent({
+        harness: bot.harness,
         sessionId: id,
         resume,
         message,
-        model: this.bots.find((b) => b.id === thread.bot_id)!.model,
+        model: bot.model,
         logPath: sessionLogPath(this.dir, id),
         mcpUrl: this.mcp.urlFor(id),
         env: this.env,
@@ -569,6 +572,7 @@ export class Dispatcher {
               : "finished";
     void this.ctx.metrics?.capture("bot_session_stopped", {
       stop,
+      harness: bot.harness,
       exit_code: code,
       resumed: thread.started,
       messages: messages.length,

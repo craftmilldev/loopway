@@ -235,6 +235,7 @@ export interface Bot {
   org_id: string;
   name: string;
   model: string;
+  harness: string;
   prompt_version: BotVersion | null;
   inbox_ids: string[];
   cursor: number;

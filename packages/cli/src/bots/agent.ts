@@ -1,16 +1,11 @@
-import { spawn } from "node:child_process";
-import { closeSync, createWriteStream, openSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
-import { createInterface } from "node:readline";
-import { pipeline } from "node:stream/promises";
-
 /** One headless agent run: start session `sessionId` (or resume it) with `message`. */
 export interface AgentRun {
+  /** The harness to run it with, by name (see harnesses/index.ts). */
+  harness: string;
   sessionId: string;
   resume: boolean;
   message: string;
-  /** The model to run on, as `claude --model` takes it. */
+  /** The model to run on, as the harness takes it. */
   model: string;
   logPath: string;
   /** The dispatcher's MCP endpoint for this session (its `link` and `end` tools). */
@@ -33,6 +28,23 @@ export interface RunOutcome {
   apiError?: string;
 }
 
+/**
+ * What every harness reports about a run, from reading its output line by line. A harness that can't tell
+ * (say, it has no usage limit) leaves the field at its default.
+ */
+export interface RunWatch {
+  /** Feed it each line the harness writes to stdout. */
+  line(raw: string): void;
+  /** Whether the harness took the message into its session. */
+  delivered: boolean;
+  /** Whether the run got as far as its final result rather than being cut off. */
+  finished: boolean;
+  /** The error the run ended on, if it ended on one that isn't the usage limit. */
+  apiError(): string | undefined;
+  /** When the usage limit resets (ms since the epoch), if the run stopped because of it. */
+  limitedUntil(now?: number): number | undefined;
+}
+
 export type RunAgent = (run: AgentRun) => Promise<RunOutcome>;
 
 /** How long to wait when a run hit the usage limit but didn't say when it resets. */
@@ -43,7 +55,7 @@ export const LIMIT_FALLBACK_MS = 5 * 60_000;
  * once it's in the session. It reports the usage limit twice: a `rate_limit_event` with status
  * `rejected` says when the limit resets, and the final `result` says the run stopped for it.
  */
-export class LimitWatch {
+export class LimitWatch implements RunWatch {
   delivered = false;
   /** Whether the run got as far as its `result` record. */
   finished = false;
@@ -95,41 +107,3 @@ export class LimitWatch {
     return this.resetsAt && this.resetsAt > now ? this.resetsAt : now + LIMIT_FALLBACK_MS;
   }
 }
-
-/** Runs `claude -p` headless in the current directory, appending its stream-json transcript to the log. */
-export const spawnClaude: RunAgent = async (run) => {
-  await mkdir(dirname(run.logPath), { recursive: true, mode: 0o700 });
-  // Plain descriptors: a FileHandle that is never closed (or closed mid-write) is a fatal error on newer Node.
-  const errFd = openSync(run.logPath, "a", 0o600);
-  try {
-    const mcpConfig = JSON.stringify({ mcpServers: { loopway: { type: "http", url: run.mcpUrl } } });
-    const args = ["-p", run.resume ? "--resume" : "--session-id", run.sessionId];
-    // --mcp-config and --allowedTools take several values, so each is followed by another flag.
-    args.push("--mcp-config", mcpConfig, "--allowedTools", "mcp__loopway__link", "mcp__loopway__end");
-    // Resumed runs get it too: a session keeps its model only if the flag says so.
-    args.push("--model", run.model, "--permission-mode", "auto", "--output-format", "stream-json", "--verbose");
-    // The message goes in as stream-json so Claude Code can echo it back once it's in the session.
-    args.push("--input-format", "stream-json", "--replay-user-messages");
-    const child = spawn("claude", args, { env: run.env, stdio: ["pipe", "pipe", errFd] });
-    child.stdin!.end(JSON.stringify({ type: "user", message: { role: "user", content: run.message } }) + "\n");
-    // stdout goes to the log as before, and through the watch on the way.
-    const watch = new LimitWatch(run.onStarted);
-    createInterface({ input: child.stdout! }).on("line", (l) => watch.line(l));
-    const copied = pipeline(child.stdout!, createWriteStream(run.logPath, { flags: "a", mode: 0o600 }));
-    const exited = new Promise<number>((resolve, reject) => {
-      child.once("error", reject);
-      child.once("exit", (code) => resolve(code ?? -1));
-    });
-    // Awaited together, so whichever fails first is the error thrown and neither can go unhandled.
-    const [code] = await Promise.all([exited, copied]);
-    return {
-      code,
-      delivered: watch.delivered,
-      finished: watch.finished,
-      limitedUntil: watch.limitedUntil(),
-      apiError: watch.apiError(),
-    };
-  } finally {
-    closeSync(errFd);
-  }
-};

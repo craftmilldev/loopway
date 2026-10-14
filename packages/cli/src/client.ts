@@ -97,6 +97,8 @@ export interface Bot {
   name: string;
   /** The model its sessions run on, as `claude --model` takes it. */
   model: string;
+  /** The coding-agent CLI its sessions run in: `claude` or `cursor`. */
+  harness: string;
   inbox_ids: string[];
   /** The bot's newest prompt version; null if it has none yet. */
   prompt_version: BotVersion | null;
@@ -339,6 +341,7 @@ export class LoopwayClient {
     org: string;
     name: string;
     model: string;
+    harness?: string;
     inbox_ids: string[];
     prompt?: string;
     rules?: BotRule[];
@@ -360,7 +363,7 @@ export class LoopwayClient {
     return this.request<Bot>("GET", `/bots/${enc(botId)}`);
   }
 
-  updateBot(botId: string, input: { name?: string; model?: string; inbox_ids?: string[] }) {
+  updateBot(botId: string, input: { name?: string; model?: string; harness?: string; inbox_ids?: string[] }) {
     return this.request<Bot>("PATCH", `/bots/${enc(botId)}`, input);
   }
 

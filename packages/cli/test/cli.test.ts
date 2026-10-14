@@ -557,13 +557,13 @@ describe("bots", () => {
     );
     expect(bot.inbox_ids).toEqual([a.id]);
 
-    expect(await run("bots", "list")).toMatch(/dev\s+sonnet\s+a/);
+    expect(await run("bots", "list")).toMatch(/dev\s+claude\s+sonnet\s+a/);
     expect((await runJson("bots", "show", "dev")).id).toBe(bot.id);
 
     const updated = await runJson("bots", "update", bot.id, "--name", "dev2", "--inbox", "a,b");
     expect(updated.name).toBe("dev2");
     expect(updated.inbox_ids).toEqual([a.id, b.id].sort());
-    await expect(run("bots", "update", "dev2")).rejects.toThrow(/--name, --model or --inbox/);
+    await expect(run("bots", "update", "dev2")).rejects.toThrow(/--name, --model, --harness or --inbox/);
     expect((await runJson("bots", "update", "dev2", "--model", "opus")).model).toBe("opus");
 
     expect(await run("bots", "delete", "dev2")).toMatch(/Deleted bot/);
@@ -904,6 +904,7 @@ describe("threads", () => {
 
     await d.tick(); // the comment that arrived while busy
     expect(runs.map((r) => r.model)).toEqual(runs.map(() => "sonnet"));
+    expect(runs.map((r) => r.harness)).toEqual(runs.map(() => "claude"));
     expect(runs[1]).toMatchObject({ sessionId: first!.sessionId, resume: true });
     expect(runs[1]!.message).not.toContain("## 1. Triage");
     expect((await sessions())[first!.sessionId].waiting).toEqual([]);

@@ -9,7 +9,7 @@ import { consoleSender, type SendEmail } from "./email.js";
 import { ApiError, jsonBody, type Env } from "./http.js";
 import { isUuid, LOGIN_CODE_RE, normalizeLoginCode } from "./ids.js";
 import { ANONYMOUS, noopMetrics, type Metrics } from "./metrics.js";
-import { BOT_MODELS } from "./models.js";
+import { BOT_HARNESSES, modelFits, type BotHarness } from "./models.js";
 import { createPosthogProxy } from "./posthog-proxy.js";
 import { ORG_SLUG_PROBLEM_MESSAGES, USERNAME_PROBLEM_MESSAGES, type SlugProblem } from "./slugs.js";
 import { sources } from "./sources.js";
@@ -575,7 +575,15 @@ export function createApi(opts: ApiOptions) {
 
   const inboxIdsBody = z.array(z.string().refine(isUuid, "must be an inbox id")).min(1).max(100);
 
-  const modelBody = z.enum(BOT_MODELS);
+  const modelBody = z.string().min(1).max(200);
+  const harnessBody = z.enum(BOT_HARNESSES);
+
+  // The model is checked against the harness it will run on, which only the two together can say.
+  const checkedModel = async (c: Context<Env>, harness: BotHarness, model: string) => {
+    if (modelFits(harness, model)) return;
+    await metrics.capture("bot_model_rejected", c.var.user.id, { harness });
+    throw new ApiError(400, "invalid_model", `"${model}" is not a model the ${harness} harness takes`);
+  };
 
   const promptBody = z.string().min(1).max(100_000);
 
@@ -672,22 +680,25 @@ export function createApi(opts: ApiOptions) {
         org: z.string().optional(),
         name: z.string().min(1).max(200),
         model: modelBody,
+        harness: harnessBody.default("claude"),
         inbox_ids: inboxIdsBody,
         prompt: promptBody.optional(),
         rules: rulesBody.optional(),
       })
       .parse(await jsonBody(c));
+    await checkedModel(c, input.harness, input.model);
     const org = await createOrg(c, "bot", input.org);
     const bot = await store.createBot(c.var.db, {
       userId: c.var.user.id,
       orgId: org.id,
       name: input.name,
       model: input.model,
+      harness: input.harness,
       inboxIds: await memberInboxIds(c, input.inbox_ids, org.id),
       prompt: input.prompt,
       rules: await checked(c, input.rules, "create"),
     });
-    await metrics.capture("bot_created", c.var.user.id, { has_version: !!bot.prompt_version });
+    await metrics.capture("bot_created", c.var.user.id, { has_version: !!bot.prompt_version, harness: bot.harness });
     return c.json(serializeBot(bot), 201);
   });
 
@@ -707,12 +718,17 @@ export function createApi(opts: ApiOptions) {
       .object({
         name: z.string().min(1).max(200).optional(),
         model: modelBody.optional(),
+        harness: harnessBody.optional(),
         inbox_ids: inboxIdsBody.optional(),
       })
       .parse(await jsonBody(c));
+    // Changing either one has to leave a pair that fits.
+    if (input.model || input.harness)
+      await checkedModel(c, input.harness ?? (bot.harness as BotHarness), input.model ?? bot.model);
     const updated = await store.updateBot(c.var.db, bot, {
       name: input.name,
       model: input.model,
+      harness: input.harness,
       inboxIds: input.inbox_ids && (await memberInboxIds(c, input.inbox_ids, bot.org_id)),
     });
     return c.json(serializeBot(updated));
@@ -1211,6 +1227,7 @@ function serializeBot(b: store.Bot) {
     created_by: b.created_by,
     name: b.name,
     model: b.model,
+    harness: b.harness,
     inbox_ids: b.inbox_ids,
     prompt_version: b.prompt_version,
     cursor: Number(b.cursor),
