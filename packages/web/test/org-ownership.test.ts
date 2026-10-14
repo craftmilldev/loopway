@@ -166,7 +166,7 @@ describe("backfill (018_org_ownership)", () => {
           const found = await fresh.query<{ org_id: string }>(`SELECT org_id FROM loopway.${table} WHERE ${col} = $1`, [
             id,
           ]);
-          result[who]![table] = found.map((r) => r.org_id);
+          result[who][table] = found.map((r) => r.org_id);
         }
       }
       const [nameless] = await fresh.query<{ id: string }>(`SELECT id FROM loopway.orgs WHERE personal_user_id = $1`, [
