@@ -193,6 +193,19 @@ const MAX_BACKOFF_MS = 120_000;
 /** True when `a` and `b` hold the same JSON, so a refresh that found nothing new can skip its state update. */
 export const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
+/**
+ * The newest-first list `shown` with a refresh's newest page (`fresh`) added to the front. `replaced` means the page
+ * shared nothing with the list while more lay behind it, so events in between can't be reached and the list starts over.
+ */
+export function mergeNewest<T extends { id: string }>(shown: T[] | null, fresh: T[], more: boolean) {
+  if (!shown) return { items: shown, replaced: false };
+  const have = new Set(shown.map((x) => x.id));
+  const added = fresh.filter((x) => !have.has(x.id));
+  if (!added.length) return { items: shown, replaced: false };
+  if (added.length === fresh.length && shown.length && more) return { items: fresh, replaced: true };
+  return { items: [...added, ...shown], replaced: false };
+}
+
 // When any load last succeeded. The "updated 12 s ago" label reads it without the pages re-rendering.
 let updatedAt: number | null = null;
 const updatedListeners = new Set<() => void>();
@@ -230,12 +243,11 @@ function onVisibility() {
  * Refreshes never overlap. When the tab becomes visible again it refreshes at once if the last success is older
  * than `interval`.
  */
-export function usePoll(refresh: () => Promise<boolean>, enabled: boolean, interval: number | false = POLL_MS) {
+export function usePoll(refresh: () => Promise<boolean>, enabled: boolean, every: number = POLL_MS) {
   const latest = useRef(refresh);
   latest.current = refresh;
   useEffect(() => {
-    if (!enabled || interval === false) return;
-    const every: number = interval;
+    if (!enabled) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let busy = false;
     let stopped = false;
@@ -257,6 +269,7 @@ export function usePoll(refresh: () => Promise<boolean>, enabled: boolean, inter
       } catch {
         // A network error is a failed refresh like any other.
       }
+      if (!ok) track("dashboard_refresh_failed");
       busy = false;
       if (ok) last = Date.now();
       delay = ok ? every : Math.min(delay * 2, MAX_BACKOFF_MS);
@@ -288,21 +301,21 @@ export function usePoll(refresh: () => Promise<boolean>, enabled: boolean, inter
       pollers.delete(poller);
       if (pollers.size === 0) document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [enabled, interval]);
+  }, [enabled, every]);
 }
 
 /**
  * GETs `path` once `ready`, and again whenever the returned `reload` is called. Null while loading or missing.
- * While the tab is visible it also refreshes every `poll` ms (`false` turns that off). A refresh keeps what is on
- * screen when it fails, and does not touch state when the response is unchanged.
+ * It never polls by itself: a page that wants this data kept fresh passes `reload` to `usePoll`. `reload` resolves
+ * false when the request failed, keeps what is on screen, and does not touch state when the response is unchanged.
  */
-export function useGet<T>(path: string | null, ready: boolean, { poll = POLL_MS }: { poll?: number | false } = {}) {
+export function useGet<T>(path: string | null, ready: boolean) {
   const [data, setData] = useState<T | null>(null);
   const [missing, setMissing] = useState(false);
   const seen = useRef<string | null>(null);
   const requests = useRef(0);
 
-  const fetchOnce = useCallback(async () => {
+  const reload = useCallback(async () => {
     if (!path) return true;
     const id = ++requests.current;
     const r = await api(path);
@@ -326,35 +339,17 @@ export function useGet<T>(path: string | null, ready: boolean, { poll = POLL_MS 
     return true;
   }, [path]);
 
-  const reload = useCallback(async () => {
-    await fetchOnce();
-  }, [fetchOnce]);
-
   useEffect(() => {
     seen.current = null;
     if (ready) void reload();
   }, [ready, reload]);
 
-  usePoll(
-    async () => {
-      try {
-        const ok = await fetchOnce();
-        if (!ok) track("dashboard_refresh_failed");
-        return ok;
-      } catch (err) {
-        track("dashboard_refresh_failed");
-        throw err;
-      }
-    },
-    ready && !!path,
-    poll,
-  );
   return { data, missing, reload };
 }
 
 /** The `data` of a list endpoint. */
-export function useList<T>(path: string | null, ready: boolean, options?: { poll?: number | false }) {
-  const { data, ...rest } = useGet<{ data: T[] }>(path, ready, options);
+export function useList<T>(path: string | null, ready: boolean) {
+  const { data, ...rest } = useGet<{ data: T[] }>(path, ready);
   return { data: data?.data ?? null, ...rest };
 }
 

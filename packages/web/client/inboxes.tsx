@@ -18,6 +18,8 @@ export function Inboxes() {
   const ready = !!me;
   const inboxes = lw.useList<Inbox>("/inboxes", ready);
   const bots = lw.useList<lw.Bot>("/bots", ready);
+  lw.usePoll(inboxes.reload, ready);
+  lw.usePoll(bots.reload, ready);
   const sources = lw.useSources();
   const [activity, setActivity] = useState<Record<string, lw.InboxActivity> | null>(null);
   const [creating, setCreating] = useState(false);

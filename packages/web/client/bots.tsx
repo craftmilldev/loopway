@@ -23,6 +23,9 @@ export function Bots() {
   const bots = lw.useList<lw.Bot>("/bots", ready);
   const runners = lw.useList<lw.Runner>("/runners", ready);
   const inboxes = lw.useList<Inbox>("/inboxes", ready);
+  lw.usePoll(bots.reload, ready);
+  lw.usePoll(runners.reload, ready);
+  lw.usePoll(inboxes.reload, ready);
   const [threads, setThreads] = useState<Record<string, lw.Thread[]>>({});
   const [activity, setActivity] = useState<Record<string, lw.BotActivity> | null>(null);
   const [filter, setFilter] = useState<BotFilter>("all");

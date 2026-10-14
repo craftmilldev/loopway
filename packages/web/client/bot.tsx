@@ -46,13 +46,16 @@ export function Bot({ id, view }: { id: string; view?: Tab }) {
   const ready = !!me;
   const tab = view ?? tabOf(new URLSearchParams(location.search).get("tab"));
   const botPath = "/bots/" + encodeURIComponent(id);
-  // The bot (its current prompt version, name, inboxes) and the inboxes feed the Prompt and Settings forms, so they
-  // load once; the threads and runners, which give the state, are what refreshes.
-  const bot = lw.useGet<lw.Bot>(botPath, ready, { poll: false });
+  const bot = lw.useGet<lw.Bot>(botPath, ready);
   const bots = lw.useList<lw.Bot>("/bots", ready);
   const runners = lw.useList<lw.Runner>("/runners", ready);
-  const inboxes = lw.useList<Inbox>("/inboxes", ready, { poll: false });
+  const inboxes = lw.useList<Inbox>("/inboxes", ready);
   const open = lw.useList<lw.Thread>(botPath + "/threads?status=active", ready);
+  // The bot (its current prompt version, name, inboxes) and the inboxes feed the Prompt and Settings forms, so they
+  // load once. The bots, runners and open threads, which give the state, are what refreshes.
+  lw.usePoll(bots.reload, ready);
+  lw.usePoll(runners.reload, ready);
+  lw.usePoll(open.reload, ready);
   const [error, setError] = useState<string | null>(null);
 
   const runner = (rid: string | null) => runners.data?.find((r) => r.id === rid);
@@ -172,6 +175,8 @@ function ActivityTab({ botId, botPath, threads }: { botId: string; botPath: stri
   const week = lw.useGet<lw.BotActivity>(botPath + "/activity?days=7", true);
   const month = lw.useGet<lw.BotActivity>(botPath + "/activity?days=30", true);
   const versions = lw.useList<lw.BotVersion>(botPath + "/versions", true);
+  lw.usePoll(week.reload, true);
+  lw.usePoll(month.reload, true);
   const w = week.data;
   const m = month.data;
   const today = m?.days[m.days.length - 1]?.delivered;
@@ -251,6 +256,7 @@ function ThreadsTab({
 }) {
   const [status, setStatus] = useState<Status>("active");
   const threads = lw.useList<lw.Thread>(botPath + "/threads?status=" + status, true);
+  lw.usePoll(threads.reload, true);
 
   async function release(t: lw.Thread) {
     const name = runners?.find((r) => r.id === t.runner_id)?.name ?? "its runner";
@@ -444,6 +450,9 @@ export function Thread({ botId, id }: { botId: string; id: string }) {
   const bot = lw.useGet<lw.Bot>(botPath, ready);
   const thread = lw.useGet<lw.Thread>(threadPath, ready);
   const runners = lw.useList<lw.Runner>("/runners", ready);
+  lw.usePoll(bot.reload, ready);
+  lw.usePoll(thread.reload, ready);
+  lw.usePoll(runners.reload, ready);
   const [error, setError] = useState<string | null>(null);
   const t = thread.data;
   const owner = runners.data?.find((r) => r.id === t?.runner_id);

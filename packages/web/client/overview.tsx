@@ -41,16 +41,6 @@ const EVENT_TEXT: Record<lw.ThreadEvent["kind"], string> = {
 
 const startOfToday = () => new Date(new Date().setHours(0, 0, 0, 0)).getTime();
 
-/** The events a refresh read (`fresh`, the newest page) added to the list on screen. `replaced` means the list started over. */
-export function mergeEvents(shown: lw.ThreadEvent[] | null, fresh: lw.ThreadEvent[], next: string | null) {
-  if (!shown) return { events: shown, replaced: false };
-  const have = new Set(shown.map((x) => x.id));
-  const added = fresh.filter((x) => !have.has(x.id));
-  if (!added.length) return { events: shown, replaced: false };
-  if (added.length === fresh.length && shown.length && next) return { events: fresh, replaced: true };
-  return { events: [...added, ...shown], replaced: false };
-}
-
 /** "What the bots did": today's thread events, newest first, and a control for the days before. */
 export function ThreadEventsFeed({ ready }: { ready: boolean }) {
   const [events, setEvents] = useState<lw.ThreadEvent[] | null>(null);
@@ -85,10 +75,10 @@ export function ThreadEventsFeed({ ready }: { ready: boolean }) {
     }
     const body = (await r.json()) as { data: lw.ThreadEvent[]; next: string | null };
     // Merges into the list as it is now, not as it was when this request started: a page may have loaded since.
-    const merged = mergeEvents(listed.current, body.data, body.next);
-    if (merged.events !== listed.current) {
-      listed.current = merged.events;
-      setEvents(merged.events);
+    const merged = lw.mergeNewest(listed.current, body.data, !!body.next);
+    if (merged.items !== listed.current) {
+      listed.current = merged.items;
+      setEvents(merged.items);
     }
     if (merged.replaced) setNext(body.next);
     return true;
@@ -152,6 +142,9 @@ export function Overview() {
   const bots = lw.useList<lw.Bot>("/bots", ready);
   const runners = lw.useList<lw.Runner>("/runners", ready);
   const inboxes = lw.useList<Inbox>("/inboxes", ready);
+  lw.usePoll(bots.reload, ready);
+  lw.usePoll(runners.reload, ready);
+  lw.usePoll(inboxes.reload, ready);
   const [range, setRange] = useState(RANGES[1]!);
   const [threads, setThreads] = useState<Record<string, lw.Thread[]>>({});
   const [activity, setActivity] = useState<Record<string, lw.BotActivity> | null>(null);

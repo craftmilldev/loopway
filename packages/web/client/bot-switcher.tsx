@@ -30,9 +30,7 @@ function Item({
   currentState: BotState | null;
   runners: lw.Runner[] | null;
 }) {
-  const threads = lw.useList<lw.Thread>("/bots/" + encodeURIComponent(bot.id) + "/threads?status=active", !current, {
-    poll: false,
-  });
+  const threads = lw.useList<lw.Thread>("/bots/" + encodeURIComponent(bot.id) + "/threads?status=active", !current);
   const state = current ? currentState : threads.data && runners ? botState(threads.data, runners) : null;
   return (
     <a

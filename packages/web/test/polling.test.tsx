@@ -3,7 +3,6 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as lw from "../client/lw.js";
 import { track } from "../client/metrics.js";
-import { mergeEvents } from "../client/overview.js";
 import { updatedText } from "../client/updated.js";
 
 vi.mock("../client/metrics.js", () => ({ track: vi.fn(), identify: vi.fn(), reset: vi.fn() }));
@@ -19,8 +18,10 @@ const setVisibility = (v: "visible" | "hidden") => {
   document.dispatchEvent(new Event("visibilitychange"));
 };
 
+// `poll` is the interval in ms; `false` is a page that reads the data without asking for it to be kept fresh.
 function Probe({ path = "/bots", poll }: { path?: string; poll?: number | false }) {
-  const { data } = lw.useGet<{ n: number }>(path, true, poll === undefined ? undefined : { poll });
+  const { data, reload } = lw.useGet<{ n: number }>(path, true);
+  lw.usePoll(reload, poll !== false, poll || undefined);
   renders++;
   return <div>{data ? "n=" + data.n : "loading"}</div>;
 }
@@ -62,7 +63,7 @@ describe("polling", () => {
     expect(getByText("n=2")).toBeTruthy();
   });
 
-  it("uses a different interval, and none when turned off", async () => {
+  it("uses a different interval, and useGet alone never polls", async () => {
     render(<Probe poll={1000} />);
     await settle();
     await tick(3000);
@@ -168,6 +169,7 @@ describe("stale responses", () => {
   it("drops a poll answer that lands after a newer reload", async () => {
     function Reloader() {
       const { data, reload } = lw.useGet<{ n: number }>("/bots", true);
+      lw.usePoll(reload, true);
       return <button onClick={() => void reload()}>{data ? "n=" + data.n : "loading"}</button>;
     }
     const { getByRole } = render(<Reloader />);
@@ -218,25 +220,25 @@ describe("metrics", () => {
   });
 });
 
-describe("mergeEvents", () => {
+describe("mergeNewest", () => {
   const ev = (id: string) => ({ id }) as never;
   it("adds only the new events at the front", () => {
     const shown = [ev("2"), ev("1")];
-    expect(mergeEvents(shown, [ev("3"), ev("2")], "x")).toEqual({
-      events: [ev("3"), ev("2"), ev("1")],
+    expect(lw.mergeNewest(shown, [ev("3"), ev("2")], true)).toEqual({
+      items: [ev("3"), ev("2"), ev("1")],
       replaced: false,
     });
   });
   it("keeps the same list when nothing is new", () => {
     const shown = [ev("2")];
-    expect(mergeEvents(shown, [ev("2")], null).events).toBe(shown);
+    expect(lw.mergeNewest(shown, [ev("2")], false).items).toBe(shown);
   });
   it("starts over when the page shares nothing with the list and there is more behind it", () => {
     const fresh = [ev("9"), ev("8")];
-    expect(mergeEvents([ev("2"), ev("1")], fresh, "cursor")).toEqual({ events: fresh, replaced: true });
+    expect(lw.mergeNewest([ev("2"), ev("1")], fresh, true)).toEqual({ items: fresh, replaced: true });
   });
   it("prepends a page with no overlap when it is the whole history", () => {
-    expect(mergeEvents([ev("1")], [ev("2")], null)).toEqual({ events: [ev("2"), ev("1")], replaced: false });
+    expect(lw.mergeNewest([ev("1")], [ev("2")], false)).toEqual({ items: [ev("2"), ev("1")], replaced: false });
   });
 });
 
