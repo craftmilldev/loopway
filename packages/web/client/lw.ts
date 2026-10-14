@@ -74,7 +74,7 @@ export function loginUrl() {
 export function nextPath() {
   const next = new URLSearchParams(location.search).get("next");
   // Browsers drop tabs and newlines from URLs, so "/\t/evil.com" would become "//evil.com".
-  if (!next || !/^\/(?![/\\])/.test(next) || /[\u0000-\u001f]/.test(next)) return null;
+  if (!next || !/^\/(?![/\\])/.test(next) || Array.from(next).some((c) => c.charCodeAt(0) < 32)) return null;
   return new URL(next, location.origin).origin === location.origin ? next : null;
 }
 
