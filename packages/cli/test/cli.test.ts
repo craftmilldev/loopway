@@ -81,6 +81,12 @@ let signups = 0;
 const personalSlug = async (key: string) =>
   (await new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch }).listOrgs()).find((o) => o.personal)!.slug;
 
+/** This machine's runner for the client's personal org. */
+async function ensure(client: LoopwayClient) {
+  const ctx: Context = { configDir, env: {}, interactive: false, out: () => {}, fetch: apiFetch };
+  return ensureRunner(ctx, client, (await client.listOrgs()).find((o) => o.personal)!.slug);
+}
+
 /** Signs a new user up through `POST /auth/verify` and saves their session token as the CLI's login. */
 async function configured(name = "Matthew") {
   const n = ++signups;
@@ -625,9 +631,12 @@ describe("runners", () => {
     expect(await run("runners")).toMatch(/No runners yet/);
 
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
-    const first = await ensureRunner(configDir, client);
-    expect((await ensureRunner(configDir, client)).id).toBe(first.id);
-    expect(JSON.parse(await readFile(join(configDir, "runner.json"), "utf8"))).toEqual({ id: first.id });
+    const first = await ensure(client);
+    expect((await ensure(client)).id).toBe(first.id);
+    expect(JSON.parse(await readFile(join(configDir, "runner.json"), "utf8"))).toEqual({
+      id: first.id,
+      org: first.org,
+    });
 
     const inbox = await inboxWithEvents(0);
     const bot = await runJson(
@@ -643,14 +652,14 @@ describe("runners", () => {
       inbox.id,
     );
     await client.leaseBot(bot.id, { runner_id: first.id });
-    expect(await run("runners")).toMatch(new RegExp(`${first.id}\\s+\\S+\\s+dev\\s+0`));
+    expect(await run("runners")).toMatch(new RegExp(`${first.id}\\s+\\S+\\s+\\S+\\s+dev\\s+0`));
     expect(await runJson("runners")).toMatchObject([{ id: first.id, bots: [{ id: bot.id, name: "dev" }] }]);
   });
 
   it("is leased by one bots run at a time, and released when it stops", async () => {
     const key = await configured();
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
-    const runner = await ensureRunner(configDir, client);
+    const runner = await ensure(client);
     const inbox = await inboxWithEvents(0);
     const bot = await runJson(
       "bots",
@@ -696,7 +705,7 @@ describe("runners", () => {
       "--inbox",
       inbox.id,
     );
-    const runner = await ensureRunner(configDir, client);
+    const runner = await ensure(client);
     const id = randomUUID();
     const botLease = (await client.leaseBot(bot.id, { runner_id: runner.id })).lease;
     const runnerLease = (await client.leaseRunner(runner.id)).lease;
@@ -733,7 +742,7 @@ describe("runners", () => {
       "--inbox",
       inbox.id,
     );
-    const runner = await ensureRunner(configDir, client);
+    const runner = await ensure(client);
     const botLease = (await client.leaseBot(bot.id, { runner_id: runner.id })).lease;
     const [m1, m2] = (await client.listMessages(inbox.id)).data;
     const [a, b] = [randomUUID(), randomUUID()];
@@ -836,7 +845,7 @@ describe("threads", () => {
       runAgent: (r) => new Promise((resolve) => (runs.push(r), busy.push(resolve))),
     };
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
-    const runner = await ensureRunner(configDir, client);
+    const runner = await ensure(client);
     const d = await Dispatcher.start(ctx, client, bots, { max, ttl: 60, runnerId: runner.id });
     const finish = async (outcome: RunOutcome = { code: 0, delivered: true }) => (
       busy.splice(0).forEach((f) => f(outcome)),
@@ -1440,7 +1449,11 @@ describe("threads", () => {
 
   it("leaves threads owned by another runner alone, and shows them as on that runner", async () => {
     const { inbox, bot, client, runs, d } = await setup(3);
-    const other = await client.registerRunner({ id: randomUUID(), name: "desktop" });
+    const other = await client.registerRunner({
+      org: (await client.listOrgs())[0]!.slug,
+      id: randomUUID(),
+      name: "desktop",
+    });
     // The other runner has a thread on a/b#1.
     await send(inbox, "issue_comment", comment(1));
     const botLease = (await client.leaseBot(bot.id)).lease;
@@ -1520,7 +1533,11 @@ describe("threads", () => {
     expect(defaultTtl(10)).toBe(60);
     expect(defaultTtl(1)).toBe(30);
     const { bot, client, d } = await setup(3);
-    const second = await client.registerRunner({ id: randomUUID(), name: "other" });
+    const second = await client.registerRunner({
+      org: (await client.listOrgs())[0]!.slug,
+      id: randomUUID(),
+      name: "other",
+    });
     const other = await Dispatcher.start(ctxOf([]), client, [bot], { runnerId: second.id });
     closers.push(() => other.close());
     const before = Date.now();
@@ -1638,6 +1655,69 @@ describe("threads", () => {
   it("says how to create a bot when there is none to run", async () => {
     await configured();
     expect(await run("bots", "run", "--no-tui")).toMatch(/No bots to run.*loopway bots create/);
+  });
+
+  describe("the runner's org", () => {
+    const saved = () => readFile(join(configDir, "runner.json"), "utf8").then(JSON.parse);
+
+    /** Puts the logged-in user in a second org too, and returns both slugs. */
+    async function inTwoOrgs() {
+      const key = await configured();
+      const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
+      const personal = await personalSlug(key);
+      const id = randomUUID();
+      const shared = `team-${id.slice(0, 8)}`;
+      await db.query(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [id, shared]);
+      await db.query(
+        `INSERT INTO loopway.org_members (org_id, user_id) SELECT $1, o.personal_user_id FROM loopway.orgs o WHERE o.slug = $2`,
+        [id, personal],
+      );
+      return { client, personal, shared };
+    }
+
+    it("uses the only org, and remembers it", async () => {
+      const key = await configured();
+      expect(await run("bots", "run", "--no-tui")).toMatch(/No bots to run/);
+      expect(await saved()).toEqual({ id: expect.any(String), org: await personalSlug(key) });
+    });
+
+    it("needs --org when there are several orgs and no terminal, then remembers the choice", async () => {
+      const { client, personal, shared } = await inTwoOrgs();
+      await expect(run("bots", "run", "--no-tui")).rejects.toThrow(new RegExp(`${personal}, ${shared}.*--org`));
+      await run("bots", "run", "--no-tui", "--org", shared);
+      const first = await saved();
+      expect(first.org).toBe(shared);
+      expect((await client.listRunners()).map((r) => [r.id, r.org])).toEqual([[first.id, shared]]);
+
+      // Later runs in the same config dir don't ask again.
+      await run("bots", "run", "--no-tui");
+      expect(await saved()).toEqual(first);
+      expect(await run("runners")).toMatch(new RegExp(`${first.id}.*${shared}`));
+
+      // Another --org starts a runner of its own; the first one stays where it was.
+      await run("bots", "run", "--no-tui", "--org", personal);
+      const second = await saved();
+      expect(second.id).not.toBe(first.id);
+      expect((await client.listRunners()).map((r) => [r.id, r.org]).sort()).toEqual(
+        [
+          [first.id, shared],
+          [second.id, personal],
+        ].sort(),
+      );
+    });
+
+    it("says which org a runner from before orgs belongs to", async () => {
+      const { personal, shared } = await inTwoOrgs();
+      await run("bots", "run", "--no-tui", "--org", shared);
+      const { id } = await saved();
+      await writeFile(join(configDir, "runner.json"), JSON.stringify({ id }));
+      await expect(run("bots", "run", "--no-tui", "--org", personal)).rejects.toThrow(
+        new RegExp(`belongs to the org ${shared}.*--org ${shared}.*runner.json`),
+      );
+      expect(await saved()).toEqual({ id });
+      await run("bots", "run", "--no-tui", "--org", shared);
+      expect(await saved()).toEqual({ id, org: shared });
+    });
   });
 });
 

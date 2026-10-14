@@ -80,14 +80,14 @@ Message shape:
 
 ## Runners
 
-A runner is a machine running loopway. The CLI makes its id (kept in `~/.loopway/runner.json`) and registers it on startup. A process leases its runner while it runs, so only one process uses a runner id at a time. A bot lease records which runner holds it, and a thread belongs to the runner that claimed it (see [Threads](#threads)).
+A runner is a machine running loopway, and belongs to one org for good: it only leases and runs the bots of that org, and only claims their threads (`400 runner_org_mismatch` otherwise, even for a user who is in both orgs). The CLI makes its id (kept in `~/.loopway/runner.json`) and registers it on startup. A process leases its runner while it runs, so only one process uses a runner id at a time. A bot lease records which runner holds it, and a thread belongs to the runner that claimed it (see [Threads](#threads)).
 
 | Endpoint | |
 | --- | --- |
-| `POST /api/runners` `{id, name}` | Register the runner, or rename it and mark it seen; safe to repeat. `409 runner_exists` if the id is another user's. |
+| `POST /api/runners` `{org, id, name}` | Register the runner in the org (a slug), or rename it and mark it seen; safe to repeat. `400 org_required` without `org`, `404` if you aren't in the org, `409 runner_org_mismatch` (with `details.org`, the runner's org) if the id is already a runner of another org of yours, `409 runner_exists` if the id is another user's. |
 | `POST /api/runners/:id/lease` `{ttl_seconds?, lease_token?}` | Take the runner's lease, or renew it by passing your current token. Returns `{lease: {token, expires_at}}`. `409 runner_leased` while another process holds a live lease, with `details.expires_at`. `ttl_seconds` defaults to 300, max 43200. |
 | `POST /api/runners/:id/release` `{lease_token?, force?}` | Drop the lease. `409 runner_lease_mismatch` if the token isn't the live lease. `force: true` drops whoever's, for a process that died without releasing. |
-| `GET /api/runners` | Your runners: `{id, org_id, name, created_at, last_seen_at, leased_until, bots, threads}`. `leased_until` is null unless a process holds the lease, `bots` is `[{id, name}]` for the bot leases it holds now, and `threads` counts the threads it owns. The lease token is never part of it. |
+| `GET /api/runners` | Your runners: `{id, org_id, org, name, created_at, last_seen_at, leased_until, bots, threads}` (`org` is the org's slug). `leased_until` is null unless a process holds the lease, `bots` is `[{id, name}]` for the bot leases it holds now, and `threads` counts the threads it owns. The lease token is never part of it. |
 
 ## Bots
 
@@ -107,7 +107,7 @@ A bot reads the messages of one or more of your inboxes, in `seq` order, and kee
 | `POST /api/bots/:id/release` `{lease_token?, force?}`  | Drop the lease, so the next runner needn't wait out the TTL. `409 lease_mismatch` if the token isn't the live lease, `409 not_leased` if there is none. `force: true` drops whoever's lease, no token needed: for a runner that died without releasing. |
 | `POST /api/bots/:id/cursor` `{seq, lease_token}`       | Move the cursor forward to `seq`; it never moves backwards. Returns the bot. `409` if the token isn't the live lease.                                                                          |
 
-`POST /api/runners` answers `403 username_required` until the user has chosen a username (that makes their personal org); inboxes and bots name their org instead, so before then they answer `404`. A bot's `inbox_ids` must be your inboxes, all in the bot's org: `400 inbox_org_mismatch` otherwise. Bot shape: `{id, org_id, name, model, inbox_ids, cursor, created_at}`; the lease is never part of it.
+Inboxes, bots and runners name their org, so before the user has chosen a username (that makes their personal org) they answer `404`. A bot's `inbox_ids` must be your inboxes, all in the bot's org: `400 inbox_org_mismatch` otherwise. Bot shape: `{id, org_id, name, model, inbox_ids, cursor, created_at}`; the lease is never part of it.
 
 Two webhooks landing at once can commit out of `seq` order, and a cursor that had moved past the later one would skip the earlier. So `messages` stops at the first message received in the last few seconds, giving inserts still in flight time to land.
 

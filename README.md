@@ -60,7 +60,7 @@ loopway bots messages <bot> [--limit 20]            # what the bot would read ne
 loopway bots release <bot> --force                  # drop a lease a dead runner left behind
 loopway bots threads <bot> [--status active|ended|all]   # the threads the server has for the bot
 loopway bots threads release <bot> <thread>         # give up a thread whose runner is gone, so another can claim it
-loopway runners                                     # the machines running your bots, and what each holds
+loopway runners                                     # the machines running your bots, their orgs, and what each holds
 loopway bots run [--max 3] [--interval 5] [--ttl <seconds>] [--no-tui]   # run your bots (see below)
 ```
 
@@ -77,6 +77,8 @@ loopway bots run [--max 3] [--interval 5] [--ttl <seconds>] [--no-tui]   # run y
 ```
 
 `loopway bots run` runs every bot on your account that has a prompt and rules, in the current directory. With no bots, it says how to create one and exits. One process runs all your bots, and `--max` is shared across them, since it caps the load on this machine.
+
+**Org.** A runner belongs to one org and only runs that org's bots. `loopway bots run --org <slug>` picks it; without the flag your only org is used, or you're asked to choose between several (non-interactively it fails and lists the slugs). The choice is saved with the runner in `~/.loopway/runner.json`, so later runs in that directory don't ask. A runner never moves: `--org` with another org starts a new runner for it. A `runner.json` from before orgs has no org saved yet; if its runner belongs to a different org than the one chosen, `bots run` says which, and that deleting `runner.json` starts a new runner.
 
 In a terminal, `loopway bots run` takes over the screen. The header names the bots this runner holds, and any it skipped because another runner holds their lease. Below are four lists: waiting messages (assigned to one of this runner's threads but not delivered yet), working threads (a run in flight), waiting threads (active, waiting for their next message) and done threads (ended, newest first). Threads owned by another runner are listed too, marked "on <runner>"; their sessions live on that machine, so this runner leaves them alone. ↑/↓ moves between sessions, Tab/Shift-Tab jumps between lists, and Enter or → opens a session's transcript, which follows new output until you scroll up (↑/↓, PgUp/PgDn, Home/End). ← goes back to the lists. The dispatcher's latest log line shows at the bottom. Quitting stops the dispatcher and its sessions, as Ctrl-C does. `--no-tui`, or output that isn't a terminal, prints the plain log instead.
 

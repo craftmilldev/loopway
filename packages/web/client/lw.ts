@@ -194,6 +194,8 @@ export interface Bot {
 /** A runner as `GET /runners` describes it. `leased_until` is null when it is offline. */
 export interface Runner {
   id: string;
+  /** The slug of the org it belongs to. */
+  org: string;
   name: string;
   last_seen_at: string;
   leased_until: string | null;

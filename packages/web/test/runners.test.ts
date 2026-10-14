@@ -151,3 +151,83 @@ describe("thread ownership", () => {
     expect((await call("GET", `${base}/threads/${thread}`, { key })).body.status).toBe("active");
   });
 });
+
+describe("a runner's org", () => {
+  /** A user in their personal org and in a shared one. */
+  async function twoOrgs() {
+    const key = await newUser("Both");
+    const id = randomUUID();
+    const slug = `shared-${id.slice(0, 8)}`;
+    await db.query(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [id, slug]);
+    const me = (await call("GET", "/me", { key })).body.id;
+    await db.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [id, me]);
+    const orgs = (await call("GET", "/orgs", { key })).body.data as { slug: string; personal: boolean }[];
+    return { key, shared: slug, personal: orgs.find((o) => o.personal)!.slug };
+  }
+
+  it("is required, and must be one the caller is in", async () => {
+    const { key, shared } = await twoOrgs();
+    const none = await call("POST", "/runners", { key, noOrg: true, body: { id: randomUUID(), name: "x" } });
+    expect([none.status, none.body.error.code]).toEqual([400, "org_required"]);
+    const stranger = await newUser("Out");
+    const out = await call("POST", "/runners", { key: stranger, body: { org: shared, id: randomUUID(), name: "x" } });
+    expect([out.status, out.body.error.code]).toEqual([404, "not_found"]);
+    const made = await call("POST", "/runners", { key, body: { org: shared, id: randomUUID(), name: "x" } });
+    expect(made.status).toBe(200);
+    expect(made.body.org).toBe(shared);
+    expect((await call("GET", "/runners", { key })).body.data[0].org).toBe(shared);
+  });
+
+  it("is kept: the same id in another org is a 409, in its own org it is a rename", async () => {
+    const { key, shared, personal } = await twoOrgs();
+    const id = randomUUID();
+    await call("POST", "/runners", { key, body: { org: shared, id, name: "laptop" } });
+    const moved = await call("POST", "/runners", { key, body: { org: personal, id, name: "laptop" } });
+    expect([moved.status, moved.body.error.code]).toEqual([409, "runner_org_mismatch"]);
+    expect(moved.body.error.details).toEqual({ org: shared });
+    const renamed = await call("POST", "/runners", { key, body: { org: shared, id, name: "renamed" } });
+    expect(renamed.body).toMatchObject({ name: "renamed", org: shared });
+    // Someone outside the runner's org learns nothing about it.
+    const stranger = await newUser("Out");
+    const taken = await call("POST", "/runners", { key: stranger, body: { id, name: "mine" } });
+    expect([taken.status, taken.body.error.code]).toEqual([409, "runner_exists"]);
+  });
+
+  it("can't lease or claim a bot of another org, even for a user in both", async () => {
+    const { key, shared, personal } = await twoOrgs();
+    const inbox = await newInbox(key);
+    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [inbox.id] } }))
+      .body;
+    await sendGithub(inbox, "pull_request", prPayload(1));
+    const message = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data[0].id;
+    const lease = (await call("POST", `/bots/${bot.id}/lease`, { key, body: {} })).body.lease.token;
+    const thread = randomUUID();
+    await call("POST", `/bots/${bot.id}/assign`, {
+      key,
+      body: { lease_token: lease, cursor: 0, assignments: [{ message_id: message, thread_id: thread }] },
+    });
+
+    const runner = randomUUID();
+    await call("POST", "/runners", { key, body: { org: shared, id: runner, name: "laptop" } });
+    const token = (await call("POST", `/runners/${runner}/lease`, { key, body: {} })).body.lease.token;
+
+    const leased = await call("POST", `/bots/${bot.id}/lease`, {
+      key,
+      body: { lease_token: lease, runner_id: runner },
+    });
+    expect([leased.status, leased.body.error.code]).toEqual([400, "runner_org_mismatch"]);
+    const claimed = await call("POST", `/bots/${bot.id}/threads/${thread}/claim`, {
+      key,
+      body: { lease_token: token },
+    });
+    expect([claimed.status, claimed.body.error.code]).toEqual([400, "runner_org_mismatch"]);
+    expect((await call("GET", `/bots/${bot.id}/threads/${thread}`, { key })).body.runner_id).toBeNull();
+
+    // A runner of the bot's own org does both.
+    const own = randomUUID();
+    await call("POST", "/runners", { key, body: { org: personal, id: own, name: "desktop" } });
+    const ownToken = (await call("POST", `/runners/${own}/lease`, { key, body: {} })).body.lease.token;
+    const ok = await call("POST", `/bots/${bot.id}/threads/${thread}/claim`, { key, body: { lease_token: ownToken } });
+    expect(ok.status).toBe(200);
+  });
+});

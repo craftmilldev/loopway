@@ -215,15 +215,18 @@ describe("inboxes across orgs", () => {
 });
 
 describe("before a username is chosen", () => {
-  it("has no org to create an inbox in and answers 403 username_required for runners, and works after", async () => {
+  it("has no org to create an inbox in and answers 404 for runners, and works after", async () => {
     const key = await newUserWithoutOrg();
     const inbox = await call("POST", "/inboxes", {
       key,
       body: { org: "now-named", name: "gh", source_type: "github" },
     });
     expect([inbox.status, inbox.body.error.code]).toEqual([404, "not_found"]);
-    const runner = await call("POST", "/runners", { key, body: { id: randomUUID(), name: "laptop" } });
-    expect([runner.status, runner.body.error.code]).toEqual([403, "username_required"]);
+    const runner = await call("POST", "/runners", {
+      key,
+      body: { org: "now-named", id: randomUUID(), name: "laptop" },
+    });
+    expect([runner.status, runner.body.error.code]).toEqual([404, "not_found"]);
 
     expect((await call("PATCH", "/me/username", { key, body: { username: "now-named" } })).status).toBe(200);
     expect((await call("POST", "/inboxes", { key, body: { name: "gh", source_type: "github" } })).status).toBe(201);
