@@ -156,6 +156,17 @@ export function startOrg(orgs: Org[]): string {
   return (orgs.find((o) => o.slug === last) ?? orgs[0])?.slug ?? "";
 }
 
+/** The overview of the last-used org, else /dashboard, which redirects to one: where a link goes when the org isn't known. */
+export function lastOrgPath(): string {
+  try {
+    const last = localStorage.getItem(ORG_KEY);
+    if (last) return "/" + encodeURIComponent(last);
+  } catch {
+    // Storage is blocked.
+  }
+  return "/dashboard";
+}
+
 /** Where a login ends up: the page it was sent from, else the overview of the last-used (or personal) org. */
 export async function landing(): Promise<string> {
   const next = nextPath();

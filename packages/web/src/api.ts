@@ -429,7 +429,7 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.get("/inboxes/:inboxId/activity", async (c) => {
-    const inbox = await ownedInbox(c);
+    const inbox = await memberInbox(c);
     const days = await activityDays(c, "inbox", "one");
     const [row] = await store.inboxActivity(c.var.db, c.var.user.id, days, inbox.id);
     await metrics.capture("inbox_activity_viewed", c.var.user.id, { scope: "one", days, inboxes: 1 });
@@ -437,12 +437,12 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.get("/inboxes/:inboxId", async (c) => {
-    const inbox = await ownedInbox(c);
+    const inbox = await memberInbox(c);
     return c.json({ ...serializeInbox(c, inbox), stats: await store.inboxStats(c.var.db, inbox.id) });
   });
 
   authed.patch("/inboxes/:inboxId", async (c) => {
-    const inbox = await ownedInbox(c);
+    const inbox = await memberInbox(c);
     const input = z
       .object({ name: z.string().min(1).max(200).optional(), config: z.unknown().optional() })
       .parse(await jsonBody(c));
@@ -455,7 +455,7 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.delete("/inboxes/:inboxId", async (c) => {
-    const inbox = await ownedInbox(c);
+    const inbox = await memberInbox(c);
     await store.deleteInbox(c.var.db, inbox.id);
     return c.body(null, 204);
   });
@@ -463,7 +463,7 @@ export function createApi(opts: ApiOptions) {
   // Messages
 
   authed.get("/inboxes/:inboxId/messages", async (c) => {
-    const inbox = await ownedInbox(c);
+    const inbox = await memberInbox(c);
     const q = z
       .object({
         type: z.string().min(1).optional(),
@@ -488,7 +488,7 @@ export function createApi(opts: ApiOptions) {
   const ttlBody = z.object({ ttl_seconds: z.number().int().min(1).max(MAX_TTL).default(DEFAULT_TTL) });
 
   authed.get("/inboxes/:inboxId/messages/:messageId", async (c) => {
-    const inbox = await ownedInbox(c);
+    const inbox = await memberInbox(c);
     return c.json(serializeMessage(await existingMessage(c, inbox)));
   });
 
@@ -516,7 +516,7 @@ export function createApi(opts: ApiOptions) {
         throw new ApiError(409, "runner_org_mismatch", "That runner belongs to another org; it can't be moved", {
           org: existing.org_slug,
         });
-      throw new ApiError(409, "runner_exists", "That runner id belongs to another user");
+      throw new ApiError(409, "runner_exists", "That runner id is already in use by a runner you can't use");
     }
     return c.json(serializeRunner(runner));
   });
@@ -665,7 +665,7 @@ export function createApi(opts: ApiOptions) {
       orgId: org.id,
       name: input.name,
       model: input.model,
-      inboxIds: await ownedInboxIds(c, input.inbox_ids, org.id),
+      inboxIds: await memberInboxIds(c, input.inbox_ids, org.id),
       prompt: input.prompt,
       rules: await checked(c, input.rules, "create"),
     });
@@ -673,10 +673,10 @@ export function createApi(opts: ApiOptions) {
     return c.json(serializeBot(bot), 201);
   });
 
-  authed.get("/bots/:botId", async (c) => c.json(serializeBot(await ownedBot(c))));
+  authed.get("/bots/:botId", async (c) => c.json(serializeBot(await memberBot(c))));
 
   authed.get("/bots/:botId/activity", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     const days = await activityDays(c, "bot", "bot");
     const [row] = await store.botActivity(c.var.db, c.var.user.id, days, bot.id);
     await metrics.capture("bot_activity_viewed", c.var.user.id, { scope: "bot", days, bots: 1 });
@@ -684,7 +684,7 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.patch("/bots/:botId", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     const input = z
       .object({
         name: z.string().min(1).max(200).optional(),
@@ -695,19 +695,19 @@ export function createApi(opts: ApiOptions) {
     const updated = await store.updateBot(c.var.db, bot, {
       name: input.name,
       model: input.model,
-      inboxIds: input.inbox_ids && (await ownedInboxIds(c, input.inbox_ids, bot.org_id)),
+      inboxIds: input.inbox_ids && (await memberInboxIds(c, input.inbox_ids, bot.org_id)),
     });
     return c.json(serializeBot(updated));
   });
 
   authed.get("/bots/:botId/versions", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     const rows = await store.listBotVersions(c.var.db, bot.id);
     return c.json({ data: rows.map((v) => ({ ...v, created_at: iso(v.created_at) })) });
   });
 
   authed.post("/bots/:botId/versions", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     const input = z.object({ prompt: promptBody, rules: rulesBody.optional() }).parse(await jsonBody(c));
     const version = await store.addBotVersion(c.var.db, bot.id, input.prompt, await checked(c, input.rules, "version"));
     await metrics.capture("bot_version_saved", c.var.user.id, { with_rules: !!input.rules });
@@ -715,13 +715,13 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.delete("/bots/:botId", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     await store.deleteBot(c.var.db, bot.id);
     return c.body(null, 204);
   });
 
   authed.post("/bots/:botId/lease", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     const input = ttlBody
       .extend({ lease_token: z.string().optional(), runner_id: runnerId.optional() })
       .parse(await jsonBody(c));
@@ -735,7 +735,7 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.post("/bots/:botId/release", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     const { lease_token, force } = z
       .object({ lease_token: z.string().min(1).optional(), force: z.boolean().optional() })
       .parse(await jsonBody(c));
@@ -747,7 +747,7 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.post("/bots/:botId/cursor", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     const { seq, lease_token } = z
       .object({ seq: z.number().int().min(0), lease_token: z.string().min(1) })
       .parse(await jsonBody(c));
@@ -757,7 +757,7 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.get("/bots/:botId/messages", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     const q = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(c.req.query());
     const rows = await store.botMessages(c.var.db, bot.id, q.limit);
     return c.json({ data: rows.map((e) => serializeMessage(e)) });
@@ -773,19 +773,19 @@ export function createApi(opts: ApiOptions) {
   const threadSubjects = z.array(z.string().min(1).max(500)).max(100);
 
   authed.get("/bots/:botId/threads", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     const q = z.object({ status: z.enum(["active", "ended", "all"]).default("active") }).parse(c.req.query());
     const rows = await store.listThreads(c.var.db, bot.id, q.status);
     return c.json({ data: await serializeThreads(c.var.db, rows) });
   });
 
   authed.get("/bots/:botId/threads/:threadId", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     return c.json(await serializeThread(c.var.db, await existingThread(c, bot)));
   });
 
   authed.post("/bots/:botId/threads/:threadId/claim", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     const thread = await existingThread(c, bot);
     const { lease_token } = z.object({ lease_token: leaseToken }).parse(await jsonBody(c));
     const runner = await liveRunner(c, lease_token);
@@ -798,16 +798,16 @@ export function createApi(opts: ApiOptions) {
 
   // The manual move, for when the thread's runner is gone: the thread has no owner until a runner claims it.
   authed.post("/bots/:botId/threads/:threadId/release", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     const thread = await existingThread(c, bot);
     await store.releaseThread(c.var.db, bot.id, thread.id);
     return c.json(await serializeThread(c.var.db, (await store.getThread(c.var.db, bot.id, thread.id))!));
   });
 
-  // The owner's way to end a thread whose work is done or whose runner is gone. Needs no lease, like release; the
+  // A member's way to end a thread whose work is done or whose runner is gone. Needs no lease, like release; the
   // runner's PATCH still does. Waiting and inflight messages stay as they are, as when a runner ends the thread.
   authed.post("/bots/:botId/threads/:threadId/end", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     const thread = await existingThread(c, bot);
     await store.endThread(c.var.db, bot.id, thread.id);
     await metrics.capture("thread_ended_by_owner", c.var.user.id, { already_ended: thread.status === "ended" });
@@ -815,7 +815,7 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.post("/bots/:botId/assign", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     const input = z
       .object({
         lease_token: leaseToken,
@@ -859,7 +859,7 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.patch("/bots/:botId/threads/:threadId", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     const thread = await existingThread(c, bot);
     const input = z
       .object({
@@ -886,7 +886,7 @@ export function createApi(opts: ApiOptions) {
 
   // The manual repair for a subject that landed on the wrong thread: from this thread to `to_thread_id`. Needs no lease, like release.
   authed.post("/bots/:botId/threads/:threadId/move-subject", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     const from = await existingThread(c, bot);
     const input = z.object({ subject: z.string().min(1).max(500), to_thread_id: uuid }).parse(await jsonBody(c));
     const to = await existingThread(c, bot, input.to_thread_id);
@@ -897,7 +897,7 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.post("/bots/:botId/threads/:threadId/deliver", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     const thread = await existingThread(c, bot);
     const { lease_token } = z.object({ lease_token: leaseToken }).parse(await jsonBody(c));
     await requireOwner(c, thread, lease_token);
@@ -907,7 +907,7 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.post("/bots/:botId/threads/:threadId/finish", async (c) => {
-    const bot = await ownedBot(c);
+    const bot = await memberBot(c);
     const thread = await existingThread(c, bot);
     const { lease_token, requeue } = z
       .object({ lease_token: leaseToken, requeue: z.boolean().optional() })
@@ -924,7 +924,7 @@ export function createApi(opts: ApiOptions) {
 
   // ---------- helpers (closures over opts) ----------
 
-  async function ownedBot(c: Context<Env>): Promise<store.Bot> {
+  async function memberBot(c: Context<Env>): Promise<store.Bot> {
     const id = c.req.param("botId") ?? "";
     const bot = isUuid(id) ? await store.getBot(c.var.db, id, c.var.user.id) : undefined;
     if (!bot) throw new ApiError(404, "not_found", "Bot not found");
@@ -932,7 +932,7 @@ export function createApi(opts: ApiOptions) {
   }
 
   /** The runner must be in one of the user's orgs; using it counts as seeing it. */
-  async function ownedRunner(c: Context<Env>, id: string): Promise<store.Runner> {
+  async function memberRunner(c: Context<Env>, id: string): Promise<store.Runner> {
     const runner = await store.getRunner(c.var.db, c.var.user.id, id);
     if (!runner) throw new ApiError(404, "not_found", "Runner not found; register it with POST /runners");
     await store.touchRunner(c.var.db, runner.id);
@@ -947,7 +947,7 @@ export function createApi(opts: ApiOptions) {
   }
 
   async function sameOrgRunner(c: Context<Env>, bot: store.Bot, id: string): Promise<store.Runner> {
-    const runner = await ownedRunner(c, id);
+    const runner = await memberRunner(c, id);
     await requireSameOrg(c, bot, runner, "bot_lease");
     return runner;
   }
@@ -999,7 +999,7 @@ export function createApi(opts: ApiOptions) {
   }
 
   /** The ids, deduped, once they're all inboxes in the user's orgs. A bot's inboxes share one org: `orgId` if given (the bot's), else each other's. */
-  async function ownedInboxIds(c: Context<Env>, ids: string[], orgId?: string): Promise<string[]> {
+  async function memberInboxIds(c: Context<Env>, ids: string[], orgId?: string): Promise<string[]> {
     const mine = new Map((await store.listInboxes(c.var.db, c.var.user.id)).map((i) => [i.id, i.org_id]));
     const wanted = [...new Set(ids.map((id) => id.toLowerCase()))];
     const unknown = wanted.filter((id) => !mine.has(id));
@@ -1012,7 +1012,7 @@ export function createApi(opts: ApiOptions) {
     return wanted;
   }
 
-  async function ownedInbox(c: Context<Env>): Promise<Inbox> {
+  async function memberInbox(c: Context<Env>): Promise<Inbox> {
     const id = c.req.param("inboxId") ?? "";
     const inbox = isUuid(id) ? await store.getInbox(c.var.db, id, c.var.user.id) : undefined;
     if (!inbox) throw new ApiError(404, "not_found", "Inbox not found");

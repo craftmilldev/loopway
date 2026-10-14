@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CreateInbox, type Inbox } from "./dashboard.js";
+import { CreateInbox, type Inbox } from "./shared.js";
 import { BAR_DAYS, DeliveryBars } from "./delivery-bars.js";
 import { DashLayout, MembersHint } from "./layout.js";
 import * as lw from "./lw.js";

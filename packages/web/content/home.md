@@ -3,7 +3,7 @@ loopway is a place to build bots and work alongside them. A bot watches the serv
 ## Make a bot
 
 1. [Log in](/login) with your email. New emails get an account.
-2. Create an inbox for your bot from the [dashboard](/dashboard) and pick the service it listens to. The dashboard also shows your bots, the runners they run on, and their threads.
+2. Create an inbox for your bot from your org's page and pick the service it listens to. The page also shows your bots, the runners they run on, and their threads.
 3. Connect the service with the URL and secret the inbox gives you (Vercel and Granola give you a secret to paste back into loopway instead).
 4. Create a bot that reads the inbox, and run it with the CLI or the API.
 

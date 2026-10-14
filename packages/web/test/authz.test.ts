@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { app, call, db, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
 
-// The audit behind "a user never creates, edits or deletes data in another user's account": every route is
+// The audit behind "nobody creates, edits or deletes data in an org they aren't a member of": every route is
 // either listed as public here or answers 401 without a token, and every route that names a resource answers
-// 404 (or a refusal) for a user who doesn't own it, leaving the owner's data as it was.
+// 404 (or a refusal) for a user outside the resource's org, leaving the org's data as it was.
 
 // Public on purpose: the shell, health, signed webhooks, login, and the analytics proxy.
 const PUBLIC = [

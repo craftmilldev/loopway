@@ -2,7 +2,7 @@ import { Marked } from "marked";
 import home from "../content/home.md";
 import { MARKETING_PATHS, type MarketingPath } from "../src/marketing.js";
 import { Layout } from "./layout.js";
-import { token } from "./lw.js";
+import { lastOrgPath, token } from "./lw.js";
 
 // The markdown for each marketing page, keyed by path. Typed on the path list in src/marketing.ts, so a path added
 // there doesn't compile until its content is here.
@@ -11,7 +11,7 @@ export const CONTENT: Record<MarketingPath, string> = {
 };
 
 function Marketing({ html }: { html: string }) {
-  const nav = token() ? <a href="/dashboard">Dashboard</a> : <a href="/login">Log in</a>;
+  const nav = token() ? <a href={lastOrgPath()}>Dashboard</a> : <a href="/login">Log in</a>;
   return (
     <Layout title="loopway" nav={nav}>
       <div className="prose" dangerouslySetInnerHTML={{ __html: html }} />
