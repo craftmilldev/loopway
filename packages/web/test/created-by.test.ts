@@ -34,14 +34,24 @@ describe("created_by through the API", () => {
 
     await sendGithub(inbox, "pull_request", prPayload(1));
     const messages = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data;
-    const lease = (await call("POST", `/bots/${bot.id}/lease`, { key, body: { ttl_seconds: 60 } })).body.lease.token;
-    const threadId = randomUUID();
-    await call("POST", `/bots/${bot.id}/assign`, {
-      key,
-      body: { lease_token: lease, cursor: 0, assignments: [{ message_id: messages[0].id, thread_id: threadId }] },
-    });
-    const thread = (await call("GET", `/bots/${bot.id}/threads/${threadId}`, { key })).body;
-    expect(thread.created_by).toBe(`bot:${bot.id}`);
+    const assignAs = async (runnerId: string | undefined) => {
+      const lease = (
+        await call("POST", `/bots/${bot.id}/lease`, { key, body: { ttl_seconds: 60, runner_id: runnerId } })
+      ).body.lease.token;
+      const id = randomUUID();
+      await call("POST", `/bots/${bot.id}/assign`, {
+        key,
+        body: { lease_token: lease, cursor: 0, assignments: [{ message_id: messages[0].id, thread_id: id }] },
+      });
+      await call("POST", `/bots/${bot.id}/release`, { key, body: { lease_token: lease } });
+      return id;
+    };
+    const threadId = await assignAs(undefined);
+    expect((await call("GET", `/bots/${bot.id}/threads/${threadId}`, { key })).body.created_by).toBe(`bot:${bot.id}`);
+    const byRunner = await assignAs(runner.id);
+    expect((await call("GET", `/bots/${bot.id}/threads/${byRunner}`, { key })).body.created_by).toBe(
+      `runner:${runner.id}`,
+    );
 
     // The org-scoped events feed still lists the thread's creation.
     const events = (await call("GET", "/events", { key })).body.data;
@@ -59,7 +69,13 @@ describe("migration 022_created_by", () => {
       await migrateBefore(fresh, "022_created_by");
       const user = randomUUID();
       const org = randomUUID();
-      const x = { inbox: randomUUID(), bot: randomUUID(), thread: randomUUID(), runner: randomUUID() };
+      const x = {
+        inbox: randomUUID(),
+        bot: randomUUID(),
+        thread: randomUUID(),
+        claimed: randomUUID(),
+        runner: randomUUID(),
+      };
       await fresh.query(`INSERT INTO loopway.users (id, name, email) VALUES ($1, 'u', 'u@example.com')`, [user]);
       await fresh.query(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, 'created-org', 'created-org')`, [org]);
       await fresh.query(
@@ -92,6 +108,11 @@ describe("migration 022_created_by", () => {
         org,
       ]);
 
+      await fresh.query(
+        `INSERT INTO loopway.threads (id, bot_id, user_id, org_id, runner_id) VALUES ($1, $2, $3, $4, $5)`,
+        [x.claimed, x.bot, user, org, x.runner],
+      );
+
       expect(await migrate(fresh)).toEqual(["022_created_by"]);
 
       const by = async (table: string, id: string) =>
@@ -101,6 +122,8 @@ describe("migration 022_created_by", () => {
       expect(await by("bots", x.bot)).toBe(`user:${user}`);
       expect(await by("runners", x.runner)).toBe(`user:${user}`);
       expect(await by("threads", x.thread)).toBe(`bot:${x.bot}`);
+      expect(await by("threads", x.claimed)).toBe(`runner:${x.runner}`);
+      expect(await by("threads", x.claimed)).toBe(`runner:${x.runner}`);
       const events = await fresh.query<{ org_id: string }>(`SELECT org_id FROM loopway.thread_events`);
       expect(events.map((e) => e.org_id)).toEqual([org]);
 

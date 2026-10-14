@@ -1,5 +1,5 @@
 import type { BotRule } from "@loopway/rules";
-import { botActor, userActor } from "./actor.js";
+import { botActor, runnerActor, userActor } from "./actor.js";
 import type { CloudEvent } from "./cloudevents.js";
 import type { Db } from "./db/index.js";
 import { ApiError } from "./http.js";
@@ -869,7 +869,7 @@ export interface ThreadMessage {
 export interface Thread {
   id: string;
   bot_id: string;
-  /** The bot that assigned it, as an actor (see actor.ts). Informational. */
+  /** The runner that assigned it for the bot, as an actor (see actor.ts); the bot if its lease named no runner. Informational. */
   created_by: string;
   status: "active" | "ended";
   started: boolean;
@@ -1129,9 +1129,9 @@ export async function assignMessages(
   assignments: Assignment[],
 ): Promise<{ assigned: number } | undefined> {
   return db.transaction(async (tx) => {
-    const [bot] = await tx.query<{ org_id: string }>(
+    const [bot] = await tx.query<{ org_id: string; runner_id: string | null }>(
       `UPDATE loopway.bots b SET cursor = GREATEST(b.cursor, $3::bigint)
-       WHERE ${LEASED} RETURNING b.org_id`,
+       WHERE ${LEASED} RETURNING b.org_id, b.runner_id`,
       [botId, token, cursor],
     );
     if (!bot) return undefined;
@@ -1143,7 +1143,7 @@ export async function assignMessages(
       `INSERT INTO loopway.threads (id, bot_id, created_by, org_id)
        SELECT DISTINCT a.thread_id, $2::uuid, $3, $4::uuid FROM ${a} a
        ON CONFLICT (id) DO NOTHING RETURNING id`,
-      [assignments, botId, botActor(botId), bot.org_id],
+      [assignments, botId, bot.runner_id ? runnerActor(bot.runner_id) : botActor(botId), bot.org_id],
     );
     for (const t of created) await recordThreadEvents(tx, bot.org_id, botId, t.id, ["created"]);
     await tx.query(

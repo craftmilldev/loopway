@@ -502,7 +502,7 @@ UPDATE loopway.bots    SET created_by = 'user:' || user_id;
 
 UPDATE loopway.runners SET created_by = 'user:' || user_id;
 
-UPDATE loopway.threads SET created_by = 'bot:' || bot_id;
+UPDATE loopway.threads SET created_by = CASE WHEN runner_id IS NOT NULL THEN 'runner:' || runner_id ELSE 'bot:' || bot_id END;
 
 ALTER TABLE loopway.inboxes ALTER COLUMN created_by SET NOT NULL;
 

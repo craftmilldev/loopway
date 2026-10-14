@@ -27,7 +27,7 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 
 The list endpoints `GET /api/inboxes`, `/api/bots`, `/api/runners`, `/api/events`, `/api/inboxes/activity` and `/api/bots/activity` take an optional `?org=<slug>` and then list only that org's entities. A slug you aren't a member of, or that doesn't exist, is a `404`. Without it they list all your orgs'.
 
-Inboxes, bots, runners and threads carry `created_by`, who made them as an actor: `user:<uuid>`, `bot:<uuid>` or `runner:<id>`. A user makes inboxes, bots and runners through the API; a thread is made by the bot that assigned it. It is informational only and never decides access (membership of the entity's org does).
+Inboxes, bots, runners and threads carry `created_by`, who made them as an actor: `user:<uuid>`, `bot:<uuid>` or `runner:<id>`. A user makes inboxes, bots and runners through the API; a thread is made by the runner whose lease on the bot assigned it (`bot:<uuid>` if the lease named no runner). It is informational only and never decides access (membership of the entity's org does).
 
 ## Inboxes
 

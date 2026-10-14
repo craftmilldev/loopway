@@ -136,7 +136,7 @@ export interface Thread {
   /** The Claude session id. */
   id: string;
   bot_id: string;
-  /** The bot that assigned it, as `bot:<uuid>`. Informational. */
+  /** The runner that assigned it for the bot (`runner:<id>`), or `bot:<uuid>` if the lease named no runner. Informational. */
   created_by: string;
   status: "active" | "ended";
   started: boolean;
