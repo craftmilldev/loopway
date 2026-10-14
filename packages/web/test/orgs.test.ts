@@ -181,3 +181,59 @@ describe("migration", () => {
     expect(await migrateWith(["someone@example.com"])).toEqual([]);
   });
 });
+
+describe("POST /orgs", () => {
+  it("makes a shared org with the caller as its only member", async () => {
+    const key = await newUser();
+    const other = await newUser();
+    const res = await call("POST", "/orgs", { key, body: { slug: " Fresh-Team " } });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ slug: "fresh-team", name: "fresh-team", personal: false });
+
+    const named = await call("POST", "/orgs", { key, body: { slug: "named-team", name: "Named Team" } });
+    expect(named.body).toMatchObject({ slug: "named-team", name: "Named Team", personal: false });
+
+    const mine = (await call("GET", "/orgs", { key })).body.data;
+    expect(mine.map((o: { slug: string }) => o.slug)).toContain("fresh-team");
+    expect((await call("GET", "/orgs/fresh-team/members", { key })).body.members).toHaveLength(1);
+    // nobody else sees or reaches it
+    const theirs = (await call("GET", "/orgs", { key: other })).body.data;
+    expect(theirs.map((o: { slug: string }) => o.slug)).not.toContain("fresh-team");
+    expect((await call("GET", "/orgs/fresh-team/members", { key: other })).status).toBe(404);
+    // and entities can be created in it
+    const inbox = await call("POST", "/inboxes", {
+      key,
+      body: { org: "fresh-team", name: "gh", source_type: "github" },
+    });
+    expect(inbox.status).toBe(201);
+  });
+
+  it("refuses bad slugs with the username codes", async () => {
+    const key = await newUser();
+    await call("PATCH", "/me/username", { key, body: { username: "someone-here" } });
+    const post = async (slug: string) => {
+      const r = await call("POST", "/orgs", { key, body: { slug } });
+      return [r.status, r.body.error.code];
+    };
+    expect(await post("a")).toEqual([400, "invalid_username"]);
+    expect(await post("Bad_Slug")).toEqual([400, "invalid_username"]);
+    expect(await post("-edge")).toEqual([400, "invalid_username"]);
+    expect(await post("pricing")).toEqual([400, "username_reserved"]);
+    expect(await post("someone-here")).toEqual([409, "username_taken"]);
+    await call("POST", "/orgs", { key, body: { slug: "once-only" } });
+    expect(await post("once-only")).toEqual([409, "username_taken"]);
+    expect((await call("POST", "/orgs", { body: { slug: "no-auth" } })).status).toBe(401);
+    expect((await call("POST", "/orgs", { key, body: {} })).status).toBe(400);
+  });
+
+  it("checks availability, own username included", async () => {
+    const key = await newUser();
+    await call("PATCH", "/me/username", { key, body: { username: "avail-me" } });
+    const check = async (slug: string) => (await call("GET", `/orgs/${slug}/available`, { key })).body;
+    expect(await check("avail-free")).toEqual({ slug: "avail-free", available: true });
+    expect(await check("avail-me")).toMatchObject({ available: false, reason: "taken" });
+    expect(await check("login")).toMatchObject({ available: false, reason: "reserved" });
+    expect(await check("x")).toMatchObject({ available: false, reason: "too_short" });
+    expect((await call("GET", "/orgs/avail-free/available")).status).toBe(401);
+  });
+});

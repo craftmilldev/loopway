@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { CreateInbox, type Inbox } from "./dashboard.js";
 import { BAR_DAYS, DeliveryBars } from "./delivery-bars.js";
-import { DashLayout } from "./layout.js";
+import { DashLayout, MembersHint } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
 
@@ -83,6 +83,7 @@ export function Inboxes() {
       {rows?.length === 0 && (
         <p className="ov-empty">
           No inboxes yet. <a href={lw.orgBase() + "/bots/new"}>Connect a source</a> to start.
+          <MembersHint />
         </p>
       )}
 

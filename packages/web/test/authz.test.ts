@@ -13,7 +13,7 @@ const PUBLIC = [
   /^POST \/api\/webhooks\/:inboxId$/,
   /^POST \/api\/auth\/(login|verify)$/,
   // The UI shell and its bundle (GETs that serve no account data), and the analytics proxy.
-  /^GET \/(login|app\.js|app\.css)?$/,
+  /^GET \/(login|orgs\/new|app\.js|app\.css)?$/,
   /^GET \/dashboard(\/|$)/,
   // The pages of an org, which show nothing until the browser has loaded the org from the API.
   /^GET \/:org(\/|$)/,

@@ -70,6 +70,7 @@ export function createWeb(opts: WebOptions = {}) {
   const pages = [
     ...MARKETING_PATHS,
     "/login",
+    "/orgs/new",
     "/dashboard",
     "/dashboard/bots",
     "/dashboard/bots/new",

@@ -216,6 +216,29 @@ export async function listOrgs(db: Q, userId: string): Promise<Org[]> {
   );
 }
 
+/** Makes a shared org (named `name`, else its slug) with the user as its only member. Slugs follow the username rules. */
+export async function createSharedOrg(
+  db: Db,
+  userId: string,
+  slug: string,
+  name?: string,
+): Promise<{ ok: true; org: Org } | { ok: false; problem: SlugProblem }> {
+  const problem = await usernameProblem(db, slug);
+  if (problem) return { ok: false, problem };
+  try {
+    return await db.transaction(async (tx) => {
+      const id = uuidv7();
+      await tx.query(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $3)`, [id, slug, name || slug]);
+      await tx.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [id, userId]);
+      return { ok: true as const, org: { id, slug, name: name || slug, personal: false } };
+    });
+  } catch (err) {
+    // Someone took the slug between the check and the insert.
+    if ((err as { code?: string }).code === "23505") return { ok: false, problem: "taken" };
+    throw err;
+  }
+}
+
 /** The org with this slug, if the user is a member of it. */
 export async function memberOrg(db: Q, userId: string, slug: string): Promise<Org | undefined> {
   return (await listOrgs(db, userId)).find((o) => o.slug === slug);

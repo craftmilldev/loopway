@@ -23,6 +23,19 @@ export function Layout({ title, nav, children }: { title: string; nav?: ReactNod
 /** The user's orgs, which the page's org gate (main.tsx) has loaded; null where there is no gate. */
 export const OrgsContext = createContext<Org[] | null>(null);
 
+/** For an empty shared org's pages: teammates are added from the CLI. Nothing in a personal org, which has no members. */
+export function MembersHint() {
+  const orgs = useContext(OrgsContext);
+  const org = orgs?.find((o) => o.slug === orgSlug());
+  if (!org || org.personal) return null;
+  return (
+    <>
+      {" "}
+      Add teammates with <code>loopway orgs add-member {org.slug} &lt;email&gt;</code>.
+    </>
+  );
+}
+
 /** The tabs of an org's pages: where each goes, and whether the path `p` is on it. */
 const sections = (base: string) => [
   { label: "Overview", href: base, on: (p: string) => p === base },

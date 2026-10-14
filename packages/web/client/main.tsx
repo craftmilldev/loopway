@@ -8,6 +8,7 @@ import { Login } from "./login.js";
 import { marketingPage } from "./marketing.js";
 import { MembersPage } from "./members.js";
 import { NewBot } from "./new-bot.js";
+import { NewOrg } from "./new-org.js";
 import { DashboardRedirect, NotFound, OrgGate } from "./org-pages.js";
 import { startMetrics } from "./metrics.js";
 import { Overview } from "./overview.js";
@@ -20,6 +21,7 @@ function page(path: string) {
   const marketing = marketingPage(path);
   if (marketing) return marketing;
   if (path === "/login") return <Login />;
+  if (path === "/orgs/new") return <NewOrg />;
   const old = path.match(/^\/dashboard(\/.*)?$/);
   if (old) return <DashboardRedirect rest={old[1] ?? ""} />;
   const part = (m: RegExpMatchArray, i: number) => decodeURIComponent(m[i]!);

@@ -121,11 +121,13 @@ describe("OrgSwitcher", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /Org: craftmill/ }));
     const items = screen.getAllByRole("menuitem");
-    expect(items.map((a) => a.textContent)).toEqual(["mcwhittemore (you)", "craftmill"]);
-    expect(items.map((a) => a.getAttribute("href"))).toEqual(["/mcwhittemore", "/craftmill"]);
-    expect(items.map((a) => a.getAttribute("aria-current"))).toEqual([null, "page"]);
+    expect(items.map((a) => a.textContent)).toEqual(["mcwhittemore (you)", "craftmill", "+ New org"]);
+    expect(items.map((a) => a.getAttribute("href"))).toEqual(["/mcwhittemore", "/craftmill", "/orgs/new"]);
+    expect(items.map((a) => a.getAttribute("aria-current"))).toEqual([null, "page", null]);
     fireEvent.click(items[0]!);
     expect(track).toHaveBeenCalledWith("org_switched", { to_personal: true, same: false });
+    fireEvent.click(items[2]!);
+    expect(track).toHaveBeenCalledWith("org_new_clicked");
   });
 });
 
