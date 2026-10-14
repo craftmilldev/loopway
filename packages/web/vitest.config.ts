@@ -7,7 +7,8 @@ export default defineConfig({
     {
       name: "text-assets",
       transform(_code: string, id: string) {
-        if (id.endsWith(".md") || id.endsWith(".svg")) return `export default ${JSON.stringify(readFileSync(id, "utf8"))};`;
+        if (id.endsWith(".md") || id.endsWith(".svg"))
+          return `export default ${JSON.stringify(readFileSync(id, "utf8"))};`;
       },
     },
   ],
