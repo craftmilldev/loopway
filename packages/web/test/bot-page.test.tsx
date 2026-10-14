@@ -258,8 +258,10 @@ describe("Bot page", () => {
     await waitFor(() => expect(screen.getByText("in 3 runs")).toBeTruthy());
     expect(screen.getByText("11")).toBeTruthy();
     expect(screen.getByText("2 min")).toBeTruthy();
-    await waitFor(() => expect(screen.getAllByRole("img")).toHaveLength(30));
-    expect(screen.getAllByRole("img")[29]!.getAttribute("aria-label")).toBe("Sep 30 · 5 delivered");
+    await waitFor(() => expect(screen.getAllByRole("img", { name: /^(?!Loopway)/ })).toHaveLength(30));
+    expect(screen.getAllByRole("img", { name: /^(?!Loopway)/ })[29]!.getAttribute("aria-label")).toBe(
+      "Sep 30 · 5 delivered",
+    );
     expect(screen.getByText("max 5")).toBeTruthy();
     await waitFor(() => expect(screen.getAllByText(/^Version \d$/)).toHaveLength(3));
     expect(screen.getByText("Delivered today").nextElementSibling!.textContent).toBe("5");

@@ -201,11 +201,13 @@ img {
   text-transform: uppercase;
   color: var(--ink-400);
 }
-.post-nav .wordmark {
+.post-nav .wordmark,
+.dash-head .wordmark {
   display: block;
   line-height: 0;
 }
-.post-nav .wordmark svg {
+.post-nav .wordmark svg,
+.dash-head .wordmark svg {
   width: auto;
   height: 40px;
 }
@@ -608,13 +610,6 @@ details.message pre {
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
-}
-.dash-word {
-  font-family: var(--font-text);
-  font-size: 32px;
-  letter-spacing: 0.06em;
-  line-height: 1;
-  color: var(--ink-900);
 }
 .dash-head-side {
   display: flex;

@@ -3,6 +3,11 @@ import { lastOrgPath, logout, orgBase, orgSlug, startOrg, useMe, type Me, type O
 import { OrgSwitcher } from "./org-switcher.js";
 import wordmark from "./wordmark.svg";
 
+/** The Loopway wordmark, inlined so the --loopway-* colors apply; labelled "Loopway" by the SVG itself. */
+export function Wordmark({ href }: { href: string }) {
+  return <a className="wordmark" href={href} dangerouslySetInnerHTML={{ __html: wordmark }} />;
+}
+
 export function Layout({ title, nav, children }: { title: string; nav?: ReactNode; children: ReactNode }) {
   useEffect(() => {
     document.title = title;
@@ -10,7 +15,7 @@ export function Layout({ title, nav, children }: { title: string; nav?: ReactNod
   return (
     <>
       <nav className="post-nav">
-        <a className="wordmark" href="/" dangerouslySetInnerHTML={{ __html: wordmark }} />
+        <Wordmark href="/" />
         <span className="eyebrow">build bots, work with them</span>
         <span className="nav-spacer" style={{ flex: 1 }}></span>
         {nav}
@@ -74,9 +79,7 @@ export function DashLayout({
     <>
       <header className="dash-head">
         <div className="dash-head-row">
-          <a className="dash-word" href={base}>
-            LOOPWAY
-          </a>
+          <Wordmark href={base} />
           <div className="dash-head-side">
             {orgs && slug && <OrgSwitcher orgs={orgs} current={slug} />}
             <span className="dash-account">{me ? me.username || me.email || me.name : ""}</span>
