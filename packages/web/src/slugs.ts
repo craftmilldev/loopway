@@ -22,6 +22,7 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   "new",
   "orgs",
   "me",
+  "loopway",
 ]);
 
 export const SLUG_MIN = 2;
