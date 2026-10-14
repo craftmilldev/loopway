@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Bot, tabPath } from "../client/bot.js";
-import { fromDrafts, problem, rulesText, toDrafts } from "../client/prompt.js";
+import { fromDrafts, problem, rulesText, sameRules, toDrafts } from "../client/prompt.js";
 
 const rule = { types: ["com.github.*"], subject: "data.id", action: "'attach'" };
 const v2 = { version: 2, prompt: "line one\nline two", rules: [rule], created_at: "2026-10-02T00:00:00Z" };
@@ -51,7 +51,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const editor = async () => await screen.findByLabelText<HTMLTextAreaElement>("Prompt");
+// The textarea can show before the bot and versions finish loading, and late data resets the draft.
+const editor = async () => {
+  await screen.findByRole("link", { name: "Prompt and rules · v2" });
+  return await screen.findByLabelText<HTMLTextAreaElement>("Prompt");
+};
 const type = (el: HTMLElement, value: string) => fireEvent.change(el, { target: { value } });
 
 describe("helpers", () => {
@@ -70,6 +74,20 @@ describe("helpers", () => {
 
   it("writes rules as lines", () => {
     expect(rulesText([rule])).toBe("Rule 1\n  types: com.github.*\n  subject: data.id\n  action: 'attach'");
+  });
+
+  it("compares rules structurally", () => {
+    // jsonb hands keys back as types, action, related, subject
+    const full = { types: ["a.*", "b.*"], action: "'skip'", related: "[]", subject: "data.id" };
+    const built = { types: ["a.*", "b.*"], subject: "data.id", related: "[]", action: "'skip'" };
+    expect(sameRules([full], [built])).toBe(true);
+    expect(sameRules([{ types: ["a"], subject: "  s " }], [{ types: ["a"], subject: "s" }])).toBe(true);
+    expect(sameRules([{ types: ["a"], subject: "" }], [{ types: ["a"] }])).toBe(true);
+    expect(sameRules(null, [])).toBe(true);
+    expect(sameRules([{ types: ["a"] }], [])).toBe(false);
+    expect(sameRules([{ types: ["a"], action: "x" }], [{ types: ["a"], action: "y" }])).toBe(false);
+    expect(sameRules([{ types: ["a", "b"] }], [{ types: ["b", "a"] }])).toBe(false);
+    expect(sameRules([{ types: ["a"] }, { types: ["b"] }], [{ types: ["b"] }, { types: ["a"] }])).toBe(false);
   });
 
   it("puts the prompt tab on its own path", () => {
@@ -179,5 +197,47 @@ describe("Prompt and rules tab", () => {
     const dirty = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(dirty);
     expect(dirty.defaultPrevented).toBe(true);
+  });
+
+  describe("untouched", () => {
+    const original = bot.prompt_version;
+    afterEach(() => {
+      bot.prompt_version = original;
+    });
+    const untouched = async (version: unknown) => {
+      bot.prompt_version = version as typeof v2;
+      render(<Bot id="b1" view="prompt" />);
+      await editor();
+      expect(screen.queryByText(/Draft of version/)).toBeNull();
+      const e = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(e);
+      expect(e.defaultPrevented).toBe(false);
+    };
+
+    it("shows no draft for rules with every field, in the order Postgres returns them", async () => {
+      const rules = [{ types: ["a.*", "b.*"], action: "'skip'", related: "[]", subject: "data.id" }, { types: ["c"] }];
+      await untouched({ ...v2, rules });
+    });
+
+    it("shows no draft for null rules", async () => {
+      await untouched({ ...v2, rules: null });
+    });
+
+    it("shows no draft for a blank prompt", async () => {
+      await untouched({ ...v2, prompt: "", rules: [] });
+    });
+
+    it("shows no draft for a prompt with a trailing newline", async () => {
+      await untouched({ ...v2, prompt: "line one\r\nline two\n" });
+    });
+  });
+
+  it("clears the draft when an edit is reverted", async () => {
+    render(<Bot id="b1" view="prompt" />);
+    const el = await editor();
+    type(el, "changed");
+    expect(await screen.findByText(/Draft of version/)).toBeTruthy();
+    type(el, v2.prompt);
+    await waitFor(() => expect(screen.queryByText(/Draft of version/)).toBeNull());
   });
 });

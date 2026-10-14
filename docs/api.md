@@ -81,7 +81,7 @@ A runner is a machine running loopway. The CLI makes its id (kept in `~/.loopway
 | `POST /runners` `{id, name}` | Register the runner, or rename it and mark it seen; safe to repeat. `409 runner_exists` if the id is another user's. |
 | `POST /runners/:id/lease` `{ttl_seconds?, lease_token?}` | Take the runner's lease, or renew it by passing your current token. Returns `{lease: {token, expires_at}}`. `409 runner_leased` while another process holds a live lease, with `details.expires_at`. `ttl_seconds` defaults to 300, max 43200. |
 | `POST /runners/:id/release` `{lease_token?, force?}` | Drop the lease. `409 runner_lease_mismatch` if the token isn't the live lease. `force: true` drops whoever's, for a process that died without releasing. |
-| `GET /runners` | Your runners: `{id, name, created_at, last_seen_at, leased_until, bots, threads}`. `leased_until` is null unless a process holds the lease, `bots` is `[{id, name}]` for the bot leases it holds now, and `threads` counts the threads it owns. The lease token is never part of it. |
+| `GET /runners` | Your runners: `{id, org_id, name, created_at, last_seen_at, leased_until, bots, threads}`. `leased_until` is null unless a process holds the lease, `bots` is `[{id, name}]` for the bot leases it holds now, and `threads` counts the threads it owns. The lease token is never part of it. |
 
 ## Bots
 
@@ -101,7 +101,7 @@ A bot reads the messages of one or more of your inboxes, in `seq` order, and kee
 | `POST /bots/:id/release` `{lease_token?, force?}`  | Drop the lease, so the next runner needn't wait out the TTL. `409 lease_mismatch` if the token isn't the live lease, `409 not_leased` if there is none. `force: true` drops whoever's lease, no token needed: for a runner that died without releasing. |
 | `POST /bots/:id/cursor` `{seq, lease_token}`       | Move the cursor forward to `seq`; it never moves backwards. Returns the bot. `409` if the token isn't the live lease.                                                                          |
 
-`inbox_ids` must be your inboxes. Bot shape: `{id, name, model, inbox_ids, cursor, created_at}`; the lease is never part of it.
+`POST /inboxes`, `POST /runners` and `POST /bots` answer `403 username_required` until the user has chosen a username (that makes their personal org). `inbox_ids` must be your inboxes, all in one org (the bot's): `400 inbox_org_mismatch` otherwise. Bot shape: `{id, org_id, name, model, inbox_ids, cursor, created_at}`; the lease is never part of it.
 
 Two webhooks landing at once can commit out of `seq` order, and a cursor that had moved past the later one would skip the earlier. So `messages` stops at the first message received in the last few seconds, giving inserts still in flight time to land.
 

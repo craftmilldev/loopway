@@ -5,7 +5,8 @@ import { afterAll, beforeAll, expect } from "vitest";
 import { createApi } from "../src/api.js";
 import { type Db } from "../src/db/index.js";
 import { openTestDb } from "../src/db/testing.js";
-import { createLoginCode } from "../src/store.js";
+import { createLoginCode, createUser } from "../src/store.js";
+import { signSessionToken } from "../src/tokens.js";
 
 export const SECRET = "test-secret";
 
@@ -43,6 +44,12 @@ export async function newUser(name = "Matthew") {
   const res = await call("POST", "/auth/verify", { body: { email, code, username } });
   expect(res.status).toBe(201);
   return res.body.token as string;
+}
+
+/** A user who hasn't picked a username yet, so has no personal org. */
+export async function newUserWithoutOrg(name = "Matthew") {
+  const { user } = await createUser(db, { name });
+  return signSessionToken(user.id, SECRET).token;
 }
 
 // GitHub is the source the source-agnostic tests use to get events into an inbox.

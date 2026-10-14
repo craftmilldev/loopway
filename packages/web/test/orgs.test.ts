@@ -2,9 +2,7 @@ import { describe, expect, it } from "vitest";
 import { openTestDb } from "../src/db/testing.js";
 import { migrations } from "../src/db/migrations.js";
 import { RESERVED_SLUGS, slugProblem } from "../src/slugs.js";
-import { createUser } from "../src/store.js";
-import { signSessionToken } from "../src/tokens.js";
-import { call, db, newUser, SECRET } from "./helpers.js";
+import { call, db, newUser, newUserWithoutOrg } from "./helpers.js";
 
 const rows = <T>(sql: string, params: unknown[] = []) => db.query<T>(sql, params);
 
@@ -33,12 +31,6 @@ describe("slug rules", () => {
   });
 });
 
-// Signup now makes the org, so a user without one only exists from before that; these tests need one.
-async function newUserWithoutOrg(name = "Legacy") {
-  const { user } = await createUser(db, { name });
-  return signSessionToken(user.id, SECRET).token;
-}
-
 describe("choosing a username", () => {
   it("makes a personal org and a membership for a user who has none", async () => {
     const key = await newUserWithoutOrg("Fresh");
@@ -65,7 +57,7 @@ describe("choosing a username", () => {
   });
 
   it("rejects taken, reserved and malformed names with clear errors", async () => {
-    const a = await newUser();
+    const a = await newUserWithoutOrg();
     const b = await newUserWithoutOrg();
     expect((await call("PATCH", "/me/username", { key: a, body: { username: "taken-name" } })).status).toBe(200);
 
@@ -154,8 +146,8 @@ describe("migration", () => {
   async function migrateWith(emails: string[]) {
     const fresh = await openTestDb();
     try {
-      await fresh.query(`DROP TABLE loopway.org_members`);
-      await fresh.query(`DROP TABLE loopway.orgs`);
+      await fresh.query(`DROP TABLE loopway.org_members CASCADE`);
+      await fresh.query(`DROP TABLE loopway.orgs CASCADE`);
       for (const email of emails) {
         await fresh.query(`INSERT INTO loopway.users (id, name, email) VALUES (gen_random_uuid(), 'u', $1)`, [email]);
       }
