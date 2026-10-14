@@ -19,11 +19,12 @@ import { runBots } from "./commands/bots-run.js";
 import { addOrgMember, createOrg, leaveOrg, listOrgs, orgMembers, removeOrgMember } from "./commands/orgs.js";
 import type { Context } from "./context.js";
 import { PRESETS } from "@loopway/presets";
+import { CLI_VERSION } from "./version.js";
 
 export function createProgram(ctx: Context): Command {
   const program = new Command("loopway")
     .description("Work with loopway inboxes and messages from the terminal.")
-    .version("0.1.0")
+    .version(CLI_VERSION)
     .showHelpAfterError()
     .addHelpText(
       "after",

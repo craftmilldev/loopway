@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PostHog } from "posthog-node";
 import { loadConfig } from "./config.js";
+import { CLI_VERSION } from "./version.js";
 
 /** Product metrics. Sends nothing unless POSTHOG_API_KEY is set, or if DO_NOT_TRACK / LOOPWAY_TELEMETRY=0 is. */
 export interface Metrics {
@@ -53,7 +54,7 @@ export function createMetrics(dir: string, env: NodeJS.ProcessEnv = process.env)
           // The logged-in user, like the web side; the install until someone logs in.
           distinctId: tokenUserId(api_key) ?? (await installId(dir)),
           event,
-          properties: { ...properties, app: "cli" },
+          properties: { ...properties, app: "cli", cli_version: CLI_VERSION },
         });
       } catch {
         // Offline or unwritable config dir: the command still has to work.

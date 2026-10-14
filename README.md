@@ -15,7 +15,7 @@ It runs on Vercel at [loopway.craftmill.dev](https://loopway.craftmill.dev), wit
 ## Getting started
 
 ```bash
-npm install && npm run build -w @loopway/cli && npm link -w @loopway/cli   # puts `loopway` on your PATH
+curl -fsSL https://loopway.craftmill.dev/install.sh | sh   # puts `loopway` on your PATH; needs Node 22+
 loopway login                 # emails you a one-time code; new emails get an account
 loopway inbox create          # name → source → events → secret → confirm
 loopway inbox show <inbox>    # the webhook URL and secret to add in the sender
@@ -28,7 +28,7 @@ loopway messages list <inbox>
 
 ```bash
 npm run cli -- <command>                                       # from the repo, no build
-npm run build -w @loopway/cli && npm link -w @loopway/cli      # or put `loopway` on your PATH
+npm run build -w @loopway/cli && npm link -w @loopway/cli      # or put your checkout's build on your PATH
 ```
 
 ```bash

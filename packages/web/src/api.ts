@@ -2,6 +2,7 @@ import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z, ZodError } from "zod";
 import { checkRules } from "@loopway/rules";
+import { cliVersion, olderThan } from "./cli-version.js";
 import { eeRoutes, type EeOptions } from "../ee/routes.js";
 import type { Db } from "./db/index.js";
 import { consoleSender, type SendEmail } from "./email.js";
@@ -33,6 +34,8 @@ export interface ApiOptions extends EeOptions {
   tokenSecret: string;
   /** Product metrics. Defaults to recording nothing. */
   metrics?: Metrics;
+  /** The oldest CLI version still served (e.g. "0.2.0"). Older ones get 426 `cli_outdated`. Unset, none is turned away. */
+  minCliVersion?: string;
 }
 
 const DEFAULT_TTL = 300;
@@ -47,6 +50,7 @@ export function createApi(opts: ApiOptions) {
     metrics.capture("api_error", c.get("user")?.id ?? ANONYMOUS, {
       code,
       status,
+      cli_version: cliVersion(c),
       method: c.req.method,
       route: c.req.routePath,
     });
@@ -83,6 +87,19 @@ export function createApi(opts: ApiOptions) {
 
   // Every JSON route lives on `api`, served under /api so it can't clash with a page.
   const api = new Hono<Env>();
+
+  // The CLI names its version on every request. Requests without it (webhooks, the web UI) are never turned away.
+  api.use(async (c, next) => {
+    const version = cliVersion(c);
+    if (opts.minCliVersion && version !== "none" && olderThan(version, opts.minCliVersion)) {
+      throw new ApiError(
+        426,
+        "cli_outdated",
+        `This loopway CLI (${version}) is too old; ${opts.minCliVersion} or newer is needed. Update it: curl -fsSL ${baseUrl(c)}/install.sh | sh`,
+      );
+    }
+    await next();
+  });
 
   app.route(
     "/",
@@ -1020,9 +1037,12 @@ export function createApi(opts: ApiOptions) {
     return inbox;
   }
 
+  function baseUrl(c: Context<Env>) {
+    return (opts.publicBaseUrl || new URL(c.req.url).origin).replace(/\/+$/, "");
+  }
+
   function webhookUrl(c: Context<Env>, inboxId: string) {
-    const base = (opts.publicBaseUrl || new URL(c.req.url).origin).replace(/\/+$/, "");
-    return `${base}/api/webhooks/${inboxId}`;
+    return `${baseUrl(c)}/api/webhooks/${inboxId}`;
   }
 
   function serializeInbox(c: Context<Env>, inbox: Inbox) {

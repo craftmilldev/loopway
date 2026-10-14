@@ -7,7 +7,7 @@ export type Env = { Variables: { db: Db; user: User } };
 
 export class ApiError extends Error {
   constructor(
-    public status: 400 | 401 | 403 | 404 | 409 | 415 | 422 | 500 | 502,
+    public status: 400 | 401 | 403 | 404 | 409 | 415 | 422 | 426 | 500 | 502,
     public code: string,
     message: string,
     public details?: unknown,

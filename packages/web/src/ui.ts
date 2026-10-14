@@ -42,6 +42,8 @@ function posthogMeta(key: string | undefined, uiHost: string | undefined) {
 
 // For tools like Codex and Claude Code to learn about loopway (https://llmstxt.org). The URL is literal for file tracing.
 const LLMS_TXT = new URL("../content/llms.txt", import.meta.url);
+// `curl -fsSL https://<host>/install.sh | sh` installs the CLI from the latest GitHub release.
+const INSTALL_SH = new URL("../content/install.sh", import.meta.url);
 
 const BUNDLE = {
   "/app.js": { url: new URL("../public/app.js", import.meta.url), type: "text/javascript; charset=utf-8" },
@@ -101,6 +103,15 @@ export function createWeb(opts: WebOptions = {}) {
     }
     await metrics.capture("llms_txt_served", ANONYMOUS);
     return c.body(body, 200, { "content-type": "text/plain; charset=utf-8" });
+  });
+  app.get("/install.sh", async (c) => {
+    const body = await readFile(INSTALL_SH, "utf8").catch(() => undefined);
+    if (body === undefined) {
+      await metrics.capture("install_sh_missing", ANONYMOUS);
+      return c.notFound();
+    }
+    await metrics.capture("install_sh_served", ANONYMOUS);
+    return c.body(body, 200, { "content-type": "text/x-shellscript; charset=utf-8" });
   });
   for (const [path, { url, type }] of Object.entries(BUNDLE)) {
     app.get(path, async (c) => {
