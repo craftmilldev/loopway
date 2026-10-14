@@ -20,6 +20,7 @@ let pages: Record<string, object>;
 let requests: string[];
 
 beforeEach(() => {
+  window.history.replaceState(null, "", "/acme");
   localStorage.setItem("loopway_token", "t");
   requests = [];
   vi.stubGlobal(
@@ -27,7 +28,7 @@ beforeEach(() => {
     vi.fn(async (apiPath: string) => {
       const path = apiPath.replace(/^\/api/, "");
       requests.push(path);
-      const key = path.includes("before=") ? path.split("before=")[1]! : "first";
+      const key = new URLSearchParams(path.split("?")[1]).get("before") ?? "first";
       return new Response(JSON.stringify(pages[key] ?? { data: [], next: null }), { status: 200 });
     }),
   );
@@ -54,10 +55,10 @@ describe("ThreadEventsFeed", () => {
     };
     render(<ThreadEventsFeed ready />);
     const link = await screen.findByText("Fix login");
-    expect(link.getAttribute("href")).toBe("/dashboard/bots/b1/threads/t2");
+    expect(link.getAttribute("href")).toBe("/acme/bots/b1/threads/t2");
     expect(screen.getByText(/ended a thread/)).toBeTruthy();
     expect(screen.getByText(/hit its usage limit/)).toBeTruthy();
-    expect(screen.getByText("acme/app#1").getAttribute("href")).toBe("/dashboard/bots/b1/threads/t1");
+    expect(screen.getByText("acme/app#1").getAttribute("href")).toBe("/acme/bots/b1/threads/t1");
     expect(screen.queryByText("Show earlier")).toBeNull();
   });
 
@@ -72,7 +73,7 @@ describe("ThreadEventsFeed", () => {
     fireEvent.click(screen.getByText("Show earlier"));
     await screen.findByText("acme/app#3");
     expect(screen.getByText("acme/app#2")).toBeTruthy();
-    expect(requests).toEqual(["/events", "/events?before=2"]);
+    expect(requests).toEqual(["/events?org=acme", "/events?before=2&org=acme"]);
     await waitFor(() => expect(screen.queryByText("Show earlier")).toBeNull());
   });
 });

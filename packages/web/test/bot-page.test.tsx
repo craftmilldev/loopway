@@ -79,7 +79,7 @@ function stubFetch() {
 }
 
 function at(search: string) {
-  window.history.replaceState(null, "", "/dashboard/bots/b1" + search);
+  window.history.replaceState(null, "", "/acme/bots/b1" + search);
 }
 
 beforeEach(() => {
@@ -97,11 +97,12 @@ afterEach(() => {
 
 describe("helpers", () => {
   it("reads the tab, defaulting to activity", () => {
+    window.history.replaceState(null, "", "/acme/bots/b1");
     expect(tabOf(null)).toBe("activity");
     expect(tabOf("nope")).toBe("activity");
     expect(tabOf("threads")).toBe("threads");
-    expect(tabPath("b 1", "activity")).toBe("/dashboard/bots/b%201");
-    expect(tabPath("b1", "settings")).toBe("/dashboard/bots/b1?tab=settings");
+    expect(tabPath("b 1", "activity")).toBe("/acme/bots/b%201");
+    expect(tabPath("b1", "settings")).toBe("/acme/bots/b1?tab=settings");
   });
 
   it("words a wait", () => {
@@ -119,9 +120,9 @@ describe("Bot page", () => {
     expect((await screen.findAllByText("dev")).length).toBeGreaterThan(0);
     const tabs = within("Bot sections");
     expect(tabs.map((a) => a.textContent)).toEqual(["Activity", "Threads", "Prompt and rules · v3", "Settings"]);
-    expect(tabs[0]!.getAttribute("href")).toBe("/dashboard/bots/b1");
-    expect(tabs[1]!.getAttribute("href")).toBe("/dashboard/bots/b1?tab=threads");
-    expect(tabs[2]!.getAttribute("href")).toBe("/dashboard/bots/b1/prompt");
+    expect(tabs[0]!.getAttribute("href")).toBe("/acme/bots/b1");
+    expect(tabs[1]!.getAttribute("href")).toBe("/acme/bots/b1?tab=threads");
+    expect(tabs[2]!.getAttribute("href")).toBe("/acme/bots/b1/prompt");
   });
 
   it("keeps the tab when switching bots", async () => {
@@ -130,9 +131,9 @@ describe("Bot page", () => {
     await screen.findByText("Thread");
     fireEvent.click(await screen.findByRole("button", { name: /Switch bot/ }));
     expect(items().map((a) => a.getAttribute("href"))).toEqual([
-      "/dashboard/bots",
-      "/dashboard/bots/b1?tab=threads",
-      "/dashboard/bots/b2?tab=threads",
+      "/acme/bots",
+      "/acme/bots/b1?tab=threads",
+      "/acme/bots/b2?tab=threads",
     ]);
   });
 
@@ -268,7 +269,7 @@ describe("Bot page", () => {
     at("?tab=threads");
     render(<Bot id="b1" />);
     const link = await screen.findByText("acme/app#7");
-    expect(link.getAttribute("href")).toBe("/dashboard/bots/b1/threads/t1");
+    expect(link.getAttribute("href")).toBe("/acme/bots/b1/threads/t1");
     fireEvent.click(screen.getByText("Ended"));
     await screen.findByText("acme/app#1");
     expect(screen.queryByText("acme/app#7")).toBeNull();

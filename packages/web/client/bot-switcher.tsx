@@ -153,7 +153,7 @@ export function BotSwitcher({
             />
           )}
           <div className="bot-switch-items" role="menu" aria-label="Bots">
-            <a role="menuitem" href="/dashboard/bots" onClick={() => track("bot_switcher_all_bots")}>
+            <a role="menuitem" href={lw.orgBase() + "/bots"} onClick={() => track("bot_switcher_all_bots")}>
               All bots
             </a>
             {bots.map((b) => (

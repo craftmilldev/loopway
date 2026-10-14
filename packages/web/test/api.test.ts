@@ -556,6 +556,14 @@ describe("web ui", () => {
       `/dashboard/inboxes/${id}`,
       `/dashboard/bots/${id}`,
       `/dashboard/bots/${id}/prompt`,
+      "/acme",
+      "/acme/bots",
+      "/acme/bots/new",
+      "/acme/inboxes",
+      `/acme/inboxes/${id}`,
+      `/acme/bots/${id}`,
+      `/acme/bots/${id}/prompt`,
+      `/acme/bots/${id}/threads/${id}`,
     ];
     for (const path of [...paths, `/dashboard/bots/${id}/threads/${id}`]) {
       const r = await get(path);
@@ -590,14 +598,14 @@ describe("web ui", () => {
     expect(await call("GET", "")).toEqual({ status: 200, body: { ok: true } });
     expect(await call("GET", "/health")).toEqual({ status: 200, body: { ok: true } });
     expect((await call("GET", "/inboxes")).status).toBe(401);
+    // The org pages' /:org/bots must not take /api/bots.
+    expect((await call("GET", "/bots")).status).toBe(401);
   });
 
   it("answers 404 on the old top-level API paths", async () => {
     const id = "00000000-0000-7000-8000-000000000000";
+    // Not the GETs: a path like /me is the page of an org of that name, which RESERVED_SLUGS keeps anyone from making.
     for (const [method, path] of [
-      ["GET", "/health"],
-      ["GET", "/me"],
-      ["GET", "/inboxes"],
       ["POST", "/auth/login"],
       ["POST", `/webhooks/${id}`],
       ["POST", "/ingest/e/"],

@@ -64,11 +64,25 @@ export async function errorCode(r: Response) {
   }
 }
 
+/** The login page, remembering the page the visitor wanted so login can send them back to it. */
+export function loginUrl() {
+  const here = location.pathname + location.search;
+  return here === "/" || here.startsWith("/login") ? "/login" : "/login?next=" + encodeURIComponent(here);
+}
+
+/** Where login was asked to return to: a path on this site, else null. */
+export function nextPath() {
+  const next = new URLSearchParams(location.search).get("next");
+  // Browsers drop tabs and newlines from URLs, so "/\t/evil.com" would become "//evil.com".
+  if (!next || !/^\/(?![/\\])/.test(next) || Array.from(next).some((c) => c.charCodeAt(0) < 32)) return null;
+  return new URL(next, location.origin).origin === location.origin ? next : null;
+}
+
 // An expired or invalid token is dropped quietly and the user lands on the login page.
 export function expired(r: Response) {
   if (r.status === 401) {
     clear();
-    location.replace("/login");
+    location.replace(loginUrl());
   }
 }
 
@@ -103,12 +117,21 @@ export interface Org {
 
 const ORG_KEY = "loopway_last_org";
 
+/** The slug of the org whose page this is: the first segment of every signed-in page's path. */
+export const orgSlug = () => decodeURIComponent(location.pathname.split("/")[1] ?? "");
+
+/** The path of the current org's overview, which every page of the org is under. */
+export const orgBase = () => "/" + encodeURIComponent(orgSlug());
+
+/** `path`, a list endpoint, narrowed to the current org. */
+export const inOrg = (path: string) => path + (path.includes("?") ? "&" : "?") + "org=" + encodeURIComponent(orgSlug());
+
 /** The user's orgs, personal one first, or null while loading. */
 export function useOrgs(ready: boolean) {
   return useList<Org>("/orgs", ready).data;
 }
 
-/** Remembers the org something was just created in, so the next create form starts there. */
+/** Remembers the org the user last used (opened a page of, or created something in). */
 export function rememberOrg(slug: string) {
   try {
     localStorage.setItem(ORG_KEY, slug);
@@ -117,8 +140,13 @@ export function rememberOrg(slug: string) {
   }
 }
 
-/** The org a create form starts on: the last one created in if the user is still in it, else their personal org. */
+/**
+ * The org a create form starts on, and the one a visit to /dashboard or a login lands on: the org in the URL, else the
+ * last one used if the user is still in it, else their personal org.
+ */
 export function startOrg(orgs: Org[]): string {
+  const here = orgs.find((o) => o.slug === orgSlug());
+  if (here) return here.slug;
   let last: string | null = null;
   try {
     last = localStorage.getItem(ORG_KEY);
@@ -126,6 +154,18 @@ export function startOrg(orgs: Org[]): string {
     // Storage is blocked.
   }
   return (orgs.find((o) => o.slug === last) ?? orgs[0])?.slug ?? "";
+}
+
+/** Where a login ends up: the page it was sent from, else the overview of the last-used (or personal) org. */
+export async function landing(): Promise<string> {
+  const next = nextPath();
+  if (next) return next;
+  const r = await api("/orgs").catch(() => null);
+  if (r?.ok) {
+    const slug = startOrg(((await r.json()) as { data: Org[] }).data);
+    if (slug) return "/" + encodeURIComponent(slug);
+  }
+  return "/dashboard";
 }
 
 /** The org's slug to show next to an entity, only when the listed entities span more than one org. */
@@ -149,7 +189,7 @@ export function useSources() {
 export function useMe() {
   const [me, setMe] = useState<Me | null>(null);
   useEffect(() => {
-    if (!token()) return location.replace("/login");
+    if (!token()) return location.replace(loginUrl());
     void api("/me")
       .catch(() => null)
       .then(async (r) => {

@@ -23,6 +23,8 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 | `DELETE /api/orgs/:slug/members/:userId` | Remove a member, yourself included (leaving). `204`. `404` if you aren't a member of the org or `userId` isn't one; `409 last_member` for the org's only member, and `409 personal_owner` for the owner of a personal org (others who joined it can leave), so its owner can never leave it. |
 | `DELETE /api/orgs/:slug/members/pending?email=` | Withdraw a pending email. `204`; `404` if it isn't pending or you aren't a member. |
 
+The list endpoints `GET /api/inboxes`, `/api/bots`, `/api/runners`, `/api/events`, `/api/inboxes/activity` and `/api/bots/activity` take an optional `?org=<slug>` and then list only that org's entities. A slug you aren't a member of, or that doesn't exist, is a `404`. Without it they list all your orgs'.
+
 ## Inboxes
 
 |                                                |                                                                                                                                                                                                                             |

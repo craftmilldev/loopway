@@ -34,7 +34,7 @@ function stubFetch() {
 }
 
 function at(search: string) {
-  window.history.replaceState(null, "", "/dashboard/bots/new" + search);
+  window.history.replaceState(null, "", "/acme/bots/new" + search);
 }
 
 beforeEach(() => {
@@ -139,7 +139,7 @@ describe("New bot flow", () => {
     at("?bot=b1");
     render(<NewBot />);
     const link = await screen.findByText("Open the first thread");
-    await waitFor(() => expect(link.getAttribute("href")).toBe("/dashboard/bots/b1/threads/t1"));
+    await waitFor(() => expect(link.getAttribute("href")).toBe("/acme/bots/b1/threads/t1"));
   });
 
   it("starts over when the bot is gone", async () => {
