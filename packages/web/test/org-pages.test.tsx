@@ -23,6 +23,7 @@ beforeEach(() => {
   // A stand-in for location that reads the real one (history.replaceState moves it) and records replace().
   const real = window.location;
   vi.stubGlobal("location", {
+    origin: real.origin,
     get pathname() {
       return real.pathname;
     },
@@ -134,7 +135,13 @@ describe("login return path", () => {
     expect(lw.loginUrl()).toBe("/login?next=" + encodeURIComponent("/craftmill/bots?tab=x"));
     window.history.replaceState(null, "", "/login?next=" + encodeURIComponent("/craftmill/bots"));
     expect(lw.nextPath()).toBe("/craftmill/bots");
-    for (const bad of ["https://evil.example/", "//evil.example", "/\\evil.example"]) {
+    for (const bad of [
+      "https://evil.example/",
+      "//evil.example",
+      "/\\evil.example",
+      "/\t/evil.example",
+      "/\n/evil.example",
+    ]) {
       window.history.replaceState(null, "", "/login?next=" + encodeURIComponent(bad));
       expect(lw.nextPath(), bad).toBeNull();
     }

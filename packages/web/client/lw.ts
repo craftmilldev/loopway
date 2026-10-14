@@ -73,7 +73,9 @@ export function loginUrl() {
 /** Where login was asked to return to: a path on this site, else null. */
 export function nextPath() {
   const next = new URLSearchParams(location.search).get("next");
-  return next && /^\/(?![/\\])/.test(next) ? next : null;
+  // Browsers drop tabs and newlines from URLs, so "/\t/evil.com" would become "//evil.com".
+  if (!next || !/^\/(?![/\\])/.test(next) || /[\u0000-\u001f]/.test(next)) return null;
+  return new URL(next, location.origin).origin === location.origin ? next : null;
 }
 
 // An expired or invalid token is dropped quietly and the user lands on the login page.
