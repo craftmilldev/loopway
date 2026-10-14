@@ -154,6 +154,18 @@ describe("org members", () => {
     expect([r.status, r.body.error.code]).toEqual([409, "last_member"]);
   });
 
+  it("keeps the owner in their personal org even when others have joined it", async () => {
+    const a = await newUser("a");
+    const b = await newUser("b");
+    const { id, username } = await me(a);
+    await call("POST", `/orgs/${username}/members`, { key: a, body: { email: (await me(b)).email } });
+    const r = await call("DELETE", `/orgs/${username}/members/${id}`, { key: b });
+    expect([r.status, r.body.error.code]).toEqual([409, "personal_owner"]);
+    const self = await call("DELETE", `/orgs/${username}/members/${id}`, { key: a });
+    expect([self.status, self.body.error.code]).toEqual([409, "personal_owner"]);
+    expect((await call("DELETE", `/orgs/${username}/members/${(await me(b)).id}`, { key: a })).status).toBe(204);
+  });
+
   it("removes a pending email", async () => {
     const a = await newUser("a");
     const slug = await sharedOrg(a);

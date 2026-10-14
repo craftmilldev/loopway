@@ -1297,20 +1297,27 @@ export async function addOrgMember(
   });
 }
 
-/** Removes a member. "last_member" when they are the only one left, "not_a_member" when they weren't one. */
+/**
+ * Removes a member. "last_member" when they are the only one left, "personal_owner" when they own the personal org
+ * (they stay in it), "not_a_member" when they weren't one.
+ */
 export async function removeOrgMember(
   db: Db,
   orgId: string,
   userId: string,
-): Promise<"removed" | "last_member" | "not_a_member"> {
+): Promise<"removed" | "last_member" | "personal_owner" | "not_a_member"> {
   return db.transaction(async (tx) => {
     // Serializes removals from one org, so two members leaving at once can't both pass the count.
-    await tx.query(`SELECT 1 FROM loopway.orgs WHERE id = $1 FOR UPDATE`, [orgId]);
+    const [org] = await tx.query<{ personal_user_id: string | null }>(
+      `SELECT personal_user_id FROM loopway.orgs WHERE id = $1 FOR UPDATE`,
+      [orgId],
+    );
     const members = await tx.query<{ user_id: string }>(`SELECT user_id FROM loopway.org_members WHERE org_id = $1`, [
       orgId,
     ]);
     if (!members.some((m) => m.user_id === userId)) return "not_a_member";
     if (members.length <= 1) return "last_member";
+    if (org?.personal_user_id === userId) return "personal_owner";
     await tx.query(`DELETE FROM loopway.org_members WHERE org_id = $1 AND user_id = $2`, [orgId, userId]);
     return "removed";
   });

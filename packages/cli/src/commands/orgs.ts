@@ -109,9 +109,9 @@ async function removeOrThrow(ctx: Context, remove: () => Promise<void>) {
   try {
     await remove();
   } catch (err) {
-    if (err instanceof ApiError && err.code === "last_member") {
-      await ctx.metrics?.capture("org_remove_rejected", { reason: "last_member" });
-      throw new UsageError("An org's last member can't be removed or leave.");
+    if (err instanceof ApiError && (err.code === "last_member" || err.code === "personal_owner")) {
+      await ctx.metrics?.capture("org_remove_rejected", { reason: err.code });
+      throw new UsageError(`${err.message}.`);
     }
     throw err;
   }

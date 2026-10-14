@@ -284,6 +284,8 @@ export function createApi(opts: ApiOptions) {
       : "not_a_member";
     if (result !== "removed") {
       await metrics.capture("org_member_rejected", c.var.user.id, { action: "remove", reason: result });
+      if (result === "personal_owner")
+        throw new ApiError(409, "personal_owner", "The owner of a personal org can't be removed from it or leave");
       if (result === "last_member")
         throw new ApiError(409, "last_member", "An org's last member can't be removed or leave");
       throw new ApiError(404, "not_found", "That user is not a member of this org");
