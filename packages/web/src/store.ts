@@ -57,15 +57,18 @@ export async function createLoginCode(db: Db, email: string): Promise<{ email: s
   return { email: addr, code: issued.length ? code : undefined };
 }
 
+/** Why a code could not be redeemed: it is wrong or expired, or the email is new and needs a username. */
+export type RedeemResult =
+  | { ok: true; user: User; created: boolean }
+  | { ok: false; problem: "invalid_code" | "username_required" | SlugProblem };
+
 /**
- * Trades a valid, unexpired code for the user, creating one if the email has none (named after the part before
- * the @). Codes are single-use and die after too many wrong guesses.
+ * Trades a valid, unexpired code for the user. An email with no user needs a `username`: the user, their personal
+ * org and its membership are created together (the user named after the part before the @). If the username is
+ * missing or unusable the code is left valid, with the guess refunded, so they can retry. Codes are single-use
+ * and die after too many wrong guesses.
  */
-export async function redeemLoginCode(
-  db: Db,
-  email: string,
-  code: string,
-): Promise<{ user: User; created: boolean } | undefined> {
+export async function redeemLoginCode(db: Db, email: string, code: string, username?: string): Promise<RedeemResult> {
   const addr = email.toLowerCase();
   const [row] = await db.query<{ id: string; code_hash: string }>(
     `UPDATE loopway.login_codes SET attempts = attempts + 1
@@ -73,17 +76,43 @@ export async function redeemLoginCode(
      RETURNING id, code_hash`,
     [addr, MAX_LOGIN_ATTEMPTS],
   );
-  if (!row || !safeEqual(row.code_hash, sha256(normalizeLoginCode(code)))) return undefined;
-  const [used] = await db.query<{ id: string }>(`DELETE FROM loopway.login_codes WHERE id = $1 RETURNING id`, [row.id]);
-  if (!used) return undefined;
+  if (!row || !safeEqual(row.code_hash, sha256(normalizeLoginCode(code))))
+    return { ok: false, problem: "invalid_code" };
+  const refund = async (problem: "username_required" | SlugProblem) => {
+    await db.query(`UPDATE loopway.login_codes SET attempts = attempts - 1 WHERE id = $1`, [row.id]);
+    return { ok: false, problem } as const;
+  };
   const [existing] = await db.query<User>(`SELECT ${USER_COLUMNS} FROM loopway.users u WHERE lower(u.email) = $1`, [
     addr,
   ]);
-  if (!existing) {
-    const { user } = await createUser(db, { name: addr.split("@")[0]!, email: addr });
-    return { user, created: true };
+  if (existing) {
+    const [used] = await db.query<{ id: string }>(`DELETE FROM loopway.login_codes WHERE id = $1 RETURNING id`, [
+      row.id,
+    ]);
+    return used ? { ok: true, user: existing, created: false } : { ok: false, problem: "invalid_code" };
   }
-  return { user: existing, created: false };
+  if (!username) return refund("username_required");
+  const problem = await usernameProblem(db, username);
+  if (problem) return refund(problem);
+  try {
+    return await db.transaction(async (tx) => {
+      const [used] = await tx.query<{ id: string }>(`DELETE FROM loopway.login_codes WHERE id = $1 RETURNING id`, [
+        row.id,
+      ]);
+      if (!used) return { ok: false as const, problem: "invalid_code" as const };
+      const [user] = await tx.query<User>(
+        `INSERT INTO loopway.users (id, name, email) VALUES ($1, $2, $3)
+         RETURNING id, name, email, created_at, $4::text AS username`,
+        [uuidv7(), addr.split("@")[0]!, addr, username],
+      );
+      await createPersonalOrg(tx, user!.id, username);
+      return { ok: true as const, user: user!, created: true };
+    });
+  } catch (err) {
+    // Someone claimed the slug between the check and the insert (the transaction rolled back, code included).
+    if ((err as { code?: string }).code === "23505") return refund("taken");
+    throw err;
+  }
 }
 
 // ---------- Orgs and usernames ----------
@@ -106,6 +135,16 @@ export async function usernameProblem(db: Q, username: string, userId?: string):
   return row ? "taken" : undefined;
 }
 
+async function createPersonalOrg(tx: Q, userId: string, username: string) {
+  const orgId = uuidv7();
+  await tx.query(`INSERT INTO loopway.orgs (id, slug, name, personal_user_id) VALUES ($1, $2, $2, $3)`, [
+    orgId,
+    username,
+    userId,
+  ]);
+  await tx.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [orgId, userId]);
+}
+
 /**
  * Sets the user's username: the slug of their personal org, which is created (with them as its member) the first time.
  * Returns the problem when the name is invalid, reserved or taken; losing a race for it counts as taken.
@@ -124,13 +163,7 @@ export async function setUsername(
         [username, userId],
       );
       if (renamed) return { ok: true as const, created: false };
-      const orgId = uuidv7();
-      await tx.query(`INSERT INTO loopway.orgs (id, slug, name, personal_user_id) VALUES ($1, $2, $2, $3)`, [
-        orgId,
-        username,
-        userId,
-      ]);
-      await tx.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [orgId, userId]);
+      await createPersonalOrg(tx, userId, username);
       return { ok: true as const, created: true };
     });
   } catch (err) {

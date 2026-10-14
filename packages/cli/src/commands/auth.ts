@@ -73,20 +73,48 @@ export async function login(ctx: Context, opts: { url?: string; email?: string; 
       "--code is required when not running in a terminal; request one by running `loopway login --email <email>` first and then re-run with it",
     );
 
-  const { token, user, created } = await client.verifyLoginCode(email, code).catch((err: unknown) => {
-    if (err instanceof ApiError && err.code === "invalid_code") throw new UsageError(err.message);
-    throw err;
-  });
+  const { token, user, created } = await verify(ctx, client, email, code, opts.username?.trim().toLowerCase());
   await writeConfig(ctx.configDir, { api_url: url, api_key: token });
   ctx.out(
     `${created ? "Created your account and logged in to" : "Logged in to"} ${url} as ${bold(user.name)}${user.email ? ` <${user.email}>` : ""}`,
   );
   ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
 
-  // A new account has no username yet. The token is already saved, so a failure here leaves them logged in.
+  // Signup asks for the username, so only an account from before that can lack one. The token is already saved.
   if (!user.username) {
     const authed = new LoopwayClient({ baseUrl: url, apiKey: token, fetch: ctx.fetch });
     await chooseUsername(ctx, authed, opts.username);
+  }
+}
+
+/**
+ * Verifies the code. An unknown email is a signup that needs a username: use `--username`, or ask for one (and ask
+ * again if it's refused). The server keeps the code valid through username problems, so the same one is resent.
+ */
+async function verify(ctx: Context, client: LoopwayClient, email: string, code: string, username: string | undefined) {
+  for (;;) {
+    try {
+      return await client.verifyLoginCode(email, code, username);
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+      if (err.code === "invalid_code") {
+        await ctx.metrics?.capture("login_rejected", { reason: err.code });
+        throw new UsageError(err.message);
+      }
+      if (err.code !== "username_required" && !USERNAME_ERRORS.includes(err.code)) throw err;
+      await ctx.metrics?.capture(err.code === "username_required" ? "signup_username_missing" : "username_rejected", {
+        reason: err.code,
+      });
+      if (!ctx.interactive) {
+        throw new UsageError(
+          err.code === "username_required"
+            ? "This email has no account yet: pass --username <name> to sign up (the same code still works)."
+            : err.message,
+        );
+      }
+      if (err.code !== "username_required") ctx.out(err.message);
+      username = await promptUsername();
+    }
   }
 }
 

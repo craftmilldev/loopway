@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { openTestDb } from "../src/db/testing.js";
 import { migrations } from "../src/db/migrations.js";
 import { RESERVED_SLUGS, slugProblem } from "../src/slugs.js";
-import { call, db, newUser } from "./helpers.js";
+import { createUser } from "../src/store.js";
+import { signSessionToken } from "../src/tokens.js";
+import { call, db, newUser, SECRET } from "./helpers.js";
 
 const rows = <T>(sql: string, params: unknown[] = []) => db.query<T>(sql, params);
 
@@ -31,9 +33,15 @@ describe("slug rules", () => {
   });
 });
 
+// Signup now makes the org, so a user without one only exists from before that; these tests need one.
+async function newUserWithoutOrg(name = "Legacy") {
+  const { user } = await createUser(db, { name });
+  return signSessionToken(user.id, SECRET).token;
+}
+
 describe("choosing a username", () => {
-  it("makes a personal org and a membership for a new signup", async () => {
-    const key = await newUser("Fresh");
+  it("makes a personal org and a membership for a user who has none", async () => {
+    const key = await newUserWithoutOrg("Fresh");
     expect((await call("GET", "/me", { key })).body.username).toBeNull();
     expect((await call("GET", "/orgs", { key })).body.data).toEqual([]);
 
@@ -48,9 +56,17 @@ describe("choosing a username", () => {
     expect(members).toHaveLength(1);
   });
 
+  it("signup makes the personal org and membership in one go", async () => {
+    const key = await newUser("Signup");
+    const me = (await call("GET", "/me", { key })).body;
+    const orgs = (await call("GET", "/orgs", { key })).body.data;
+    expect(orgs).toEqual([{ id: expect.any(String), slug: me.username, name: me.username, personal: true }]);
+    expect(await rows(`SELECT 1 FROM loopway.org_members WHERE org_id = $1`, [orgs[0].id])).toHaveLength(1);
+  });
+
   it("rejects taken, reserved and malformed names with clear errors", async () => {
     const a = await newUser();
-    const b = await newUser();
+    const b = await newUserWithoutOrg();
     expect((await call("PATCH", "/me/username", { key: a, body: { username: "taken-name" } })).status).toBe(200);
 
     const taken = await call("PATCH", "/me/username", { key: b, body: { username: "taken-name" } });

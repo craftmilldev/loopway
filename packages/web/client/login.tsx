@@ -38,7 +38,8 @@ export function Login() {
     setError(null);
     setBusy(true);
     try {
-      if (step === "username") {
+      if (step === "username" && !code) {
+        // A user who already has a session but never picked a username (made before signup asked for one).
         const r = await lw.api("/me/username", { method: "PATCH", body: { username } });
         if (!r.ok) {
           track("username_form_rejected", { status: r.status });
@@ -50,12 +51,23 @@ export function Login() {
         if (!r.ok) return setError(await lw.message(r));
         setStep("code");
       } else {
-        const r = await lw.api("/auth/verify", { method: "POST", body: { email, code }, auth: false });
-        if (!r.ok) return setError(await lw.message(r));
-        const body = (await r.json()) as { token: string; user: { username: string | null } };
+        // An existing account ignores the username; an unknown email is asked for one and the same code is sent again.
+        const r = await lw.api("/auth/verify", {
+          method: "POST",
+          body: { email, code, ...(step === "username" && { username }) },
+          auth: false,
+        });
+        if (!r.ok) {
+          if (step === "code" && (await lw.errorCode(r)) === "username_required") {
+            track("username_form_shown");
+            return setStep("username");
+          }
+          if (step === "username") track("username_form_rejected", { status: r.status });
+          return setError(await lw.message(r));
+        }
+        const body = (await r.json()) as { token: string };
         lw.save(body.token);
-        if (body.user.username) location.replace("/dashboard");
-        else setStep("username");
+        location.replace("/dashboard");
       }
     } catch {
       setError("Could not reach the server.");

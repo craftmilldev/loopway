@@ -10,7 +10,7 @@ import { isUuid, LOGIN_CODE_RE, normalizeLoginCode } from "./ids.js";
 import { ANONYMOUS, noopMetrics, type Metrics } from "./metrics.js";
 import { BOT_MODELS } from "./models.js";
 import { createPosthogProxy } from "./posthog-proxy.js";
-import { USERNAME_PROBLEM_MESSAGES } from "./slugs.js";
+import { USERNAME_PROBLEM_MESSAGES, type SlugProblem } from "./slugs.js";
 import { sources } from "./sources.js";
 import * as store from "./store.js";
 import type { MessageRow, Inbox, User } from "./store.js";
@@ -146,15 +146,31 @@ export function createApi(opts: ApiOptions) {
     return c.json({ sent: true }, 202);
   });
 
+  const usernameParam = z.string().trim().toLowerCase();
+
+  function usernameError(problem: SlugProblem) {
+    const code =
+      problem === "taken" ? "username_taken" : problem === "reserved" ? "username_reserved" : "invalid_username";
+    return new ApiError(problem === "taken" ? 409 : 400, code, USERNAME_PROBLEM_MESSAGES[problem]);
+  }
+
   app.post("/auth/verify", async (c) => {
     const input = z
       .object({
         email: z.string().trim().email().max(320),
         code: z.string().transform(normalizeLoginCode).pipe(z.string().regex(LOGIN_CODE_RE)),
+        username: usernameParam.optional(),
       })
       .parse(await jsonBody(c));
-    const result = await store.redeemLoginCode(c.var.db, input.email, input.code);
-    if (!result) throw new ApiError(401, "invalid_code", "That code is invalid or has expired");
+    const result = await store.redeemLoginCode(c.var.db, input.email, input.code, input.username);
+    if (!result.ok) {
+      await metrics.capture("verify_rejected", ANONYMOUS, { reason: result.problem });
+      if (result.problem === "invalid_code")
+        throw new ApiError(401, "invalid_code", "That code is invalid or has expired");
+      if (result.problem === "username_required")
+        throw new ApiError(400, "username_required", "This email has no account yet: pick a username to sign up");
+      throw usernameError(result.problem);
+    }
     await metrics.capture(result.created ? "signed_up" : "logged_in", result.user.id);
     const { token, expiresAt } = signSessionToken(result.user.id, opts.tokenSecret);
     return c.json(
@@ -182,8 +198,6 @@ export function createApi(opts: ApiOptions) {
   authed.get("/me", (c) => c.json(serializeUser(c.var.user)));
 
   // Usernames are personal-org slugs. Checking is separate from setting so a form can say "taken" before submit.
-  const usernameParam = z.string().trim().toLowerCase();
-
   authed.get("/usernames/:username", async (c) => {
     const username = usernameParam.parse(c.req.param("username"));
     const problem = await store.usernameProblem(c.var.db, username, c.var.user.id);
@@ -204,13 +218,7 @@ export function createApi(opts: ApiOptions) {
         reason: result.problem,
         renaming: !!c.var.user.username,
       });
-      const code =
-        result.problem === "taken"
-          ? "username_taken"
-          : result.problem === "reserved"
-            ? "username_reserved"
-            : "invalid_username";
-      throw new ApiError(result.problem === "taken" ? 409 : 400, code, USERNAME_PROBLEM_MESSAGES[result.problem]);
+      throw usernameError(result.problem);
     }
     await metrics.capture(result.created ? "username_chosen" : "username_renamed", c.var.user.id);
     return c.json(serializeUser({ ...c.var.user, username }));

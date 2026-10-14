@@ -5,8 +5,7 @@ import { afterAll, beforeAll, expect } from "vitest";
 import { createApi } from "../src/api.js";
 import { type Db } from "../src/db/index.js";
 import { openTestDb } from "../src/db/testing.js";
-import { createUser } from "../src/store.js";
-import { signSessionToken } from "../src/tokens.js";
+import { createLoginCode } from "../src/store.js";
 
 export const SECRET = "test-secret";
 
@@ -33,9 +32,17 @@ export async function call(method: string, path: string, opts: { key?: string; b
   return { status: res.status, body: text ? JSON.parse(text) : null };
 }
 
+let signups = 0;
+
+/** Signs a new user up through `POST /auth/verify`, as a real signup does, and returns their session token. */
 export async function newUser(name = "Matthew") {
-  const { user } = await createUser(db, { name });
-  return signSessionToken(user.id, SECRET).token;
+  const n = ++signups;
+  const email = `user${n}@example.com`;
+  const { code } = await createLoginCode(db, email);
+  const username = `${name.toLowerCase().replace(/[^a-z0-9]/g, "")}-${n}`;
+  const res = await call("POST", "/auth/verify", { body: { email, code, username } });
+  expect(res.status).toBe(201);
+  return res.body.token as string;
 }
 
 // GitHub is the source the source-agnostic tests use to get events into an inbox.

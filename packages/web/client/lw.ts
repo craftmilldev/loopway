@@ -55,6 +55,15 @@ export async function message(r: Response) {
   }
 }
 
+/** The error code (`username_required`, ...) of a failed response, without consuming its body. */
+export async function errorCode(r: Response) {
+  try {
+    return ((await r.clone().json()) as { error: { code: string } }).error.code;
+  } catch {
+    return undefined;
+  }
+}
+
 // An expired or invalid token is dropped quietly and the user lands on the login page.
 export function expired(r: Response) {
   if (r.status === 401) {
