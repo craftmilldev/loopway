@@ -137,6 +137,8 @@ export async function setUsername(
       return { ok: true as const, created: true };
     });
   } catch (err) {
+    // 23505 is Postgres's unique_violation. The check above and the write aren't atomic, so if someone else claimed
+    // the slug in between, orgs.slug's unique constraint rejects ours and that is just "taken", not a 500.
     if ((err as { code?: string }).code === "23505") return { ok: false, problem: "taken" };
     throw err;
   }
