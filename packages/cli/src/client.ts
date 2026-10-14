@@ -44,6 +44,8 @@ export interface OrgMembers {
 
 export interface Inbox {
   id: string;
+  /** Who made it: `user:<uuid>`, `bot:<uuid>` or `runner:<id>`. Informational. */
+  created_by: string;
   name: string;
   source_type: string;
   config: Record<string, unknown>;
@@ -88,6 +90,8 @@ export interface BotVersion {
 
 export interface Bot {
   id: string;
+  /** Who made it: `user:<uuid>`, `bot:<uuid>` or `runner:<id>`. Informational. */
+  created_by: string;
   org_id: string;
   name: string;
   /** The model its sessions run on, as `claude --model` takes it. */
@@ -103,6 +107,8 @@ export interface Bot {
 /** A machine running loopway. */
 export interface Runner {
   id: string;
+  /** Who registered it: `user:<uuid>`, `bot:<uuid>` or `runner:<id>`. Informational. */
+  created_by: string;
   /** The org it belongs to, for good. */
   org_id: string;
   /** The slug of that org. */
@@ -130,6 +136,8 @@ export interface Thread {
   /** The Claude session id. */
   id: string;
   bot_id: string;
+  /** The bot that assigned it, as `bot:<uuid>`. Informational. */
+  created_by: string;
   status: "active" | "ended";
   started: boolean;
   interrupted: boolean;

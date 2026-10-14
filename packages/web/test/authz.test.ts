@@ -188,17 +188,16 @@ describe("ownership", () => {
     const inbox = { id: randomUUID() };
     const bot = { id: randomUUID() };
     await db.query(
-      `INSERT INTO loopway.inboxes (id, user_id, org_id, name, source_type, config) VALUES ($1, $2, $3, 'gh', 'github', '{"secret":"s3cret","events":["pull_request"]}')`,
-      [inbox.id, aId, shared],
+      `INSERT INTO loopway.inboxes (id, created_by, org_id, name, source_type, config) VALUES ($1, $2, $3, 'gh', 'github', '{"secret":"s3cret","events":["pull_request"]}')`,
+      [inbox.id, `user:${aId}`, shared],
     );
     await db.query(
-      `INSERT INTO loopway.bots (id, user_id, org_id, name, model, cursor) VALUES ($1, $2, $3, 'b', 'sonnet', 0)`,
-      [bot.id, aId, shared],
+      `INSERT INTO loopway.bots (id, created_by, org_id, name, model, cursor) VALUES ($1, $2, $3, 'b', 'sonnet', 0)`,
+      [bot.id, `user:${aId}`, shared],
     );
-    await db.query(`INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id, org_id) VALUES ($1, $2, $3, $4)`, [
+    await db.query(`INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, org_id) VALUES ($1, $2, $3)`, [
       bot.id,
       inbox.id,
-      aId,
       shared,
     ]);
 

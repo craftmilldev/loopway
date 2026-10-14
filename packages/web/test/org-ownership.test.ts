@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { migrate } from "../src/db/index.js";
 import { openTestDb } from "../src/db/testing.js";
+import { migrateBefore } from "./migrate-before.js";
 import { call, db, newInbox, newUser, newUserWithoutOrg, prPayload, sendGithub } from "./helpers.js";
 
 const rows = <T>(sql: string, params: unknown[] = []) => db.query<T>(sql, params);
@@ -65,7 +66,7 @@ describe("org constraints", () => {
     await rows(`UPDATE loopway.inboxes SET org_id = $2 WHERE id = $1`, [moved.id, await otherOrg()]);
     await expect(
       rows(
-        `INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id, org_id) SELECT id, $2, user_id, org_id FROM loopway.bots WHERE id = $1`,
+        `INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, org_id) SELECT id, $2, org_id FROM loopway.bots WHERE id = $1`,
         [bot.id, moved.id],
       ),
     ).rejects.toMatchObject(fkViolation);
@@ -78,7 +79,7 @@ describe("org constraints", () => {
       .body;
     await expect(
       rows(
-        `INSERT INTO loopway.threads (id, bot_id, user_id, org_id) SELECT $2, id, user_id, $3 FROM loopway.bots WHERE id = $1`,
+        `INSERT INTO loopway.threads (id, bot_id, created_by, org_id) SELECT $2, id, created_by, $3 FROM loopway.bots WHERE id = $1`,
         [bot.id, randomUUID(), await otherOrg()],
       ),
     ).rejects.toMatchObject(fkViolation);
@@ -90,9 +91,7 @@ describe("backfill (018_org_ownership)", () => {
   async function backfill() {
     const fresh = await openTestDb();
     try {
-      for (const t of ["inboxes", "bots", "bot_inboxes", "threads", "runners"])
-        await fresh.query(`ALTER TABLE loopway.${t} DROP COLUMN org_id CASCADE`);
-      await fresh.query(`DELETE FROM loopway.schema_migrations WHERE version = '018_org_ownership'`);
+      await migrateBefore(fresh, "018_org_ownership");
 
       const users = {
         matthew: randomUUID(),
@@ -141,7 +140,7 @@ describe("backfill (018_org_ownership)", () => {
         [org.named, users.named],
       );
 
-      expect(await migrate(fresh)).toEqual(["018_org_ownership"]);
+      expect((await migrate(fresh))[0]).toEqual("018_org_ownership");
 
       const result: Record<string, Record<string, string[]>> = {};
       for (const [who, x] of Object.entries(ids)) {
@@ -192,7 +191,7 @@ describe("inboxes across orgs", () => {
     const otherSlug = `other-${other.slice(0, 8)}`;
     await rows(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [other, otherSlug]);
     await rows(
-      `INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, (SELECT user_id FROM loopway.inboxes WHERE id = $2))`,
+      `INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, (SELECT substring(created_by FROM 6)::uuid FROM loopway.inboxes WHERE id = $2))`,
       [other, b.id],
     );
     await rows(`UPDATE loopway.inboxes SET org_id = $2 WHERE id = $1`, [b.id, other]);

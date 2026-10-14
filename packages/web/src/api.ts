@@ -12,6 +12,7 @@ import { BOT_MODELS } from "./models.js";
 import { createPosthogProxy } from "./posthog-proxy.js";
 import { ORG_SLUG_PROBLEM_MESSAGES, USERNAME_PROBLEM_MESSAGES, type SlugProblem } from "./slugs.js";
 import { sources } from "./sources.js";
+import { parseActor } from "./actor.js";
 import * as store from "./store.js";
 import type { MessageRow, Inbox, User } from "./store.js";
 import { signSessionToken, verifyToken } from "./tokens.js";
@@ -107,7 +108,11 @@ export function createApi(opts: ApiOptions) {
     const source = sources.get(inbox.source_type);
     if (!source) throw new ApiError(500, "internal", `Unknown source type ${inbox.source_type}`);
     const received = (outcome: string, extra?: Record<string, unknown>) =>
-      metrics.capture("webhook_received", inbox.user_id, { source_type: inbox.source_type, outcome, ...extra });
+      metrics.capture("webhook_received", parseActor(inbox.created_by)?.id ?? inbox.created_by, {
+        source_type: inbox.source_type,
+        outcome,
+        ...extra,
+      });
 
     const result = await source.receive(
       {
@@ -1026,6 +1031,7 @@ export function createApi(opts: ApiOptions) {
     return {
       id: inbox.id,
       org_id: inbox.org_id,
+      created_by: inbox.created_by,
       name: inbox.name,
       source_type: inbox.source_type,
       config: source ? source.publicConfig(inbox.config) : inbox.config,
@@ -1069,6 +1075,7 @@ function serializeRunner(r: store.Runner) {
   return {
     id: r.id,
     org_id: r.org_id,
+    created_by: r.created_by,
     org: r.org_slug,
     name: r.name,
     created_at: iso(r.created_at),
@@ -1128,6 +1135,7 @@ function serializeThreadRow(t: store.Thread) {
   return {
     id: t.id,
     bot_id: t.bot_id,
+    created_by: t.created_by,
     status: t.status,
     started: t.started,
     interrupted: t.interrupted,
@@ -1180,6 +1188,7 @@ function serializeBot(b: store.Bot) {
   return {
     id: b.id,
     org_id: b.org_id,
+    created_by: b.created_by,
     name: b.name,
     model: b.model,
     inbox_ids: b.inbox_ids,

@@ -162,7 +162,7 @@ describe("thread assignment", () => {
       .body;
     const tid = randomUUID();
     await db.query(
-      `INSERT INTO loopway.threads (id, bot_id, user_id, org_id) SELECT $1, id, user_id, org_id FROM loopway.bots WHERE id = $2`,
+      `INSERT INTO loopway.threads (id, bot_id, created_by, org_id) SELECT $1, id, 'bot:' || id, org_id FROM loopway.bots WHERE id = $2`,
       [tid, other.id],
     );
     // Skipping the API's checks: the other bot's thread id makes the key insert fail its foreign key, after the

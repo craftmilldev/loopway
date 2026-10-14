@@ -1,4 +1,5 @@
 import type { BotRule } from "@loopway/rules";
+import { botActor, userActor } from "./actor.js";
 import type { CloudEvent } from "./cloudevents.js";
 import type { Db } from "./db/index.js";
 import { ApiError } from "./http.js";
@@ -248,7 +249,8 @@ export async function memberOrg(db: Q, userId: string, slug: string): Promise<Or
 
 export interface Inbox {
   id: string;
-  user_id: string;
+  /** Who made it, as an actor (see actor.ts). Informational: access runs on org_id. */
+  created_by: string;
   org_id: string;
   name: string;
   source_type: string;
@@ -261,9 +263,9 @@ export async function createInbox(
   input: { userId: string; orgId: string; name: string; sourceType: string; config: unknown },
 ): Promise<Inbox> {
   const [row] = await db.query<Inbox>(
-    `INSERT INTO loopway.inboxes (id, user_id, org_id, name, source_type, config)
+    `INSERT INTO loopway.inboxes (id, created_by, org_id, name, source_type, config)
      VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING *`,
-    [uuidv7(), input.userId, input.orgId, input.name, input.sourceType, input.config],
+    [uuidv7(), userActor(input.userId), input.orgId, input.name, input.sourceType, input.config],
   );
   return row!;
 }
@@ -450,7 +452,8 @@ export interface BotVersion {
 
 export interface Bot {
   id: string;
-  user_id: string;
+  /** Who made it, as an actor (see actor.ts). Informational: access runs on org_id. */
+  created_by: string;
   org_id: string;
   name: string;
   /** The model its sessions run on, as `claude --model` takes it. */
@@ -468,7 +471,7 @@ export interface Bot {
 }
 
 const BOT_COLS = `
-  b.id, b.user_id, b.org_id, b.name, b.model, b.cursor, b.lock_token, b.locked_until, b.runner_id, b.created_at,
+  b.id, b.created_by, b.org_id, b.name, b.model, b.cursor, b.lock_token, b.locked_until, b.runner_id, b.created_at,
   COALESCE((SELECT jsonb_agg(bi.inbox_id ORDER BY bi.inbox_id) FROM loopway.bot_inboxes bi WHERE bi.bot_id = b.id),
            '[]'::jsonb) AS inbox_ids,
   (SELECT jsonb_build_object('version', v.version, 'prompt', v.prompt, 'rules', v.rules, 'created_at', v.created_at)
@@ -501,16 +504,16 @@ export async function createBot(
   const id = uuidv7();
   await db.transaction(async (tx) => {
     await tx.query(
-      `INSERT INTO loopway.bots (id, user_id, org_id, name, model, cursor)
+      `INSERT INTO loopway.bots (id, created_by, org_id, name, model, cursor)
        VALUES ($1, $2, $6::uuid,
          $3, $5, COALESCE((SELECT max(seq) FROM loopway.messages WHERE inbox_id IN ${inboxIds("$4")}), 0))`,
-      [id, input.userId, input.name, input.inboxIds, input.model, input.orgId],
+      [id, userActor(input.userId), input.name, input.inboxIds, input.model, input.orgId],
     );
     await tx.query(
-      `INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id, org_id)
-       SELECT $1, ids.value, $2, (SELECT org_id FROM loopway.bots WHERE id = $1)
-       FROM ${inboxIds("$3")} AS ids(value)`,
-      [id, input.userId, input.inboxIds],
+      `INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, org_id)
+       SELECT $1, ids.value, (SELECT org_id FROM loopway.bots WHERE id = $1)
+       FROM ${inboxIds("$2")} AS ids(value)`,
+      [id, input.inboxIds],
     );
     if (input.prompt !== undefined) await addBotVersion(tx, id, input.prompt, input.rules);
   });
@@ -631,10 +634,10 @@ export async function updateBot(
         patch.inboxIds,
       ]);
       await tx.query(
-        `INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, user_id, org_id)
-         SELECT $1, ids.value, $2, $4 FROM ${inboxIds("$3")} AS ids(value)
+        `INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, org_id)
+         SELECT $1, ids.value, $3 FROM ${inboxIds("$2")} AS ids(value)
          ON CONFLICT DO NOTHING`,
-        [bot.id, bot.user_id, patch.inboxIds, bot.org_id],
+        [bot.id, patch.inboxIds, bot.org_id],
       );
     }
   });
@@ -744,7 +747,8 @@ export async function botMessages(db: Db, botId: string, limit: number): Promise
 
 export interface Runner {
   id: string;
-  user_id: string;
+  /** Who registered it, as an actor (see actor.ts). Informational: access runs on org_id. */
+  created_by: string;
   org_id: string;
   /** The slug of its org. */
   org_slug: string;
@@ -761,7 +765,7 @@ export interface Runner {
 }
 
 const RUNNER_COLS = `
-  r.id, r.user_id, r.org_id, (SELECT o.slug FROM loopway.orgs o WHERE o.id = r.org_id) AS org_slug,
+  r.id, r.created_by, r.org_id, (SELECT o.slug FROM loopway.orgs o WHERE o.id = r.org_id) AS org_slug,
   r.name, r.lock_token, r.locked_until, r.created_at, r.last_seen_at,
   COALESCE((SELECT jsonb_agg(jsonb_build_object('id', b.id, 'name', b.name) ORDER BY b.id) FROM loopway.bots b
             WHERE b.runner_id = r.id AND b.deleted_at IS NULL AND b.locked_until > now()), '[]'::jsonb) AS bots,
@@ -779,11 +783,11 @@ export async function upsertRunner(
   name: string,
 ): Promise<Runner | undefined> {
   const rows = await db.query<{ id: string }>(
-    `INSERT INTO loopway.runners (id, user_id, org_id, name) VALUES ($1, $2, $4, $3)
+    `INSERT INTO loopway.runners (id, created_by, org_id, name) VALUES ($1, $5, $4, $3)
      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, last_seen_at = now()
-     WHERE loopway.runners.org_id = EXCLUDED.org_id AND ${inOrgOf("loopway.runners.org_id", "EXCLUDED.user_id")}
+     WHERE loopway.runners.org_id = EXCLUDED.org_id AND ${inOrgOf("loopway.runners.org_id", "$2")}
      RETURNING id`,
-    [id, userId, name, orgId],
+    [id, userId, name, orgId, userActor(userId)],
   );
   return rows.length ? getRunner(db, userId, id) : undefined;
 }
@@ -865,6 +869,8 @@ export interface ThreadMessage {
 export interface Thread {
   id: string;
   bot_id: string;
+  /** The bot that assigned it, as an actor (see actor.ts). Informational. */
+  created_by: string;
   status: "active" | "ended";
   started: boolean;
   interrupted: boolean;
@@ -894,7 +900,7 @@ const threadMessages = (state: ThreadMessageState) => `
             WHERE tm.thread_id = t.id AND tm.state = '${state}'), '[]'::jsonb)`;
 
 const THREAD_COLS = `
-  t.id, t.bot_id, t.status, t.started, t.interrupted, t.limited, t.runner_id,
+  t.id, t.bot_id, t.created_by, t.status, t.started, t.interrupted, t.limited, t.runner_id,
   t.created_at, t.updated_at,
   COALESCE((SELECT jsonb_agg(k.subject ORDER BY k.subject) FROM loopway.thread_subjects k WHERE k.thread_id = t.id),
            '[]'::jsonb) AS subjects,
@@ -1044,12 +1050,12 @@ export async function releaseThread(db: Db, botId: string, id: string): Promise<
 /** Ends the thread without its runner's lease. Its messages stay as they are, as when the runner ends it. */
 export async function endThread(db: Db, botId: string, id: string): Promise<void> {
   await db.transaction(async (tx) => {
-    const ended = await tx.query<{ user_id: string }>(
+    const ended = await tx.query<{ org_id: string }>(
       `UPDATE loopway.threads SET status = 'ended', updated_at = now()
-       WHERE id = $2::uuid AND bot_id = $1::uuid AND status <> 'ended' RETURNING user_id`,
+       WHERE id = $2::uuid AND bot_id = $1::uuid AND status <> 'ended' RETURNING org_id`,
       [botId, id],
     );
-    if (ended.length) await recordThreadEvents(tx, ended[0]!.user_id, botId, id, ["ended"]);
+    if (ended.length) await recordThreadEvents(tx, ended[0]!.org_id, botId, id, ["ended"]);
   });
 }
 
@@ -1058,16 +1064,16 @@ export type ThreadEventKind = "created" | "started" | "ended" | "interrupted" | 
 /** Writes one event per kind, for a thread's transitions. */
 async function recordThreadEvents(
   db: Pick<Db, "query">,
-  userId: string,
+  orgId: string,
   botId: string,
   threadId: string,
   kinds: ThreadEventKind[],
 ) {
   await db.query(
-    `INSERT INTO loopway.thread_events (user_id, bot_id, thread_id, kind)
+    `INSERT INTO loopway.thread_events (org_id, bot_id, thread_id, kind)
      SELECT $1::uuid, $2::uuid, $3::uuid, k.value FROM jsonb_array_elements_text($4::jsonb) WITH ORDINALITY k(value, n)
      ORDER BY k.n`,
-    [userId, botId, threadId, kinds],
+    [orgId, botId, threadId, kinds],
   );
 }
 
@@ -1094,10 +1100,10 @@ export async function listThreadEvents(
             COALESCE((SELECT jsonb_agg(k.subject ORDER BY k.subject) FROM loopway.thread_subjects k
                       WHERE k.thread_id = e.thread_id), '[]'::jsonb) AS subjects
      FROM loopway.thread_events e JOIN loopway.bots b ON b.id = e.bot_id
-     WHERE ${inOrgOf("b.org_id", "$1")} AND b.deleted_at IS NULL AND ($4::uuid IS NULL OR b.org_id = $4::uuid)
+     WHERE ${inOrgOf("e.org_id", "$1")} AND b.deleted_at IS NULL AND ($4::uuid IS NULL OR e.org_id = $4::uuid)
        AND ($3::bigint IS NULL
-            OR (e.at, e.id) < (SELECT p.at, p.id FROM loopway.thread_events p JOIN loopway.bots pb ON pb.id = p.bot_id
-                                WHERE p.id = $3::bigint AND ${inOrgOf("pb.org_id", "$1")}))
+            OR (e.at, e.id) < (SELECT p.at, p.id FROM loopway.thread_events p
+                                WHERE p.id = $3::bigint AND ${inOrgOf("p.org_id", "$1")}))
      ORDER BY e.at DESC, e.id DESC LIMIT $2`,
     [userId, limit, before ?? null, orgId ?? null],
   );
@@ -1123,9 +1129,9 @@ export async function assignMessages(
   assignments: Assignment[],
 ): Promise<{ assigned: number } | undefined> {
   return db.transaction(async (tx) => {
-    const [bot] = await tx.query<{ user_id: string; org_id: string }>(
+    const [bot] = await tx.query<{ org_id: string }>(
       `UPDATE loopway.bots b SET cursor = GREATEST(b.cursor, $3::bigint)
-       WHERE ${LEASED} RETURNING b.user_id, b.org_id`,
+       WHERE ${LEASED} RETURNING b.org_id`,
       [botId, token, cursor],
     );
     if (!bot) return undefined;
@@ -1134,12 +1140,12 @@ export async function assignMessages(
                        x->'add_subjects' AS add_subjects, x->>'subject' AS subject
                 FROM jsonb_array_elements($1::jsonb) x)`;
     const created = await tx.query<{ id: string }>(
-      `INSERT INTO loopway.threads (id, bot_id, user_id, org_id)
-       SELECT DISTINCT a.thread_id, $2::uuid, $3::uuid, $4::uuid FROM ${a} a
+      `INSERT INTO loopway.threads (id, bot_id, created_by, org_id)
+       SELECT DISTINCT a.thread_id, $2::uuid, $3, $4::uuid FROM ${a} a
        ON CONFLICT (id) DO NOTHING RETURNING id`,
-      [assignments, botId, bot.user_id, bot.org_id],
+      [assignments, botId, botActor(botId), bot.org_id],
     );
-    for (const t of created) await recordThreadEvents(tx, bot.user_id, botId, t.id, ["created"]);
+    for (const t of created) await recordThreadEvents(tx, bot.org_id, botId, t.id, ["created"]);
     await tx.query(
       `INSERT INTO loopway.thread_subjects (thread_id, bot_id, subject)
        SELECT DISTINCT a.thread_id, $2::uuid, k.subject
@@ -1177,7 +1183,7 @@ export async function patchThread(
     // The old values come back with the update (the self-join sees the row as it was), so an event is written only
     // for a value that changed.
     const upd = await tx.query<{
-      user_id: string;
+      org_id: string;
       status: string;
       started: boolean;
       interrupted: boolean;
@@ -1195,7 +1201,7 @@ export async function patchThread(
          updated_at  = now()
        FROM loopway.threads o
        WHERE o.id = t.id AND ${THREAD_OWNED}
-       RETURNING t.user_id, t.status, t.started, t.interrupted, t.limited,
+       RETURNING t.org_id, t.status, t.started, t.interrupted, t.limited,
                  o.status AS old_status, o.started AS old_started, o.interrupted AS old_interrupted,
                  o.limited AS old_limited`,
       [botId, token, id, patch.status ?? null, patch.started ?? null, patch.interrupted ?? null, patch.limited ?? null],
@@ -1208,7 +1214,7 @@ export async function patchThread(
     if (u.limited && !u.old_limited) kinds.push("limited");
     if (!u.limited && u.old_limited) kinds.push("limit_cleared");
     if (u.status === "ended" && u.old_status !== "ended") kinds.push("ended");
-    if (kinds.length) await recordThreadEvents(tx, u.user_id, botId, id, kinds);
+    if (kinds.length) await recordThreadEvents(tx, u.org_id, botId, id, kinds);
     if (patch.addSubjects?.length) {
       await tx.query(
         `INSERT INTO loopway.thread_subjects (thread_id, bot_id, subject)

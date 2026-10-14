@@ -480,4 +480,67 @@ CREATE FUNCTION loopway.guard_personal_org_invite() RETURNS trigger AS $$ BEGIN 
 CREATE TRIGGER org_invites_personal_guard BEFORE INSERT OR UPDATE ON loopway.org_invites FOR EACH ROW EXECUTE FUNCTION loopway.guard_personal_org_invite();
 `,
   },
+  {
+    // user_id only recorded who made a row, but it read as ownership and forced a user where the maker may be a bot or
+    // a runner. created_by replaces it on inboxes, bots, runners and threads: an actor reference (user:<uuid>,
+    // bot:<uuid> or runner:<id>) with no foreign key. Nothing reads it for access. bot_inboxes and thread_events only
+    // carried user_id for access or listing, so they lose it; thread_events gets org_id (from its bot) and an
+    // org-scoped index in place of the per-user one.
+    version: "022_created_by",
+    sql: `
+ALTER TABLE loopway.inboxes ADD COLUMN created_by text;
+
+ALTER TABLE loopway.bots    ADD COLUMN created_by text;
+
+ALTER TABLE loopway.runners ADD COLUMN created_by text;
+
+ALTER TABLE loopway.threads ADD COLUMN created_by text;
+
+UPDATE loopway.inboxes SET created_by = 'user:' || user_id;
+
+UPDATE loopway.bots    SET created_by = 'user:' || user_id;
+
+UPDATE loopway.runners SET created_by = 'user:' || user_id;
+
+UPDATE loopway.threads SET created_by = 'bot:' || bot_id;
+
+ALTER TABLE loopway.inboxes ALTER COLUMN created_by SET NOT NULL;
+
+ALTER TABLE loopway.bots    ALTER COLUMN created_by SET NOT NULL;
+
+ALTER TABLE loopway.runners ALTER COLUMN created_by SET NOT NULL;
+
+ALTER TABLE loopway.threads ALTER COLUMN created_by SET NOT NULL;
+
+ALTER TABLE loopway.thread_events ADD COLUMN org_id uuid REFERENCES loopway.orgs(id);
+
+UPDATE loopway.thread_events e SET org_id = b.org_id FROM loopway.bots b WHERE b.id = e.bot_id;
+
+ALTER TABLE loopway.thread_events ALTER COLUMN org_id SET NOT NULL;
+
+CREATE INDEX thread_events_org_at_idx ON loopway.thread_events (org_id, at DESC);
+
+DROP INDEX loopway.thread_events_user_at_idx;
+
+ALTER TABLE loopway.thread_events DROP COLUMN user_id;
+
+ALTER TABLE loopway.bot_inboxes DROP COLUMN user_id;
+
+ALTER TABLE loopway.threads DROP COLUMN user_id;
+
+ALTER TABLE loopway.inboxes DROP CONSTRAINT inboxes_id_user_unique;
+
+DROP INDEX loopway.inboxes_user_idx;
+
+DROP INDEX loopway.bots_user_idx;
+
+DROP INDEX loopway.runners_user_idx;
+
+ALTER TABLE loopway.inboxes DROP COLUMN user_id;
+
+ALTER TABLE loopway.bots    DROP COLUMN user_id;
+
+ALTER TABLE loopway.runners DROP COLUMN user_id;
+`,
+  },
 ];
