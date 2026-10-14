@@ -25,7 +25,7 @@ export interface ApiOptions extends EeOptions {
   sendEmail?: SendEmail;
   /** PostHog cloud region the /api/ingest proxy forwards to. Defaults to "us". */
   posthogRegion?: "us" | "eu";
-  /** PostHog project key the browser UI reports to through /ingest. Unset, the UI sends no metrics. */
+  /** PostHog project key the browser UI reports to through /api/ingest. Unset, the UI sends no metrics. */
   posthogKey?: string;
   /** PostHog's UI host (the toolbar needs it behind a proxy). Defaults to the region's, https://us.posthog.com. */
   posthogUiHost?: string;
