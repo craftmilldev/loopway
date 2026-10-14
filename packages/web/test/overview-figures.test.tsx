@@ -18,7 +18,7 @@ const thread = (botId: string, id: string, inflight: number, waiting: number) =>
   delivered: 0,
   updated_at: "2026-10-12T00:00:00Z",
 });
-const bot = (id: string) => ({ id, name: id, model: "sonnet", inbox_ids: ["i1"], runner_id: "r1" });
+const bot = (id: string) => ({ id, name: id, model: "sonnet", harness: "claude", inbox_ids: ["i1"], runner_id: "r1" });
 const runner = {
   id: "r1",
   name: "box",

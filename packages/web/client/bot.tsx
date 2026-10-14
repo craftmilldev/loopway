@@ -104,7 +104,7 @@ export function Bot({ id, view }: { id: string; view?: Tab }) {
           </h1>
           {b && (
             <div className="muted mono">
-              {b.model} · reads{" "}
+              {b.harness} · {b.model} · reads{" "}
               {b.inbox_ids.map((i, n) => {
                 const inbox = inboxes.data?.find((x) => x.id === i);
                 return (

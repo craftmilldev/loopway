@@ -31,14 +31,14 @@ jobs:
       - name: Pack
         run: |
           mkdir dist-release
-          npm pack -w @loopway/rules -w @loopway/presets -w @loopway/cli --pack-destination dist-release
+          npm pack -w @loopway/harnesses -w @loopway/rules -w @loopway/presets -w @loopway/cli --pack-destination dist-release
           # Fixed names, so install.sh can fetch .../releases/latest/download/loopway-cli.tgz
-          for name in rules presets cli; do
+          for name in harnesses rules presets cli; do
             mv dist-release/loopway-$name-*.tgz dist-release/loopway-$name.tgz
           done
       - name: Install from the tarballs and run it
         run: |
-          npm install -g ./dist-release/loopway-rules.tgz ./dist-release/loopway-presets.tgz ./dist-release/loopway-cli.tgz
+          npm install -g ./dist-release/loopway-harnesses.tgz ./dist-release/loopway-rules.tgz ./dist-release/loopway-presets.tgz ./dist-release/loopway-cli.tgz
           test "$(loopway --version)" = "$(node -p 'require("./packages/cli/package.json").version')"
       - name: Publish the release
         env:

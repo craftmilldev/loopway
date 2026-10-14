@@ -44,7 +44,7 @@ The CLI is released on its own, separately from the web deploy. To release:
 1. Set the new version in `packages/cli/package.json` and merge it.
 2. Tag the merge commit `cli-v<version>` (for example `cli-v0.2.0`) and push the tag. Anyone who can push tags can release.
 
-`.github/workflows/release-cli.yml` checks that the tag matches `packages/cli/package.json`, builds, packs `@loopway/cli` with `@loopway/presets` and `@loopway/rules` as `loopway-cli.tgz`, `loopway-presets.tgz` and `loopway-rules.tgz`, checks that they install and run, and publishes them as a GitHub release. Nothing goes to npm.
+`.github/workflows/release-cli.yml` checks that the tag matches `packages/cli/package.json`, builds, packs `@loopway/cli` with `@loopway/harnesses`, `@loopway/presets` and `@loopway/rules` as `loopway-cli.tgz`, `loopway-harnesses.tgz`, `loopway-presets.tgz` and `loopway-rules.tgz`, checks that they install and run, and publishes them as a GitHub release. Nothing goes to npm.
 
 People install with `curl -fsSL https://loopway.craftmill.dev/install.sh | sh` (`packages/web/content/install.sh`), which installs the latest release with `npm install -g`; `LOOPWAY_VERSION=0.2.0` picks another. It needs Node 22+.
 

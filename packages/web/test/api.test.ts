@@ -118,29 +118,17 @@ describe("bots", () => {
     ]);
   const seqs = (r: { body: { data: { seq: number }[] } }) => r.body.data.map((e) => e.seq);
 
-  it("defaults a bot's harness to Claude Code and rejects unknown ones", async () => {
-    const key = await newUser();
-    const a = await newInbox(key);
-    const body = { name: "h", model: "sonnet", inbox_ids: [a.id] };
-    const bot = await call("POST", "/bots", { key, body });
-    expect(bot.status).toBe(201);
-    expect(bot.body.harness).toBe("claude-code");
-    expect((await call("GET", `/bots/${bot.body.id}`, { key })).body.harness).toBe("claude-code");
-    expect((await call("POST", "/bots", { key, body: { ...body, harness: "claude-code" } })).status).toBe(201);
-    expect((await call("POST", "/bots", { key, body: { ...body, harness: "nope" } })).status).toBe(400);
-  });
-
   it("versions a bot's prompt", async () => {
     const key = await newUser();
     const a = await newInbox(key);
     const bare = await call("POST", "/bots", {
       key,
-      body: { name: "bare", model: "sonnet", inbox_ids: [a.id] },
+      body: { name: "bare", model: "sonnet", harness: "claude", inbox_ids: [a.id] },
     });
     expect(bare.body.prompt_version).toBeNull();
     const created = await call("POST", "/bots", {
       key,
-      body: { name: "dev", model: "sonnet", inbox_ids: [a.id], prompt: "one" },
+      body: { name: "dev", model: "sonnet", harness: "claude", inbox_ids: [a.id], prompt: "one" },
     });
     expect(created.body.prompt_version).toMatchObject({ version: 1, prompt: "one" });
     const id = created.body.id;
@@ -174,7 +162,7 @@ describe("bots", () => {
     expect(rejected.body.error.code).toBe("invalid_rules");
     const badCreate = await call("POST", "/bots", {
       key,
-      body: { name: "bad", model: "sonnet", inbox_ids: [a.id], prompt: "p", rules: bad },
+      body: { name: "bad", model: "sonnet", harness: "claude", inbox_ids: [a.id], prompt: "p", rules: bad },
     });
     expect(badCreate.body.error.code).toBe("invalid_rules");
     const other = await newUser();
@@ -200,7 +188,7 @@ describe("bots", () => {
     const b = await newInbox(key);
     const created = await call("POST", "/bots", {
       key,
-      body: { name: "dev", model: "sonnet", inbox_ids: [a.id] },
+      body: { name: "dev", model: "sonnet", harness: "claude", inbox_ids: [a.id] },
     });
     expect(created.status).toBe(201);
     const unknown = await call("POST", "/bots", {
@@ -208,8 +196,27 @@ describe("bots", () => {
       body: { name: "y", model: "sonet", inbox_ids: [a.id] },
     });
     expect(unknown.status).toBe(400);
+
+    // Cursor takes any model name; the pair is checked again whenever either half changes.
+    const cursor = await call("POST", "/bots", {
+      key,
+      body: { name: "cur", model: "auto", harness: "cursor", inbox_ids: [a.id] },
+    });
+    expect(cursor.body).toMatchObject({ harness: "cursor", model: "auto" });
+    const back = await call("PATCH", `/bots/${cursor.body.id}`, { key, body: { harness: "claude" } });
+    expect([back.status, back.body.error.code]).toEqual([400, "invalid_model"]);
+    const both = await call("PATCH", `/bots/${cursor.body.id}`, { key, body: { harness: "claude", model: "opus" } });
+    expect(both.body).toMatchObject({ harness: "claude", model: "opus" });
+    const codex = await call("POST", "/bots", {
+      key,
+      body: { name: "z", model: "sonnet", harness: "codex", inbox_ids: [a.id] },
+    });
+    expect(codex.status).toBe(400);
+    await call("DELETE", `/bots/${cursor.body.id}`, { key });
+
     expect(created.body).toMatchObject({
       name: "dev",
+      harness: "claude",
       model: "sonnet",
       inbox_ids: [a.id],
       cursor: 0,
@@ -246,16 +253,21 @@ describe("bots", () => {
     const mine = await newInbox(a);
     const r = await call("POST", "/bots", {
       key: a,
-      body: { name: "x", model: "sonnet", inbox_ids: [theirs.id] },
+      body: { name: "x", model: "sonnet", harness: "claude", inbox_ids: [theirs.id] },
     });
     expect(r.status).toBe(400);
     expect(r.body.error.message).toContain(theirs.id);
-    expect((await call("POST", "/bots", { key: a, body: { name: "x", model: "sonnet", inbox_ids: [] } })).status).toBe(
-      400,
-    );
+    expect(
+      (await call("POST", "/bots", { key: a, body: { name: "x", model: "sonnet", harness: "claude", inbox_ids: [] } }))
+        .status,
+    ).toBe(400);
 
-    const bot = (await call("POST", "/bots", { key: a, body: { name: "x", model: "sonnet", inbox_ids: [mine.id] } }))
-      .body;
+    const bot = (
+      await call("POST", "/bots", {
+        key: a,
+        body: { name: "x", model: "sonnet", harness: "claude", inbox_ids: [mine.id] },
+      })
+    ).body;
     expect((await call("PATCH", `/bots/${bot.id}`, { key: a, body: { inbox_ids: [theirs.id] } })).status).toBe(400);
     expect((await call("GET", `/bots/${bot.id}`, { key: b })).status).toBe(404);
     expect((await call("GET", `/bots/${bot.id}/messages`, { key: b })).status).toBe(404);
@@ -278,8 +290,12 @@ describe("bots", () => {
     // Not before[1]: ids made in the same millisecond can sort either way, so the newest is the highest seq.
     const newest = Math.max(...seqs(await call("GET", `/inboxes/${inbox.id}/messages`, { key })));
 
-    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [inbox.id] } }))
-      .body;
+    const bot = (
+      await call("POST", "/bots", {
+        key,
+        body: { name: "b", model: "sonnet", harness: "claude", inbox_ids: [inbox.id] },
+      })
+    ).body;
     expect(bot.cursor).toBe(newest);
 
     for (let i = 3; i <= 5; i++) await sendGithub(inbox, "pull_request", prPayload(i));
@@ -315,8 +331,12 @@ describe("bot leases", () => {
   it("lease / renew / release, and the cursor only moves forward under the live lease", async () => {
     const key = await newUser();
     const inbox = await newInbox(key);
-    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [inbox.id] } }))
-      .body;
+    const bot = (
+      await call("POST", "/bots", {
+        key,
+        body: { name: "b", model: "sonnet", harness: "claude", inbox_ids: [inbox.id] },
+      })
+    ).body;
     const base = `/bots/${bot.id}`;
 
     const leased = await call("POST", `${base}/lease`, { key, body: { ttl_seconds: 60 } });
@@ -375,8 +395,12 @@ describe("bot leases", () => {
   it("the lease a dead runner left can be released by force", async () => {
     const key = await newUser();
     const inbox = await newInbox(key);
-    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [inbox.id] } }))
-      .body;
+    const bot = (
+      await call("POST", "/bots", {
+        key,
+        body: { name: "b", model: "sonnet", harness: "claude", inbox_ids: [inbox.id] },
+      })
+    ).body;
     const base = `/bots/${bot.id}`;
     const dead = (await call("POST", `${base}/lease`, { key, body: { ttl_seconds: 3600 } })).body.lease.token;
     expect((await call("POST", `${base}/lease`, { key })).status).toBe(409);
@@ -393,8 +417,12 @@ describe("bot leases", () => {
   it("expired leases can be taken over", async () => {
     const key = await newUser();
     const inbox = await newInbox(key);
-    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [inbox.id] } }))
-      .body;
+    const bot = (
+      await call("POST", "/bots", {
+        key,
+        body: { name: "b", model: "sonnet", harness: "claude", inbox_ids: [inbox.id] },
+      })
+    ).body;
     const first = (await call("POST", `/bots/${bot.id}/lease`, { key, body: { ttl_seconds: 1 } })).body.lease.token;
     await db.query(`UPDATE loopway.bots SET locked_until = now() - interval '1 second' WHERE id = $1`, [bot.id]);
     const second = await call("POST", `/bots/${bot.id}/lease`, { key });

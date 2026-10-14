@@ -46,9 +46,7 @@ export function HarnessRequest() {
         </button>
       </div>
       <p className="hint">
-        {requested
-          ? "Thanks, we've got it. Pick Claude Code for now; bots run on it today."
-          : "Bots run on Claude Code today. Tell us which harness you want next."}
+        {requested ? "Thanks, we've got it." : "Tell us which coding agent you want bots to run on next."}
       </p>
       {error && <p className="error">{error}</p>}
     </div>

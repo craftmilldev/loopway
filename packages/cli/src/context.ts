@@ -1,5 +1,5 @@
 import { LoopwayClient } from "./client.js";
-import type { AgentRun, RunOutcome } from "./bots/agent.js";
+import type { AgentRun, RunOutcome } from "@loopway/harnesses";
 import { resolveAuth } from "./config.js";
 import type { Metrics } from "./metrics.js";
 

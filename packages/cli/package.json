@@ -21,6 +21,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@loopway/harnesses": "*",
     "@loopway/presets": "*",
     "@loopway/rules": "*",
     "@clack/prompts": "^1.8.1",

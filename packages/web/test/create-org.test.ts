@@ -21,7 +21,13 @@ const personal = async (key: string) =>
   (await call("GET", "/orgs", { key })).body.data.find((o: { personal: boolean }) => o.personal).slug as string;
 
 const inboxBody = (org?: string) => ({ org, name: "gh", source_type: "github" });
-const botBody = (inbox_ids: string[], org?: string) => ({ org, name: "b", model: "sonnet", inbox_ids });
+const botBody = (inbox_ids: string[], org?: string) => ({
+  org,
+  name: "b",
+  model: "sonnet",
+  harness: "claude",
+  inbox_ids,
+});
 
 describe("creating an inbox or bot picks its org", () => {
   it("answers 400 org_required without an org, and creates nothing", async () => {

@@ -16,8 +16,12 @@ describe("dual-write of org_id", () => {
     const inbox = await newInbox(key);
     await sendGithub(inbox, "pull_request", prPayload(1));
     const message = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data[0] as { id: string };
-    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [inbox.id] } }))
-      .body;
+    const bot = (
+      await call("POST", "/bots", {
+        key,
+        body: { name: "b", model: "sonnet", harness: "claude", inbox_ids: [inbox.id] },
+      })
+    ).body;
     const lease = (await call("POST", `/bots/${bot.id}/lease`, { key, body: {} })).body.lease.token;
     const runnerId = randomUUID();
     const runner = (await call("POST", "/runners", { key, body: { id: runnerId, name: "laptop" } })).body;
@@ -62,7 +66,12 @@ describe("org constraints", () => {
     const key = await newUser();
     const mine = await newInbox(key);
     const moved = await newInbox(key);
-    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [mine.id] } })).body;
+    const bot = (
+      await call("POST", "/bots", {
+        key,
+        body: { name: "b", model: "sonnet", harness: "claude", inbox_ids: [mine.id] },
+      })
+    ).body;
     await rows(`UPDATE loopway.inboxes SET org_id = $2 WHERE id = $1`, [moved.id, await otherOrg()]);
     await expect(
       rows(
@@ -75,8 +84,12 @@ describe("org constraints", () => {
   it("rejects a thread whose org differs from its bot's", async () => {
     const key = await newUser();
     const inbox = await newInbox(key);
-    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [inbox.id] } }))
-      .body;
+    const bot = (
+      await call("POST", "/bots", {
+        key,
+        body: { name: "b", model: "sonnet", harness: "claude", inbox_ids: [inbox.id] },
+      })
+    ).body;
     await expect(
       rows(
         `INSERT INTO loopway.threads (id, bot_id, created_by, org_id) SELECT $2, id, created_by, $3 FROM loopway.bots WHERE id = $1`,
@@ -198,13 +211,16 @@ describe("inboxes across orgs", () => {
 
     const create = await call("POST", "/bots", {
       key,
-      body: { org: otherSlug, name: "b", model: "sonnet", inbox_ids: [a.id, b.id] },
+      body: { org: otherSlug, name: "b", model: "sonnet", harness: "claude", inbox_ids: [a.id, b.id] },
     });
     expect([create.status, create.body.error.code]).toEqual([400, "inbox_org_mismatch"]);
 
     // a bot in the other org takes b but not a
     const bot = (
-      await call("POST", "/bots", { key, body: { org: otherSlug, name: "b", model: "sonnet", inbox_ids: [b.id] } })
+      await call("POST", "/bots", {
+        key,
+        body: { org: otherSlug, name: "b", model: "sonnet", harness: "claude", inbox_ids: [b.id] },
+      })
     ).body;
     expect(bot.org_id).toBe(other);
     const patch = await call("PATCH", `/bots/${bot.id}`, { key, body: { inbox_ids: [b.id, a.id] } });

@@ -33,7 +33,7 @@ describe("the org filter on list endpoints", () => {
     const inMine = (await call("POST", "/inboxes", { key, body: { org: mine, name: "m", source_type: "github" } }))
       .body;
     const bot = (org: string, inbox: string) =>
-      call("POST", "/bots", { key, body: { org, name: org, model: "sonnet", inbox_ids: [inbox] } });
+      call("POST", "/bots", { key, body: { org, name: org, model: "sonnet", harness: "claude", inbox_ids: [inbox] } });
     const botTeam = (await bot(team.slug, inTeam.id)).body;
     const botMine = (await bot(mine, inMine.id)).body;
     const ids = async (path: string) =>

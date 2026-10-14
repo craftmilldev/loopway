@@ -27,8 +27,12 @@ describe("created_by through the API", () => {
     const me = `user:${(await call("GET", "/me", { key })).body.id}`;
     const inbox = await newInbox(key);
     expect((await call("GET", `/inboxes/${inbox.id}`, { key })).body.created_by).toBe(me);
-    const bot = (await call("POST", "/bots", { key, body: { name: "b", model: "sonnet", inbox_ids: [inbox.id] } }))
-      .body;
+    const bot = (
+      await call("POST", "/bots", {
+        key,
+        body: { name: "b", model: "sonnet", harness: "claude", inbox_ids: [inbox.id] },
+      })
+    ).body;
     expect(bot.created_by).toBe(me);
     const runner = (await call("POST", "/runners", { key, body: { id: randomUUID(), name: "r" } })).body;
     expect(runner.created_by).toBe(me);

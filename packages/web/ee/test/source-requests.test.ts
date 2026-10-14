@@ -96,11 +96,8 @@ describe("source requests", () => {
     });
   });
 
-  it("lists harnesses, and 404s requests where they are off", async () => {
+  it("404s harness requests where requests are off", async () => {
     const key = await newUser();
-    const list = await call("GET", "/harnesses", { key });
-    expect(list.body.data).toEqual([{ id: "claude-code", label: "Claude Code" }]);
-    expect(list.body.can_request).toBe(false);
     expect((await call("POST", "/harnesses/requests", { key, body: { url: "https://example.com" } })).status).toBe(404);
   });
 });
