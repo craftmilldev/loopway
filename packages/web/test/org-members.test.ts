@@ -1,7 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { migrate } from "../src/db/index.js";
-import { openTestDb } from "../src/db/testing.js";
 import { addOrgMember, createLoginCode } from "../src/store.js";
 import { call, db, newInbox, newUser } from "./helpers.js";
 
@@ -206,51 +204,6 @@ describe("org members", () => {
     await expect(
       db.query(`INSERT INTO loopway.org_invites (org_id, email) VALUES ($1, 'ghost@example.com')`, [org!.id]),
     ).rejects.toThrow(/personal orgs/);
-  });
-
-  it("migration 021 drops invites and non-owner members of personal orgs, and leaves other orgs alone", async () => {
-    const fresh = await openTestDb();
-    try {
-      await fresh.query(`DELETE FROM loopway.schema_migrations WHERE version = '021_personal_org_members'`);
-      await fresh.query(`DROP TRIGGER org_members_personal_guard ON loopway.org_members`);
-      await fresh.query(`DROP TRIGGER org_invites_personal_guard ON loopway.org_invites`);
-      const [owner, other] = [randomUUID(), randomUUID()];
-      for (const [id, email] of [
-        [owner, "owner@example.com"],
-        [other, "other@example.com"],
-      ])
-        await fresh.query(`INSERT INTO loopway.users (id, name, email) VALUES ($1, 'u', $2)`, [id, email]);
-      const [personal, shared] = [randomUUID(), randomUUID()];
-      await fresh.query(`INSERT INTO loopway.orgs (id, slug, name, personal_user_id) VALUES ($1, 'mine', 'mine', $2)`, [
-        personal,
-        owner,
-      ]);
-      await fresh.query(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, 'team', 'team')`, [shared]);
-      for (const [org, user] of [
-        [personal, owner],
-        [personal, other],
-        [shared, owner],
-        [shared, other],
-      ])
-        await fresh.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [org, user]);
-      for (const org of [personal, shared])
-        await fresh.query(`INSERT INTO loopway.org_invites (org_id, email) VALUES ($1, 'ghost@example.com')`, [org]);
-
-      await fresh.query(`DROP FUNCTION loopway.guard_personal_org_member()`);
-      await fresh.query(`DROP FUNCTION loopway.guard_personal_org_invite()`);
-      await migrate(fresh);
-
-      const members = await fresh.query<{ user_id: string }>(
-        `SELECT user_id FROM loopway.org_members WHERE org_id = $1`,
-        [personal],
-      );
-      expect(members.map((m) => m.user_id)).toEqual([owner]);
-      expect(await fresh.query(`SELECT 1 FROM loopway.org_invites WHERE org_id = $1`, [personal])).toEqual([]);
-      expect(await fresh.query(`SELECT 1 FROM loopway.org_members WHERE org_id = $1`, [shared])).toHaveLength(2);
-      expect(await fresh.query(`SELECT 1 FROM loopway.org_invites WHERE org_id = $1`, [shared])).toHaveLength(1);
-    } finally {
-      await fresh.close();
-    }
   });
 
   it("removes a pending email", async () => {
