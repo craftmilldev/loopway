@@ -9,10 +9,11 @@ export async function listRunners(ctx: Context, opts: { json?: boolean }) {
   if (!runners.length) return ctx.out("No runners yet. `loopway bots run` registers this machine as one.");
   ctx.out(
     table(
-      ["ID", "NAME", "BOTS", "THREADS", "LAST SEEN"],
+      ["ID", "NAME", "ORG", "BOTS", "THREADS", "LAST SEEN"],
       runners.map((r) => [
         r.id,
         r.name,
+        r.org,
         r.bots.map((b) => b.name).join(", "),
         String(r.threads),
         dim(ago(r.last_seen_at)),

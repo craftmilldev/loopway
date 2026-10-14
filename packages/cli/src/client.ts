@@ -76,6 +76,7 @@ export interface BotVersion {
 
 export interface Bot {
   id: string;
+  org_id: string;
   name: string;
   /** The model its sessions run on, as `claude --model` takes it. */
   model: string;
@@ -90,6 +91,10 @@ export interface Bot {
 /** A machine running loopway. */
 export interface Runner {
   id: string;
+  /** The org it belongs to, for good. */
+  org_id: string;
+  /** The slug of that org. */
+  org: string;
   name: string;
   created_at: string;
   last_seen_at: string;
@@ -254,7 +259,7 @@ export class LoopwayClient {
   // ---------- runners ----------
 
   /** Registers this machine's runner, or renames it and notes it was seen. Safe to repeat. */
-  registerRunner(input: { id: string; name: string }) {
+  registerRunner(input: { org: string; id: string; name: string }) {
     return this.request<Runner>("POST", "/runners", input);
   }
 

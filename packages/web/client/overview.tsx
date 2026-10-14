@@ -349,7 +349,7 @@ export function Overview() {
               </div>
               <div className="runner-note">
                 {r.bots.length ? "Holds " + r.bots.map((b) => botName(b.id)).join(", ") : "Holds no bots"} ·{" "}
-                {plural(r.threads, "thread")} · seen {lw.when(r.last_seen_at)}
+                {plural(r.threads, "thread")} · {r.org} · seen {lw.when(r.last_seen_at)}
               </div>
             </div>
           ))}

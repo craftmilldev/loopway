@@ -242,7 +242,11 @@ export function createApi(opts: ApiOptions) {
   authed.route("/", eeRoutes(opts));
 
   /** The org a create names: 400 without one, 404 (as for any foreign entity) if the user isn't a member. */
-  async function createOrg(c: Context<Env>, kind: "inbox" | "bot", slug: string | undefined): Promise<store.Org> {
+  async function createOrg(
+    c: Context<Env>,
+    kind: "inbox" | "bot" | "runner",
+    slug: string | undefined,
+  ): Promise<store.Org> {
     if (!slug) {
       await metrics.capture(`${kind}_create_rejected`, c.var.user.id, { reason: "org_required" });
       throw new ApiError(400, "org_required", "org is required: the slug of the org to create it in");
@@ -380,9 +384,23 @@ export function createApi(opts: ApiOptions) {
 
   // The CLI makes the id and calls this on startup; it is safe to repeat.
   authed.post("/runners", async (c) => {
-    const input = z.object({ id: runnerId, name: z.string().min(1).max(200) }).parse(await jsonBody(c));
-    const runner = await store.upsertRunner(c.var.db, c.var.user.id, input.id, input.name);
-    if (!runner) throw new ApiError(409, "runner_exists", "That runner id belongs to another user");
+    const input = z
+      .object({ org: z.string().optional(), id: runnerId, name: z.string().min(1).max(200) })
+      .parse(await jsonBody(c));
+    const org = await createOrg(c, "runner", input.org);
+    const runner = await store.upsertRunner(c.var.db, c.var.user.id, org.id, input.id, input.name);
+    if (!runner) {
+      // Only a runner of one of the user's own orgs can be told apart from one that isn't theirs.
+      const existing = await store.getRunner(c.var.db, c.var.user.id, input.id);
+      await metrics.capture("runner_create_rejected", c.var.user.id, {
+        reason: existing ? "org_mismatch" : "id_taken",
+      });
+      if (existing)
+        throw new ApiError(409, "runner_org_mismatch", "That runner belongs to another org; it can't be moved", {
+          org: existing.org_slug,
+        });
+      throw new ApiError(409, "runner_exists", "That runner id belongs to another user");
+    }
     return c.json(serializeRunner(runner));
   });
 
@@ -648,7 +666,7 @@ export function createApi(opts: ApiOptions) {
     const thread = await existingThread(c, bot);
     const { lease_token } = z.object({ lease_token: leaseToken }).parse(await jsonBody(c));
     const runner = await liveRunner(c, lease_token);
-    requireSameOrg(bot, runner);
+    await requireSameOrg(c, bot, runner, "thread_claim");
     if (thread.runner_id && thread.runner_id !== runner.id) throw threadOwned(thread);
     const claimed = await store.claimThread(c.var.db, c.var.user.id, bot.id, thread.id, lease_token);
     if (!claimed) throw runnerNotLeased();
@@ -799,14 +817,15 @@ export function createApi(opts: ApiOptions) {
   }
 
   /** A bot only runs on a runner of its own org: 400 otherwise. */
-  function requireSameOrg(bot: store.Bot, runner: store.Runner) {
+  async function requireSameOrg(c: Context<Env>, bot: store.Bot, runner: store.Runner, action: string) {
     if (runner.org_id === bot.org_id) return;
+    await metrics.capture("runner_org_mismatch_rejected", c.var.user.id, { action });
     throw new ApiError(400, "runner_org_mismatch", "A bot can only use a runner from its own org");
   }
 
   async function sameOrgRunner(c: Context<Env>, bot: store.Bot, id: string): Promise<store.Runner> {
     const runner = await ownedRunner(c, id);
-    requireSameOrg(bot, runner);
+    await requireSameOrg(c, bot, runner, "bot_lease");
     return runner;
   }
 
@@ -931,6 +950,7 @@ function serializeRunner(r: store.Runner) {
   return {
     id: r.id,
     org_id: r.org_id,
+    org: r.org_slug,
     name: r.name,
     created_at: iso(r.created_at),
     last_seen_at: iso(r.last_seen_at),

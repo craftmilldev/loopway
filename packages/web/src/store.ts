@@ -678,6 +678,8 @@ export interface Runner {
   id: string;
   user_id: string;
   org_id: string;
+  /** The slug of its org. */
+  org_slug: string;
   name: string;
   /** The runner's lease: see leaseRunner(). */
   lock_token: string | null;
@@ -691,19 +693,29 @@ export interface Runner {
 }
 
 const RUNNER_COLS = `
-  r.id, r.user_id, r.org_id, r.name, r.lock_token, r.locked_until, r.created_at, r.last_seen_at,
+  r.id, r.user_id, r.org_id, (SELECT o.slug FROM loopway.orgs o WHERE o.id = r.org_id) AS org_slug,
+  r.name, r.lock_token, r.locked_until, r.created_at, r.last_seen_at,
   COALESCE((SELECT jsonb_agg(jsonb_build_object('id', b.id, 'name', b.name) ORDER BY b.id) FROM loopway.bots b
             WHERE b.runner_id = r.id AND b.deleted_at IS NULL AND b.locked_until > now()), '[]'::jsonb) AS bots,
   (SELECT count(*)::int FROM loopway.threads t WHERE t.runner_id = r.id) AS threads`;
 
-/** Registers the runner, or renames it and notes it was seen. Undefined if the id is another user's. */
-export async function upsertRunner(db: Db, userId: string, id: string, name: string): Promise<Runner | undefined> {
+/**
+ * Registers the runner in the org, or renames it and notes it was seen. A runner keeps its org: undefined if the id
+ * is already in use by a runner of another org (or one the user can't see).
+ */
+export async function upsertRunner(
+  db: Db,
+  userId: string,
+  orgId: string,
+  id: string,
+  name: string,
+): Promise<Runner | undefined> {
   const rows = await db.query<{ id: string }>(
     `INSERT INTO loopway.runners (id, user_id, org_id, name) VALUES ($1, $2, $4, $3)
      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, last_seen_at = now()
-     WHERE ${inOrgOf("loopway.runners.org_id", "EXCLUDED.user_id")}
+     WHERE loopway.runners.org_id = EXCLUDED.org_id AND ${inOrgOf("loopway.runners.org_id", "EXCLUDED.user_id")}
      RETURNING id`,
-    [id, userId, name, await personalOrgId(db, userId)],
+    [id, userId, name, orgId],
   );
   return rows.length ? getRunner(db, userId, id) : undefined;
 }

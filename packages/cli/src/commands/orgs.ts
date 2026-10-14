@@ -10,7 +10,7 @@ export async function resolveOrg(
   ctx: Context,
   client: LoopwayClient,
   flag: string | undefined,
-  kind: "inbox" | "bot",
+  kind: "inbox" | "bot" | "runner",
 ): Promise<string> {
   if (flag) return flag;
   const orgs = await client.listOrgs();
@@ -19,16 +19,19 @@ export async function resolveOrg(
   if (!ctx.interactive) {
     await ctx.metrics?.capture("org_unresolved", { kind, reason: "several_orgs_non_interactive" });
     throw new UsageError(
-      `You belong to several orgs (${orgs.map((o) => o.slug).join(", ")}). Pass --org <slug> to choose where to create the ${kind}.`,
+      `You belong to several orgs (${orgs.map((o) => o.slug).join(", ")}). Pass --org <slug> to choose ${
+        kind === "runner" ? "the org to run bots for" : `where to create the ${kind}`
+      }.`,
     );
   }
   const picked = await p.select({
-    message: `Which org should the ${kind} belong to?`,
+    message:
+      kind === "runner" ? "Which org should this machine run bots for?" : `Which org should the ${kind} belong to?`,
     options: orgs.map((o) => ({ value: o.slug, label: o.slug, hint: o.personal ? "personal" : undefined })),
   });
   if (p.isCancel(picked)) {
     await ctx.metrics?.capture("org_unresolved", { kind, reason: "cancelled" });
-    p.cancel(`No ${kind} created.`);
+    p.cancel(kind === "runner" ? "Not running." : `No ${kind} created.`);
     throw new CancelledError();
   }
   return picked;
