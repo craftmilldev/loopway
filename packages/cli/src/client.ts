@@ -30,6 +30,18 @@ export interface Org {
   personal: boolean;
 }
 
+export interface OrgMember {
+  id: string;
+  username: string | null;
+  email: string | null;
+}
+
+export interface OrgMembers {
+  members: OrgMember[];
+  /** Emails added before they had an account; they join when they first log in. */
+  pending: string[];
+}
+
 export interface Inbox {
   id: string;
   name: string;
@@ -214,6 +226,25 @@ export class LoopwayClient {
 
   async listOrgs() {
     return (await this.request<{ data: Org[] }>("GET", "/orgs")).data;
+  }
+
+  /** Members and pending emails of an org you belong to (404 otherwise). */
+  listOrgMembers(slug: string) {
+    return this.request<OrgMembers>("GET", `/orgs/${enc(slug)}/members`);
+  }
+
+  /** Adds a member by email, or a pending membership if nobody has that email yet. Adding twice changes nothing. */
+  addOrgMember(slug: string, email: string) {
+    return this.request<OrgMembers>("POST", `/orgs/${enc(slug)}/members`, { email });
+  }
+
+  /** Removes a member, yourself included. 409 `last_member` for the only one left. */
+  async removeOrgMember(slug: string, userId: string) {
+    await this.request("DELETE", `/orgs/${enc(slug)}/members/${enc(userId)}`);
+  }
+
+  async removeOrgInvite(slug: string, email: string) {
+    await this.request("DELETE", `/orgs/${enc(slug)}/members/pending?email=${enc(email)}`);
   }
 
   async sources() {

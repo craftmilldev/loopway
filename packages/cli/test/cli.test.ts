@@ -1640,3 +1640,36 @@ describe("threads", () => {
     expect(await run("bots", "run", "--no-tui")).toMatch(/No bots to run.*loopway bots create/);
   });
 });
+
+describe("org members", () => {
+  it("adds, lists, removes and leaves end to end", async () => {
+    const key = await configured();
+    const me = await new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch }).me();
+    const id = randomUUID();
+    const slug = `team-${id.slice(0, 8)}`;
+    await db.query(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [id, slug]);
+    await db.query(`INSERT INTO loopway.org_members (org_id, user_id) VALUES ($1, $2)`, [id, me.id]);
+
+    expect(await run("orgs")).toContain(slug);
+    expect(await run("orgs", "add-member", slug, "Ghost@Example.com")).toMatch(/no account yet/);
+    expect(await run("orgs", "add-member", slug, "ghost@example.com")).toMatch(/already invited/);
+    expect((await runJson("orgs", "members", slug)).pending).toEqual(["ghost@example.com"]);
+
+    const { code } = await createLoginCode(db, "ghost@example.com");
+    const signup = await app.request("/api/auth/verify", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "ghost@example.com", code, username: `ghost-${id.slice(0, 8)}` }),
+    });
+    expect(signup.status).toBe(201);
+    const members = await runJson("orgs", "members", slug);
+    expect(members.pending).toEqual([]);
+    expect(members.members).toHaveLength(2);
+
+    expect(await run("orgs", "remove-member", slug, "ghost@example.com")).toMatch(/Removed/);
+    await expect(run("orgs", "remove-member", slug, "ghost@example.com")).rejects.toThrow(/No member or pending/);
+    await expect(run("orgs", "leave", slug)).rejects.toThrow(/last member/);
+    await run("orgs", "add-member", slug, "again@example.com");
+    expect(await run("orgs", "remove-member", slug, "again@example.com")).toMatch(/Withdrew/);
+  });
+});

@@ -16,6 +16,7 @@ import { getMessage, listMessages } from "./commands/messages.js";
 import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
 import { listRunners } from "./commands/runners.js";
 import { runBots } from "./commands/bots-run.js";
+import { addOrgMember, leaveOrg, listOrgs, orgMembers, removeOrgMember } from "./commands/orgs.js";
 import type { Context } from "./context.js";
 import { PRESETS } from "@loopway/presets";
 
@@ -76,6 +77,45 @@ LOOPWAY_API_URL and LOOPWAY_API_KEY override them.`,
     .description("show the current user")
     .addOption(jsonOpt())
     .action((opts) => whoami(ctx, opts));
+
+  // ---------- orgs ----------
+
+  const orgs = program.command("orgs").alias("org").description("list your orgs, and manage who belongs to them");
+
+  orgs
+    .command("list", { isDefault: true })
+    .alias("ls")
+    .description("list your orgs (what `loopway orgs` does)")
+    .addOption(jsonOpt())
+    .action((opts) => listOrgs(ctx, opts));
+
+  orgs
+    .command("members")
+    .description("list an org's members and pending emails")
+    .argument("<slug>", "org slug")
+    .addOption(jsonOpt())
+    .action((slug, opts) => orgMembers(ctx, slug, opts));
+
+  orgs
+    .command("add-member")
+    .description("add someone to an org by email (if they have no account yet, they join when they first log in)")
+    .argument("<slug>", "org slug")
+    .argument("<email>", "their email")
+    .addOption(jsonOpt())
+    .action((slug, email, opts) => addOrgMember(ctx, slug, email, opts));
+
+  orgs
+    .command("remove-member")
+    .description("remove a member (or withdraw a pending email) from an org")
+    .argument("<slug>", "org slug")
+    .argument("<who>", "username or email")
+    .action((slug, who) => removeOrgMember(ctx, slug, who));
+
+  orgs
+    .command("leave")
+    .description("leave an org (its last member can't)")
+    .argument("<slug>", "org slug")
+    .action((slug) => leaveOrg(ctx, slug));
 
   // ---------- inboxes ----------
 
