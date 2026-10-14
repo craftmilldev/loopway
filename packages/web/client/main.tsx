@@ -6,6 +6,7 @@ import { Inbox } from "./inbox.js";
 import { Inboxes } from "./inboxes.js";
 import { Login } from "./login.js";
 import { marketingPage } from "./marketing.js";
+import { MembersPage } from "./members.js";
 import { NewBot } from "./new-bot.js";
 import { DashboardRedirect, NotFound, OrgGate } from "./org-pages.js";
 import { startMetrics } from "./metrics.js";
@@ -29,6 +30,7 @@ function page(path: string) {
   if (rest === "/bots") return org(<Bots />);
   if (rest === "/bots/new") return org(<NewBot />);
   if (rest === "/inboxes") return org(<Inboxes />);
+  if (rest === "/members") return org(<MembersPage />);
   const inbox = rest.match(/^\/inboxes\/([^/]+)$/);
   if (inbox) return org(<Inbox id={part(inbox, 1)} />);
   const thread = rest.match(/^\/bots\/([^/]+)\/threads\/([^/]+)$/);
