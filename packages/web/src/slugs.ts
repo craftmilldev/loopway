@@ -39,10 +39,11 @@ export function slugProblem(slug: string): SlugProblem | undefined {
   return undefined;
 }
 
-export const SLUG_PROBLEM_MESSAGES: Record<SlugProblem, string> = {
+export const USERNAME_PROBLEM_MESSAGES: Record<SlugProblem | "taken", string> = {
   too_short: `Usernames are at least ${SLUG_MIN} characters`,
   too_long: `Usernames are at most ${SLUG_MAX} characters`,
   invalid_chars: "Usernames use only lowercase letters, numbers and hyphens",
   edge_hyphen: "Usernames can't start or end with a hyphen",
   reserved: "That username is reserved",
+  taken: "That username is taken",
 };

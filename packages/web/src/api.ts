@@ -10,7 +10,7 @@ import { isUuid, LOGIN_CODE_RE, normalizeLoginCode } from "./ids.js";
 import { ANONYMOUS, noopMetrics, type Metrics } from "./metrics.js";
 import { BOT_MODELS } from "./models.js";
 import { createPosthogProxy } from "./posthog-proxy.js";
-import { SLUG_PROBLEM_MESSAGES } from "./slugs.js";
+import { USERNAME_PROBLEM_MESSAGES } from "./slugs.js";
 import { sources } from "./sources.js";
 import * as store from "./store.js";
 import type { MessageRow, Inbox, User } from "./store.js";
@@ -191,7 +191,7 @@ export function createApi(opts: ApiOptions) {
     return c.json({
       username,
       available: !problem,
-      ...(problem && { reason: problem, message: usernameMessage(problem) }),
+      ...(problem && { reason: problem, message: USERNAME_PROBLEM_MESSAGES[problem] }),
     });
   });
 
@@ -210,7 +210,7 @@ export function createApi(opts: ApiOptions) {
           : result.problem === "reserved"
             ? "username_reserved"
             : "invalid_username";
-      throw new ApiError(result.problem === "taken" ? 409 : 400, code, usernameMessage(result.problem));
+      throw new ApiError(result.problem === "taken" ? 409 : 400, code, USERNAME_PROBLEM_MESSAGES[result.problem]);
     }
     await metrics.capture(result.created ? "username_chosen" : "username_renamed", c.var.user.id);
     return c.json(serializeUser({ ...c.var.user, username }));
@@ -941,10 +941,6 @@ function serializeThreadRow(t: store.Thread) {
 
 function serializeUser(u: User) {
   return { id: u.id, name: u.name, email: u.email, username: u.username, created_at: iso(u.created_at) };
-}
-
-function usernameMessage(problem: store.UsernameProblem) {
-  return problem === "taken" ? "That username is taken" : SLUG_PROBLEM_MESSAGES[problem];
 }
 
 function serializeMessage(e: MessageRow) {
