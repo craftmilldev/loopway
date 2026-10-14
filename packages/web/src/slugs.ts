@@ -4,7 +4,6 @@ import { RESERVED_SLUGS } from "./reserved-slugs.js";
  * Org slugs, which are also usernames: a user's personal org has their username as its slug, so both share one
  * namespace. The reserved names are in reserved-slugs.ts.
  */
-export { RESERVED_SLUGS };
 
 export const SLUG_MIN = 2;
 export const SLUG_MAX = 39;
