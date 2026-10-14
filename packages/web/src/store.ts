@@ -138,11 +138,18 @@ export async function usernameProblem(db: Q, username: string, userId?: string):
   return row ? "taken" : undefined;
 }
 
-/** Turns the pending memberships for this email into real ones for the user. Returns how many orgs they joined. */
+/** A pending membership lapses this long after it was added; adding the email again starts a new one. */
+export const INVITE_TTL_DAYS = 7;
+const LIVE_INVITE = `created_at > now() - make_interval(days => ${INVITE_TTL_DAYS})`;
+
+/**
+ * Turns the pending memberships for this email into real ones for the user (expired ones are just dropped).
+ * Returns how many orgs they joined.
+ */
 async function claimInvites(tx: Q, userId: string, email: string): Promise<number> {
   const joined = await tx.query(
-    `WITH claimed AS (DELETE FROM loopway.org_invites WHERE email = $2 RETURNING org_id)
-     INSERT INTO loopway.org_members (org_id, user_id) SELECT org_id, $1 FROM claimed
+    `WITH claimed AS (DELETE FROM loopway.org_invites WHERE email = $2 RETURNING org_id, ${LIVE_INVITE} AS live)
+     INSERT INTO loopway.org_members (org_id, user_id) SELECT org_id, $1 FROM claimed WHERE live
      ON CONFLICT DO NOTHING RETURNING org_id`,
     [userId, email],
   );
@@ -1260,7 +1267,7 @@ export async function listOrgMembers(db: Q, orgId: string): Promise<OrgMembers> 
     [orgId],
   );
   const pending = await db.query<{ email: string }>(
-    `SELECT email FROM loopway.org_invites WHERE org_id = $1 ORDER BY created_at, email`,
+    `SELECT email FROM loopway.org_invites WHERE org_id = $1 AND ${LIVE_INVITE} ORDER BY created_at, email`,
     [orgId],
   );
   return { members, pending: pending.map((r) => r.email) };
@@ -1289,6 +1296,11 @@ export async function addOrgMember(
       await tx.query(`DELETE FROM loopway.org_invites WHERE org_id = $1 AND email = $2`, [orgId, addr]);
       return added.length ? "member" : "already_member";
     }
+    // An expired invite for this email is replaced by a fresh one.
+    await tx.query(`DELETE FROM loopway.org_invites WHERE org_id = $1 AND email = $2 AND NOT (${LIVE_INVITE})`, [
+      orgId,
+      addr,
+    ]);
     const added = await tx.query(
       `INSERT INTO loopway.org_invites (org_id, email) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING email`,
       [orgId, addr],

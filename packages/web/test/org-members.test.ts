@@ -89,6 +89,30 @@ describe("org members", () => {
     expect(orgs.map((o) => o.slug)).toContain(slug);
   });
 
+  it("lets a pending membership lapse after 7 days, and a fresh add starts a new one", async () => {
+    const a = await newUser("a");
+    const slug = await sharedOrg(a);
+    await call("POST", `/orgs/${slug}/members`, { key: a, body: { email: "slow@example.com" } });
+    const age = (days: number) =>
+      db.query(`UPDATE loopway.org_invites SET created_at = now() - make_interval(days => $1) WHERE email = $2`, [
+        days,
+        "slow@example.com",
+      ]);
+
+    await age(6);
+    expect((await call("GET", `/orgs/${slug}/members`, { key: a })).body.pending).toEqual(["slow@example.com"]);
+    await age(8);
+    expect((await call("GET", `/orgs/${slug}/members`, { key: a })).body.pending).toEqual([]);
+
+    const again = await call("POST", `/orgs/${slug}/members`, { key: a, body: { email: "slow@example.com" } });
+    expect([again.status, again.body.pending]).toEqual([201, ["slow@example.com"]]);
+
+    await age(8);
+    const signup = await signUp("slow@example.com", `slow-${randomUUID().slice(0, 8)}`);
+    const orgs = (await call("GET", "/orgs", { key: signup.body.token })).body.data as { slug: string }[];
+    expect(orgs.map((o) => o.slug)).not.toContain(slug);
+  });
+
   it("is harmless to add twice", async () => {
     const a = await newUser("a");
     const b = await newUser("b");
