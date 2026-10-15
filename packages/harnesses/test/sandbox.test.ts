@@ -19,8 +19,8 @@ const run = (resume: boolean): AgentRun => ({
 });
 
 describe("sandbox", () => {
-  it.each([false, true])("claude runs always get sandbox settings (resume=%s)", async (resume) => {
-    const { args } = await new ClaudeHarness().launch(run(resume));
+  it.each([false, true])("claude runs always get sandbox settings (resume=%s)", (resume) => {
+    const { args } = new ClaudeHarness().launch(run(resume));
     const settings = JSON.parse(args[args.indexOf("--settings") + 1]!);
     expect(settings.sandbox).toMatchObject({ enabled: true, failIfUnavailable: true, allowUnsandboxedCommands: false });
     expect(settings.sandbox.filesystem.denyRead).toEqual(
