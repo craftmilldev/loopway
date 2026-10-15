@@ -106,7 +106,7 @@ describe("New bot flow", () => {
     fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "dev" } });
     fireEvent.click(screen.getByText("Create bot and continue"));
     await screen.findByText("Listening for a runner to take the lease…");
-    expect(posts[0]!.body).toMatchObject({ prompt: PRESETS.blank!.prompt, rules: [] });
+    expect(posts[0]!.body).toMatchObject({ prompt: PRESETS.blank!.prompt, rules: PRESETS.blank!.rules });
   });
 
   it("starts on the org something was last created in, and lists only its inboxes", async () => {
