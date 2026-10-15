@@ -1,6 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import type { LoopwayClient } from "../client.js";
-import { authedClient, type Context } from "../context.js";
+import { sandboxProblem } from "@loopway/harnesses";
+import { authedClient, UsageError, type Context } from "../context.js";
 import { DEFAULTS, Dispatcher, type ThreadsOptions } from "../bots/dispatcher.js";
 import { ensureRunner, savedRunnerOrg } from "../bots/runner.js";
 import { resolveOrg } from "./orgs.js";
@@ -29,6 +30,12 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
       `No bots to run. Create one with \`loopway bots create --name <name> --preset <preset> --model <model> --inbox <inbox>\`.`,
     );
     return;
+  }
+  // Claude bots only run sandboxed, so refuse up front rather than failing every run.
+  const problem = bots.some((b) => b.harness === "claude") ? sandboxProblem() : undefined;
+  if (problem) {
+    void ctx.metrics?.capture("bots_run_refused", { reason: problem.reason, platform: process.platform });
+    throw new UsageError(problem.message);
   }
   const interval = opts.interval ?? DEFAULTS.interval;
   const dispatcherOpts = {
