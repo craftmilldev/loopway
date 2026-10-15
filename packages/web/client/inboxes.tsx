@@ -43,7 +43,9 @@ export function Inboxes() {
   lw.usePoll(loadActivity, ready);
 
   const rows = inboxes.data;
-  const missing = rows?.filter((i) => !i.config?.secret).length ?? 0;
+  const needsSecret = (i: Inbox) =>
+    !i.config?.secret && sources?.data.find((s) => s.type === i.source_type)?.secret.from !== "none";
+  const missing = rows?.filter(needsSecret).length ?? 0;
   useEffect(() => {
     if (rows) track("inboxes_viewed", { count: rows.length, missing_secret: missing });
   }, [rows, missing]);
@@ -116,7 +118,7 @@ export function Inboxes() {
                         {eventsText(i.config?.events)}
                         {a ? " · " + plural(a.messages, "message") : ""}
                       </div>
-                      {!i.config?.secret && <div className="why missing">needs its secret</div>}
+                      {needsSecret(i) && <div className="why missing">needs its secret</div>}
                     </td>
                     <td className="mono">{label(i.source_type)}</td>
                     <td>

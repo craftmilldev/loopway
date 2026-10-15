@@ -53,7 +53,9 @@ export function CreateInbox({ org: given, onCreated }: { org?: string; onCreated
   const orgs = lw.useOrgs(true);
   const [chosen, setChosen] = useState<string | null>(null);
   const org = given ?? chosen ?? (orgs ? lw.startOrg(orgs) : "");
-  const { data: sources = [], can_request } = lw.useSources() ?? {};
+  const { data: allSources = [], can_request } = lw.useSources() ?? {};
+  // Schedule inboxes take no webhooks, secret or events, which this form is made of: they are created through the API.
+  const sources = allSources.filter((s) => s.secret.from !== "none");
   const [name, setName] = useState("");
   const [type, setType] = useState("");
   const [all, setAll] = useState(false);
@@ -65,6 +67,8 @@ export function CreateInbox({ org: given, onCreated }: { org?: string; onCreated
   const requesting = type === REQUEST;
   // The first source is picked until the user picks another.
   const source = requesting ? undefined : (sources.find((s) => s.type === type) ?? sources[0]);
+
+  const minLength = source?.secret.from === "loopway" ? source.secret.min_length : undefined;
 
   function toggle(event: string, on: boolean) {
     const next = new Set(checked);
@@ -173,7 +177,7 @@ export function CreateInbox({ org: given, onCreated }: { org?: string; onCreated
                 <input
                   id="secret"
                   required
-                  minLength={source?.secret.min_length}
+                  minLength={minLength}
                   autoComplete="off"
                   value={secret}
                   onChange={(e) => setSecret(e.target.value)}
@@ -183,8 +187,7 @@ export function CreateInbox({ org: given, onCreated }: { org?: string; onCreated
                 </button>
               </div>
               <p className="hint">
-                At least {source?.secret.min_length} characters. You enter the same secret in the sender's webhook
-                settings.
+                At least {minLength} characters. You enter the same secret in the sender's webhook settings.
               </p>
             </div>
           )}

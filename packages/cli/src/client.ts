@@ -19,7 +19,7 @@ export interface Source {
   /** Common event names, offered as choices. */
   events: string[];
   /** `loopway`: generated or entered at create time. `sender`: the sender makes it; set it afterwards. */
-  secret: { from: "loopway"; min_length: number } | { from: "sender" };
+  secret: { from: "loopway"; min_length: number } | { from: "sender" } | { from: "none" };
   /** Where in the sender the webhook is added. */
   webhook_settings: string;
 }

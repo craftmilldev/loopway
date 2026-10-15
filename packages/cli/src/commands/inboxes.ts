@@ -99,12 +99,19 @@ async function createInteractive(client: LoopwayClient, opts: CreateOptions): Pr
     ask(
       await p.select({
         message: "Where will messages come from?",
-        options: sources.map((s) => ({ value: s.type, label: s.label, hint: s.description })),
+        options: sources
+          .filter((s) => s.secret.from !== "none")
+          .map((s) => ({ value: s.type, label: s.label, hint: s.description })),
       }),
     );
   const source = sources.find((s) => s.type === type);
   if (!source) throw new UsageError(`Unknown source "${type}". Available: ${sources.map((s) => s.type).join(", ")}`);
 
+  if (source.secret.from === "none") {
+    throw new UsageError(
+      `${source.label} inboxes are created through the API: POST /api/inboxes (see docs/sources/${source.type}.md)`,
+    );
+  }
   const config = await sourceConfig(source, opts);
 
   p.note(

@@ -24,6 +24,7 @@ app.route(
   createApi({
     getDb,
     tokenSecret,
+    cronSecret: process.env.CRON_SECRET || undefined,
     metrics: createMetrics(),
     posthogKey: process.env.POSTHOG_API_KEY || undefined,
     posthogRegion: posthogRegion(process.env.POSTHOG_HOST),

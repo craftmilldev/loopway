@@ -81,7 +81,7 @@ export function Inbox({ id }: { id: string }) {
   }, !!inbox);
 
   // A source that makes the secret on its side leaves the inbox rejecting deliveries until it's pasted in.
-  const unfinished = !!inbox && !inbox.config?.secret;
+  const unfinished = !!inbox && !!source && source.secret.from !== "none" && !inbox.config?.secret;
   const loaded = !!inbox;
   useEffect(() => {
     if (loaded) track("inbox_viewed", { setup_unfinished: unfinished });

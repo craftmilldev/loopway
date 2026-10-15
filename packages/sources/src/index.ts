@@ -3,12 +3,14 @@ import { granola } from "./granola.js";
 import { linear } from "./linear.js";
 import { loopway } from "./loopway.js";
 import { SourceRegistry } from "./registry.js";
+import { schedule } from "./schedule.js";
 import type { SourceDeps } from "./types.js";
 import { vercel } from "./vercel.js";
 
 // Every source, one per line. A new source is a new file in this folder plus a line here.
 export const createSources = (deps: SourceDeps) =>
-  new SourceRegistry([github(deps), granola(deps), linear(deps), loopway(deps), vercel(deps)]);
+  new SourceRegistry([github(deps), granola(deps), linear(deps), loopway(deps), schedule(deps), vercel(deps)]);
 
+export { windowStart } from "./schedule.js";
 export { SourceRegistry } from "./registry.js";
 export type { SourceAdapter, SourceDeps, CloudEvent, IncomingWebhook, ReceiveResult, SecretOrigin } from "./types.js";
