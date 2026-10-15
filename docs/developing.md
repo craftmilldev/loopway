@@ -39,12 +39,11 @@ Tables live in a `loopway` schema (not `public`) with RLS enabled and no policie
 
 ## Releasing the CLI
 
-The CLI is released on its own, separately from the web deploy. To release:
+The CLI is released on its own, separately from the web deploy, and nobody has to cut releases by hand. When CI passes on a push to main, `.github/workflows/release-cli.yml` checks whether anything the CLI ships has changed since the last `cli-v*` tag: `packages/cli` or a `@loopway/*` package listed in its `dependencies`, not counting their `test/` folders and markdown. If something has, it releases the next version. A failed or skipped release is picked up by the next push, because it compares against the last tag, not the last commit.
 
-1. Set the new version in `packages/cli/package.json` and merge it.
-2. Tag the merge commit `cli-v<version>` (for example `cli-v0.2.0`) and push the tag. Anyone who can push tags can release.
+The next version is a patch bump of the last tag (`0.3.0` → `0.3.1`), so `packages/cli/package.json` doesn't need to change for a release. For a minor or major release, raise the version in `packages/cli/package.json` above the last tag (for example to `0.4.0`) and merge it. That version is used instead, and later patches count up from it. Between releases the version in `packages/cli/package.json` can be behind the released one; the workflow sets the real version before it builds. To retry a release, run the workflow from the Actions tab. It releases nothing when nothing has changed.
 
-`.github/workflows/release-cli.yml` checks that the tag matches `packages/cli/package.json`, builds, packs `@loopway/cli` with `@loopway/harnesses`, `@loopway/presets` and `@loopway/rules` as `loopway-cli.tgz`, `loopway-harnesses.tgz`, `loopway-presets.tgz` and `loopway-rules.tgz`, checks that they install and run, and publishes them as a GitHub release. Nothing goes to npm.
+The workflow builds, packs `@loopway/cli` with `@loopway/harnesses`, `@loopway/presets` and `@loopway/rules` as `loopway-cli.tgz`, `loopway-harnesses.tgz`, `loopway-presets.tgz` and `loopway-rules.tgz`, checks that they install and run, and publishes them as a GitHub release. Nothing goes to npm.
 
 People install with `curl -fsSL https://loopway.craftmill.dev/install.sh | sh` (`packages/web/content/install.sh`), which installs the latest release with `npm install -g`; `LOOPWAY_VERSION=0.3.0` picks another. The script installs the tarballs listed in the release's `manifest.txt` (made by `release-cli.yml`), so a new workspace package only needs adding to the pack step there; releases without a manifest (before 0.3.0) can't be installed this way. It needs Node 22+.
 
