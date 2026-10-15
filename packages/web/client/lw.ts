@@ -275,6 +275,8 @@ export interface Thread {
   interrupted: boolean;
   limited: boolean;
   runner_id: string | null;
+  /** Null until the thread's level is set; the UI treats it as 2. */
+  automation_level: 2 | 3 | 4 | null;
   subjects: string[];
   waiting: ThreadMessage[];
   inflight: ThreadMessage[];
@@ -480,6 +482,8 @@ export interface BotActivity {
   last_delivery_at: string | null;
   runs: number;
   median_wait_seconds: number | null;
+  /** Threads at each automation level; a thread with none set counts as 2. */
+  levels: { 2: number; 3: number; 4: number };
 }
 
 /** What an inbox received, from `GET /inboxes/activity` (a list) or `GET /inboxes/:id/activity`. */

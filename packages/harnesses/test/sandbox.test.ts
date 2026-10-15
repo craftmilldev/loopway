@@ -18,6 +18,12 @@ const run = (resume: boolean): AgentRun => ({
 });
 
 describe("sandbox", () => {
+  it.each([false, true])("claude runs with sandbox: false get no settings (resume=%s)", (resume) => {
+    const { args } = new ClaudeHarness().launch({ ...run(resume), sandbox: false });
+    expect(args).not.toContain("--settings");
+    expect(args).toContain(resume ? "--resume" : "--session-id");
+  });
+
   it.each([false, true])("claude runs always get sandbox settings (resume=%s)", (resume) => {
     const { args } = new ClaudeHarness().launch(run(resume));
     const settings = JSON.parse(args[args.indexOf("--settings") + 1]!);

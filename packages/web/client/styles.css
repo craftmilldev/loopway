@@ -1442,3 +1442,20 @@ fieldset {
 .runner-bot + .runner-bot {
   margin-top: 4px;
 }
+
+.level-pie {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+}
+.level-key {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.level-key .swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+}
