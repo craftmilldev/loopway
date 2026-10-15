@@ -631,7 +631,6 @@ export function createApi(opts: ApiOptions) {
         action: expression,
       }),
     )
-    .min(1)
     .max(100);
 
   /** Rejects rules whose expressions don't parse, so a bad edit fails on save and not on a runner. */

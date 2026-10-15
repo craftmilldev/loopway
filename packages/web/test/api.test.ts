@@ -150,7 +150,13 @@ describe("bots", () => {
       (await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "x", rules: [{ types: [] }] } })).status,
     ).toBe(400);
     expect((await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "" } })).status).toBe(400);
-    expect((await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "x", rules: [] } })).status).toBe(400);
+    // An empty list is valid: a bot that takes no messages yet, like the blank preset.
+    const empty = await call("POST", "/bots", {
+      key,
+      body: { name: "blank", model: "sonnet", harness: "claude", inbox_ids: [a.id], prompt: "p", rules: [] },
+    });
+    expect(empty.status).toBe(201);
+    expect(empty.body.prompt_version.rules).toEqual([]);
     // Every rule needs an action.
     expect(
       (await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "x", rules: [{ types: ["x"] }] } })).status,
