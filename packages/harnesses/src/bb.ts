@@ -21,6 +21,8 @@ function bb(args: string[], env: NodeJS.ProcessEnv, stdin?: string): Promise<str
       })();
       reject(new Error(`bb ${args.slice(0, 2).join(" ")} failed: ${detail ?? (stderr.trim() || err.message)}`));
     });
+    // bb may exit before reading its stdin; the callback above says why, so the EPIPE is not a second error.
+    child.stdin!.on("error", () => {});
     child.stdin!.end(stdin ?? "");
   });
 }

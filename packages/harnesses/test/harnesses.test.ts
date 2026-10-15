@@ -89,7 +89,7 @@ case "$2" in
   spawn) cat > "${out}/prompt"; for a in "$@"; do if [ "$prev" = --environment ]; then cat "$a/.mcp.json" >> "${out}/mcp"; fi; prev="$a"; done
          echo '{"id":"thr_1"}' ;;
   tell) cat > /dev/null; echo '{}' ;;
-  show) echo '{"thread":{"status":"idle"}}' ;;
+  show) cat "${out}/status" 2>/dev/null || echo '{"thread":{"status":"idle"}}' ;;
   output) echo '{"output":"all done"}' ;;
   *) echo '{}' ;;
 esac
@@ -121,6 +121,20 @@ esac
     expect(await readFile(join(out, "prompt"), "utf8")).toContain("hello");
     expect(existsSync(`${logPath}.workspace`)).toBe(false);
     expect(await readFile(logPath, "utf8")).toContain("all done");
+
+    // A resumed session whose thread id is gone starts a new thread.
+    await rm(`${logPath}.thread`);
+    expect(await harness.run({ ...base, resume: true })).toMatchObject({ code: 0, finished: true });
+    expect((await readFile(join(out, "calls"), "utf8")).match(/thread spawn/g)).toHaveLength(2);
+
+    // A thread that ends its turn in an error is an API error.
+    await writeFile(join(out, "status"), '{"thread":{"status":"error"}}');
+    expect(await harness.run({ ...base, resume: true })).toMatchObject({
+      code: 1,
+      finished: false,
+      apiError: expect.stringContaining("ended as error"),
+    });
+    await rm(join(out, "status"));
 
     // A bb that fails is an API error, not a crash.
     await writeFile(
