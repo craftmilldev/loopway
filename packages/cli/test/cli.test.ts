@@ -215,6 +215,7 @@ describe("auth", () => {
       api_key: undefined,
       posthog_host: "https://loopway.craftmill.dev/api/ingest",
       auto_update: true,
+      sandbox: true,
     });
     await writeConfig(configDir, { api_url: "https://file.test/", api_key: "lw_file" });
     expect(await loadConfig(configDir, {})).toEqual({
@@ -222,12 +223,14 @@ describe("auth", () => {
       api_key: "lw_file",
       posthog_host: "https://file.test/api/ingest",
       auto_update: true,
+      sandbox: true,
     });
     expect(await loadConfig(configDir, { LOOPWAY_API_URL: "https://env.test", LOOPWAY_API_KEY: "lw_env" })).toEqual({
       api_url: "https://env.test",
       api_key: "lw_env",
       posthog_host: "https://env.test/api/ingest",
       auto_update: true,
+      sandbox: true,
     });
     // Self-update is on unless config.json or LOOPWAY_NO_UPDATE turns it off, and `login` keeps the setting.
     await writeConfig(configDir, { api_url: "https://file.test", auto_update: false });
@@ -236,6 +239,14 @@ describe("auth", () => {
     await writeConfig(configDir, { api_url: "https://file.test", auto_update: true });
     expect((await loadConfig(configDir, { LOOPWAY_NO_UPDATE: "1" })).auto_update).toBe(false);
     expect((await loadConfig(configDir, { LOOPWAY_NO_UPDATE: "0" })).auto_update).toBe(true);
+    // Bots are sandboxed unless config.json says `sandbox: false`, and `config --sandbox` keeps the other settings.
+    expect((await loadConfig(configDir, {})).sandbox).toBe(true);
+    await writeConfig(configDir, { api_url: "https://file.test", sandbox: false });
+    expect((await loadConfig(configDir, {})).sandbox).toBe(false);
+    await run("config", "--sandbox", "on");
+    expect((await loadConfig(configDir, {})).sandbox).toBe(true);
+    await run("config", "--sandbox", "off");
+    expect((await loadConfig(configDir, {})).sandbox).toBe(false);
     // The metrics host lives in config.json (which login and config keep), and POSTHOG_HOST overrides it.
     await writeConfig(configDir, { api_url: "https://file.test", posthog_host: "https://eu.i.posthog.com" });
     expect((await loadConfig(configDir, {})).posthog_host).toBe("https://eu.i.posthog.com");
@@ -880,7 +891,7 @@ describe("threads", () => {
     ]);
   }
 
-  async function setup(max: number, env: NodeJS.ProcessEnv = {}, inboxes = 1) {
+  async function setup(max: number, env: NodeJS.ProcessEnv = {}, inboxes = 1, startOpts: { sandbox?: boolean } = {}) {
     const key = await configured();
     const bots: Bot[] = [];
     const boxes: { id: string; config: { secret: string } }[] = [];
@@ -918,7 +929,7 @@ describe("threads", () => {
     };
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
     const runner = await ensure(client);
-    const d = await Dispatcher.start(ctx, client, bots, { max, ttl: 60, runnerId: runner.id });
+    const d = await Dispatcher.start(ctx, client, bots, { max, ttl: 60, runnerId: runner.id, ...startOpts });
     const finish = async (outcome: RunOutcome = { code: 0, delivered: true }) => (
       busy.splice(0).forEach((f) => f(outcome)),
       await d.idle()
@@ -1687,6 +1698,23 @@ describe("threads", () => {
     expect((await sessions())[id]).toMatchObject({ started: true, waiting: [] });
     expect((await sessions())[id].inflight).toEqual([]);
     await finish();
+  });
+
+  it("runs sessions sandboxed by default", async () => {
+    const plain = await setup(3);
+    await send(plain.inbox, "issues", issue("opened", 1));
+    await plain.d.tick();
+    expect(plain.runs[0]!.sandbox).not.toBe(false);
+    expect(await plain.d.readLog(plain.runs[0]!.sessionId)).not.toContain("sandbox is off");
+  });
+
+  it("notes in the session log when the sandbox is off", async () => {
+    const off = await setup(3, {}, 1, { sandbox: false });
+    await send(off.inbox, "issues", issue("opened", 2));
+    await off.d.tick();
+    expect(off.runs[0]!.sandbox).toBe(false);
+    expect(await off.d.readLog(off.runs[0]!.sessionId)).toMatch(/WARNING: the sandbox is off/);
+    await off.finish();
   });
 
   it("serves a link tool that routes a PR's messages to the session", async () => {

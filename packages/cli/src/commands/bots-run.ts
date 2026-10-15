@@ -3,13 +3,16 @@ import { ApiError, type LoopwayClient } from "../client.js";
 import { getHarness } from "@loopway/harnesses";
 import { applyUpdate, availableUpdate as availableUpdateNow } from "../update.js";
 import { authedClient, UsageError, type Context } from "../context.js";
-import { DEFAULTS, Dispatcher, type ThreadsOptions } from "../bots/dispatcher.js";
+import { loadConfig } from "../config.js";
+import { DEFAULTS, Dispatcher, UNSANDBOXED_WARNING, type ThreadsOptions } from "../bots/dispatcher.js";
 import { ensureRunner, savedRunnerOrg } from "../bots/runner.js";
 import { resolveOrg } from "./orgs.js";
 import { showTui } from "../bots/tui.js";
 import { CLI_VERSION } from "../version.js";
 
-export interface RunBotsOptions extends ThreadsOptions {
+export interface RunBotsOptions extends Omit<ThreadsOptions, "sandbox"> {
+  /** false with --no-sandbox. Only ever turns the sandbox off; otherwise config.json's `sandbox` decides. */
+  sandbox?: boolean;
   /** The slug of the org to run bots for; remembered with the runner. */
   org?: string;
   /** false with --no-tui; the TUI only shows in an interactive terminal either way. */
@@ -33,8 +36,17 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     );
     return;
   }
-  // Refuse up front, rather than failing every run, if a bot's harness can't run here.
-  for (const name of new Set(bots.map((b) => b.harness))) {
+  // The flag beats the file; with neither, bots are sandboxed.
+  const sandbox = opts.sandbox !== false && (await loadConfig(ctx.configDir, ctx.env)).sandbox;
+  if (!sandbox) {
+    ctx.out(UNSANDBOXED_WARNING);
+    void ctx.metrics?.capture("bots_run_unsandboxed", {
+      source: opts.sandbox === false ? "flag" : "config",
+      platform: process.platform,
+    });
+  }
+  // Refuse up front, rather than failing every run, if a bot's harness can't run here. Without the sandbox it can.
+  for (const name of sandbox ? new Set(bots.map((b) => b.harness)) : []) {
     const can = getHarness(name).canRun();
     if (can.ok) continue;
     void ctx.metrics?.capture("bots_run_refused", { reason: can.reason, platform: process.platform });
@@ -44,6 +56,7 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
   const dispatcherOpts = {
     ...opts,
     ttl: opts.ttl ?? defaultTtl(interval),
+    sandbox,
     runnerId: runner.id,
     seen: all.map((b) => b.id),
   };

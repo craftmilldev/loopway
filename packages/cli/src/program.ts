@@ -76,6 +76,12 @@ A CLI installed from a release updates itself to the newest one; turn that off w
         ["on", "off"],
       ),
     )
+    .addOption(
+      new Option(
+        "--sandbox <on|off>",
+        "whether `loopway bots run` puts Claude bots in the sandbox (default on); off gives them full access to your files",
+      ).choices(["on", "off"]),
+    )
     .action((opts) => configure(ctx, opts));
 
   program
@@ -349,6 +355,10 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .option(
       "--org <slug>",
       "org whose bots to run (your only org by default; prompted for if you have several, then remembered). A runner belongs to one org: another --org starts a new runner",
+    )
+    .option(
+      "--no-sandbox",
+      "run Claude bots without the sandbox, with full access to your files (also `loopway config --sandbox off`)",
     )
     .option("--no-tui", "print a plain log instead of the full-screen view of threads and their transcripts")
     .action((opts) => runBots(ctx, opts));
