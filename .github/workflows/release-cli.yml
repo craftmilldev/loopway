@@ -24,18 +24,22 @@ jobs:
   release:
     if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
-    env:
-      # What ships in the release. Tests and markdown don't change it.
-      CLI_PATHS: >-
-        packages/cli packages/harnesses packages/rules packages/presets
-        :(exclude,glob)packages/*/test/**
-        :(exclude,glob)**/*.md
     steps:
       - uses: actions/checkout@v4
         with:
           # workflow_run checks out main's tip by default; release the commit CI passed on.
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
+      - name: List what the CLI ships
+        # The CLI plus the workspace packages it depends on; tests and markdown don't change a release.
+        run: |
+          paths=$(node -p '
+            Object.keys(require("./packages/cli/package.json").dependencies)
+              .filter((d) => d.startsWith("@loopway/"))
+              .map((d) => "packages/" + d.slice(9))
+              .concat("packages/cli").join(" ")
+          ')
+          echo "CLI_PATHS=$paths :(exclude,glob)packages/*/test/** :(exclude,glob)**/*.md" >> "$GITHUB_ENV"
       - name: Decide whether to release, and the version
         id: plan
         run: |
