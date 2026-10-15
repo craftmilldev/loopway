@@ -32,14 +32,20 @@ const DEFAULTS = { api_url: "https://loopway.craftmill.dev" };
 
 export const configPath = (dir: string) => join(dir, "config.json");
 
+/** The settings commands use, once env, config.json and DEFAULTS are resolved. */
+export interface LoadedConfig {
+  api_url: string;
+  api_key?: string;
+  posthog_host: string;
+  auto_update: boolean;
+  sandbox: boolean;
+}
+
 /**
  * The settings commands should use: LOOPWAY_API_URL / LOOPWAY_API_KEY / POSTHOG_HOST, then config.json, then DEFAULTS.
  * The env vars let CI and scripts run without `loopway login`. There's no default key.
  */
-export async function loadConfig(
-  dir: string,
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<{ api_url: string; api_key?: string; posthog_host: string; auto_update: boolean; sandbox: boolean }> {
+export async function loadConfig(dir: string, env: NodeJS.ProcessEnv = process.env): Promise<LoadedConfig> {
   const file = await readConfig(dir);
   const api_url = env.LOOPWAY_API_URL || file?.api_url || DEFAULTS.api_url;
   return {
