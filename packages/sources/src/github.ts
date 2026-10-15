@@ -261,16 +261,11 @@ function githubTitle(event: CloudEvent): string | null {
   return firstLine(str(get(p, "issue.title")) ?? str(get(p, "pull_request.title"))) ?? null;
 }
 
-/** Ends the body of what the review bot posts, though it posts as the user who runs it. */
-const REVIEW_BOT_MARKER = "<!-- loopway-review -->";
-
-/** A bot is a GitHub bot account (the sender's type, or a login ending in [bot]) or the review bot's comment. */
+/** A bot is a GitHub bot account: the sender's type, or a login ending in [bot]. */
 function githubAuthorKind(event: CloudEvent): "human" | "bot" | null {
   const p = (event.data ?? {}) as Payload;
   const login = str(get(p, "sender.login"));
   if (!login) return null;
-  const body = str(get(p, "comment.body")) ?? str(get(p, "review.body"));
-  if (body?.trimEnd().endsWith(REVIEW_BOT_MARKER)) return "bot";
   return get(p, "sender.type") === "Bot" || login.endsWith("[bot]") ? "bot" : "human";
 }
 

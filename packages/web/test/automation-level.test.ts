@@ -4,10 +4,10 @@ import { call, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
 
 const human = { login: "alice", type: "User" };
 const bot = { login: "vercel[bot]", type: "Bot" };
-const comment = (n: number, sender: object, body = "hi") => ({
+const comment = (n: number, sender: object) => ({
   action: "created",
   issue: { number: n },
-  comment: { body, updated_at: "2026-10-01T12:00:00Z" },
+  comment: { body: "hi", updated_at: "2026-10-01T12:00:00Z" },
   sender,
   repository: { url: "https://api.github.com/repos/craftmill/loopway" },
 });
@@ -46,12 +46,6 @@ describe("thread automation level", () => {
     const botThenHuman = randomUUID();
     expect(await assign(botThenHuman, [await send("issue_comment", comment(2, bot))])).toBe(4);
     expect(await assign(botThenHuman, [await send("issue_comment", comment(2, human))])).toBe(3);
-
-    // The review bot posts as a person's login, but its body says it's the bot.
-    const review = randomUUID();
-    expect(
-      await assign(review, [await send("issue_comment", comment(3, human, "Nothing.\n<!-- loopway-review -->"))]),
-    ).toBe(4);
 
     // No sender, so no known author.
     const unknown = randomUUID();
