@@ -11,7 +11,7 @@ const MAX_DENIALS = 5;
 function resultText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
-  return content.map((b) => (typeof b?.text === "string" ? b.text : "")).join("\n");
+  return (content as { text?: unknown }[]).map((b) => (typeof b?.text === "string" ? b.text : "")).join("\n");
 }
 
 /** The first line of `text` that matches, trimmed to a length a log can hold. */
@@ -68,7 +68,7 @@ export class LimitWatch implements RunWatch {
   /** Keeps the failed tool results that mention a sandbox denial. */
   private noteDenials(content: unknown): void {
     if (!Array.isArray(content)) return;
-    for (const b of content) {
+    for (const b of content as { type?: string; is_error?: boolean; content?: unknown }[]) {
       if (this.denied.length >= MAX_DENIALS) return;
       if (b?.type !== "tool_result" || !b.is_error) continue;
       const text = resultText(b.content);
