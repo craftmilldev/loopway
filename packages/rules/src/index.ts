@@ -17,7 +17,8 @@ export interface BotRule {
 
 /**
  * The type of a message a person sends to a thread directly (see `POST /bots/:botId/threads/:threadId/messages`).
- * Its subject and `data.thread_id` are the thread's id; `route` sends it there without asking the bot's rules.
+ * Its subject and `data.thread_id` are the thread's id and `data.bot_id` the bot's; that bot's `route` sends it
+ * there without asking the rules, and every other bot on the inbox drops it.
  */
 export const THREAD_MESSAGE_TYPE = "dev.loopway.thread.message";
 
@@ -96,10 +97,14 @@ export function route(
   rules: readonly BotRule[],
   held: ReadonlyMap<string, string>,
   e: RoutableMessage,
+  self?: { botId: string; threads: ReadonlySet<string> },
 ): Routed | undefined {
   if (e.event.type === THREAD_MESSAGE_TYPE) {
-    const id = (e.event.data as { thread_id?: unknown } | undefined)?.thread_id;
-    return typeof id === "string" ? { thread_id: id, add_subjects: [], author_kind: "human" } : undefined;
+    // Bots can share an inbox, so a thread message is for the one bot it names, and only for a thread that bot has.
+    const data = e.event.data as { thread_id?: unknown; bot_id?: unknown } | undefined;
+    const id = data?.thread_id;
+    if (typeof id !== "string" || !self || data?.bot_id !== self.botId || !self.threads.has(id)) return undefined;
+    return { thread_id: id, add_subjects: [], author_kind: "human" };
   }
   const vars = { event_type: e.event.type, data: e.event.data ?? {} };
   for (const rule of rules) {

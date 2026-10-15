@@ -1376,12 +1376,18 @@ describe("threads", () => {
         received_at: "",
         event: { type: THREAD_MESSAGE_TYPE, data },
       }) as unknown as Message;
-    expect(routeWith([], new Map(), m({ thread_id: "t9", text: "hi" }))).toEqual({
+    const self = { botId: "b1", threads: new Set(["t9"]) };
+    const to = (data: unknown, who = self) => routeWith([], new Map(), m(data), who);
+    expect(to({ thread_id: "t9", bot_id: "b1", text: "hi" })).toEqual({
       thread_id: "t9",
       add_subjects: [],
       author_kind: "human",
     });
-    expect(routeWith([], new Map(), m({ text: "no thread" }))).toBeUndefined();
+    expect(to({ bot_id: "b1", text: "no thread" })).toBeUndefined();
+    // A bot sharing the inbox drops it: the message names another bot, or a thread this bot doesn't have.
+    expect(to({ thread_id: "t9", bot_id: "b1" }, { botId: "b2", threads: new Set(["t9"]) })).toBeUndefined();
+    expect(to({ thread_id: "t8", bot_id: "b1" })).toBeUndefined();
+    expect(routeWith([], new Map(), m({ thread_id: "t9", bot_id: "b1" }))).toBeUndefined();
   });
 
   it("route: regex_all gives the first group (or the match) of every match, with optional flags", () => {

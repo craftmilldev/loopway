@@ -906,7 +906,7 @@ export function createApi(opts: ApiOptions) {
         subject: thread.id,
         time: new Date().toISOString(),
         datacontenttype: "application/json",
-        data: { thread_id: thread.id, text: parsed.data.text, user_id: c.var.user.id },
+        data: { thread_id: thread.id, bot_id: bot.id, text: parsed.data.text, user_id: c.var.user.id },
       }),
     );
     await metrics.capture("thread_message_sent", c.var.user.id, { thread_status: thread.status });
