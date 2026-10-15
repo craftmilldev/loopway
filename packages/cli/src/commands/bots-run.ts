@@ -36,22 +36,7 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     );
     return;
   }
-  // The flag beats the file; with neither, bots are sandboxed.
-  const sandbox = opts.sandbox !== false && (await loadConfig(ctx.configDir, ctx.env)).sandbox;
-  if (!sandbox) {
-    ctx.out(UNSANDBOXED_WARNING);
-    void ctx.metrics?.capture("bots_run_unsandboxed", {
-      source: opts.sandbox === false ? "flag" : "config",
-      platform: process.platform,
-    });
-  }
-  // Refuse up front, rather than failing every run, if a bot's harness can't run here. Without the sandbox it can.
-  for (const name of sandbox ? new Set(bots.map((b) => b.harness)) : []) {
-    const can = getHarness(name).canRun();
-    if (can.ok) continue;
-    void ctx.metrics?.capture("bots_run_refused", { reason: can.reason, platform: process.platform });
-    throw new UsageError(can.message);
-  }
+  const sandbox = await checkSandbox(ctx, bots, opts.sandbox);
   const interval = opts.interval ?? DEFAULTS.interval;
   const dispatcherOpts = {
     ...opts,
@@ -103,6 +88,30 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
   // Quitting stops everything, as Ctrl-C does without the TUI: interrupt the whole process group so
   // the claude sessions this dispatcher started stop with it.
   process.kill(0, "SIGINT");
+}
+
+/**
+ * Whether bots run sandboxed: `--no-sandbox` (`flag` false), else config.json's `sandbox`, else yes. Opting out
+ * prints the warning and is counted. Sandboxed, it refuses up front, rather than failing every run, if a bot's
+ * harness can't run here; unsandboxed, the harnesses can.
+ */
+export async function checkSandbox(ctx: Context, bots: { harness: string }[], flag?: boolean): Promise<boolean> {
+  const sandbox = flag !== false && (await loadConfig(ctx.configDir, ctx.env)).sandbox;
+  if (!sandbox) {
+    ctx.out(UNSANDBOXED_WARNING);
+    void ctx.metrics?.capture("bots_run_unsandboxed", {
+      source: flag === false ? "flag" : "config",
+      platform: process.platform,
+    });
+    return false;
+  }
+  for (const name of new Set(bots.map((b) => b.harness))) {
+    const can = getHarness(name).canRun();
+    if (can.ok) continue;
+    void ctx.metrics?.capture("bots_run_refused", { reason: can.reason, platform: process.platform });
+    throw new UsageError(can.message);
+  }
+  return true;
 }
 
 /** The org to run for: --org, else the one this machine's runner already has (if the user is still in it), else a pick. */

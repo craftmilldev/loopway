@@ -15,7 +15,7 @@ import { ApiError, LoopwayClient, type Bot, type Message } from "../src/client.j
 import { checkRules, route as routeWith, type BotRule } from "@loopway/rules";
 import { getHarness, type AgentRun, type RunOutcome } from "@loopway/harnesses";
 import { API_ERROR_BACKOFF_MS, Dispatcher, NETWORK_ERROR_MAX_BACKOFF_MS } from "../src/bots/dispatcher.js";
-import { defaultTtl, pollUntilUpdate } from "../src/commands/bots-run.js";
+import { checkSandbox, defaultTtl, pollUntilUpdate } from "../src/commands/bots-run.js";
 import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
 import { botEnv } from "../src/bots/github.js";
 import { UsageError, type Context } from "../src/context.js";
@@ -1715,6 +1715,48 @@ describe("threads", () => {
     expect(off.runs[0]!.sandbox).toBe(false);
     expect(await off.d.readLog(off.runs[0]!.sessionId)).toMatch(/WARNING: the sandbox is off/);
     await off.finish();
+  });
+
+  it("bots run: --no-sandbox or config skips the harness check, warns and counts it; the flag beats the file", async () => {
+    const refuse = vi
+      .spyOn(getHarness("claude"), "canRun")
+      .mockReturnValue({ ok: false, reason: "missing_dependency", message: "needs bubblewrap" });
+    const out: string[] = [];
+    const events: [string, Record<string, unknown> | undefined][] = [];
+    const ctx: Context = {
+      configDir,
+      env: {},
+      interactive: false,
+      out: (t) => out.push(t),
+      fetch: apiFetch,
+      metrics: { capture: async (e, p) => void events.push([e, p]) },
+    };
+    const bots = [{ harness: "claude" }];
+    try {
+      // Sandboxed by default: the harness check refuses.
+      await expect(checkSandbox(ctx, bots)).rejects.toThrow(/needs bubblewrap/);
+      expect(events).toEqual([["bots_run_refused", expect.objectContaining({ reason: "missing_dependency" })]]);
+      expect(out).toEqual([]);
+      // --no-sandbox: starts anyway, with the warning and the event.
+      events.length = 0;
+      expect(await checkSandbox(ctx, bots, false)).toBe(false);
+      expect(out).toEqual([expect.stringMatching(/sandbox is off.*full access to your files/)]);
+      expect(events).toEqual([["bots_run_unsandboxed", expect.objectContaining({ source: "flag" })]]);
+      // sandbox: false in config.json does the same without the flag.
+      await writeConfig(configDir, { api_url: "https://file.test", sandbox: false });
+      events.length = 0;
+      expect(await checkSandbox(ctx, bots)).toBe(false);
+      expect(events).toEqual([["bots_run_unsandboxed", expect.objectContaining({ source: "config" })]]);
+      // The flag takes precedence over the file.
+      events.length = 0;
+      expect(await checkSandbox(ctx, bots, false)).toBe(false);
+      expect(events).toEqual([["bots_run_unsandboxed", expect.objectContaining({ source: "flag" })]]);
+      // With the file back on and no flag, the check applies again.
+      await writeConfig(configDir, { api_url: "https://file.test", sandbox: true });
+      await expect(checkSandbox(ctx, bots)).rejects.toThrow(/needs bubblewrap/);
+    } finally {
+      refuse.mockRestore();
+    }
   });
 
   it("serves a link tool that routes a PR's messages to the session", async () => {
