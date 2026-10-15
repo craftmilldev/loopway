@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ago, clock } from "../format.js";
 import type { DispatcherState } from "./dispatcher.js";
 import { transcriptLines, wrap, type TranscriptLine } from "./transcript.js";
+import { CLI_VERSION } from "../version.js";
 
 /** What the TUI shows, reloaded every second. */
 export interface Snapshot extends DispatcherState {
@@ -28,9 +29,10 @@ const KIND_STYLE: Record<TranscriptLine["kind"], { color?: string; dimColor?: bo
   meta: { dimColor: true },
 };
 
-/** Runs the TUI full-screen until the user quits. */
-export async function showTui(props: TuiProps): Promise<void> {
+/** Runs the TUI full-screen until the user quits, or `signal` aborts. */
+export async function showTui(props: TuiProps, signal?: AbortSignal): Promise<void> {
   const app = render(<ThreadsTui {...props} />, { alternateScreen: true });
+  signal?.addEventListener("abort", () => app.unmount(), { once: true });
   await app.waitUntilExit();
 }
 
@@ -126,7 +128,7 @@ function ListView({ snap, selected, onSelect, onOpen }: ListViewProps) {
   return (
     <Box flexDirection="column" height={height}>
       <Text bold>
-        loopway bots run{" "}
+        loopway bots run <Text dimColor>v{CLI_VERSION}</Text>{" "}
         <Text dimColor>
           · {names(snap.bots.held) || "no bots held"}
           {skipped}

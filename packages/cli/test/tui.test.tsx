@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Bot, Thread } from "../src/client.js";
 import { transcriptLines } from "../src/bots/transcript.js";
 import { ThreadsTui, type Snapshot } from "../src/bots/tui.js";
+import { CLI_VERSION } from "../src/version.js";
 
 const KEYS = { up: "\u001B[A", down: "\u001B[B", right: "\u001B[C", left: "\u001B[D", enter: "\r", tab: "\t" };
 
@@ -102,6 +103,7 @@ describe("ThreadsTui", () => {
     const { frame } = await show();
     const f = frame();
     for (const s of [
+      `loopway bots run v${CLI_VERSION}`,
       "· dev · leased elsewhere: ci",
       "Waiting messages (1)",
       "com.github.push a/b#9",
