@@ -8,14 +8,9 @@ import { track } from "./metrics.js";
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : one + "s"}`;
 
 /** What a schedule inbox sends and when, in place of the events a webhook inbox takes. */
-export function scheduleText(config: Inbox["config"]) {
-  const s = config?.schedule;
-  const when = !s
-    ? "on a schedule"
-    : s.every === "hour"
-      ? "every hour"
-      : `daily at ${String(s.hour).padStart(2, "0")}:00 UTC`;
-  return `${when} · ${plural(config?.messages?.length ?? 0, "message type")}`;
+export function scheduleText(schedule: NonNullable<NonNullable<Inbox["config"]>["schedule"]>, messages: number) {
+  const when = schedule.every === "hour" ? "every hour" : `daily at ${String(schedule.hour).padStart(2, "0")}:00 UTC`;
+  return `${when} · ${plural(messages, "message type")}`;
 }
 
 /** What the inbox keeps, in words: "every event" or "3 event types". */
@@ -126,7 +121,9 @@ export function Inboxes() {
                       </a>
                       <div className="lbl small">
                         {lw.orgLabel(orgs, rows, i.org_id) ? lw.orgLabel(orgs, rows, i.org_id) + " · " : ""}
-                        {i.config?.schedule ? scheduleText(i.config) : eventsText(i.config?.events)}
+                        {i.config?.schedule
+                          ? scheduleText(i.config.schedule, i.config.messages?.length ?? 0)
+                          : eventsText(i.config?.events)}
                         {a ? " · " + plural(a.messages, "message") : ""}
                       </div>
                       {needsSecret(i) && <div className="why missing">needs its secret</div>}
