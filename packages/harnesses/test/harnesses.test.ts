@@ -5,15 +5,16 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AgentRun } from "../src/agent.js";
 import { LIMIT_FALLBACK_MS, LimitWatch } from "../src/claude-watch.js";
+import { CodexWatch } from "../src/codex.js";
 import { CursorWatch } from "../src/cursor.js";
 import { getHarness, HARNESSES } from "../src/index.js";
 
 const temp = () => mkdtemp(join(tmpdir(), "lw-harness-"));
 
 describe("harnesses", () => {
-  it("knows claude and cursor, and refuses others", () => {
-    expect(HARNESSES.map((h) => h.name)).toEqual(["claude", "cursor"]);
-    expect(() => getHarness("codex")).toThrow(/Unknown harness "codex"/);
+  it("knows claude, cursor and codex, and refuses others", () => {
+    expect(HARNESSES.map((h) => h.name)).toEqual(["claude", "cursor", "codex"]);
+    expect(() => getHarness("gemini")).toThrow(/Unknown harness "gemini"/);
   });
 
   it("CursorWatch: init starts the session, a user record delivers, an error result is an API error", () => {
@@ -77,6 +78,66 @@ echo '{"type":"result","is_error":false,"result":"ok"}'
     expect(await readFile(join(out, "mcp"), "utf8")).toContain('"url":"http://127.0.0.1:1/mcp/t1"');
     expect(existsSync(`${logPath}.workspace`)).toBe(false);
     expect(await readFile(logPath, "utf8")).toContain('"subtype":"init"');
+  });
+
+  it("CodexWatch: a thread starts the session, a turn delivers, a failed turn is an API error", () => {
+    let started = 0;
+    const w = new CodexWatch(() => started++);
+    w.line("not json");
+    w.line(JSON.stringify({ type: "thread.started", thread_id: "th-1" }));
+    w.line(JSON.stringify({ type: "turn.started" }));
+    w.line(JSON.stringify({ type: "error", message: "mcp dropped" }));
+    expect([started, w.delivered, w.finished, w.apiError()]).toEqual([1, true, false, "mcp dropped"]);
+    w.line(JSON.stringify({ type: "turn.completed" }));
+    expect([w.finished, w.apiError(), w.limitedUntil()]).toEqual([true, undefined, undefined]);
+    const failed = new CodexWatch();
+    failed.line(JSON.stringify({ type: "turn.failed", error: { message: "boom" } }));
+    expect([failed.finished, failed.apiError()]).toEqual([true, "boom"]);
+  });
+
+  it("CodexHarness: starts a thread, keeps its id from the log, resumes it, and passes the message on stdin", async () => {
+    const bin = await temp();
+    const out = await temp();
+    // A stand-in for codex: records its args and stdin, and prints the events a run does.
+    const script = `#!/bin/sh
+echo "$@" >> "${out}/args"
+cat >> "${out}/stdin"
+echo '{"type":"thread.started","thread_id":"th-123"}'
+echo '{"type":"turn.started"}'
+echo '{"type":"turn.completed"}'
+`;
+    await writeFile(join(bin, "codex"), script);
+    await chmod(join(bin, "codex"), 0o755);
+    const logPath = join(await temp(), "threads", "t1.log");
+    let started = 0;
+    const base: AgentRun = {
+      harness: "codex",
+      sessionId: "t1",
+      resume: false,
+      message: "-hello",
+      model: "gpt-6-sol",
+      logPath,
+      mcpUrl: "http://127.0.0.1:1/mcp/t1",
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      onStarted: () => started++,
+    };
+    const harness = getHarness("codex");
+    expect(await harness.run(base)).toMatchObject({ code: 0, delivered: true, finished: true });
+    expect(await readFile(`${logPath}.thread`, "utf8")).toBe("th-123\n");
+    expect(await harness.run({ ...base, resume: true, sandbox: false })).toMatchObject({ code: 0, finished: true });
+    expect(started).toBe(2);
+
+    const args = (await readFile(join(out, "args"), "utf8")).trim().split("\n");
+    expect(args[0]).toMatch(/^exec --json --skip-git-repo-check -m gpt-6-sol /);
+    expect(args[0]).toContain('mcp_servers.loopway.url="http://127.0.0.1:1/mcp/t1"');
+    expect(args[0]).toContain('sandbox_mode="workspace-write"');
+    expect(args[0]).toMatch(/ -$/);
+    expect(args[1]).toMatch(/^exec resume --json /);
+    expect(args[1]).toContain("--dangerously-bypass-approvals-and-sandbox");
+    expect(args[1]).not.toContain("sandbox_mode");
+    expect(args[1]).toMatch(/ th-123 -$/);
+    expect([harness.modelFits("gpt-6-sol"), harness.modelFits("sonnet")]).toEqual([true, false]);
+    expect(await readFile(join(out, "stdin"), "utf8")).toBe("-hello-hello");
   });
 
   it("LimitWatch: sees our message echoed; a rejected rate_limit_event plus a usage_limit_reached result say when to retry", () => {
