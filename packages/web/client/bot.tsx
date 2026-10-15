@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { botState, countThreads } from "./bot-state.js";
 import { BotSwitcher } from "./bot-switcher.js";
 import { DeliveryBars } from "./delivery-bars.js";
+import { LevelPie } from "./level-pie.js";
 import { StateBadge } from "./overview.js";
 import { leaseText, type Inbox } from "./shared.js";
 import { DashLayout } from "./layout.js";
@@ -200,6 +201,8 @@ function ActivityTab({ botId, botPath, threads }: { botId: string; botPath: stri
         <div className="bars-large">
           <DeliveryBars activity={m ?? undefined} days={30} height={120} />
         </div>
+        <h2>Threads by automation level</h2>
+        <LevelPie levels={m?.levels} size={120} />
       </div>
       <aside className="ov-side">
         <h2>Right now</h2>
@@ -554,6 +557,8 @@ export function Thread({ botId, id }: { botId: string; id: string }) {
                 {t.runner_id ? (owner?.name ?? "an unknown runner") : "none yet"}
                 {t.runner_id && <span className="muted"> · {online ? "online" : "offline"}</span>}
               </dd>
+              <dt>Automation level</dt>
+              <dd>{t.automation_level ?? 2}</dd>
               <dt>Started</dt>
               <dd>{lw.when(t.created_at)}</dd>
               <dt>Runs</dt>

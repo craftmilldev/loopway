@@ -111,7 +111,7 @@ export class ClaudeHarness extends Harness {
     return this.models.includes(model);
   }
 
-  /** Claude runs only in its sandbox, so it can't run where the sandbox can't. */
+  /** Claude runs in its sandbox unless the user opts out, so it can't run where the sandbox can't. */
   canRun(): CanRun {
     return claudeCanRun();
   }
@@ -123,8 +123,8 @@ export class ClaudeHarness extends Harness {
     args.push("--mcp-config", mcpConfig, "--allowedTools", "mcp__loopway__link", "mcp__loopway__end");
     // Resumed runs get it too: a session keeps its model only if the flag says so.
     args.push("--model", run.model, "--permission-mode", "auto", "--output-format", "stream-json", "--verbose");
-    // Always sandboxed, resumed runs included; Claude Code refuses to start if it can't be.
-    args.push("--settings", JSON.stringify(claudeSandboxSettings(process.cwd())));
+    // Sandboxed unless the user opted out, resumed runs included; Claude Code refuses to start if it can't be.
+    if (run.sandbox !== false) args.push("--settings", JSON.stringify(claudeSandboxSettings(process.cwd())));
     // The message goes in as stream-json so Claude Code can echo it back once it's in the session.
     args.push("--input-format", "stream-json", "--replay-user-messages");
     return { args, stdin: JSON.stringify({ type: "user", message: { role: "user", content: run.message } }) + "\n" };

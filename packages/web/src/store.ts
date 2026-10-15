@@ -577,6 +577,8 @@ export interface BotActivity {
   runs: number;
   /** Seconds from assigned to delivered, median over the messages delivered in the window; null with none. */
   median_wait_seconds: number | null;
+  /** How many of the bot's threads are at each automation level; a thread with none set counts as 2. */
+  levels: { 2: number; 3: number; 4: number };
 }
 
 /**
@@ -593,7 +595,7 @@ export async function botActivity(
   const dates = windowDates(days);
   const since = dates[0] + "T00:00:00Z";
   const scope = `${inOrgOf("b.org_id", "$1")} AND b.deleted_at IS NULL AND ($2::uuid IS NULL OR b.id = $2::uuid) AND ($3::uuid IS NULL OR b.org_id = $3::uuid)`;
-  const [bots, perDay, totals] = await Promise.all([
+  const [bots, perDay, totals, levelRows] = await Promise.all([
     db.query<{ id: string }>(`SELECT b.id FROM loopway.bots b WHERE ${scope} ORDER BY b.id`, [
       userId,
       botId ?? null,
@@ -616,8 +618,17 @@ export async function botActivity(
        GROUP BY 1`,
       [userId, botId ?? null, orgId ?? null, since],
     ),
+    db.query<{ bot_id: string; level: 2 | 3 | 4; n: number }>(
+      `SELECT t.bot_id, coalesce(t.automation_level, 2)::int AS level, count(*)::int AS n
+       FROM loopway.threads t JOIN loopway.bots b ON b.id = t.bot_id
+       WHERE ${scope}
+       GROUP BY 1, 2`,
+      [userId, botId ?? null, orgId ?? null],
+    ),
   ]);
   return bots.map(({ id }) => {
+    const levels = { 2: 0, 3: 0, 4: 0 };
+    for (const r of levelRows) if (r.bot_id === id) levels[r.level] = r.n;
     const counts = new Map(perDay.filter((r) => r.bot_id === id).map((r) => [r.day, r.n]));
     const t = totals.find((r) => r.bot_id === id);
     const list = dates.map((date) => ({ date, delivered: counts.get(date) ?? 0 }));
@@ -628,6 +639,7 @@ export async function botActivity(
       last_delivery_at: t?.last ?? null,
       runs: t?.runs ?? 0,
       median_wait_seconds: t?.median ?? null,
+      levels,
     };
   });
 }

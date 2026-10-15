@@ -32,7 +32,7 @@ npm run build -w @loopway/cli && npm link -w @loopway/cli      # or put your che
 ```
 
 ```bash
-loopway config                         # sets the API URL (default https://loopway.craftmill.dev) and, optionally, a GitHub bot; skip it for the defaults
+loopway config update                  # sets the API URL (default https://loopway.craftmill.dev) and, optionally, a GitHub bot; skip it for the defaults
 loopway login                          # emails you a one-time code, trades it for a 30-day session token, saves it (new emails get an account)
 loopway whoami
 loopway clear-config                   # deletes ~/.loopway/config.json
@@ -92,7 +92,9 @@ In a terminal, `loopway bots run` takes over the screen. The header names the bo
 3. The routes go to the server in one `POST /api/bots/:id/assign` (with the bot's lease), which creates the new threads, adds the subjects, records the messages as waiting and moves the cursor past them, all or nothing. This runner then claims the threads it created (`POST /api/bots/:id/threads/:id/claim`).
 4. Every thread of this runner with waiting messages and no run in flight gets them all in one run (`claude -p --permission-mode auto`, then `claude --resume`), oldest first, while `--max` allows. `--max` caps runs in flight, not sessions: a session waiting for its next message doesn't count, so any number can wait.
 
-**Sandbox.** Claude bots always run inside Claude Code's sandbox (macOS, Linux and WSL2; there's no opt-out). It needs `bubblewrap` and `socat` on Linux/WSL2 (`sudo apt-get install bubblewrap socat`), and `loopway bots run` refuses to start without them; native Windows isn't supported, so use WSL2. Writes, from commands and from Claude's Edit/Write tools, are limited to the directory you ran `loopway bots run` in (and the git dir its worktrees share), temp, `~/.npm`, `~/.cache`, `~/.claude` and `~/.loopway`. Reads of `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh` and `~/.netrc` are denied. `~/.claude` and `~/.loopway` are writable (sessions and logs live there) except the files that change how later sessions behave or hold credentials: Claude's settings, `CLAUDE.md`, hooks, skills, commands, agents and plugins, and `~/.loopway/config.json` and `runner.json`. The network is open. Because `~/.config/gh` is unreadable (and the macOS keychain is out of reach), `gh` in a bot needs `GH_TOKEN` in the environment `loopway bots run` starts in. The policy is in `packages/harnesses/src/sandbox.ts`.
+**Sandbox.** Claude bots run inside Claude Code's sandbox by default (macOS, Linux and WSL2). It needs `bubblewrap` and `socat` on Linux/WSL2 (`sudo apt-get install bubblewrap socat`), and `loopway bots run` refuses to start without them; native Windows isn't supported, so use WSL2 or turn the sandbox off (below). Writes, from commands and from Claude's Edit/Write tools, are limited to the directory you ran `loopway bots run` in (and the git dir its worktrees share), temp, `~/.npm`, `~/.cache`, `~/.claude` and `~/.loopway`. Reads of `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh` and `~/.netrc` are denied. `~/.claude` and `~/.loopway` are writable (sessions and logs live there) except the files that change how later sessions behave or hold credentials: Claude's settings, `CLAUDE.md`, hooks, skills, commands, agents and plugins, and `~/.loopway/config.json` and `runner.json`. The network is open. Because `~/.config/gh` is unreadable (and the macOS keychain is out of reach), `gh` in a bot needs `GH_TOKEN` in the environment `loopway bots run` starts in. The policy is in `packages/harnesses/src/sandbox.ts`.
+
+**Turning the sandbox off.** `loopway bots run --no-sandbox` starts bots without it for that run, and `loopway config update --sandbox off` (or `"sandbox": false` in `~/.loopway/config.json`) does so every time; `config update --sandbox on` turns it back on. The flag wins when both are set, and with neither the sandbox is on. Without the sandbox, bots can read and write anything you can, including your SSH keys and cloud credentials, and `loopway bots run` doesn't check for `bubblewrap`/`socat`, so it also works on native Windows. It prints `WARNING: the sandbox is off, so bots run with full access to your files` at startup and writes the same line to each session's log (`~/.loopway/threads/<thread>.log`) at the start of every run. Only do this on a machine and with bots you trust.
 
 **Usage limits.** When a run stops because the account hit its Claude usage limit (Claude Code reports a rejected `rate_limit_event` with the reset time, then a `result` with `api_error: usage_limit_reached`), the runner delivers nothing to any session until the limit resets, then carries on from its next tick. Messages keep being read and assigned meanwhile. Messages go in as stream-json with `--replay-user-messages`, so the runner sees when Claude Code has taken a message into the session: if the stopped run had taken its messages, the session is resumed with a note to carry on; if not, they go back to waiting and are delivered again. Without a reset time it waits 5 minutes. The hold itself lives in the runner process: a restarted runner retries right away and learns the reset time again if the limit still holds.
 
@@ -109,10 +111,10 @@ The inbox's GitHub webhook needs `pull_request`, `pull_request_review` and `pull
 
 #### Acting as a GitHub bot
 
-By default sessions use your own `gh` login and git credentials, so their comments, PRs and commits look like yours. To have them act as a bot user instead, add the bot's token and git identity. The token can be a fine-grained PAT with contents, issues and pull requests read/write on an org that allows them, or a classic PAT with `repo` scope (needed for repos where the bot is only a collaborator). Set them with `loopway config`, which prompts for each one in a terminal (an empty answer keeps the saved value), or pass flags:
+By default sessions use your own `gh` login and git credentials, so their comments, PRs and commits look like yours. To have them act as a bot user instead, add the bot's token and git identity. The token can be a fine-grained PAT with contents, issues and pull requests read/write on an org that allows them, or a classic PAT with `repo` scope (needed for repos where the bot is only a collaborator). Set them with `loopway config update`, which prompts for each one in a terminal (an empty answer keeps the saved value), or pass flags:
 
 ```sh
-loopway config --github-token github_pat_... --github-name loopway-bot --github-email 12345+loopway-bot@users.noreply.github.com
+loopway config update --github-token github_pat_... --github-name loopway-bot --github-email 12345+loopway-bot@users.noreply.github.com
 ```
 
 They're saved as the `github` block in `~/.loopway/config.json`:
@@ -125,7 +127,7 @@ They're saved as the `github` block in `~/.loopway/config.json`:
 }
 ```
 
-`LOOPWAY_GITHUB_TOKEN`, `LOOPWAY_GITHUB_NAME` and `LOOPWAY_GITHUB_EMAIL` override it. Set all three or none; `loopway config` won't save only some. `loopway login` keeps the `github` block. Each session then gets:
+`LOOPWAY_GITHUB_TOKEN`, `LOOPWAY_GITHUB_NAME` and `LOOPWAY_GITHUB_EMAIL` override it. Set all three or none; `loopway config update` won't save only some. `loopway login` keeps the `github` block. Each session then gets:
 
 - `GH_TOKEN` and `GITHUB_TOKEN`, so `gh` comments and opens PRs as the bot, and other tools that read `GITHUB_TOKEN` don't get a token you exported;
 - a git credential helper for `https://github.com` that answers with the bot's token, replacing your own helpers there, with `git@github.com:` remotes rewritten to HTTPS so pushes use it too;

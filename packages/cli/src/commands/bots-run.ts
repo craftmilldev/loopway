@@ -3,13 +3,16 @@ import { ApiError, type LoopwayClient } from "../client.js";
 import { getHarness } from "@loopway/harnesses";
 import { applyUpdate, availableUpdate as availableUpdateNow } from "../update.js";
 import { authedClient, UsageError, type Context } from "../context.js";
-import { DEFAULTS, Dispatcher, type ThreadsOptions } from "../bots/dispatcher.js";
+import { loadConfig } from "../config.js";
+import { DEFAULTS, Dispatcher, UNSANDBOXED_WARNING, type ThreadsOptions } from "../bots/dispatcher.js";
 import { ensureRunner, savedRunnerOrg } from "../bots/runner.js";
 import { resolveOrg } from "./orgs.js";
 import { showTui } from "../bots/tui.js";
 import { CLI_VERSION } from "../version.js";
 
-export interface RunBotsOptions extends ThreadsOptions {
+export interface RunBotsOptions extends Omit<ThreadsOptions, "sandbox"> {
+  /** false with --no-sandbox. Only ever turns the sandbox off; otherwise config.json's `sandbox` decides. */
+  sandbox?: boolean;
   /** The slug of the org to run bots for; remembered with the runner. */
   org?: string;
   /** false with --no-tui; the TUI only shows in an interactive terminal either way. */
@@ -33,17 +36,12 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     );
     return;
   }
-  // Refuse up front, rather than failing every run, if a bot's harness can't run here.
-  for (const name of new Set(bots.map((b) => b.harness))) {
-    const can = getHarness(name).canRun();
-    if (can.ok) continue;
-    void ctx.metrics?.capture("bots_run_refused", { reason: can.reason, platform: process.platform });
-    throw new UsageError(can.message);
-  }
+  const sandbox = await checkSandbox(ctx, bots, opts.sandbox);
   const interval = opts.interval ?? DEFAULTS.interval;
   const dispatcherOpts = {
     ...opts,
     ttl: opts.ttl ?? defaultTtl(interval),
+    sandbox,
     runnerId: runner.id,
     seen: all.map((b) => b.id),
   };
@@ -102,6 +100,30 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
   // Quitting stops everything, as Ctrl-C does without the TUI: interrupt the whole process group so
   // the claude sessions this dispatcher started stop with it.
   process.kill(0, "SIGINT");
+}
+
+/**
+ * Whether bots run sandboxed: `--no-sandbox` (`flag` false), else config.json's `sandbox`, else yes. Opting out
+ * prints the warning and is counted. Sandboxed, it refuses up front, rather than failing every run, if a bot's
+ * harness can't run here; unsandboxed, the harnesses can.
+ */
+export async function checkSandbox(ctx: Context, bots: { harness: string }[], flag?: boolean): Promise<boolean> {
+  const sandbox = flag !== false && (await loadConfig(ctx.configDir, ctx.env)).sandbox;
+  if (!sandbox) {
+    ctx.out(UNSANDBOXED_WARNING);
+    void ctx.metrics?.capture("bots_run_unsandboxed", {
+      source: flag === false ? "flag" : "config",
+      platform: process.platform,
+    });
+    return false;
+  }
+  for (const name of new Set(bots.map((b) => b.harness))) {
+    const can = getHarness(name).canRun();
+    if (can.ok) continue;
+    void ctx.metrics?.capture("bots_run_refused", { reason: can.reason, platform: process.platform });
+    throw new UsageError(can.message);
+  }
+  return true;
 }
 
 /** The org to run for: --org, else the one this machine's runner already has (if the user is still in it), else a pick. */

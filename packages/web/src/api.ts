@@ -1295,6 +1295,7 @@ function serializeActivity(a: store.BotActivity) {
     last_delivery_at: iso(a.last_delivery_at),
     runs: a.runs,
     median_wait_seconds: a.median_wait_seconds,
+    levels: a.levels,
   };
 }
 

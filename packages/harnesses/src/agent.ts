@@ -11,6 +11,8 @@ export interface AgentRun {
   /** The dispatcher's MCP endpoint for this session (its `link` and `end` tools). */
   mcpUrl: string;
   env: NodeJS.ProcessEnv;
+  /** false runs the agent without its sandbox (`--no-sandbox`). Sandboxed unless this is false. */
+  sandbox?: boolean;
   /** Called once Claude Code has created the session (its `system` `init` record), so later runs must resume it. */
   onStarted?: () => void;
 }
