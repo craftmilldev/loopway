@@ -41,8 +41,9 @@ describe("sandbox", () => {
       await symlink(homedir(), join(cwd, "escape"));
       const command = claudeSandboxSettings(cwd).hooks.PreToolUse[0]!.hooks[0]!.command;
       const code = (payload: unknown) =>
-        spawnSync("/bin/sh", ["-c", command], { input: typeof payload === "string" ? payload : JSON.stringify(payload) })
-          .status;
+        spawnSync("/bin/sh", ["-c", command], {
+          input: typeof payload === "string" ? payload : JSON.stringify(payload),
+        }).status;
       return { cwd, code, input };
     };
 
