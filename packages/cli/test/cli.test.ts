@@ -569,6 +569,13 @@ describe("inboxes", () => {
       expect((await runJson("inbox", "update", "clock", "--config", file)).config).toEqual(config);
     });
 
+    it("prints the schedule and messages after an update", async () => {
+      await scheduleInbox();
+      const out = await run("inbox", "update", "clock", "--message", "codex=Check codex");
+      expect(out).toMatch(/schedule\s+every hour/);
+      expect(out).toMatch(/Check codex/);
+    });
+
     it("shows the schedule and each message", async () => {
       await scheduleInbox();
       const shown = await run("inbox", "show", "clock");

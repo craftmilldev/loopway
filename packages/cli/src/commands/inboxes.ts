@@ -309,7 +309,9 @@ export async function updateInbox(ctx: Context, ref: string, opts: UpdateOptions
   }
   if (isSchedule && config) await ctx.metrics?.capture("schedule_updated", { how: opts.config ? "file" : how });
   if (opts.json) return ctx.out(json(inbox));
-  ctx.out(`Updated inbox ${bold(inbox.name)} (${inbox.id})\n\n${setupText(inbox)}`);
+  const body =
+    inbox.source_type === "schedule" ? scheduleText(inbox.config as Partial<ScheduleConfig>) : setupText(inbox);
+  ctx.out(`Updated inbox ${bold(inbox.name)} (${inbox.id})\n\n${body}`);
 }
 
 // ---------- schedule inboxes ----------
@@ -517,10 +519,13 @@ async function editScheduleInteractive(current: ScheduleConfig): Promise<Record<
 }
 
 async function askText(type: string, initialValue: string) {
+  const multiline = initialValue.includes("\n");
   return ask(
     await p.text({
-      message: `Text for "${type}"`,
-      initialValue,
+      message: multiline
+        ? `New text for "${type}" (replaces the current multi-line text; use --message-file for multi-line)`
+        : `Text for "${type}"`,
+      initialValue: multiline ? "" : initialValue,
       validate: (v) =>
         !v?.trim() ? "Enter some text" : v.length > MAX_TEXT ? `${MAX_TEXT} characters max` : undefined,
     }),
