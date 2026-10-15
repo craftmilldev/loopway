@@ -12,7 +12,7 @@ import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, LoopwayClient, type Bot, type Message } from "../src/client.js";
-import { checkRules, route as routeWith, type BotRule } from "@loopway/rules";
+import { checkRules, route as routeWith, THREAD_MESSAGE_TYPE, type BotRule } from "@loopway/rules";
 import { getHarness, type AgentRun, type RunOutcome } from "@loopway/harnesses";
 import { API_ERROR_BACKOFF_MS, Dispatcher, NETWORK_ERROR_MAX_BACKOFF_MS } from "../src/bots/dispatcher.js";
 import { checkSandbox, defaultTtl, pollUntilUpdate } from "../src/commands/bots-run.js";
@@ -1390,6 +1390,29 @@ describe("threads", () => {
     const fresh = route(held, message(7, "Closes #8"))!;
     expect(fresh).toMatchObject({ add_subjects: ["a/b#7", "a/b#8"], key: "a/b#7" });
     expect(["t1", "t2"]).not.toContain(fresh.thread_id);
+  });
+
+  it("route: a message sent to a thread goes to that thread whatever the rules say, as a person's", () => {
+    const m = (data: unknown) =>
+      ({
+        id: randomUUID(),
+        inbox_id: "in",
+        seq: 1,
+        received_at: "",
+        event: { type: THREAD_MESSAGE_TYPE, data },
+      }) as unknown as Message;
+    const self = { botId: "b1", threads: new Set(["t9"]) };
+    const to = (data: unknown, who = self) => routeWith([], new Map(), m(data), who);
+    expect(to({ thread_id: "t9", bot_id: "b1", text: "hi" })).toEqual({
+      thread_id: "t9",
+      add_subjects: [],
+      author_kind: "human",
+    });
+    expect(to({ bot_id: "b1", text: "no thread" })).toBeUndefined();
+    // A bot sharing the inbox drops it: the message names another bot, or a thread this bot doesn't have.
+    expect(to({ thread_id: "t9", bot_id: "b1" }, { botId: "b2", threads: new Set(["t9"]) })).toBeUndefined();
+    expect(to({ thread_id: "t8", bot_id: "b1" })).toBeUndefined();
+    expect(routeWith([], new Map(), m({ thread_id: "t9", bot_id: "b1" }))).toBeUndefined();
   });
 
   it("route: regex_all gives the first group (or the match) of every match, with optional flags", () => {

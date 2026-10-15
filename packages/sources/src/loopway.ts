@@ -153,6 +153,11 @@ export const loopway = ({
     if ((typeof id !== "string" || !id) && typeof id !== "number") {
       return { kind: "rejected", status: 400, message: "`id` must be a non-empty string or a number" };
     }
+    // Bots route this type straight to the thread in `data.thread_id` as a person's message (see THREAD_MESSAGE_TYPE
+    // in @loopway/rules), so only a member's `POST /bots/:id/threads/:id/messages` may make one.
+    if (type === "dev.loopway.thread.message") {
+      return { kind: "rejected", status: 422, message: `event "${type}" is reserved for messages sent to a thread` };
+    }
     if (!config.events.includes("*") && !config.events.includes(type)) {
       return { kind: "rejected", status: 422, message: `event "${type}" not enabled for this inbox` };
     }

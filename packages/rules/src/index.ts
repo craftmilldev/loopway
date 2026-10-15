@@ -15,6 +15,13 @@ export interface BotRule {
   action: string;
 }
 
+/**
+ * The type of a message a person sends to a thread directly (see `POST /bots/:botId/threads/:threadId/messages`).
+ * Its subject and `data.thread_id` are the thread's id and `data.bot_id` the bot's; that bot's `route` sends it
+ * there without asking the rules, and every other bot on the inbox drops it.
+ */
+export const THREAD_MESSAGE_TYPE = "dev.loopway.thread.message";
+
 /** What `route` reads of a message: its CloudEvent's type and payload. */
 export interface RoutableMessage {
   event: { type: string; data?: unknown };
@@ -80,7 +87,8 @@ export function checkRules(rules: BotRule[]): void {
  * - `attach`: attach the message to the thread holding the subject (the own one first, then the related ones in
  *   order), or to a new thread if none does, and stop.
  *
- * A message that no rule attached is dropped. `add_subjects` is every subject the rule found that no thread holds
+ * A message that no rule attached is dropped. A message sent to a thread (THREAD_MESSAGE_TYPE) skips the rules.
+ * `add_subjects` is every subject the rule found that no thread holds
  * yet. Ones another thread holds stay there.
  *
  * Doesn't change `held`; the caller adds `add_subjects` to it as it assigns, so later messages see them.
@@ -89,7 +97,15 @@ export function route(
   rules: readonly BotRule[],
   held: ReadonlyMap<string, string>,
   e: RoutableMessage,
+  self?: { botId: string; threads: ReadonlySet<string> },
 ): Routed | undefined {
+  if (e.event.type === THREAD_MESSAGE_TYPE) {
+    // Bots can share an inbox, so a thread message is for the one bot it names, and only for a thread that bot has.
+    const data = e.event.data as { thread_id?: unknown; bot_id?: unknown } | undefined;
+    const id = data?.thread_id;
+    if (typeof id !== "string" || !self || data?.bot_id !== self.botId || !self.threads.has(id)) return undefined;
+    return { thread_id: id, add_subjects: [], author_kind: "human" };
+  }
   const vars = { event_type: e.event.type, data: e.event.data ?? {} };
   for (const rule of rules) {
     if (!rule.types.some((t) => matches(t, e.event.type))) continue;

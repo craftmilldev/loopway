@@ -454,7 +454,7 @@ export class Dispatcher {
     const created: string[] = [];
     const assignments: Assignment[] = [];
     for (const m of messages) {
-      const routed = route(rules, held, m);
+      const routed = route(rules, held, m, { botId: bot.id, threads: known });
       if (!routed) continue;
       for (const s of routed.add_subjects) held.set(s, routed.thread_id);
       if (!known.has(routed.thread_id)) {

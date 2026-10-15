@@ -442,6 +442,15 @@ export class LoopwayClient {
     return this.request<Thread>("POST", path, { subject, to_thread_id: toThreadId });
   }
 
+  /**
+   * Sends a message to the thread through one of the bot's inboxes; the bot's runner hands it to the thread's
+   * session. Needs no lease. 409 `no_inbox` if the bot has no inbox.
+   */
+  sendThreadMessage(botId: string, threadId: string, text: string) {
+    const path = `/bots/${enc(botId)}/threads/${enc(threadId)}/messages`;
+    return this.request<{ id: string; inbox_id: string }>("POST", path, { text });
+  }
+
   patchThread(botId: string, threadId: string, input: ThreadPatch & { lease_token: string }) {
     return this.request<Thread>("PATCH", `/bots/${enc(botId)}/threads/${enc(threadId)}`, input);
   }

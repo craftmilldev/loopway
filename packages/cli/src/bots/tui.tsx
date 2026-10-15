@@ -15,6 +15,8 @@ export interface TuiProps {
   load: () => Promise<Snapshot>;
   /** A session's transcript, or "" if it has none yet. */
   readLog: (sessionId: string) => Promise<string>;
+  /** Sends a message to a thread; rejects with the reason it couldn't. */
+  send: (threadId: string, text: string) => Promise<void>;
   refreshMs?: number;
 }
 
@@ -40,7 +42,7 @@ export async function showTui(props: TuiProps, signal?: AbortSignal): Promise<vo
  * The threads TUI: waiting messages, then working, waiting and done sessions. ↑/↓ moves between
  * sessions (messages can't be opened), Tab jumps to the next list, Enter or → opens a session's transcript.
  */
-export function ThreadsTui({ load, readLog, refreshMs = 1000 }: TuiProps) {
+export function ThreadsTui({ load, readLog, send, refreshMs = 1000 }: TuiProps) {
   const [snap, setSnap] = useState<Snapshot>();
   const [selected, setSelected] = useState<string>();
   const [open, setOpen] = useState<string>();
@@ -48,7 +50,16 @@ export function ThreadsTui({ load, readLog, refreshMs = 1000 }: TuiProps) {
 
   if (!snap) return <Text dimColor>Loading…</Text>;
   if (open)
-    return <LogView id={open} snap={snap} readLog={readLog} refreshMs={refreshMs} onBack={() => setOpen(undefined)} />;
+    return (
+      <LogView
+        id={open}
+        snap={snap}
+        readLog={readLog}
+        send={send}
+        refreshMs={refreshMs}
+        onBack={() => setOpen(undefined)}
+      />
+    );
   return <ListView snap={snap} selected={selected} onSelect={setSelected} onOpen={setOpen} />;
 }
 
@@ -192,15 +203,22 @@ interface LogViewProps {
   id: string;
   snap: Snapshot;
   readLog: (sessionId: string) => Promise<string>;
+  send: (threadId: string, text: string) => Promise<void>;
   refreshMs: number;
   onBack: () => void;
 }
 
-/** A session's transcript. It follows new output until you scroll up, and again once you're back at the end. */
-function LogView({ id, snap, readLog, refreshMs, onBack }: LogViewProps) {
+/**
+ * A session's transcript. It follows new output until you scroll up, and again once you're back at the end. `m` writes
+ * a message to the thread: Enter sends it, Esc drops it.
+ */
+function LogView({ id, snap, readLog, send, refreshMs, onBack }: LogViewProps) {
   const { exit } = useApp();
   const { rows: height, columns } = useWindowSize();
   const [log, setLog] = useState<string>();
+  // undefined: not writing a message.
+  const [draft, setDraft] = useState<string>();
+  const [sent, setSent] = useState<string>();
   // undefined: pinned to the end.
   const [top, setTop] = useState<number>();
   useEffect(() => poll(() => readLog(id), setLog, refreshMs), [id, readLog, refreshMs]);
@@ -214,9 +232,27 @@ function LogView({ id, snap, readLog, refreshMs, onBack }: LogViewProps) {
   const start = Math.min(top ?? bottom, bottom);
   const scroll = (to: number) => setTop(to >= bottom ? undefined : Math.max(0, to));
 
+  const submit = (text: string) => {
+    setDraft(undefined);
+    if (!text.trim()) return;
+    setSent("sending…");
+    send(id, text.trim()).then(
+      () => setSent("message sent"),
+      (err) => setSent(`not sent: ${err instanceof Error ? err.message : String(err)}`),
+    );
+  };
+
   useInput((input, key) => {
-    if (input === "q") exit();
-    else if (key.leftArrow) onBack();
+    if (draft !== undefined) {
+      if (key.escape) setDraft(undefined);
+      else if (key.return) submit(draft);
+      else if (key.backspace || key.delete) setDraft(draft.slice(0, -1));
+      else if (input && !key.ctrl && !key.meta) setDraft(draft + input);
+    } else if (input === "q") exit();
+    else if (input === "m") {
+      setSent(undefined);
+      setDraft("");
+    } else if (key.leftArrow) onBack();
     else if (key.upArrow) scroll(start - 1);
     else if (key.downArrow) scroll(start + 1);
     else if (key.pageUp) scroll(start - body);
@@ -247,10 +283,20 @@ function LogView({ id, snap, readLog, refreshMs, onBack }: LogViewProps) {
           <Text dimColor>{empty}</Text>
         )}
       </Box>
-      <Text dimColor wrap="truncate-end">
-        {lines.length ? `${start + 1}–${Math.min(start + body, lines.length)} of ${lines.length} · ` : ""}↑↓ PgUp/PgDn
-        scroll · ← back · q quit
-      </Text>
+      {draft !== undefined ? (
+        <Text wrap="truncate-start">
+          <Text color="cyan">message ❯ </Text>
+          {draft}
+          <Text inverse> </Text>
+          <Text dimColor> enter send · esc cancel</Text>
+        </Text>
+      ) : (
+        <Text dimColor wrap="truncate-end">
+          {sent ? `${sent} · ` : ""}
+          {lines.length ? `${start + 1}–${Math.min(start + body, lines.length)} of ${lines.length} · ` : ""}↑↓ PgUp/PgDn
+          scroll · m message · ← back · q quit
+        </Text>
+      )}
     </Box>
   );
 }
