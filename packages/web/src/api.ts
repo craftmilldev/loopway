@@ -152,7 +152,7 @@ export function createApi(opts: ApiOptions) {
       c.var.db,
       inbox.id,
       result.event,
-      sources.author(inbox.source_type, result.event),
+      sources.authorKind(inbox.source_type, result.event),
     );
     await received(duplicate ? "duplicate" : "accepted");
     return c.json({ id, duplicate }, duplicate ? 200 : 202);

@@ -393,13 +393,18 @@ export interface MessageRow {
 const MESSAGE_COLS = `id, inbox_id, seq, cloudevent, received_at`;
 
 /** Returns the stored message and whether it was a redelivery of one we already had (same CE source+id). */
-export async function insertMessage(db: Db, inboxId: string, ce: CloudEvent, author: "human" | "bot" | null = null) {
+export async function insertMessage(
+  db: Db,
+  inboxId: string,
+  ce: CloudEvent,
+  authorKind: "human" | "bot" | null = null,
+) {
   const [inserted] = await db.query<{ id: string }>(
-    `INSERT INTO loopway.messages (id, inbox_id, ce_id, ce_source, ce_type, ce_subject, ce_time, cloudevent, author)
+    `INSERT INTO loopway.messages (id, inbox_id, ce_id, ce_source, ce_type, ce_subject, ce_time, cloudevent, author_kind)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
      ON CONFLICT ON CONSTRAINT messages_ce_unique DO NOTHING
      RETURNING id`,
-    [uuidv7(), inboxId, ce.id, ce.source, ce.type, ce.subject ?? null, ce.time ?? null, ce, author],
+    [uuidv7(), inboxId, ce.id, ce.source, ce.type, ce.subject ?? null, ce.time ?? null, ce, authorKind],
   );
   if (inserted) return { id: inserted.id, duplicate: false };
   const [existing] = await db.query<{ id: string }>(
@@ -1177,11 +1182,11 @@ export async function assignMessages(
       `UPDATE loopway.threads t SET automation_level = l.level, updated_at = now()
        FROM (
          SELECT tm.thread_id,
-                CASE WHEN (array_agg(m.author ORDER BY m.received_at, m.seq))[1] = 'human' THEN 2
-                     WHEN bool_or(m.author = 'human') THEN 3
+                CASE WHEN (array_agg(m.author_kind ORDER BY m.received_at, m.seq))[1] = 'human' THEN 2
+                     WHEN bool_or(m.author_kind = 'human') THEN 3
                      ELSE 4 END AS level
          FROM loopway.thread_messages tm JOIN loopway.messages m ON m.id = tm.message_id
-         WHERE m.author IS NOT NULL AND tm.thread_id IN (SELECT DISTINCT a.thread_id FROM ${a} a)
+         WHERE m.author_kind IS NOT NULL AND tm.thread_id IN (SELECT DISTINCT a.thread_id FROM ${a} a)
          GROUP BY tm.thread_id
        ) l
        WHERE t.id = l.thread_id AND t.automation_level IS DISTINCT FROM l.level

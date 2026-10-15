@@ -29,8 +29,8 @@ export class SourceRegistry {
   }
 
   /** Who made the event, or null if its source can't tell (or isn't registered). */
-  author(type: string, event: CloudEvent): "human" | "bot" | null {
-    return this.byType.get(type)?.author?.(event) ?? null;
+  authorKind(type: string, event: CloudEvent): "human" | "bot" | null {
+    return this.byType.get(type)?.authorKind?.(event) ?? null;
   }
 
   types(): string[] {

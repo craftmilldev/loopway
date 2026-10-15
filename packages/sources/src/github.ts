@@ -176,7 +176,7 @@ export const github = ({ newSecret, safeEqual, makeCloudEvent }: SourceDeps): So
 
   summarize: githubSummary,
   title: githubTitle,
-  author: githubAuthor,
+  authorKind: githubAuthorKind,
 
   receive({ headers, rawBody, receivedAt }, config) {
     const event = headers.get("x-github-event");
@@ -265,7 +265,7 @@ function githubTitle(event: CloudEvent): string | null {
 const REVIEW_BOT_MARKER = "<!-- loopway-review -->";
 
 /** A bot is a GitHub bot account (the sender's type, or a login ending in [bot]) or the review bot's comment. */
-function githubAuthor(event: CloudEvent): "human" | "bot" | null {
+function githubAuthorKind(event: CloudEvent): "human" | "bot" | null {
   const p = (event.data ?? {}) as Payload;
   const login = str(get(p, "sender.login"));
   if (!login) return null;
