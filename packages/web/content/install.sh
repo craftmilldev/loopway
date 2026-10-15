@@ -31,16 +31,21 @@ trap 'rm -rf "$DIR"' EXIT
 
 # manifest.txt lists the release's tarballs, one file name per line. Releases before it existed
 # (up to 0.2.0) shipped exactly these four.
-if curl -fsSL "$URL/manifest.txt" -o "$DIR/manifest.txt" 2>/dev/null; then
-  FILES=$(cat "$DIR/manifest.txt")
-else
-  FILES="loopway-harnesses.tgz loopway-rules.tgz loopway-presets.tgz loopway-cli.tgz"
-fi
+# Only a missing manifest means an old release; any other failure stops the install rather than
+# installing a partial package list. (A missing file:// asset, used by CI, is curl exit 37.)
+rc=0
+status=$(curl -sSL -w '%{http_code}' "$URL/manifest.txt" -o "$DIR/manifest.txt") || rc=$?
+case "$rc:$status" in
+  0:200 | 0:000) FILES=$(cat "$DIR/manifest.txt") ;;
+  0:404 | 37:*) FILES="loopway-harnesses.tgz loopway-rules.tgz loopway-presets.tgz loopway-cli.tgz" ;;
+  *) fail "could not fetch $URL/manifest.txt (status $status)." ;;
+esac
 [ -n "$FILES" ] || fail "the release lists no packages."
 
 PACKAGES=""
 for file in $FILES; do
   case "$file" in
+    */*) fail "unexpected file in the release manifest: $file" ;;
     loopway-*.tgz) ;;
     *) fail "unexpected file in the release manifest: $file" ;;
   esac
