@@ -1,4 +1,6 @@
+import { appendFileSync, mkdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import {
   ApiError,
   type Assignment,
@@ -25,6 +27,8 @@ export interface ThreadsOptions {
   interval?: number;
   /** How long each bot lease lasts; it's renewed every tick. */
   ttl?: number;
+  /** false runs the sessions without the sandbox, and notes that in each session's log. */
+  sandbox?: boolean;
 }
 
 interface StartOptions extends ThreadsOptions {
@@ -47,6 +51,10 @@ export const NETWORK_ERROR_MAX_BACKOFF_MS = 10 * 60_000;
 export function isNetworkError(error: string): boolean {
   return /Can't reach the API server|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH/.test(error);
 }
+
+/** Printed at startup, and written to each session's log, when the sandbox is off. */
+export const UNSANDBOXED_WARNING =
+  "WARNING: the sandbox is off, so bots run with full access to your files. Turn it back on with `loopway config update --sandbox on` and no --no-sandbox.";
 
 export const DEFAULTS = { max: 3, interval: 5, ttl: 30 };
 
@@ -116,6 +124,7 @@ export class Dispatcher {
   private runnerLease?: Lease;
   private readonly runAgent: RunAgent;
   private readonly dir: string;
+  private readonly sandbox: boolean;
   private queued = 0;
   /** While a run says the account hit its usage limit: when the limit resets (ms), until which nothing is delivered. */
   private limitedUntil = 0;
@@ -180,6 +189,7 @@ export class Dispatcher {
     this.runnerId = opts.runnerId;
     this.runAgent = ctx.runAgent ?? runHarness;
     this.dir = ctx.configDir;
+    this.sandbox = opts.sandbox !== false;
   }
 
   /** Stops taking on work: ticks only renew the leases, so the sessions in flight can finish. Not undone. */
@@ -297,6 +307,17 @@ export class Dispatcher {
       runners,
       running: new Set(this.running.keys()),
     };
+  }
+
+  /** Notes in a session's log that this run has no sandbox, so a transcript never hides it. */
+  private logUnsandboxed(id: string): void {
+    const path = sessionLogPath(this.dir, id);
+    try {
+      mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+      appendFileSync(path, UNSANDBOXED_WARNING + "\n", { mode: 0o600 });
+    } catch {
+      // The warning was printed at startup; a log that can't be written shouldn't stop the run.
+    }
   }
 
   /** A session's transcript so far, or "" if it hasn't written one. */
@@ -527,6 +548,7 @@ export class Dispatcher {
     ];
     const message = parts.filter((p): p is string => typeof p === "string").join("\n\n");
     const bot = this.bots.find((b) => b.id === thread.bot_id)!;
+    if (!this.sandbox) this.logUnsandboxed(id);
     const attempt = (resume: boolean) =>
       this.runAgent({
         harness: bot.harness,
@@ -537,6 +559,7 @@ export class Dispatcher {
         logPath: sessionLogPath(this.dir, id),
         mcpUrl: this.mcp.urlFor(id),
         env: this.env,
+        sandbox: this.sandbox,
         // The session exists from here on, even if this run is cut off before it finishes.
         onStarted: () => {
           this.patchThread(id, { started: true }).catch(() => {});

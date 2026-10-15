@@ -70,7 +70,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
   config
     .command("update")
     .description(
-      "set the API URL, metrics host, self-update and the GitHub bot for `loopway bots run` in ~/.loopway/config.json; run `loopway login` after",
+      "set the API URL, metrics host, self-update, the bot sandbox and the GitHub bot for `loopway bots run` in ~/.loopway/config.json; run `loopway login` after",
     )
     .option("--url <url>", "API base URL, e.g. https://loopway.example.com (prompted for if omitted)")
     .option("--posthog-host <url>", "where product metrics go (default: the API's /api/ingest proxy)")
@@ -81,6 +81,12 @@ A CLI installed from a release updates itself to the newest one; turn that off w
       new Option("--auto-update <on|off>", "whether the CLI updates itself to the latest release (default on)").choices(
         ["on", "off"],
       ),
+    )
+    .addOption(
+      new Option(
+        "--sandbox <on|off>",
+        "whether `loopway bots run` puts Claude bots in the sandbox (default on); off gives them full access to your files",
+      ).choices(["on", "off"]),
     )
     .action((opts) => configure(ctx, opts));
 
@@ -355,6 +361,10 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .option(
       "--org <slug>",
       "org whose bots to run (your only org by default; prompted for if you have several, then remembered). A runner belongs to one org: another --org starts a new runner",
+    )
+    .option(
+      "--no-sandbox",
+      "run Claude bots without the sandbox, with full access to your files (also `loopway config update --sandbox off`)",
     )
     .option("--no-tui", "print a plain log instead of the full-screen view of threads and their transcripts")
     .action((opts) => runBots(ctx, opts));
