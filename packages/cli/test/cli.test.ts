@@ -136,8 +136,8 @@ async function migratedUser(name: string, email: string, username: string) {
 
 describe("auth", () => {
   it("config writes the URL to ~/.loopway/config.json owner-only, and login then uses it", async () => {
-    await expect(run("config", "--url", API, "--key", "lw_x")).rejects.toThrow(/unknown option '--key'/);
-    expect(await run("config", "--url", API)).toMatch(/Run `loopway login` next/);
+    await expect(run("config", "update", "--url", API, "--key", "lw_x")).rejects.toThrow(/unknown option '--key'/);
+    expect(await run("config", "update", "--url", API)).toMatch(/Run `loopway login` next/);
     expect(await savedConfig()).toEqual({ api_url: API });
     expect((await stat(join(configDir, "config.json"))).mode & 0o777).toBe(0o600);
 
@@ -239,13 +239,13 @@ describe("auth", () => {
     await writeConfig(configDir, { api_url: "https://file.test", auto_update: true });
     expect((await loadConfig(configDir, { LOOPWAY_NO_UPDATE: "1" })).auto_update).toBe(false);
     expect((await loadConfig(configDir, { LOOPWAY_NO_UPDATE: "0" })).auto_update).toBe(true);
-    // Bots are sandboxed unless config.json says `sandbox: false`, and `config --sandbox` keeps the other settings.
+    // Bots are sandboxed unless config.json says `sandbox: false`, and `config update --sandbox` keeps the other settings.
     expect((await loadConfig(configDir, {})).sandbox).toBe(true);
     await writeConfig(configDir, { api_url: "https://file.test", sandbox: false });
     expect((await loadConfig(configDir, {})).sandbox).toBe(false);
-    await run("config", "--sandbox", "on");
+    await run("config", "update", "--sandbox", "on");
     expect((await loadConfig(configDir, {})).sandbox).toBe(true);
-    await run("config", "--sandbox", "off");
+    await run("config", "update", "--sandbox", "off");
     expect((await loadConfig(configDir, {})).sandbox).toBe(false);
     // The metrics host lives in config.json (which login and config keep), and POSTHOG_HOST overrides it.
     await writeConfig(configDir, { api_url: "https://file.test", posthog_host: "https://eu.i.posthog.com" });
@@ -275,12 +275,13 @@ describe("auth", () => {
 
   it("config sets the GitHub bot: all three or none; a flag left out keeps the saved value", async () => {
     const key = await configured();
-    await expect(run("config", "--github-token", "ghp_1")).rejects.toThrow(/needs a token, name and email/);
+    await expect(run("config", "update", "--github-token", "ghp_1")).rejects.toThrow(/needs a token, name and email/);
     expect(await savedConfig()).toEqual({ api_url: API, api_key: key });
 
     const github = { token: "ghp_1", name: "bot", email: "1+bot@users.noreply.github.com" };
     const out = await run(
       "config",
+      "update",
       "--github-token",
       github.token,
       "--github-name",
@@ -291,9 +292,22 @@ describe("auth", () => {
     expect(out).toMatch(/GitHub bot: bot <1\+bot@users\.noreply\.github\.com>/);
     expect(await savedConfig()).toEqual({ api_url: API, api_key: key, github });
 
-    await run("config", "--github-token", "ghp_2");
+    await run("config", "update", "--github-token", "ghp_2");
     expect(await savedConfig()).toEqual({ api_url: API, api_key: key, github: { ...github, token: "ghp_2" } });
     expect(await loadGithubBot(configDir, {})).toEqual({ ...github, token: "ghp_2" });
+  });
+
+  it("config prints the resolved settings with secrets masked", async () => {
+    const key = await configured();
+    await run("config", "update", "--posthog-host", "https://eu.i.posthog.com", "--auto-update", "off");
+    await run("config", "update", "--github-token", "ghp_secret", "--github-name", "bot", "--github-email", "b@x.test");
+    const out = await run("config");
+    expect(out).toMatch(/api_key\s+\*{6}/);
+    expect(out).toMatch(/github_token\s+\*{6}/);
+    expect(out).toMatch(/posthog_host\s+https:\/\/eu\.i\.posthog\.com/);
+    expect(out).toMatch(/auto_update\s+off/);
+    expect(out).not.toContain(key);
+    expect(out).not.toContain("ghp_secret");
   });
 
   it("botEnv: git commits as the bot and gets its token for github.com, SSH remotes included", () => {

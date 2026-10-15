@@ -54,7 +54,7 @@ export function isNetworkError(error: string): boolean {
 
 /** Printed at startup, and written to each session's log, when the sandbox is off. */
 export const UNSANDBOXED_WARNING =
-  "WARNING: the sandbox is off, so bots run with full access to your files. Turn it back on with `loopway config --sandbox on` and no --no-sandbox.";
+  "WARNING: the sandbox is off, so bots run with full access to your files. Turn it back on with `loopway config update --sandbox on` and no --no-sandbox.";
 
 export const DEFAULTS = { max: 3, interval: 5, ttl: 30 };
 

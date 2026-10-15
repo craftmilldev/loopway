@@ -11,7 +11,7 @@ export interface Config {
   api_key: string;
   /** Where product metrics go; the API's /api/ingest proxy when unset. Set it to send straight to PostHog (https://us.i.posthog.com), EU or self-hosted. */
   posthog_host?: string;
-  /** The GitHub bot `loopway bots run` sessions act as. Set by `loopway config`; `login` keeps it. */
+  /** The GitHub bot `loopway bots run` sessions act as. Set by `loopway config update`; `login` keeps it. */
   github?: GithubBot;
   /** Whether the CLI updates itself from GitHub releases. On unless this is false (or LOOPWAY_NO_UPDATE is set). */
   auto_update?: boolean;
@@ -77,7 +77,7 @@ export async function loadGithubBot(dir: string, env: NodeJS.ProcessEnv = proces
   if (!token && !name && !email) return undefined;
   if (!token || !name || !email) {
     throw new Error(
-      "The GitHub bot needs a token, name and email: run `loopway config`, or set LOOPWAY_GITHUB_TOKEN/NAME/EMAIL.",
+      "The GitHub bot needs a token, name and email: run `loopway config update`, or set LOOPWAY_GITHUB_TOKEN/NAME/EMAIL.",
     );
   }
   return { token, name, email };
@@ -107,7 +107,7 @@ async function readConfig(dir: string): Promise<Partial<Config> | undefined> {
 
 /**
  * Saves the settings it's given, keeping anything else config.json already has (like `github`).
- * The key is optional so `loopway config` can set the URL before `loopway login`.
+ * The key is optional so `loopway config update` can set the URL before `loopway login`.
  */
 export async function writeConfig(
   dir: string,
