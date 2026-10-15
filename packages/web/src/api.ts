@@ -118,7 +118,7 @@ export function createApi(opts: ApiOptions) {
     return c.json({ ok: true });
   });
 
-  api.post("/webhooks/:inboxId", async (c) => {
+  const receiveWebhook = async (c: Context<Env, "/webhooks/:inboxId">) => {
     const inboxId = c.req.param("inboxId");
     const inbox = isUuid(inboxId) ? await store.getInbox(c.var.db, inboxId) : undefined;
     if (!inbox) throw new ApiError(404, "not_found", "Inbox not found");
@@ -151,6 +151,12 @@ export function createApi(opts: ApiOptions) {
     const { id, duplicate } = await store.insertMessage(c.var.db, inbox.id, result.event);
     await received(duplicate ? "duplicate" : "accepted");
     return c.json({ id, duplicate }, duplicate ? 200 : 202);
+  };
+  api.post("/webhooks/:inboxId", receiveWebhook);
+  // Webhook URLs handed out before the API moved under /api are configured in other services, so they keep working.
+  app.post("/webhooks/:inboxId", async (c) => {
+    await metrics.capture("webhook_legacy_path", ANONYMOUS);
+    return receiveWebhook(c);
   });
 
   // Login: email a one-time code, then trade it for a session token (a JWT that lasts 30 days), creating

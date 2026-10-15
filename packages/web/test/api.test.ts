@@ -645,12 +645,24 @@ describe("web ui", () => {
     expect((await call("GET", "/bots")).status).toBe(401);
   });
 
+  it("still takes webhooks on the old top-level path", async () => {
+    const key = await newUser();
+    const created = await call("POST", "/inboxes", { key, body: { name: "legacy", source_type: "loopway" } });
+    const inbox = created.body as { id: string; config: { secret: string } };
+    const res = await app.request(`/webhooks/${inbox.id}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${inbox.config.secret}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "build.finished", id: "1", data: {} }),
+    });
+    expect(res.status).toBe(202);
+    expect((await app.request(`/webhooks/00000000-0000-7000-8000-000000000000`, { method: "POST" })).status).toBe(404);
+  });
+
   it("answers 404 on the old top-level API paths", async () => {
     const id = "00000000-0000-7000-8000-000000000000";
     // Not the GETs: a path like /me is the page of an org of that name, which RESERVED_SLUGS keeps anyone from making.
     for (const [method, path] of [
       ["POST", "/auth/login"],
-      ["POST", `/webhooks/${id}`],
       ["POST", "/ingest/e/"],
     ] as const) {
       const res = await app.request(path, { method });

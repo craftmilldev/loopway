@@ -10,7 +10,7 @@ import { app, call, db, newInbox, newUser, prPayload, sendGithub } from "./helpe
 const PUBLIC = [
   /^GET \/api\/?$/,
   /^GET \/api\/health$/,
-  /^POST \/api\/webhooks\/:inboxId$/,
+  /^POST (\/api)?\/webhooks\/:inboxId$/,
   /^POST \/api\/auth\/(login|verify)$/,
   // The UI shell, its bundle, llms.txt and install.sh (GETs that serve no account data), and the analytics proxy.
   /^GET \/(login|orgs\/new|app\.js|app\.css|llms\.txt|install\.sh)?$/,
