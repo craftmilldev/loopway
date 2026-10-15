@@ -7,7 +7,7 @@ import { eeRoutes, type EeOptions } from "../ee/routes.js";
 import type { Db } from "./db/index.js";
 import { consoleSender, type SendEmail } from "./email.js";
 import { ApiError, jsonBody, type Env } from "./http.js";
-import { isUuid, LOGIN_CODE_RE, normalizeLoginCode } from "./ids.js";
+import { isUuid, LOGIN_CODE_RE, normalizeLoginCode, safeEqual } from "./ids.js";
 import { ANONYMOUS, noopMetrics, type Metrics } from "./metrics.js";
 import { getHarness, HARNESSES } from "@loopway/harnesses";
 import { createPosthogProxy } from "./posthog-proxy.js";
@@ -30,6 +30,8 @@ export interface ApiOptions extends EeOptions {
   posthogKey?: string;
   /** PostHog's UI host (the toolbar needs it behind a proxy). Defaults to the region's, https://us.posthog.com. */
   posthogUiHost?: string;
+  /** Vercel Cron's bearer token (`CRON_SECRET`). Unset, /cron/schedules refuses every call. */
+  cronSecret?: string;
   /** Signs session tokens (JWTs). */
   tokenSecret: string;
   /** Product metrics. Defaults to recording nothing. */
@@ -151,6 +153,36 @@ export function createApi(opts: ApiOptions) {
     const { id, duplicate } = await store.insertMessage(c.var.db, inbox.id, result.event);
     await received(duplicate ? "duplicate" : "accepted");
     return c.json({ id, duplicate }, duplicate ? 200 : 202);
+  });
+
+  // Vercel Cron calls this every hour (see vercel.json) with `Authorization: Bearer $CRON_SECRET`. Every inbox whose
+  // source fills itself on a clock gets the messages due in the current window. Runs in the same window repeat the
+  // same CloudEvent ids, so they are stored once.
+  api.get("/cron/schedules", async (c) => {
+    const token = bearer(c);
+    if (!opts.cronSecret || !token || !safeEqual(token, opts.cronSecret)) {
+      await metrics.capture("schedule_tick_rejected", ANONYMOUS, { reason: opts.cronSecret ? "bad_token" : "unset" });
+      throw new ApiError(401, "unauthorized", "Missing or wrong cron secret");
+    }
+    const now = new Date();
+    const total = { inboxes: 0, accepted: 0, duplicate: 0, failed: 0 };
+    for (const inbox of await store.inboxesOfSource(c.var.db, "schedule")) {
+      total.inboxes++;
+      try {
+        for (const event of sources.get(inbox.source_type)!.tick!(inbox.config, inbox.id, now)) {
+          const { duplicate } = await store.insertMessage(c.var.db, inbox.id, event);
+          total[duplicate ? "duplicate" : "accepted"]++;
+          await metrics.capture("schedule_message", inbox.org_id, { outcome: duplicate ? "duplicate" : "accepted" });
+        }
+      } catch (err) {
+        // One bad inbox (e.g. a config that no longer parses) must not stop the others.
+        console.error(err);
+        total.failed++;
+        await metrics.capture("schedule_message", inbox.org_id, { outcome: "failed" });
+      }
+    }
+    await metrics.capture("schedule_ticked", ANONYMOUS, total);
+    return c.json(total);
   });
 
   // Login: email a one-time code, then trade it for a session token (a JWT that lasts 30 days), creating

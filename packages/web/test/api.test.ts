@@ -29,9 +29,9 @@ describe("sources", () => {
       webhook_settings: "GitHub → Settings → Webhooks",
     });
     for (const s of r.body.data) {
-      // The loopway source has no common events: bots name their own types.
-      expect(s.events.length > 0 || s.type === "loopway").toBe(true);
-      expect(["loopway", "sender"]).toContain(s.secret.from);
+      // The loopway and schedule sources have no common events: their messages name their own types.
+      expect(s.events.length > 0 || ["loopway", "schedule"].includes(s.type)).toBe(true);
+      expect(["loopway", "sender", "none"]).toContain(s.secret.from);
     }
   });
 

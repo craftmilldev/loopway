@@ -7,6 +7,12 @@ import { track } from "./metrics.js";
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : one + "s"}`;
 
+/** What a schedule inbox sends and when, in place of the events a webhook inbox takes. */
+export function scheduleText(schedule: NonNullable<NonNullable<Inbox["config"]>["schedule"]>, messages: number) {
+  const when = schedule.every === "hour" ? "every hour" : `daily at ${String(schedule.hour).padStart(2, "0")}:00 UTC`;
+  return `${when} · ${plural(messages, "message type")}`;
+}
+
 /** What the inbox keeps, in words: "every event" or "3 event types". */
 export function eventsText(events: string[] | undefined) {
   return !events || events.includes("*") ? "every event" : plural(events.length, "event type");
@@ -43,7 +49,9 @@ export function Inboxes() {
   lw.usePoll(loadActivity, ready);
 
   const rows = inboxes.data;
-  const missing = rows?.filter((i) => !i.config?.secret).length ?? 0;
+  const needsSecret = (i: Inbox) =>
+    !i.config?.secret && sources?.data.find((s) => s.type === i.source_type)?.secret.from !== "none";
+  const missing = rows?.filter(needsSecret).length ?? 0;
   useEffect(() => {
     if (rows) track("inboxes_viewed", { count: rows.length, missing_secret: missing });
   }, [rows, missing]);
@@ -113,10 +121,12 @@ export function Inboxes() {
                       </a>
                       <div className="lbl small">
                         {lw.orgLabel(orgs, rows, i.org_id) ? lw.orgLabel(orgs, rows, i.org_id) + " · " : ""}
-                        {eventsText(i.config?.events)}
+                        {i.config?.schedule
+                          ? scheduleText(i.config.schedule, i.config.messages?.length ?? 0)
+                          : eventsText(i.config?.events)}
                         {a ? " · " + plural(a.messages, "message") : ""}
                       </div>
-                      {!i.config?.secret && <div className="why missing">needs its secret</div>}
+                      {needsSecret(i) && <div className="why missing">needs its secret</div>}
                     </td>
                     <td className="mono">{label(i.source_type)}</td>
                     <td>
