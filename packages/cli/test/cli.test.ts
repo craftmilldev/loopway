@@ -522,6 +522,94 @@ describe("inboxes", () => {
     );
   });
 
+  describe("schedule inboxes", () => {
+    async function scheduleInbox(name = "clock") {
+      const key = await configured();
+      const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
+      const org = await personalSlug(key);
+      return client.createInbox({
+        org,
+        name,
+        source_type: "schedule",
+        config: { schedule: { every: "hour" }, messages: [{ type: "standup", message: "Write the standup" }] },
+      });
+    }
+
+    it("adds, replaces and removes a message type, keeping the others", async () => {
+      await scheduleInbox();
+      let updated = await runJson("inbox", "update", "clock", "--message", "codex=Check codex = models");
+      expect(updated.config.messages).toEqual([
+        { type: "standup", message: "Write the standup" },
+        { type: "codex", message: "Check codex = models" },
+      ]);
+      const file = join(configDir, "long.txt");
+      await writeFile(file, "line one\nline two\n");
+      updated = await runJson("inbox", "update", "clock", "--message-file", `standup=${file}`, "--message", "a=b");
+      expect(updated.config.messages).toEqual([
+        { type: "standup", message: "line one\nline two" },
+        { type: "codex", message: "Check codex = models" },
+        { type: "a", message: "b" },
+      ]);
+      updated = await runJson("inbox", "update", "clock", "--remove-message", "a", "--remove-message", "codex");
+      expect(updated.config.messages).toEqual([{ type: "standup", message: "line one\nline two" }]);
+    });
+
+    it("changes the schedule and replaces the config from a file", async () => {
+      await scheduleInbox();
+      let updated = await runJson("inbox", "update", "clock", "--every", "day", "--hour", "9");
+      expect(updated.config.schedule).toEqual({ every: "day", hour: 9 });
+      updated = await runJson("inbox", "update", "clock", "--hour", "14");
+      expect(updated.config.schedule).toEqual({ every: "day", hour: 14 });
+      updated = await runJson("inbox", "update", "clock", "--every", "hour");
+      expect(updated.config.schedule).toEqual({ every: "hour" });
+
+      const file = join(configDir, "schedule.json");
+      const config = { schedule: { every: "day", hour: 3 }, messages: [{ type: "only", message: "one" }] };
+      await writeFile(file, JSON.stringify(config));
+      expect((await runJson("inbox", "update", "clock", "--config", file)).config).toEqual(config);
+    });
+
+    it("shows the schedule and each message", async () => {
+      await scheduleInbox();
+      const shown = await run("inbox", "show", "clock");
+      expect(shown).toMatch(/schedule\s+every hour/);
+      expect(shown).toMatch(/standup/);
+      expect(shown).toMatch(/Write the standup/);
+    });
+
+    it("rejects bad flags with clear errors", async () => {
+      await scheduleInbox();
+      await expect(run("inbox", "update", "clock")).rejects.toThrow(/Pass --name, --every/);
+      await expect(run("inbox", "update", "clock", "--every", "day")).rejects.toThrow(/needs --hour/);
+      await expect(run("inbox", "update", "clock", "--hour", "24")).rejects.toThrow(/0 to 23/);
+      await expect(run("inbox", "update", "clock", "--hour", "5")).rejects.toThrow(/only applies with --every day/);
+      await expect(run("inbox", "update", "clock", "--every", "week")).rejects.toThrow(/"hour" or "day"/);
+      await expect(run("inbox", "update", "clock", "--message", "nope")).rejects.toThrow(/<type>=<value>/);
+      await expect(run("inbox", "update", "clock", "--message", "Bad Type=x")).rejects.toThrow(/lowercase/);
+      await expect(run("inbox", "update", "clock", "--message", "x=")).rejects.toThrow(/needs some text/);
+      await expect(run("inbox", "update", "clock", "--message", `x=${"a".repeat(10_001)}`)).rejects.toThrow(/limit/);
+      await expect(run("inbox", "update", "clock", "--remove-message", "nope")).rejects.toThrow(/no message type/);
+      await expect(run("inbox", "update", "clock", "--remove-message", "standup")).rejects.toThrow(/at least one/);
+      await expect(run("inbox", "update", "clock", "--secret", "s")).rejects.toThrow(/don't apply/);
+      await expect(
+        run("inbox", "update", "clock", ...Array.from({ length: 20 }, (_, i) => ["--message", `t${i}=x`]).flat()),
+      ).rejects.toThrow(/up to 20/);
+      await expect(run("inbox", "update", "clock", "--message-file", `a=${join(configDir, "none")}`)).rejects.toThrow(
+        /Could not read/,
+      );
+    });
+
+    it("passes the server's errors through and rejects schedule flags on other sources", async () => {
+      await scheduleInbox();
+      const file = join(configDir, "bad.json");
+      await writeFile(file, JSON.stringify({ schedule: { every: "year" }, messages: [{ type: "a", message: "b" }] }));
+      await expect(run("inbox", "update", "clock", "--config", file)).rejects.toThrow(/Invalid request/);
+
+      await runJson("inbox", "create", "--name", "gh", "--source", "github");
+      await expect(run("inbox", "update", "gh", "--every", "hour")).rejects.toThrow(/only work on schedule inboxes/);
+    });
+  });
+
   it("creates a granola inbox without a secret and sets it with update", async () => {
     await configured();
     const inbox = await runJson("inbox", "create", "--name", "notes", "--source", "granola");
