@@ -540,6 +540,7 @@ export function Thread({ botId, id }: { botId: string; id: string }) {
       {t && (
         <div className="thread-layout">
           <div className="thread-main">
+            <SendMessage path={`${threadPath}/messages`} />
             <Group title="Waiting" messages={t.waiting} />
             <Group title="In flight" messages={t.inflight} />
             {runs.map((run) => (
@@ -571,6 +572,42 @@ export function Thread({ botId, id }: { botId: string; id: string }) {
         </div>
       )}
     </DashLayout>
+  );
+}
+
+/** Sends the thread a message of the user's own; it reaches the thread's session through the bot's inbox. */
+function SendMessage({ path }: { path: string }) {
+  const [text, setText] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    const r = await lw.api(path, { method: "POST", body: { text } });
+    setBusy(false);
+    if (r.status === 401) return lw.expired(r);
+    if (!r.ok) {
+      track("thread_message_failed", { status: r.status });
+      return setStatus(await lw.message(r));
+    }
+    track("thread_message_sent");
+    setText("");
+    setStatus("Sent. The thread's runner will pick it up.");
+  }
+
+  return (
+    <form className="field" onSubmit={(e) => void submit(e)}>
+      <label htmlFor="thread-message">Message this thread</label>
+      <textarea id="thread-message" rows={3} value={text} onChange={(e) => setText(e.target.value)} />
+      <div>
+        <button className="btn btn-sm" type="submit" disabled={busy || !text.trim()}>
+          Send
+        </button>
+        {status && <span className="muted"> {status}</span>}
+      </div>
+    </form>
   );
 }
 

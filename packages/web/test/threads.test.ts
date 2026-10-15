@@ -475,3 +475,33 @@ describe("thread writes", () => {
     expect(r.status).toBe(404);
   });
 });
+
+describe("messages sent to a thread", () => {
+  it("lands in the bot's inbox with the thread as its subject", async () => {
+    const { key, base, inbox, messages, assign } = await setup(1);
+    const t1 = randomUUID();
+    await assign([{ message_id: messages[0]!.id, thread_id: t1, add_subjects: ["o/r#1"] }]);
+    const sent = await call("POST", `${base}/threads/${t1}/messages`, { key, body: { text: " hello " } });
+    expect(sent.status).toBe(201);
+    expect(sent.body.inbox_id).toBe(inbox.id);
+    const got = await call("GET", `/inboxes/${inbox.id}/messages/${sent.body.id}`, { key });
+    expect(got.body.event).toMatchObject({
+      type: "dev.loopway.thread.message",
+      subject: t1,
+      data: { thread_id: t1, text: "hello" },
+    });
+  });
+
+  it("rejects empty text, a missing thread and someone outside the org", async () => {
+    const { key, base, messages, assign } = await setup(1);
+    const t1 = randomUUID();
+    await assign([{ message_id: messages[0]!.id, thread_id: t1 }]);
+    expect((await call("POST", `${base}/threads/${t1}/messages`, { key, body: { text: "  " } })).status).toBe(400);
+    const missing = await call("POST", `${base}/threads/${randomUUID()}/messages`, { key, body: { text: "x" } });
+    expect(missing.status).toBe(404);
+    const other = await newUser();
+    expect((await call("POST", `${base}/threads/${t1}/messages`, { key: other, body: { text: "x" } })).status).toBe(
+      404,
+    );
+  });
+});

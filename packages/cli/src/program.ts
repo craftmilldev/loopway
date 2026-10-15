@@ -1,6 +1,6 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import { clearConfig, configure, login, username, whoami } from "./commands/auth.js";
-import { listBotThreads, moveBotSubject, releaseBotThread } from "./commands/botThreads.js";
+import { listBotThreads, moveBotSubject, releaseBotThread, sendBotThreadMessage } from "./commands/botThreads.js";
 import {
   botMessages,
   botVersions,
@@ -317,6 +317,14 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .argument("<bot>", "bot id or name")
     .argument("<thread>", "thread id")
     .action((ref, thread) => releaseBotThread(ctx, ref, thread));
+
+  botThreads
+    .command("send")
+    .description("send a message to a thread; its runner hands it to the thread's session")
+    .argument("<bot>", "bot id or name")
+    .argument("<thread>", "id of the thread (the start of it is enough)")
+    .argument("<text...>", "the message")
+    .action((ref, thread, text) => sendBotThreadMessage(ctx, ref, thread, text));
 
   botThreads
     .command("move")

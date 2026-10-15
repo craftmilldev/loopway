@@ -91,8 +91,16 @@ describe("ThreadsTui", () => {
   let unmount: (() => void) | undefined;
   afterEach(() => unmount?.());
 
+  const sent: [string, string][] = [];
+
   async function show(snap = snapshot) {
-    const app = render(<ThreadsTui load={async () => snap} readLog={async (id) => (id === "bbbbbbbb-2" ? log : "")} />);
+    const app = render(
+      <ThreadsTui
+        load={async () => snap}
+        readLog={async (id) => (id === "bbbbbbbb-2" ? log : "")}
+        send={async (id, text) => void sent.push([id, text])}
+      />,
+    );
     unmount = app.unmount;
     const press = async (key: string) => (app.stdin.write(key), await sleep(30));
     await sleep(30);
@@ -149,6 +157,26 @@ describe("ThreadsTui", () => {
     await press(KEYS.down);
     await press(KEYS.right);
     expect(frame()).toContain("No transcript yet.");
+  });
+
+  it("writes a message to an open thread with m, sends it with enter and drops it with esc", async () => {
+    const { frame, press } = await show();
+    await press(KEYS.down);
+    await press(KEYS.enter);
+    await press("m");
+    await press("hi");
+    expect(frame()).toContain("message ❯ hi");
+    await press("\u001B");
+    await sleep(60);
+    expect(frame()).not.toContain("message ❯");
+    expect(sent).toEqual([]);
+
+    await press("m");
+    await press("ok");
+    await press(KEYS.enter);
+    expect(sent.map(([, text]) => text)).toEqual(["ok"]);
+    expect(frame()).toContain(sent[0]![0].slice(0, 8));
+    expect(frame()).toContain("message sent");
   });
 
   it("scrolls long lists inside the screen", async () => {

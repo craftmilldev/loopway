@@ -80,6 +80,18 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
       {
         load: async () => ({ ...(await dispatcher.state()), message }),
         readLog: (id) => dispatcher.readLog(id),
+        send: async (threadId, text) => {
+          const botId = (await dispatcher.state()).threads[threadId]?.bot_id;
+          if (!botId) throw new Error("unknown thread");
+          try {
+            await client.sendThreadMessage(botId, threadId, text);
+          } catch (err) {
+            const reason = err instanceof ApiError ? err.code : "error";
+            void ctx.metrics?.capture("thread_message_failed", { surface: "tui", reason });
+            throw err;
+          }
+          void ctx.metrics?.capture("thread_message_sent", { surface: "tui" });
+        },
       },
       closeTui.signal,
     );

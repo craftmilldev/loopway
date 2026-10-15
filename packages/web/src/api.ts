@@ -1,13 +1,14 @@
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z, ZodError } from "zod";
-import { checkRules } from "@loopway/rules";
+import { checkRules, THREAD_MESSAGE_TYPE } from "@loopway/rules";
 import { cliVersion, olderThan } from "./cli-version.js";
 import { eeRoutes, type EeOptions } from "../ee/routes.js";
 import type { Db } from "./db/index.js";
 import { consoleSender, type SendEmail } from "./email.js";
 import { ApiError, jsonBody, type Env } from "./http.js";
-import { isUuid, LOGIN_CODE_RE, normalizeLoginCode, safeEqual } from "./ids.js";
+import { makeCloudEvent } from "./cloudevents.js";
+import { isUuid, LOGIN_CODE_RE, normalizeLoginCode, safeEqual, uuidv7 } from "./ids.js";
 import { ANONYMOUS, noopMetrics, type Metrics } from "./metrics.js";
 import { getHarness, HARNESSES } from "@loopway/harnesses";
 import { createPosthogProxy } from "./posthog-proxy.js";
@@ -877,6 +878,39 @@ export function createApi(opts: ApiOptions) {
     const thread = await existingThread(c, bot);
     await store.releaseThread(c.var.db, bot.id, thread.id);
     return c.json(await serializeThread(c.var.db, (await store.getThread(c.var.db, bot.id, thread.id))!));
+  });
+
+  // A member's message to a thread: it lands in one of the bot's inboxes like any other, and the bot's runner routes
+  // it to this thread by its subject (the thread's id). It stays inside loopway's own auth.
+  authed.post("/bots/:botId/threads/:threadId/messages", async (c) => {
+    const bot = await memberBot(c);
+    const thread = await existingThread(c, bot);
+    const parsed = z.object({ text: z.string().trim().min(1).max(20_000) }).safeParse(await jsonBody(c));
+    if (!parsed.success) {
+      await metrics.capture("thread_message_rejected", c.var.user.id, { reason: "invalid_text" });
+      throw parsed.error;
+    }
+    const inboxId = bot.inbox_ids[0];
+    if (!inboxId) {
+      await metrics.capture("thread_message_rejected", c.var.user.id, { reason: "no_inbox" });
+      throw new ApiError(409, "no_inbox", "The bot has no inbox to send the message through");
+    }
+    const sent = await store.insertMessage(
+      c.var.db,
+      inboxId,
+      makeCloudEvent({
+        specversion: "1.0",
+        id: uuidv7(),
+        source: `loopway:threads/${thread.id}`,
+        type: THREAD_MESSAGE_TYPE,
+        subject: thread.id,
+        time: new Date().toISOString(),
+        datacontenttype: "application/json",
+        data: { thread_id: thread.id, text: parsed.data.text, user_id: c.var.user.id },
+      }),
+    );
+    await metrics.capture("thread_message_sent", c.var.user.id, { thread_status: thread.status });
+    return c.json({ id: sent.id, inbox_id: inboxId }, 201);
   });
 
   // A member's way to end a thread whose work is done or whose runner is gone. Needs no lease, like release; the

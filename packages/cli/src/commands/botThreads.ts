@@ -1,3 +1,4 @@
+import { ApiError, type LoopwayClient } from "../client.js";
 import { authedClient, type Context } from "../context.js";
 import { dim, json, table } from "../format.js";
 import { resolveBot } from "./bots.js";
@@ -43,13 +44,37 @@ export async function releaseBotThread(ctx: Context, ref: string, threadId: stri
 export async function moveBotSubject(ctx: Context, ref: string, subject: string, from: string, to: string) {
   const client = await authedClient(ctx);
   const botId = await resolveBot(client, ref);
+  const find = await threadFinder(client, botId);
+  const thread = await client.moveSubject(botId, subject, find(from), find(to));
+  ctx.out(`Moved ${subject} to thread ${thread.id} (${thread.status}).`);
+}
+
+/** Looks a thread of the bot up by the start of its id. */
+async function threadFinder(client: LoopwayClient, botId: string) {
   const threads = await client.listThreads(botId, "all");
-  const find = (prefix: string) => {
+  return (prefix: string) => {
     const matches = threads.filter((t) => t.id.startsWith(prefix.toLowerCase()));
     if (matches.length !== 1)
       throw new Error(matches.length ? `"${prefix}" matches ${matches.length} threads` : `No thread "${prefix}"`);
     return matches[0]!.id;
   };
-  const thread = await client.moveSubject(botId, subject, find(from), find(to));
-  ctx.out(`Moved ${subject} to thread ${thread.id} (${thread.status}).`);
+}
+
+/**
+ * `loopway bots threads send <bot> <thread> <text...>`: sends a message to the thread. It goes through the bot's inbox,
+ * so the bot's runner hands it to the thread's session like any other message.
+ */
+export async function sendBotThreadMessage(ctx: Context, ref: string, thread: string, words: string[]) {
+  const client = await authedClient(ctx);
+  const botId = await resolveBot(client, ref);
+  const threadId = (await threadFinder(client, botId))(thread);
+  try {
+    await client.sendThreadMessage(botId, threadId, words.join(" "));
+  } catch (err) {
+    const reason = err instanceof ApiError ? err.code : "error";
+    void ctx.metrics?.capture("thread_message_failed", { surface: "cli", reason });
+    throw err;
+  }
+  void ctx.metrics?.capture("thread_message_sent", { surface: "cli" });
+  ctx.out(`Sent to thread ${threadId.slice(0, 8)}; its runner will pick it up.`);
 }
