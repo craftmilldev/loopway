@@ -15,11 +15,7 @@ describe("resend webhooks", () => {
     };
   }
 
-  function sendResend(
-    inboxId: string,
-    payload: unknown,
-    o: { id?: string; secret?: string; timestamp?: number } = {},
-  ) {
+  function sendResend(inboxId: string, payload: unknown, o: { id?: string; secret?: string; timestamp?: number } = {}) {
     const raw = JSON.stringify(payload);
     const id = o.id ?? `msg_${randomUUID()}`;
     const ts = String(o.timestamp ?? Math.floor(Date.now() / 1000));
