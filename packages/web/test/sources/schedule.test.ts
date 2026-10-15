@@ -61,6 +61,27 @@ describe("schedule inboxes", () => {
     expect(new Date(event.time).getUTCMinutes()).toBe(0);
   });
 
+  it("stamps a daily schedule's messages with its hour", async () => {
+    const key = await newUser();
+    const inbox = (await scheduleInbox(key, { schedule: { every: "day", hour: 9 }, messages: [config.messages[0]] }))
+      .body;
+    await tick();
+    const [m] = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data;
+    expect(new Date(m.event.time).getUTCHours()).toBe(9);
+    expect(new Date(m.event.time).getUTCMinutes()).toBe(0);
+  });
+
+  it("keeps going when one inbox's config no longer parses", async () => {
+    const key = await newUser();
+    const broken = (await scheduleInbox(key)).body;
+    await db.query(`UPDATE loopway.inboxes SET config = '{}'::jsonb WHERE id = $1`, [broken.id]);
+    const good = (await scheduleInbox(key)).body;
+    const result = await (await tick()).json();
+    expect(result.failed).toBeGreaterThanOrEqual(1);
+    const messages = (await call("GET", `/inboxes/${good.id}/messages`, { key })).body.data;
+    expect(messages).toHaveLength(2);
+  });
+
   it("refuses the cron route without the secret", async () => {
     expect((await tick(null)).status).toBe(401);
     expect((await tick("wrong")).status).toBe(401);
