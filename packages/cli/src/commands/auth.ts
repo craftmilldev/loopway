@@ -19,7 +19,14 @@ import { bold, dim, fields, json } from "../format.js";
  */
 export async function configure(
   ctx: Context,
-  opts: { url?: string; posthogHost?: string; githubToken?: string; githubName?: string; githubEmail?: string; autoUpdate?: "on" | "off" },
+  opts: {
+    url?: string;
+    posthogHost?: string;
+    githubToken?: string;
+    githubName?: string;
+    githubEmail?: string;
+    autoUpdate?: "on" | "off";
+  },
 ) {
   const current = await loadConfig(ctx.configDir, ctx.env);
   const url = opts.url ?? (ctx.interactive ? await promptUrl(current.api_url) : current.api_url);
@@ -74,7 +81,11 @@ export async function showConfig(ctx: Context) {
   );
   if (botError) ctx.out(botError);
   ctx.out(dim(`Config file: ${configPath(ctx.configDir)}`));
-  await ctx.metrics?.capture("config_shown", { logged_in: !!config.api_key, github_bot: !!bot, bot_incomplete: !!botError });
+  await ctx.metrics?.capture("config_shown", {
+    logged_in: !!config.api_key,
+    github_bot: !!bot,
+    bot_incomplete: !!botError,
+  });
 }
 
 /**
