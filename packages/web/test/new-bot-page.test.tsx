@@ -58,7 +58,7 @@ describe("New bot flow", () => {
     fireEvent.click(screen.getByText("Continue"));
 
     expect(await screen.findByText("GitHub threads")).toBeTruthy();
-    expect(screen.getAllByRole("radio")).toHaveLength(Object.keys(PRESETS).length);
+    expect(screen.getAllByRole("radio")).toHaveLength(Object.keys(PRESETS).length + 1);
     fireEvent.click(screen.getByText("Continue"));
 
     fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "dev" } });
@@ -96,17 +96,33 @@ describe("New bot flow", () => {
     expect(await screen.findByText("Waiting for the first thread…")).toBeTruthy();
   });
 
-  it("creates a bot from the blank preset", async () => {
+  it("makes you write a prompt and a rule before a blank bot can be created", async () => {
     at("");
     render(<NewBot />);
     fireEvent.click(await screen.findByLabelText(/github/));
     fireEvent.click(screen.getByText("Continue"));
-    fireEvent.click(await screen.findByLabelText(/Blank/));
+    fireEvent.click(await screen.findByRole("radio", { name: /^Blank/ }));
+
     fireEvent.click(screen.getByText("Continue"));
+    expect(await screen.findByText("Write a prompt.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Triage issues." } });
+    fireEvent.click(screen.getByText("Continue"));
+    expect(await screen.findByText("Add at least one rule.")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add rule" }));
+    fireEvent.change(screen.getByLabelText("Rule 1 · event types"), { target: { value: "com.github.*" } });
+    fireEvent.click(screen.getByText("Continue"));
+    expect(await screen.findByText("Rule 1 needs an action.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Action"), { target: { value: "'skip'" } });
+    fireEvent.click(screen.getByText("Continue"));
+
     fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "dev" } });
     fireEvent.click(screen.getByText("Create bot and continue"));
     await screen.findByText("Listening for a runner to take the lease…");
-    expect(posts[0]!.body).toMatchObject({ prompt: PRESETS.blank!.prompt, rules: PRESETS.blank!.rules });
+    expect(posts[0]!.body).toMatchObject({
+      prompt: "Triage issues.",
+      rules: [{ types: ["com.github.*"], action: "'skip'" }],
+    });
   });
 
   it("starts on the org something was last created in, and lists only its inboxes", async () => {

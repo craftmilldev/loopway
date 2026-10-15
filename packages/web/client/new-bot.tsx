@@ -5,6 +5,7 @@ import { CreateInbox, OrgSelect, type Inbox } from "./shared.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
+import { fromDrafts, problem, PromptEditor, type RuleDraft } from "./prompt.js";
 
 export const STEPS = ["Connect a source", "Choose its job", "Name and model", "Start a runner", "Watch the first run"];
 
@@ -20,6 +21,9 @@ const MODELS = lw.BOT_MODELS.filter((m) => m in MODEL_USE);
 /** How often steps 4 and 5 look at the bot again, in milliseconds. */
 const POLL = 3000;
 
+/** The starting point that isn't a preset: the user writes the prompt and rules here, before the bot exists. */
+const BLANK = "blank";
+
 /** `/<org>/bots/new`: the guided flow from a source to a bot's first thread. `?bot=<id>` resumes a created bot. */
 export function NewBot() {
   const me = lw.useMe();
@@ -34,6 +38,8 @@ export function NewBot() {
   const [step, setStep] = useState(1);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [preset, setPreset] = useState(Object.keys(PRESETS)[0]!);
+  const [blankPrompt, setBlankPrompt] = useState("");
+  const [blankRules, setBlankRules] = useState<RuleDraft[]>([]);
   const [name, setName] = useState("");
   const [model, setModel] = useState(MODELS[0]!);
   const bot = lw.useGet<lw.Bot>(botId ? "/bots/" + encodeURIComponent(botId) : null, ready);
@@ -90,7 +96,16 @@ export function NewBot() {
               next={() => setStep(2)}
             />
           ) : step === 2 ? (
-            <Job preset={preset} setPreset={setPreset} back={() => setStep(1)} next={() => setStep(3)} />
+            <Job
+              preset={preset}
+              setPreset={setPreset}
+              prompt={blankPrompt}
+              setPrompt={setBlankPrompt}
+              rules={blankRules}
+              setRules={setBlankRules}
+              back={() => setStep(1)}
+              next={() => setStep(3)}
+            />
           ) : step === 3 ? (
             <Identity
               name={name}
@@ -98,6 +113,7 @@ export function NewBot() {
               model={model}
               setModel={setModel}
               preset={preset}
+              blank={{ prompt: blankPrompt, rules: fromDrafts(blankRules) }}
               org={org}
               inbox_ids={[...picked]}
               existing={bot.data}
@@ -240,14 +256,37 @@ function Copy({ text }: { text: string }) {
 function Job({
   preset,
   setPreset,
+  prompt,
+  setPrompt,
+  rules,
+  setRules,
   back,
   next,
 }: {
   preset: string;
   setPreset: (p: string) => void;
+  prompt: string;
+  setPrompt: (p: string) => void;
+  rules: RuleDraft[];
+  setRules: (r: RuleDraft[]) => void;
   back: () => void;
   next: () => void;
 }) {
+  const [editing, setEditing] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function submit() {
+    if (preset === BLANK) {
+      const bad = problem(prompt, fromDrafts(rules));
+      if (bad) {
+        track("new_bot_blank_blocked", { reason: bad.reason });
+        return setError(bad.message);
+      }
+    }
+    track("new_bot_preset_chosen", { preset });
+    next();
+  }
+
   return (
     <section>
       <h2>What should it do with those messages?</h2>
@@ -266,19 +305,34 @@ function Job({
             </span>
           </label>
         ))}
+        <label className="opt">
+          <input type="radio" name="preset" checked={preset === BLANK} onChange={() => setPreset(BLANK)} />
+          <span>
+            Blank
+            <span className="muted"> Write the prompt and the routing rules yourself.</span>
+          </span>
+        </label>
       </fieldset>
+      {preset === BLANK && (
+        <PromptEditor
+          prompt={prompt}
+          setPrompt={setPrompt}
+          rules={rules}
+          setRules={setRules}
+          editing={editing}
+          setEditing={setEditing}
+        />
+      )}
+      {error && preset === BLANK && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
       <div className="form-actions">
         <button className="btn btn-quiet" type="button" onClick={back}>
           Back
         </button>
-        <button
-          className="btn"
-          type="button"
-          onClick={() => {
-            track("new_bot_preset_chosen", { preset });
-            next();
-          }}
-        >
+        <button className="btn" type="button" onClick={submit}>
           Continue
         </button>
       </div>
@@ -292,6 +346,7 @@ function Identity({
   model,
   setModel,
   preset,
+  blank,
   org,
   inbox_ids,
   existing,
@@ -304,6 +359,7 @@ function Identity({
   model: string;
   setModel: (m: string) => void;
   preset: string;
+  blank: { prompt: string; rules: lw.BotRule[] };
   org: string;
   inbox_ids: string[];
   existing: lw.Bot | null;
@@ -322,7 +378,7 @@ function Identity({
     if (existing) return next();
     setError(null);
     setBusy(true);
-    const { prompt, rules } = PRESETS[preset]!;
+    const { prompt, rules } = preset === BLANK ? blank : PRESETS[preset]!;
     const r = await lw.api("/bots", {
       method: "POST",
       body: { org, name, prompt, rules, model, harness: "claude", inbox_ids },

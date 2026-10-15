@@ -104,6 +104,118 @@ function Diff({ lines, label }: { lines: DiffLine[]; label: string }) {
   );
 }
 
+/** The prompt box and the rule list, as a controlled form; the bot's prompt page and the new-bot flow both edit with it. */
+export function PromptEditor({
+  prompt,
+  setPrompt,
+  rules,
+  setRules,
+  editing,
+  setEditing,
+}: {
+  prompt: string;
+  setPrompt: (p: string) => void;
+  rules: RuleDraft[];
+  setRules: (r: RuleDraft[]) => void;
+  editing: number | null;
+  setEditing: (i: number | null) => void;
+}) {
+  const parsed = fromDrafts(rules);
+
+  const setRule = (i: number, patch: Partial<RuleDraft>) =>
+    setRules(rules.map((r, n) => (n === i ? { ...r, ...patch } : r)));
+
+  function addRule() {
+    track("bot_rule_added");
+    setRules([...rules, blankRule()]);
+    setEditing(rules.length);
+  }
+
+  function removeRule(i: number) {
+    track("bot_rule_removed");
+    setRules(rules.filter((_, n) => n !== i));
+    setEditing(null);
+  }
+
+  function move(i: number, by: -1 | 1) {
+    track("bot_rule_moved");
+    const j = i + by;
+    const copy = [...rules];
+    [copy[i], copy[j]] = [copy[j]!, copy[i]!];
+    setRules(copy);
+    setEditing(editing === i ? j : editing === j ? i : editing);
+  }
+
+  return (
+    <>
+      <div className="field">
+        <div className="prompt-head">
+          <label htmlFor="bot-prompt">Prompt</label>
+          <span className="muted mono">{prompt.length.toLocaleString()} characters</span>
+        </div>
+        <textarea
+          id="bot-prompt"
+          className="prompt"
+          spellCheck={false}
+          maxLength={100_000}
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+        />
+      </div>
+
+      <div className="prompt-head section">
+        <h2>Rules</h2>
+        <button className="btn btn-sm btn-quiet" type="button" onClick={addRule}>
+          Add rule
+        </button>
+      </div>
+      <p className="hint">
+        The first rule whose event types match a message applies. The expressions are checked when you save.
+      </p>
+      {rules.length === 0 && <p className="muted">No rules.</p>}
+      {rules.map((rule, i) => (
+        <div className="rule" key={i}>
+          <span className="rule-n">{i + 1}</span>
+          <div className="rule-body">
+            {editing === i ? (
+              <RuleForm index={i} rule={rule} onChange={(patch) => setRule(i, patch)} />
+            ) : (
+              <RuleBlock rule={parsed[i]!} />
+            )}
+          </div>
+          <div className="rule-actions">
+            <button className="btn btn-sm btn-quiet" type="button" onClick={() => setEditing(editing === i ? null : i)}>
+              {editing === i ? "Done" : "Edit"}
+              <span className="sr-only"> rule {i + 1}</span>
+            </button>
+            <button
+              className="btn btn-sm btn-quiet"
+              type="button"
+              disabled={i === 0}
+              aria-label={`Move rule ${i + 1} up`}
+              onClick={() => move(i, -1)}
+            >
+              ↑
+            </button>
+            <button
+              className="btn btn-sm btn-quiet"
+              type="button"
+              disabled={i === rules.length - 1}
+              aria-label={`Move rule ${i + 1} down`}
+              onClick={() => move(i, 1)}
+            >
+              ↓
+            </button>
+            <button className="btn btn-sm btn-quiet" type="button" onClick={() => removeRule(i)}>
+              Remove<span className="sr-only"> rule {i + 1}</span>
+            </button>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
 /** Prompt and rules as a document: edits make a draft, saving makes the next version, and old versions can be compared and restored. */
 export function PromptTab({
   botPath,
@@ -144,30 +256,6 @@ export function PromptTab({
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
-
-  const setRule = (i: number, patch: Partial<RuleDraft>) =>
-    setRules(rules.map((r, n) => (n === i ? { ...r, ...patch } : r)));
-
-  function addRule() {
-    track("bot_rule_added");
-    setRules([...rules, blankRule()]);
-    setEditing(rules.length);
-  }
-
-  function removeRule(i: number) {
-    track("bot_rule_removed");
-    setRules(rules.filter((_, n) => n !== i));
-    setEditing(null);
-  }
-
-  function move(i: number, by: -1 | 1) {
-    track("bot_rule_moved");
-    const j = i + by;
-    const copy = [...rules];
-    [copy[i], copy[j]] = [copy[j]!, copy[i]!];
-    setRules(copy);
-    setEditing(editing === i ? j : editing === j ? i : editing);
-  }
 
   function discard() {
     track("prompt_draft_discarded");
@@ -242,74 +330,14 @@ export function PromptTab({
       )}
       <div className="ov-split bot-split">
         <div className="ov-main">
-          <div className="field">
-            <div className="prompt-head">
-              <label htmlFor="bot-prompt">Prompt</label>
-              <span className="muted mono">{prompt.length.toLocaleString()} characters</span>
-            </div>
-            <textarea
-              id="bot-prompt"
-              className="prompt"
-              spellCheck={false}
-              maxLength={100_000}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-            />
-          </div>
-
-          <div className="prompt-head section">
-            <h2>Rules</h2>
-            <button className="btn btn-sm btn-quiet" type="button" onClick={addRule}>
-              Add rule
-            </button>
-          </div>
-          <p className="hint">
-            The first rule whose event types match a message applies. The expressions are checked when you save.
-          </p>
-          {rules.length === 0 && <p className="muted">No rules.</p>}
-          {rules.map((rule, i) => (
-            <div className="rule" key={i}>
-              <span className="rule-n">{i + 1}</span>
-              <div className="rule-body">
-                {editing === i ? (
-                  <RuleForm index={i} rule={rule} onChange={(patch) => setRule(i, patch)} />
-                ) : (
-                  <RuleBlock rule={parsed[i]!} />
-                )}
-              </div>
-              <div className="rule-actions">
-                <button
-                  className="btn btn-sm btn-quiet"
-                  type="button"
-                  onClick={() => setEditing(editing === i ? null : i)}
-                >
-                  {editing === i ? "Done" : "Edit"}
-                  <span className="sr-only"> rule {i + 1}</span>
-                </button>
-                <button
-                  className="btn btn-sm btn-quiet"
-                  type="button"
-                  disabled={i === 0}
-                  aria-label={`Move rule ${i + 1} up`}
-                  onClick={() => move(i, -1)}
-                >
-                  ↑
-                </button>
-                <button
-                  className="btn btn-sm btn-quiet"
-                  type="button"
-                  disabled={i === rules.length - 1}
-                  aria-label={`Move rule ${i + 1} down`}
-                  onClick={() => move(i, 1)}
-                >
-                  ↓
-                </button>
-                <button className="btn btn-sm btn-quiet" type="button" onClick={() => removeRule(i)}>
-                  Remove<span className="sr-only"> rule {i + 1}</span>
-                </button>
-              </div>
-            </div>
-          ))}
+          <PromptEditor
+            prompt={prompt}
+            setPrompt={setPrompt}
+            rules={rules}
+            setRules={setRules}
+            editing={editing}
+            setEditing={setEditing}
+          />
         </div>
         <aside className="ov-side">
           <h2>Versions</h2>

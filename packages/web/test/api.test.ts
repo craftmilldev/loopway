@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { build } from "esbuild";
-import { PRESETS } from "@loopway/presets";
 import { describe, expect, it } from "vitest";
 import { clientBuild } from "../scripts/client.js";
 import { createApi } from "../src/api.js";
@@ -152,19 +151,6 @@ describe("bots", () => {
     ).toBe(400);
     expect((await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "" } })).status).toBe(400);
     expect((await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "x", rules: [] } })).status).toBe(400);
-    // The blank preset is a valid create.
-    const blank = await call("POST", "/bots", {
-      key,
-      body: {
-        name: "blank",
-        model: "sonnet",
-        harness: "claude",
-        inbox_ids: [a.id],
-        prompt: PRESETS.blank!.prompt,
-        rules: PRESETS.blank!.rules,
-      },
-    });
-    expect(blank.status).toBe(201);
     // Every rule needs an action.
     expect(
       (await call("POST", `/bots/${id}/versions`, { key, body: { prompt: "x", rules: [{ types: ["x"] }] } })).status,
