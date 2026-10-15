@@ -13,7 +13,17 @@ import {
   updateBot,
 } from "./commands/bots.js";
 import { getMessage, listMessages } from "./commands/messages.js";
-import { createInbox, listInboxes, readSchema, showInbox, splitList, updateInbox } from "./commands/inboxes.js";
+import {
+  collect,
+  createInbox,
+  listInboxes,
+  parseHour,
+  readScheduleConfig,
+  readSchema,
+  showInbox,
+  splitList,
+  updateInbox,
+} from "./commands/inboxes.js";
 import { listRunners } from "./commands/runners.js";
 import { runBots } from "./commands/bots-run.js";
 import { addOrgMember, createOrg, leaveOrg, listOrgs, orgMembers, removeOrgMember } from "./commands/orgs.js";
@@ -177,12 +187,28 @@ A CLI installed from a release updates itself to the newest one; turn that off w
 
   inbox
     .command("update")
-    .description("change an inbox's name, events, secret or schema (asks for the secret if no flags are given)")
+    .description(
+      "change an inbox's name, events, secret, schema, or a schedule inbox's schedule and messages (asks if no flags are given)",
+    )
     .argument("<inbox>", "inbox id or name")
     .option("--name <name>", "new name")
     .option("--events <list>", "comma-separated event names to accept, or *", splitList)
     .option("--secret <secret>", "webhook secret, e.g. the one the sender shows when you add the webhook")
     .option("--schema <file>", "JSON Schema file messages must match (loopway source)", readSchema)
+    .option("--every <hour|day>", "schedule inbox: how often it sends")
+    .option("--hour <0-23>", "schedule inbox: the UTC hour of a daily schedule", parseHour)
+    .option("--message <type=text>", "schedule inbox: add or replace a message type (repeatable)", collect)
+    .option(
+      "--message-file <type=path>",
+      "schedule inbox: add or replace a message type from a file (repeatable)",
+      collect,
+    )
+    .option("--remove-message <type>", "schedule inbox: remove a message type (repeatable)", collect)
+    .option(
+      "--config <file>",
+      "schedule inbox: replace the whole {schedule, messages} config from a JSON file",
+      readScheduleConfig,
+    )
     .addOption(jsonOpt())
     .action((ref, opts) => updateInbox(ctx, ref, opts));
 

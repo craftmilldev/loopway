@@ -48,6 +48,7 @@ loopway inbox create                   # interactive: name → source → events
 loopway inbox list
 loopway inbox show <inbox>             # webhook setup + message count
 loopway inbox update <inbox> [--name n] [--events a,b] [--secret s] [--schema file.json]   # with no flags in a terminal, asks for the secret
+loopway inbox update <schedule-inbox> [--every hour|day] [--hour 0-23] [--message type=text] [--message-file type=path] [--remove-message type] [--config file.json]   # see docs/sources/schedule.md
 
 loopway messages list <inbox> [--type 'com.github.pull_request.*'] [--limit 20] [--all]
 loopway messages get  <inbox> <message> [--data]
