@@ -37,6 +37,13 @@ describe("loopway webhooks", () => {
     },
   };
 
+  it("refuses the type reserved for messages sent to a thread", async () => {
+    const key = await newUser();
+    const inbox = await loopwayInbox(key);
+    const r = await sendLoopway(inbox, { type: "dev.loopway.thread.message", id: "1", data: { thread_id: "t" } });
+    expect(r.status).toBe(422);
+  });
+
   it("creates with a token and a default schema, and stores a message as a CloudEvent", async () => {
     const key = await newUser();
     const inbox = await loopwayInbox(key);
