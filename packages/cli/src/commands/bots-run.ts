@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { ApiError, type LoopwayClient } from "../client.js";
-import { sandboxProblem } from "@loopway/harnesses";
+import { getHarness } from "@loopway/harnesses";
 import { applyUpdate, availableUpdate as availableUpdateNow } from "../update.js";
 import { authedClient, UsageError, type Context } from "../context.js";
 import { DEFAULTS, Dispatcher, type ThreadsOptions } from "../bots/dispatcher.js";
@@ -33,8 +33,8 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     );
     return;
   }
-  // Claude bots only run sandboxed, so refuse up front rather than failing every run.
-  const problem = bots.some((b) => b.harness === "claude") ? sandboxProblem() : undefined;
+  // Refuse up front, rather than failing every run, if a bot's harness can't run here.
+  const problem = [...new Set(bots.map((b) => b.harness))].map((h) => getHarness(h).problem()).find(Boolean);
   if (problem) {
     void ctx.metrics?.capture("bots_run_refused", { reason: problem.reason, platform: process.platform });
     throw new UsageError(problem.message);

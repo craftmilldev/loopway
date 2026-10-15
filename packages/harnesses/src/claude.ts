@@ -1,7 +1,7 @@
 import type { AgentRun } from "./agent.js";
 import { LimitWatch } from "./claude-watch.js";
 import { Harness, type Launch } from "./harness.js";
-import { claudeSandboxSettings } from "./sandbox.js";
+import { claudeSandboxSettings, sandboxProblem } from "./sandbox.js";
 
 /** Claude Code, run as `claude -p`. */
 export class ClaudeHarness extends Harness {
@@ -22,6 +22,11 @@ export class ClaudeHarness extends Harness {
 
   modelFits(model: string) {
     return this.models.includes(model);
+  }
+
+  /** Claude runs only in its sandbox, so it can't run where the sandbox can't. */
+  problem() {
+    return sandboxProblem();
   }
 
   launch(run: AgentRun): Launch {
