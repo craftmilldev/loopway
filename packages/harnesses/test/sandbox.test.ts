@@ -1,3 +1,7 @@
+import { spawnSync } from "node:child_process";
+import { mkdtemp, symlink } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AgentRun } from "../src/agent.js";
 import { ClaudeHarness } from "../src/claude.js";
@@ -29,6 +33,32 @@ describe("sandbox", () => {
     const s = claudeSandboxSettings("/nonexistent");
     expect(s.sandbox.filesystem.allowWrite).toEqual(expect.arrayContaining(["~/.npm", "~/.claude", "~/.loopway"]));
     expect(s.sandbox.network.allowedDomains).toEqual(["*"]);
+  });
+
+  describe("write guard hook", () => {
+    const guard = async (input: string) => {
+      const cwd = await mkdtemp(join(tmpdir(), "lw-guard-"));
+      await symlink(homedir(), join(cwd, "escape"));
+      const command = claudeSandboxSettings(cwd).hooks.PreToolUse[0]!.hooks[0]!.command;
+      const code = (payload: unknown) =>
+        spawnSync("/bin/sh", ["-c", command], { input: typeof payload === "string" ? payload : JSON.stringify(payload) })
+          .status;
+      return { cwd, code, input };
+    };
+
+    it("allows the working directory and temp, denies everything else, and fails closed", async () => {
+      const { cwd, code } = await guard("");
+      const write = (file_path?: string) => ({ tool_name: "Write", tool_input: { file_path } });
+      expect(code(write(join(cwd, "a.txt")))).toBe(0);
+      expect(code(write(join(cwd, "new/dir/b.txt")))).toBe(0);
+      expect(code(write("/tmp/lw-guard-ok"))).toBe(0);
+      expect(code(write(join(homedir(), "lw-guard-x")))).toBe(2);
+      expect(code(write(join(cwd, "escape", "lw-guard-x")))).toBe(2);
+      expect(code(write(join(homedir(), ".claude", "settings.json")))).toBe(2);
+      expect(code(write(join(homedir(), ".claude", "projects", "x.jsonl")))).toBe(0);
+      expect(code(write(undefined))).toBe(2);
+      expect(code("not json")).toBe(2);
+    });
   });
 
   it("names what's missing, and sends Windows to WSL2", () => {
