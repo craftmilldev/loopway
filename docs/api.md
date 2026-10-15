@@ -122,7 +122,7 @@ Two webhooks landing at once can commit out of `seq` order, and a cursor that ha
 
 A thread is an agent session working on one or more issues and PRs. It belongs to one bot, and its id is the Claude session id (a UUID made by the client). A message is assigned to at most one thread per bot. Transcripts and the Claude session itself stay on one machine, so a thread belongs to the [runner](#runners) that claimed it, until someone releases it. Only that runner, holding its live lease, changes the thread, so a thread can't run twice. The bot's lease covers reading its messages and assigning them to threads.
 
-Thread shape: `{id, bot_id, created_by, status, started, interrupted, limited, runner_id, subjects, waiting, inflight, delivered, created_at, updated_at}`. `runner_id` is the owning runner, null until one claims the thread.
+Thread shape: `{id, bot_id, created_by, status, started, interrupted, limited, runner_id, automation_level, subjects, waiting, inflight, delivered, created_at, updated_at}`. `runner_id` is the owning runner, null until one claims the thread. `automation_level` is 2 if a person started the thread, 3 if a bot did and a person took part, 4 if no person did; the author comes from each message's metadata (for GitHub, the sender's type, and the review bot's comments count as a bot). It's null while no message has a known author.
 
 - `status` is `active` or `ended`.
 - `subjects` are the things the thread works on. For GitHub, its issues and PRs (`owner/repo#number`). Assigning a message means working out the message's subjects and finding the thread that has one of them. A subject belongs to one thread per bot.

@@ -28,6 +28,11 @@ export class SourceRegistry {
     return this.byType.get(type)?.title(event) ?? null;
   }
 
+  /** Who made the event, or null if its source can't tell (or isn't registered). */
+  author(type: string, event: CloudEvent): "human" | "bot" | null {
+    return this.byType.get(type)?.author?.(event) ?? null;
+  }
+
   types(): string[] {
     return [...this.byType.keys()];
   }

@@ -148,7 +148,12 @@ export function createApi(opts: ApiOptions) {
       await received("ignored", { reason: result.reason });
       return c.json({ ignored: true, reason: result.reason }, 200);
     }
-    const { id, duplicate } = await store.insertMessage(c.var.db, inbox.id, result.event);
+    const { id, duplicate } = await store.insertMessage(
+      c.var.db,
+      inbox.id,
+      result.event,
+      sources.author(inbox.source_type, result.event),
+    );
     await received(duplicate ? "duplicate" : "accepted");
     return c.json({ id, duplicate }, duplicate ? 200 : 202);
   });
@@ -897,6 +902,7 @@ export function createApi(opts: ApiOptions) {
 
     const done = await store.assignMessages(c.var.db, bot.id, input.lease_token, input.cursor, assignments);
     if (!done) throw leaseMismatch(bot);
+    for (const level of done.levels) await metrics.capture("thread_automation_level_set", c.var.user.id, { level });
     return c.json({ assigned: done.assigned });
   });
 
@@ -1185,6 +1191,7 @@ function serializeThreadRow(t: store.Thread) {
     interrupted: t.interrupted,
     limited: t.limited,
     runner_id: t.runner_id,
+    automation_level: t.automation_level,
     subjects: t.subjects,
     delivered: t.delivered,
     ...(t.delivered_ids ? { delivered_ids: t.delivered_ids } : {}),

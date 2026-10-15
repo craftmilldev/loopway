@@ -124,6 +124,7 @@ describe("migration 022_created_by", () => {
         "024_drop_user_id",
         "025_member_created_by",
         "026_bot_harness",
+        "027_automation_level",
       ]);
 
       const by = async (table: string, id: string) =>

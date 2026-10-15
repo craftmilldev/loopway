@@ -393,13 +393,13 @@ export interface MessageRow {
 const MESSAGE_COLS = `id, inbox_id, seq, cloudevent, received_at`;
 
 /** Returns the stored message and whether it was a redelivery of one we already had (same CE source+id). */
-export async function insertMessage(db: Db, inboxId: string, ce: CloudEvent) {
+export async function insertMessage(db: Db, inboxId: string, ce: CloudEvent, author: "human" | "bot" | null = null) {
   const [inserted] = await db.query<{ id: string }>(
-    `INSERT INTO loopway.messages (id, inbox_id, ce_id, ce_source, ce_type, ce_subject, ce_time, cloudevent)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+    `INSERT INTO loopway.messages (id, inbox_id, ce_id, ce_source, ce_type, ce_subject, ce_time, cloudevent, author)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
      ON CONFLICT ON CONSTRAINT messages_ce_unique DO NOTHING
      RETURNING id`,
-    [uuidv7(), inboxId, ce.id, ce.source, ce.type, ce.subject ?? null, ce.time ?? null, ce],
+    [uuidv7(), inboxId, ce.id, ce.source, ce.type, ce.subject ?? null, ce.time ?? null, ce, author],
   );
   if (inserted) return { id: inserted.id, duplicate: false };
   const [existing] = await db.query<{ id: string }>(
@@ -887,6 +887,8 @@ export interface Thread {
   limited: boolean;
   /** The runner that owns the thread (see claimThread): its session lives there. Null until a runner claims it. */
   runner_id: string | null;
+  /** 2: a person started it. 3: a bot did, but a person took part. 4: no person did. Null while no message has a known author. */
+  automation_level: 2 | 3 | 4 | null;
   subjects: string[];
   /** Assigned, not handed to a run yet. */
   waiting: ThreadMessage[];
@@ -910,7 +912,7 @@ const threadMessages = (state: ThreadMessageState) => `
             WHERE tm.thread_id = t.id AND tm.state = '${state}'), '[]'::jsonb)`;
 
 const THREAD_COLS = `
-  t.id, t.bot_id, t.created_by, t.status, t.started, t.interrupted, t.limited, t.runner_id,
+  t.id, t.bot_id, t.created_by, t.status, t.started, t.interrupted, t.limited, t.runner_id, t.automation_level,
   t.created_at, t.updated_at,
   COALESCE((SELECT jsonb_agg(k.subject ORDER BY k.subject) FROM loopway.thread_subjects k WHERE k.thread_id = t.id),
            '[]'::jsonb) AS subjects,
@@ -1128,7 +1130,8 @@ export interface Assignment {
 
 /**
  * One transaction, so it's atomic: creates the threads the bot doesn't have yet, adds subjects, inserts the messages as
- * waiting (one already assigned is skipped) and advances the cursor. Does nothing, and returns undefined, unless
+ * waiting (one already assigned is skipped), sets the threads' automation levels (`levels` lists each one that changed)
+ * and advances the cursor. Does nothing, and returns undefined, unless
  * `token` is the live lease. Callers check the ids, subjects and messages first (threadBots and friends).
  */
 export async function assignMessages(
@@ -1137,7 +1140,7 @@ export async function assignMessages(
   token: string,
   cursor: number,
   assignments: Assignment[],
-): Promise<{ assigned: number } | undefined> {
+): Promise<{ assigned: number; levels: (2 | 3 | 4)[] } | undefined> {
   return db.transaction(async (tx) => {
     const [bot] = await tx.query<{ org_id: string; runner_id: string | null }>(
       `UPDATE loopway.bots b SET cursor = GREATEST(b.cursor, $3::bigint)
@@ -1169,7 +1172,23 @@ export async function assignMessages(
        ON CONFLICT (bot_id, message_id) DO NOTHING RETURNING message_id`,
       [assignments, botId],
     );
-    return { assigned: msgs.length };
+    // Each thread's level from its messages with a known author, oldest first: the first one started it.
+    const levels = await tx.query<{ level: 2 | 3 | 4 }>(
+      `UPDATE loopway.threads t SET automation_level = l.level, updated_at = now()
+       FROM (
+         SELECT tm.thread_id,
+                CASE WHEN (array_agg(m.author ORDER BY m.received_at, m.seq))[1] = 'human' THEN 2
+                     WHEN bool_or(m.author = 'human') THEN 3
+                     ELSE 4 END AS level
+         FROM loopway.thread_messages tm JOIN loopway.messages m ON m.id = tm.message_id
+         WHERE m.author IS NOT NULL AND tm.thread_id IN (SELECT DISTINCT a.thread_id FROM ${a} a)
+         GROUP BY tm.thread_id
+       ) l
+       WHERE t.id = l.thread_id AND t.automation_level IS DISTINCT FROM l.level
+       RETURNING l.level`,
+      [assignments],
+    );
+    return { assigned: msgs.length, levels: levels.map((r) => r.level) };
   });
 }
 
