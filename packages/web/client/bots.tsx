@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { botState, countThreads, filterOf, stateReason, type BotFilter } from "./bot-state.js";
 import type { Inbox } from "./shared.js";
 import { BAR_DAYS, DeliveryBars } from "./delivery-bars.js";
+import { LevelPie } from "./level-pie.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
@@ -179,6 +180,7 @@ export function Bots() {
                     Messages waiting
                   </th>
                   <th scope="col">Deliveries, {BAR_DAYS} days</th>
+                  <th scope="col">Levels</th>
                   <th scope="col" className="num">
                     Last delivery
                   </th>
@@ -209,6 +211,9 @@ export function Bots() {
                     <td className="num">{r.waiting}</td>
                     <td>
                       <DeliveryBars activity={activity?.[r.bot.id]} days={BAR_DAYS} />
+                    </td>
+                    <td>
+                      <LevelPie levels={activity?.[r.bot.id]?.levels} />
                     </td>
                     <td className={"num" + (activity?.[r.bot.id]?.last_delivery_at ? "" : " muted")}>
                       {activity ? lw.ago(activity[r.bot.id]?.last_delivery_at ?? null) : "…"}
