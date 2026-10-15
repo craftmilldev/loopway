@@ -1,6 +1,6 @@
 #!/bin/sh
 # Installs the loopway CLI from a GitHub release:  curl -fsSL https://loopway.craftmill.dev/install.sh | sh
-# LOOPWAY_VERSION=0.2.0 installs that release instead of the latest.
+# LOOPWAY_VERSION=0.3.0 installs that release instead of the latest.
 # The release lists its own tarballs in manifest.txt, so this script doesn't change when the package list does.
 # Needs Node 22+ and npm. Uses npm's global prefix, so it may need the same permissions as `npm i -g`.
 set -eu
@@ -29,17 +29,10 @@ fi
 DIR=$(mktemp -d)
 trap 'rm -rf "$DIR"' EXIT
 
-# manifest.txt lists the release's tarballs, one file name per line. Releases before it existed
-# (up to 0.2.0) shipped exactly these four.
-# Only a missing manifest means an old release; any other failure stops the install rather than
-# installing a partial package list. (A missing file:// asset, used by CI, is curl exit 37.)
-rc=0
-status=$(curl -sSL -w '%{http_code}' "$URL/manifest.txt" -o "$DIR/manifest.txt") || rc=$?
-case "$rc:$status" in
-  0:200 | 0:000) FILES=$(cat "$DIR/manifest.txt") ;;
-  0:404 | 37:*) FILES="loopway-harnesses.tgz loopway-rules.tgz loopway-presets.tgz loopway-cli.tgz" ;;
-  *) fail "could not fetch $URL/manifest.txt (status $status)." ;;
-esac
+# manifest.txt lists the release's tarballs, one file name per line. Releases before 0.3.0 have none
+# and can't be installed with this script.
+curl -fsSL "$URL/manifest.txt" -o "$DIR/manifest.txt" || fail "could not download $URL/manifest.txt (releases before 0.3.0 have none)."
+FILES=$(cat "$DIR/manifest.txt")
 [ -n "$FILES" ] || fail "the release lists no packages."
 
 PACKAGES=""
