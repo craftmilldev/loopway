@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { PRESETS } from "@loopway/presets";
+import { HarnessRequest } from "../ee/client/harness-request.js";
 import { CreateInbox, OrgSelect, type Inbox } from "./shared.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
@@ -312,6 +313,8 @@ function Identity({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const can_request = lw.useSources()?.can_request;
+  const [other, setOther] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -354,6 +357,28 @@ function Identity({
           Shown on threads and in <code>loopway bots run</code>.
         </p>
       </div>
+      <fieldset className="options">
+        <legend className="lbl">Harness</legend>
+        <label className="opt">
+          <input type="radio" name="harness" checked={!other} onChange={() => setOther(false)} />
+          <span>Claude Code</span>
+        </label>
+        {can_request && !existing && (
+          <label className="opt">
+            <input
+              type="radio"
+              name="harness"
+              checked={other}
+              onChange={() => {
+                track("new_bot_harness_other_opened");
+                setOther(true);
+              }}
+            />
+            <span>Something else…</span>
+          </label>
+        )}
+      </fieldset>
+      {other && !existing && <HarnessRequest />}
       <fieldset className="models">
         <legend className="lbl">Model</legend>
         {MODELS.map((m) => (

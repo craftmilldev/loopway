@@ -9,27 +9,33 @@ export interface SourceRequestTarget {
 
 export const sourceRequestInput = z.object({ description: z.string().trim().min(1).max(500) });
 
-/** Posts a `source.requested` message to the requests inbox. Returns whether the inbox took it. */
-export async function sendSourceRequest(
+/** A harness is asked for by the URL of its product page. */
+export const harnessRequestInput = z.object({ url: z.url({ protocol: /^https?$/ }).max(500) });
+
+/**
+ * Posts a request message to the requests inbox: `source.requested` for a webhook source, `harness.requested` for
+ * an agent harness. Returns whether the inbox took it.
+ */
+export async function sendRequest(
   target: SourceRequestTarget,
   send: typeof fetch,
-  request: { description: string; userId: string },
+  request: { type: "source.requested" | "harness.requested"; data: Record<string, string>; userId: string },
 ): Promise<boolean> {
   const r = await send(target.url, {
     method: "POST",
     headers: { authorization: `Bearer ${target.token}`, "content-type": "application/json" },
     body: JSON.stringify({
-      type: "source.requested",
+      type: request.type,
       id: uuidv7(),
       // Only the user's id: it's enough to look them up, and keeps their name and email out of the message.
-      data: { description: request.description, user: { id: request.userId } },
+      data: { ...request.data, user: { id: request.userId } },
     }),
   }).catch((err: unknown) => {
-    console.error("source request failed", err);
+    console.error(`${request.type} failed`, err);
     return undefined;
   });
   if (!r?.ok) {
-    if (r) console.error(`source request failed: ${r.status} ${await r.text()}`);
+    if (r) console.error(`${request.type} failed: ${r.status} ${await r.text()}`);
     return false;
   }
   return true;

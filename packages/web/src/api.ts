@@ -353,7 +353,7 @@ export function createApi(opts: ApiOptions) {
   authed.get("/sources", (c) => c.json({ data: sources.describe(), can_request: !!opts.sourceRequests }));
 
   // Routes under ee/ are the commercially licensed ones.
-  authed.route("/", eeRoutes(opts));
+  authed.route("/", eeRoutes(opts, metrics));
 
   /** The org a create names: 400 without one, 404 (as for any foreign entity) if the user isn't a member. */
   async function createOrg(
