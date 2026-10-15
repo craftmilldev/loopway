@@ -3,6 +3,20 @@ import type { RunWatch } from "./agent.js";
 /** How long to wait when a run hit the usage limit but didn't say when it resets. */
 export const LIMIT_FALLBACK_MS = 5 * 60_000;
 
+/** What a failed command or a refused write says when the sandbox (or the write guard) stopped it. */
+const DENIAL = /Operation not permitted|Read-only file system|Writes outside the working directory|sandbox/i;
+const MAX_DENIALS = 5;
+
+/** The text of a tool result's content, which is a string or a list of text blocks. */
+function resultText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((b) => (typeof b?.text === "string" ? b.text : "")).join("\n");
+}
+
+/** The first line of `text` that matches, trimmed to a length a log can hold. */
+const denialLine = (text: string) => (text.split("\n").find((l) => DENIAL.test(l)) ?? text).trim().slice(0, 300);
+
 /**
  * Watches a run's stream-json. With --replay-user-messages, Claude Code echoes the message we sent
  * once it's in the session. It reports the usage limit twice: a `rate_limit_event` with status
@@ -15,6 +29,7 @@ export class LimitWatch implements RunWatch {
   private resetsAt?: number;
   private hit = false;
   private error?: string;
+  private readonly denied: string[] = [];
 
   constructor(private readonly onInit?: () => void) {}
 
@@ -38,6 +53,7 @@ export class LimitWatch implements RunWatch {
     // Tool results are user records too, but with content blocks; only our message is a plain string.
     else if (r.type === "user" && !r.parent_tool_use_id && typeof r.message?.content === "string")
       this.delivered = true;
+    else if (r.type === "user") this.noteDenials(r.message?.content);
     else if (r.type === "rate_limit_event" && r.rate_limit_info?.status === "rejected" && r.rate_limit_info.resetsAt)
       this.resetsAt = r.rate_limit_info.resetsAt * 1000;
     else if (r.type === "result") {
@@ -47,6 +63,21 @@ export class LimitWatch implements RunWatch {
       else if (r.is_error || (typeof r.result === "string" && r.result.startsWith("API Error:")))
         this.error = typeof r.result === "string" ? r.result : "the run ended in an error";
     }
+  }
+
+  /** Keeps the failed tool results that mention a sandbox denial. */
+  private noteDenials(content: unknown): void {
+    if (!Array.isArray(content)) return;
+    for (const b of content) {
+      if (this.denied.length >= MAX_DENIALS) return;
+      if (b?.type !== "tool_result" || !b.is_error) continue;
+      const text = resultText(b.content);
+      if (DENIAL.test(text)) this.denied.push(denialLine(text));
+    }
+  }
+
+  denials(): string[] {
+    return this.denied;
   }
 
   /** The error the run ended on, if it did and it wasn't the usage limit. */
