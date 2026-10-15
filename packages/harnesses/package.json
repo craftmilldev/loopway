@@ -18,7 +18,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && cp src/write-guard.mjs dist/",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

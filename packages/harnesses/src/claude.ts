@@ -1,5 +1,6 @@
 import { accessSync, constants } from "node:fs";
 import { delimiter, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AgentRun } from "./agent.js";
 import { LimitWatch } from "./claude-watch.js";
 import { Harness, type CanRun, type Launch } from "./harness.js";
@@ -7,39 +8,8 @@ import { expandPath, SANDBOX_POLICY, sharedGitDir, type SandboxPolicy } from "./
 
 const shq = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
 
-/**
- * A hook that denies the file tools' writes outside the allowed roots or inside the denied ones (argv[1], JSON
- * `{ roots, deny }`), since Claude Code's sandbox only covers commands. It resolves symlinks of the nearest existing
- * parent so a link can't lead out. Claude Code only blocks on exit code 2, so anything unexpected exits 2 too.
- */
-const WRITE_GUARD = `
-const fs = require("fs"), path = require("path");
-const within = (t, r) => t === r || t.startsWith(r + path.sep);
-const real = (r) => { try { return fs.realpathSync(r); } catch { return r; } };
-try {
-  const cfg = JSON.parse(process.argv[1]);
-  const roots = cfg.roots.map(real), deny = cfg.deny.map(real);
-  let input = "";
-  process.stdin.on("data", (d) => (input += d)).on("end", () => {
-    try {
-      const ti = JSON.parse(input).tool_input || {};
-      const file = ti.file_path || ti.notebook_path;
-      if (typeof file !== "string" || !file) throw new Error("no path");
-      let p = path.resolve(file), tail = "";
-      while (!fs.existsSync(p) && path.dirname(p) !== p) { tail = path.join(path.basename(p), tail); p = path.dirname(p); }
-      const target = path.join(real(p), tail);
-      if (roots.some((r) => within(target, r)) && !deny.some((d) => within(target, d))) process.exit(0);
-      console.error("Writes outside the working directory, git dir, temp and tool caches are not allowed: " + file);
-    } catch (e) {
-      console.error("Write guard could not check this write: " + e.message);
-    }
-    process.exit(2);
-  });
-} catch (e) {
-  console.error("Write guard failed: " + e.message);
-  process.exit(2);
-}
-`;
+/** The hook that guards the file tools' writes, which the sandbox doesn't cover. It sits next to this file, in src and in dist. */
+const WRITE_GUARD = fileURLToPath(new URL("./write-guard.mjs", import.meta.url));
 
 /** The `--settings` value that puts a Claude Code run in its sandbox, with the network left open. */
 export function claudeSandboxSettings(cwd: string, policy: SandboxPolicy = SANDBOX_POLICY) {
@@ -53,7 +23,12 @@ export function claudeSandboxSettings(cwd: string, policy: SandboxPolicy = SANDB
       PreToolUse: [
         {
           matcher: "Edit|Write|MultiEdit|NotebookEdit",
-          hooks: [{ type: "command", command: `${shq(process.execPath)} -e ${shq(WRITE_GUARD)} ${shq(guard)}` }],
+          hooks: [
+            {
+              type: "command",
+              command: `LOOPWAY_WRITE_GUARD=${shq(guard)} ${shq(process.execPath)} ${shq(WRITE_GUARD)}`,
+            },
+          ],
         },
       ],
     },
