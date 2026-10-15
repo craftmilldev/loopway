@@ -4,8 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AgentRun } from "../src/agent.js";
-import { ClaudeHarness } from "../src/claude.js";
-import { claudeSandboxSettings, sandboxProblem } from "../src/sandbox.js";
+import { claudeCanRun, claudeSandboxSettings, ClaudeHarness } from "../src/claude.js";
 
 const run = (resume: boolean): AgentRun => ({
   harness: "claude",
@@ -63,8 +62,11 @@ describe("sandbox", () => {
   });
 
   it("names what's missing, and sends Windows to WSL2", () => {
-    expect(sandboxProblem("darwin")).toBeUndefined();
-    expect(sandboxProblem("win32")?.message).toMatch(/WSL2/);
-    expect(sandboxProblem("linux", "/nonexistent")?.message).toMatch(/bubblewrap socat/);
+    expect(claudeCanRun("darwin")).toEqual({ ok: true });
+    expect(claudeCanRun("win32")).toMatchObject({ ok: false, message: expect.stringMatching(/WSL2/) });
+    expect(claudeCanRun("linux", "/nonexistent")).toMatchObject({
+      ok: false,
+      message: expect.stringMatching(/bubblewrap socat/),
+    });
   });
 });
