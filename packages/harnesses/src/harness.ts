@@ -13,6 +13,8 @@ export interface Launch {
   stdin?: string;
   /** The directory to run in (the dispatcher's by default). */
   cwd?: string;
+  /** Environment variables added to the run's own. */
+  env?: Record<string, string>;
 }
 
 export type CanRun =
@@ -68,7 +70,7 @@ export abstract class Harness {
       await this.before(run);
       const launch = await this.launch(run);
       const child = spawn(this.command, launch.args, {
-        env: run.env,
+        env: launch.env ? { ...run.env, ...launch.env } : run.env,
         cwd: launch.cwd,
         stdio: [launch.stdin === undefined ? "ignore" : "pipe", "pipe", errFd],
       });

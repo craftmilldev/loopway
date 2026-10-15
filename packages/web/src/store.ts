@@ -471,7 +471,7 @@ export interface Bot {
   name: string;
   /** The model its sessions run on, as its harness takes it. */
   model: string;
-  /** The coding-agent CLI its sessions run in: `claude` or `cursor`. */
+  /** The coding-agent CLI its sessions run in: `claude`, `cursor` or `hermes`. */
   harness: string;
   /** bigint: the `seq` of the last message the bot has read past. */
   cursor: string | bigint;
