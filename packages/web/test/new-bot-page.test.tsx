@@ -96,6 +96,19 @@ describe("New bot flow", () => {
     expect(await screen.findByText("Waiting for the first thread…")).toBeTruthy();
   });
 
+  it("creates a bot from the blank preset", async () => {
+    at("");
+    render(<NewBot />);
+    fireEvent.click(await screen.findByLabelText(/github/));
+    fireEvent.click(screen.getByText("Continue"));
+    fireEvent.click(await screen.findByLabelText(/Blank/));
+    fireEvent.click(screen.getByText("Continue"));
+    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "dev" } });
+    fireEvent.click(screen.getByText("Create bot and continue"));
+    await screen.findByText("Listening for a runner to take the lease…");
+    expect(posts[0]!.body).toMatchObject({ prompt: PRESETS.blank!.prompt, rules: [] });
+  });
+
   it("starts on the org something was last created in, and lists only its inboxes", async () => {
     localStorage.setItem("loopway_last_org", "craftmill");
     at("");

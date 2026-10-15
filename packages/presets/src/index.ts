@@ -20,4 +20,10 @@ export const PRESETS: Record<string, Preset> = {
     prompt: THREAD_PROMPT,
     rules: GITHUB_THREADS_RULES,
   },
+  blank: {
+    label: "Blank",
+    description: "A placeholder prompt and no rules, so it gets no messages until you write both.",
+    prompt: "Describe what this bot should do.",
+    rules: [],
+  },
 };
