@@ -11,8 +11,8 @@ import { getHarness, HARNESSES } from "../src/index.js";
 const temp = () => mkdtemp(join(tmpdir(), "lw-harness-"));
 
 describe("harnesses", () => {
-  it("knows claude and cursor, and refuses others", () => {
-    expect(HARNESSES.map((h) => h.name)).toEqual(["claude", "cursor"]);
+  it("knows claude, cursor and bb, and refuses others", () => {
+    expect(HARNESSES.map((h) => h.name)).toEqual(["claude", "cursor", "bb"]);
     expect(() => getHarness("codex")).toThrow(/Unknown harness "codex"/);
   });
 
@@ -77,6 +77,61 @@ echo '{"type":"result","is_error":false,"result":"ok"}'
     expect(await readFile(join(out, "mcp"), "utf8")).toContain('"url":"http://127.0.0.1:1/mcp/t1"');
     expect(existsSync(`${logPath}.workspace`)).toBe(false);
     expect(await readFile(logPath, "utf8")).toContain('"subtype":"init"');
+  });
+
+  it("BbHarness: spawns a thread with the run's MCP config, tells the same thread on resume, and cleans up", async () => {
+    const bin = await temp();
+    const out = await temp();
+    // A stand-in for bb: records its calls and the MCP file the thread's workspace holds.
+    const script = `#!/bin/sh
+echo "$@" >> "${out}/calls"
+case "$2" in
+  spawn) cat > "${out}/prompt"; for a in "$@"; do if [ "$prev" = --environment ]; then cat "$a/.mcp.json" >> "${out}/mcp"; fi; prev="$a"; done
+         echo '{"id":"thr_1"}' ;;
+  tell) cat > /dev/null; echo '{}' ;;
+  show) echo '{"thread":{"status":"idle"}}' ;;
+  output) echo '{"output":"all done"}' ;;
+  *) echo '{}' ;;
+esac
+`;
+    await writeFile(join(bin, "bb"), script);
+    await chmod(join(bin, "bb"), 0o755);
+    const logPath = join(await temp(), "threads", "t1.log");
+    let started = 0;
+    const base: AgentRun = {
+      harness: "bb",
+      sessionId: "t1",
+      resume: false,
+      message: "hello",
+      model: "sonnet",
+      logPath,
+      mcpUrl: "http://127.0.0.1:1/mcp/t1",
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, LOOPWAY_BB_PROJECT: "proj_1" },
+      onStarted: () => started++,
+    };
+    const harness = getHarness("bb");
+    expect(await harness.run(base)).toMatchObject({ code: 0, delivered: true, finished: true });
+    expect(await harness.run({ ...base, resume: true, message: "again" })).toMatchObject({ code: 0, finished: true });
+    expect(started).toBe(2);
+    const calls = await readFile(join(out, "calls"), "utf8");
+    expect(calls).toContain("thread spawn --json --project proj_1 --environment");
+    expect(calls).toContain("--model sonnet");
+    expect(calls).toContain("thread tell thr_1 --mode auto");
+    expect(await readFile(join(out, "mcp"), "utf8")).toContain('"url":"http://127.0.0.1:1/mcp/t1"');
+    expect(await readFile(join(out, "prompt"), "utf8")).toContain("hello");
+    expect(existsSync(`${logPath}.workspace`)).toBe(false);
+    expect(await readFile(logPath, "utf8")).toContain("all done");
+
+    // A bb that fails is an API error, not a crash.
+    await writeFile(
+      join(bin, "bb"),
+      `#!/bin/sh\necho '{"ok":false,"error":{"message":"bb is not running"}}'\nexit 1\n`,
+    );
+    expect(await harness.run({ ...base, resume: false })).toMatchObject({
+      code: 1,
+      delivered: false,
+      apiError: expect.stringContaining("bb is not running"),
+    });
   });
 
   it("LimitWatch: sees our message echoed; a rejected rate_limit_event plus a usage_limit_reached result say when to retry", () => {
