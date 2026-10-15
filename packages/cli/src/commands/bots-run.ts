@@ -6,6 +6,7 @@ import { DEFAULTS, Dispatcher, type ThreadsOptions } from "../bots/dispatcher.js
 import { ensureRunner, savedRunnerOrg } from "../bots/runner.js";
 import { resolveOrg } from "./orgs.js";
 import { showTui } from "../bots/tui.js";
+import { CLI_VERSION } from "../version.js";
 
 export interface RunBotsOptions extends ThreadsOptions {
   /** The slug of the org to run bots for; remembered with the runner. */
@@ -39,7 +40,7 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     seen: all.map((b) => b.id),
   };
   const names = bots.map((b) => b.name).join(", ");
-  const watching = `Running ${names} every ${interval}s (at most ${opts.max ?? DEFAULTS.max} sessions running at once).`;
+  const watching = `loopway ${CLI_VERSION}: running ${names} every ${interval}s (at most ${opts.max ?? DEFAULTS.max} sessions running at once).`;
 
   if (opts.tui === false || !ctx.interactive) {
     const dispatcher = await Dispatcher.start(ctx, client, bots, dispatcherOpts);

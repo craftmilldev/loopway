@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ago, clock } from "../format.js";
 import type { DispatcherState } from "./dispatcher.js";
 import { transcriptLines, wrap, type TranscriptLine } from "./transcript.js";
+import { CLI_VERSION } from "../version.js";
 
 /** What the TUI shows, reloaded every second. */
 export interface Snapshot extends DispatcherState {
@@ -127,7 +128,7 @@ function ListView({ snap, selected, onSelect, onOpen }: ListViewProps) {
   return (
     <Box flexDirection="column" height={height}>
       <Text bold>
-        loopway bots run{" "}
+        loopway bots run <Text dimColor>v{CLI_VERSION}</Text>{" "}
         <Text dimColor>
           · {names(snap.bots.held) || "no bots held"}
           {skipped}
