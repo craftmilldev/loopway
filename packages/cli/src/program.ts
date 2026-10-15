@@ -20,7 +20,7 @@ import { addOrgMember, createOrg, leaveOrg, listOrgs, orgMembers, removeOrgMembe
 import { HARNESSES } from "@loopway/harnesses";
 import type { Context } from "./context.js";
 import { PRESETS } from "@loopway/presets";
-import { updateBeforeCommand } from "./update.js";
+import { updateBeforeCommand, updateCommand } from "./update.js";
 import { CLI_VERSION } from "./version.js";
 
 export function createProgram(ctx: Context): Command {
@@ -77,6 +77,12 @@ A CLI installed from a release updates itself to the newest one; turn that off w
       ),
     )
     .action((opts) => configure(ctx, opts));
+
+  program
+    .command("update")
+    .description("install the newest release now, skipping the hourly check")
+    .option("--force", "reinstall even if this is already the newest release")
+    .action((opts) => updateCommand(ctx, opts));
 
   program
     .command("clear-config")
