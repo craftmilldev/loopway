@@ -10,6 +10,7 @@ import {
   installRelease,
   isNewer,
   releaseVersion,
+  updateCommand,
   updatesEnabled,
   type UpdateDeps,
 } from "../src/update.js";
@@ -95,7 +96,7 @@ describe("availableUpdate", () => {
     expect(await availableUpdate(ctx, {}, deps)).toBeUndefined();
   });
 
-  it("looks once an hour, unless forced", async () => {
+  it("looks every ten minutes, unless forced", async () => {
     const { ctx, deps, urls } = setup({ latest: NEWER });
     await availableUpdate(ctx, {}, deps);
     await availableUpdate(ctx, {}, deps);
@@ -104,7 +105,7 @@ describe("availableUpdate", () => {
     expect(urls).toHaveLength(2);
   });
 
-  it("remembers a failed lookup for the hour and keeps the last known release", async () => {
+  it("remembers a failed lookup for ten minutes and keeps the last known release", async () => {
     const first = setup({ latest: NEWER });
     await availableUpdate(first.ctx, {}, first.deps);
     const failing = setup();
@@ -176,5 +177,44 @@ describe("installRelease", () => {
     };
     expect(await installRelease(ctx, NEWER, failing, (t) => logs.push(t))).toBe(false);
     expect(logs.join("\n")).toContain("Could not update loopway: EACCES");
+  });
+});
+
+describe("updateCommand", () => {
+  it("installs the newest release even when the cached lookup is fresh", async () => {
+    const { ctx, deps, installed } = setup({ latest: NEWER });
+    await writeFile(join(dir, "update-check.json"), JSON.stringify({ checked_at: 1_000_000, latest: CLI_VERSION }));
+    await updateCommand(ctx, {}, deps);
+    expect(installed).toHaveLength(1);
+  });
+
+  it("leaves the newest release alone unless forced", async () => {
+    const { ctx, deps, installed } = setup({ latest: CLI_VERSION });
+    await updateCommand(ctx, {}, deps);
+    expect(installed).toHaveLength(0);
+    await updateCommand(ctx, { force: true }, deps);
+    expect(installed).toHaveLength(1);
+  });
+
+  it("works with auto-update off", async () => {
+    const { ctx, deps, installed } = setup({ latest: NEWER, env: { LOOPWAY_NO_UPDATE: "1" } });
+    await updateCommand(ctx, {}, deps);
+    expect(installed).toHaveLength(1);
+  });
+
+  it("does not trust an older cached answer when the lookup fails", async () => {
+    const { ctx, deps, installed } = setup();
+    await writeFile(join(dir, "update-check.json"), JSON.stringify({ checked_at: 0, latest: CLI_VERSION }));
+    await expect(updateCommand(ctx, { force: true }, deps)).rejects.toThrow("Could not find the latest");
+    expect(installed).toHaveLength(0);
+  });
+
+  it("says so when the lookup fails or this is a checkout", async () => {
+    const lookup = setup();
+    await expect(updateCommand(lookup.ctx, {}, lookup.deps)).rejects.toThrow("Could not find the latest");
+    const checkout = setup({ latest: NEWER });
+    await expect(updateCommand(checkout.ctx, {}, { ...checkout.deps, installed: false })).rejects.toThrow(
+      "git checkout",
+    );
   });
 });

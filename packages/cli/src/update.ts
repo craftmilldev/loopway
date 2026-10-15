@@ -5,12 +5,12 @@ import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { loadConfig, readJson, writeJson } from "./config.js";
-import type { Context } from "./context.js";
+import { UsageError, type Context } from "./context.js";
 import { CLI_VERSION } from "./version.js";
 
 const REPO = "craftmilldev/loopway";
 /** How long a lookup of the latest release is trusted, so commands don't each hit GitHub. */
-const CHECK_TTL_MS = 60 * 60 * 1000;
+const CHECK_TTL_MS = 10 * 60 * 1000;
 /** A lookup that takes longer than this is treated as a failed one: the command goes ahead on this version. */
 const LOOKUP_TIMEOUT_MS = 3000;
 /** Set on the process a self-update starts, so it doesn't update again before running the command. */
@@ -63,15 +63,21 @@ export function isNewer(a: string, b: string): boolean {
 }
 
 /**
- * The newest release's version, from GitHub or, within an hour of the last lookup, from ~/.loopway/update-check.json.
- * Undefined when it can't be found (offline, rate limited): a failed lookup is remembered for the same hour so
- * an offline machine doesn't wait on it every command. `force` skips the cached answer.
+ * The newest release's version, from GitHub or, within ten minutes of the last lookup, from ~/.loopway/update-check.json.
+ * Undefined when it can't be found (offline, rate limited): a failed lookup is remembered for the same ten minutes so
+ * an offline machine doesn't wait on it every command. `force` skips the cached answer; `fresh` also refuses the last known one when the lookup fails.
  */
-async function latestVersion(ctx: Context, force: boolean, deps: UpdateDeps): Promise<string | undefined> {
+async function latestVersion(
+  ctx: Context,
+  force: boolean,
+  deps: UpdateDeps,
+  fresh = false,
+): Promise<string | undefined> {
   const path = join(ctx.configDir, "update-check.json");
   const cached = await readCache(path);
   if (!force && cached && deps.now() - cached.checked_at < CHECK_TTL_MS) return cached.latest;
   let latest = cached?.latest;
+  let looked = false;
   try {
     // The repo's latest release is the CLI's only while release-cli.yml is the one thing that publishes releases here
     // (as install.sh also assumes); a release of anything else would hide newer CLI ones.
@@ -79,12 +85,16 @@ async function latestVersion(ctx: Context, force: boolean, deps: UpdateDeps): Pr
       headers: { accept: "application/vnd.github+json", "user-agent": "loopway-cli" },
       signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
     });
-    if (res.ok) latest = releaseVersion(((await res.json()) as { tag_name?: string }).tag_name ?? "") ?? latest;
+    if (res.ok) {
+      looked = true;
+      latest = releaseVersion(((await res.json()) as { tag_name?: string }).tag_name ?? "") ?? latest;
+    }
   } catch {
     // Offline or slow: keep what we knew.
   }
   await writeJson(path, { checked_at: deps.now(), latest }).catch(() => {});
-  return latest;
+  // `fresh`: the caller wants GitHub's answer, not the last one known.
+  return fresh && !looked ? undefined : latest;
 }
 
 async function readCache(path: string): Promise<{ checked_at: number; latest?: string } | undefined> {
@@ -172,4 +182,39 @@ export async function updateAfterOutdated(ctx: Context, deps: UpdateDeps = defau
   if (ctx.env[UPDATED_ENV]) return;
   const version = await availableUpdate(ctx, { force: true }, deps);
   if (version && (await installRelease(ctx, version, deps))) reexec();
+}
+
+/**
+ * `loopway update`: installs the newest release now, whatever the cached lookup or the auto-update setting says.
+ * A copy that is already the newest is left alone unless `force` reinstalls it.
+ */
+export async function updateCommand(
+  ctx: Context,
+  opts: { force?: boolean } = {},
+  deps: UpdateDeps = defaultDeps,
+): Promise<void> {
+  const done = (outcome: string) => void ctx.metrics?.capture("cli_update", { outcome, force: !!opts.force });
+  if (!deps.installed) {
+    done("not_installed");
+    throw new UsageError(
+      "This loopway runs from a git checkout, so it can't update itself. Run `npm run update` there.",
+    );
+  }
+  const latest = await latestVersion(ctx, true, deps, true);
+  if (!latest) {
+    done("lookup_failed");
+    throw new Error("Could not find the latest loopway release (offline or rate limited by GitHub). Try again later.");
+  }
+  if (!isNewer(latest, CLI_VERSION) && !opts.force) {
+    done("current");
+    ctx.out(`loopway ${CLI_VERSION} is the newest release.`);
+    return;
+  }
+  if (!(await installRelease(ctx, latest, deps, ctx.out))) {
+    done("install_failed");
+    process.exitCode = 1;
+    return;
+  }
+  done("updated");
+  ctx.out(`loopway ${latest} installed.`);
 }
