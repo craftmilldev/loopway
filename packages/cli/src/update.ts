@@ -45,7 +45,7 @@ export const defaultDeps: UpdateDeps = {
   now: Date.now,
 };
 
-/** Whether this CLI updates itself: installed from a release, and not turned off (LOOPWAY_NO_UPDATE or `loopway config --auto-update off`). */
+/** Whether this CLI updates itself: installed from a release, and not turned off (LOOPWAY_NO_UPDATE or `loopway config update --auto-update off`). */
 export async function updatesEnabled(ctx: Context, deps: UpdateDeps = defaultDeps): Promise<boolean> {
   return deps.installed && (await loadConfig(ctx.configDir, ctx.env)).auto_update;
 }
