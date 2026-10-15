@@ -52,6 +52,14 @@ export function isNetworkError(error: string): boolean {
   return /Can't reach the API server|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH/.test(error);
 }
 
+/** The note a session's log gets when its tool results look like sandbox denials. */
+export const sandboxDenialNote = (denials: string[]) =>
+  [
+    `SANDBOX: ${denials.length} tool call${denials.length === 1 ? "" : "s"} in this run look like sandbox denials:`,
+    ...denials.map((d) => `  ${d}`),
+    "If this blocked legitimate work, rerun with `loopway bots run --no-sandbox` and report the path on the loopway issue tracker.",
+  ].join("\n");
+
 /** Printed at startup, and written to each session's log, when the sandbox is off. */
 export const UNSANDBOXED_WARNING =
   "WARNING: the sandbox is off, so bots run with full access to your files. Turn it back on with `loopway config update --sandbox on` and no --no-sandbox.";
@@ -322,14 +330,8 @@ export class Dispatcher {
 
   /** Notes in a session's log that the sandbox seems to have denied something, with the way to rule it out. */
   private logDenials(id: string, denials: string[]): void {
-    const path = sessionLogPath(this.dir, id);
-    const note = [
-      `SANDBOX: ${denials.length} tool call${denials.length === 1 ? "" : "s"} in this run look like sandbox denials:`,
-      ...denials.map((d) => `  ${d}`),
-      "If this blocked legitimate work, rerun with `loopway bots run --no-sandbox` and report the path on the loopway issue tracker.",
-    ].join("\n");
     try {
-      appendFileSync(path, note + "\n", { mode: 0o600 });
+      appendFileSync(sessionLogPath(this.dir, id), sandboxDenialNote(denials) + "\n", { mode: 0o600 });
     } catch {
       // A log that can't be written shouldn't stop the run.
     }

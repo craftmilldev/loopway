@@ -4,7 +4,7 @@ import type { RunWatch } from "./agent.js";
 export const LIMIT_FALLBACK_MS = 5 * 60_000;
 
 /** What a failed command or a refused write says when the sandbox (or the write guard) stopped it. */
-const DENIAL = /Operation not permitted|Read-only file system|Writes outside the working directory|sandbox/i;
+const DENIAL = /Operation not permitted|Read-only file system|Writes outside the working directory/i;
 const MAX_DENIALS = 5;
 
 /** The text of a tool result's content, which is a string or a list of text blocks. */
