@@ -3,8 +3,9 @@ import { z } from "zod";
 import { firstLine, get, str, withText } from "./payload.js";
 import type { CloudEvent, SourceAdapter, SourceDeps } from "./types.js";
 
-/** The email's subject line, when the webhook carries one. */
-const emailSubject = (event: CloudEvent) => str(get(event.data, "data.subject"));
+/** What the event is about: an email's subject line, a contact's address or a domain's name. */
+const label = (event: CloudEvent) =>
+  str(get(event.data, "data.subject")) ?? str(get(event.data, "data.email")) ?? str(get(event.data, "data.name"));
 
 /**
  * Resend webhooks → CloudEvents. Resend signs with Svix (the Standard Webhooks scheme under svix-* headers):
@@ -93,11 +94,11 @@ export const resend = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter
   },
 
   summarize(event) {
-    return withText(`Resend ${event.type.replace(/^com\.resend\./, "").replace(/[._]/g, " ")}`, emailSubject(event));
+    return withText(`Resend ${event.type.replace(/^com\.resend\./, "").replace(/[._]/g, " ")}`, label(event));
   },
 
   title(event) {
-    return firstLine(emailSubject(event)) ?? null;
+    return firstLine(label(event)) ?? null;
   },
 
   receive({ headers, rawBody, receivedAt }, config) {
