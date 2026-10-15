@@ -32,7 +32,7 @@ npm run build -w @loopway/cli && npm link -w @loopway/cli      # or put your che
 ```
 
 ```bash
-loopway config update                      # sets the API URL (default https://loopway.craftmill.dev) and, optionally, a GitHub bot; skip it for the defaults
+loopway config update                  # sets the API URL (default https://loopway.craftmill.dev) and, optionally, a GitHub bot; skip it for the defaults
 loopway login                          # emails you a one-time code, trades it for a 30-day session token, saves it (new emails get an account)
 loopway whoami
 loopway clear-config                   # deletes ~/.loopway/config.json

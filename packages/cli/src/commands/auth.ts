@@ -67,7 +67,7 @@ export async function showConfig(ctx: Context) {
       ["api_key", config.api_key ? MASK : "(not logged in)"],
       ["posthog_host", config.posthog_host],
       ["auto_update", config.auto_update ? "on" : "off"],
-      ["github_token", bot ? MASK : "(not set)"],
+      ["github_token", bot ? MASK : botError ? "(incomplete)" : "(not set)"],
       ["github_name", bot?.name],
       ["github_email", bot?.email],
     ]),
