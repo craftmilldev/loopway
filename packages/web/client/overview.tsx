@@ -3,6 +3,7 @@ import { botState, countThreads, sumCounts, type BotState, type ThreadCounts } f
 import type { Inbox } from "./shared.js";
 import { deliveredIn } from "./activity.js";
 import { BAR_DAYS, DeliveryBars } from "./delivery-bars.js";
+import { LevelPie } from "./level-pie.js";
 import { DashLayout, MembersHint } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
@@ -298,6 +299,7 @@ export function Overview() {
                   Messages waiting
                 </th>
                 <th scope="col">Deliveries, {BAR_DAYS} days</th>
+                <th scope="col">Levels</th>
                 <th scope="col" className="num">
                   Last delivery
                 </th>
@@ -320,6 +322,9 @@ export function Overview() {
                     <td className="num">{countBy.get(b.id)?.waiting ?? "…"}</td>
                     <td>
                       <DeliveryBars activity={activity?.[b.id]} days={BAR_DAYS} />
+                    </td>
+                    <td>
+                      <LevelPie levels={activity?.[b.id]?.levels} />
                     </td>
                     <td className={"num" + (activity?.[b.id]?.last_delivery_at ? "" : " muted")}>
                       {activity ? lw.ago(activity[b.id]?.last_delivery_at ?? null) : "…"}

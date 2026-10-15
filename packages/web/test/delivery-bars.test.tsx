@@ -12,6 +12,7 @@ function activity(days: [string, number][]): BotActivity {
     last_delivery_at: null,
     runs: 0,
     median_wait_seconds: null,
+    levels: { 2: 0, 3: 0, 4: 0 },
   };
 }
 

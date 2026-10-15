@@ -57,6 +57,17 @@ async function deliver(ctx: Ctx, name: string, at: number | null, waitSeconds = 
 }
 
 describe("bot activity", () => {
+  it("counts threads at each automation level, an unset level as 2", async () => {
+    const ctx = await setup();
+    const a = await thread(ctx, "a");
+    await thread(ctx, "b");
+    const c = await thread(ctx, "c");
+    await db.query("UPDATE loopway.threads SET automation_level = 4 WHERE id = $1", [a]);
+    await db.query("UPDATE loopway.threads SET automation_level = 3 WHERE id = $1", [c]);
+    const r = await call("GET", `/bots/${ctx.bot.id}/activity`, { key: ctx.key });
+    expect(r.body.levels).toEqual({ 2: 1, 3: 1, 4: 1 });
+  });
+
   it("returns zeros and no last delivery for a bot that never delivered", async () => {
     const ctx = await setup();
     await deliver(ctx, "t", null);
