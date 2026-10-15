@@ -16,6 +16,6 @@ export function getHarness(name: string): Harness {
 export const runHarness: RunAgent = (run: AgentRun) => getHarness(run.harness).run(run);
 
 export { Harness } from "./harness.js";
-export type { HarnessProblem } from "./harness.js";
+export type { CanRun } from "./harness.js";
 export type { Launch } from "./harness.js";
 export type { AgentRun, RunAgent, RunOutcome, RunWatch } from "./agent.js";

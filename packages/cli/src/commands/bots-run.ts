@@ -34,10 +34,11 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     return;
   }
   // Refuse up front, rather than failing every run, if a bot's harness can't run here.
-  const problem = [...new Set(bots.map((b) => b.harness))].map((h) => getHarness(h).problem()).find(Boolean);
-  if (problem) {
-    void ctx.metrics?.capture("bots_run_refused", { reason: problem.reason, platform: process.platform });
-    throw new UsageError(problem.message);
+  for (const name of new Set(bots.map((b) => b.harness))) {
+    const can = getHarness(name).canRun();
+    if (can.ok) continue;
+    void ctx.metrics?.capture("bots_run_refused", { reason: can.reason, platform: process.platform });
+    throw new UsageError(can.message);
   }
   const interval = opts.interval ?? DEFAULTS.interval;
   const dispatcherOpts = {

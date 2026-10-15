@@ -15,12 +15,15 @@ export interface Launch {
   cwd?: string;
 }
 
-export interface HarnessProblem {
-  /** A low-cardinality code, for metrics. */
-  reason: string;
-  /** What to tell the user, including what to install or do instead. */
-  message: string;
-}
+export type CanRun =
+  | { ok: true }
+  | {
+      ok: false;
+      /** A low-cardinality code, for metrics. */
+      reason: string;
+      /** What to tell the user, including what to install or do instead. */
+      message: string;
+    };
 
 /**
  * A coding-agent CLI that can run a bot's sessions (Claude Code, Cursor, ...). To add one, subclass this, fill in
@@ -36,9 +39,9 @@ export abstract class Harness {
   /** Whether `model` is one this harness takes (a bot's model is checked against its harness). */
   abstract modelFits(model: string): boolean;
 
-  /** Why this harness can't run here (a missing dependency, an unsupported platform), if it can't. Checked before any bot starts. */
-  problem(): HarnessProblem | undefined {
-    return undefined;
+  /** Whether this harness can run on this machine (it may need a dependency or a platform). Checked before any bot starts. */
+  canRun(): CanRun {
+    return { ok: true };
   }
 
   /** Runs before the process starts, so a harness can write the files it wants (an MCP config, say). */

@@ -1,6 +1,6 @@
 import type { AgentRun } from "./agent.js";
 import { LimitWatch } from "./claude-watch.js";
-import { Harness, type Launch } from "./harness.js";
+import { Harness, type CanRun, type Launch } from "./harness.js";
 import { claudeSandboxSettings, sandboxProblem } from "./sandbox.js";
 
 /** Claude Code, run as `claude -p`. */
@@ -25,8 +25,9 @@ export class ClaudeHarness extends Harness {
   }
 
   /** Claude runs only in its sandbox, so it can't run where the sandbox can't. */
-  problem() {
-    return sandboxProblem();
+  canRun(): CanRun {
+    const problem = sandboxProblem();
+    return problem ? { ok: false, ...problem } : { ok: true };
   }
 
   launch(run: AgentRun): Launch {
