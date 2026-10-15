@@ -9,8 +9,6 @@ import type { Context } from "./context.js";
 import { CLI_VERSION } from "./version.js";
 
 const REPO = "craftmilldev/loopway";
-/** The release assets (loopway-<name>.tgz) npm installs together, as install.sh does. */
-const ASSETS = ["harnesses", "rules", "presets", "cli"];
 /** How long a lookup of the latest release is trusted, so commands don't each hit GitHub. */
 const CHECK_TTL_MS = 60 * 60 * 1000;
 /** A lookup that takes longer than this is treated as a failed one: the command goes ahead on this version. */
@@ -22,6 +20,8 @@ const UPDATED_ENV = "LOOPWAY_UPDATED";
 export interface UpdateDeps {
   /** Whether this CLI was installed from a release (npm i -g), as opposed to run from a git checkout. */
   installed: boolean;
+  /** The other packages (`rules` for @loopway/rules) a downloaded CLI tarball depends on, which are released alongside it. */
+  needs: (cliTarball: string) => Promise<string[]>;
   /** Installs the given tarballs globally. */
   install: (files: string[]) => Promise<void>;
   now: () => number;
@@ -34,6 +34,13 @@ export const defaultDeps: UpdateDeps = {
   installed: fileURLToPath(import.meta.url)
     .split(sep)
     .includes("node_modules"),
+  needs: async (cli) => {
+    const { stdout } = await run("tar", ["-xzOf", cli, "package/package.json"]);
+    const { dependencies = {} } = JSON.parse(stdout) as { dependencies?: Record<string, string> };
+    return Object.keys(dependencies)
+      .filter((name) => name.startsWith("@loopway/"))
+      .map((name) => name.slice("@loopway/".length));
+  },
   install: async (files) => void (await run("npm", ["install", "-g", ...files], { timeout: 5 * 60 * 1000 })),
   now: Date.now,
 };
@@ -110,17 +117,18 @@ export async function installRelease(
   log(`Updating loopway ${CLI_VERSION} → ${version}…`);
   const dir = await mkdtemp(join(tmpdir(), "loopway-update-"));
   try {
-    const files: string[] = [];
-    for (const name of ASSETS) {
+    const download = async (name: string) => {
       const url = `https://github.com/${REPO}/releases/download/cli-v${version}/loopway-${name}.tgz`;
       const res = await (ctx.fetch ?? fetch)(url);
       if (!res.ok) throw new Error(`could not download ${url} (${res.status})`);
       const file = join(dir, `loopway-${name}.tgz`);
       await writeFile(file, Buffer.from(await res.arrayBuffer()));
-      files.push(file);
-    }
-    // Packages in dependency order, the CLI last, as install.sh passes them.
-    await deps.install(files);
+      return file;
+    };
+    // The CLI says what else it needs: its @loopway/* dependencies are released next to it, as loopway-<name>.tgz.
+    const cli = await download("cli");
+    const needs = await deps.needs(cli);
+    await deps.install([...(await Promise.all(needs.map(download))), cli]);
     return true;
   } catch (err) {
     log(`Could not update loopway: ${err instanceof Error ? err.message : String(err)}`);
