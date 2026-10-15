@@ -1,8 +1,8 @@
 name: Release CLI
 
 # Push a tag `cli-v<version>` (matching packages/cli/package.json) to release the CLI. Anyone who can push tags
-# can release. The release carries the CLI and the two workspace packages it needs as npm tarballs, which
-# packages/web/content/install.sh (served at /install.sh) installs.
+# can release. The release carries the CLI and the workspace packages it needs as npm tarballs, plus a
+# manifest.txt listing them, which packages/web/content/install.sh (served at /install.sh) installs.
 on:
   push:
     tags: ["cli-v*"]
@@ -32,15 +32,17 @@ jobs:
         run: |
           mkdir dist-release
           npm pack -w @loopway/harnesses -w @loopway/rules -w @loopway/presets -w @loopway/cli --pack-destination dist-release
-          # Fixed names, so install.sh can fetch .../releases/latest/download/loopway-cli.tgz
+          # Fixed names, so the manifest and install.sh don't need to know versions
           for name in harnesses rules presets cli; do
             mv dist-release/loopway-$name-*.tgz dist-release/loopway-$name.tgz
           done
-      - name: Install from the tarballs and run it
+          # install.sh installs whatever this lists
+          (cd dist-release && ls loopway-*.tgz > manifest.txt)
+      - name: Install with the hosted install.sh and run it
         run: |
-          npm install -g ./dist-release/loopway-harnesses.tgz ./dist-release/loopway-rules.tgz ./dist-release/loopway-presets.tgz ./dist-release/loopway-cli.tgz
+          LOOPWAY_DOWNLOAD_URL="file://$PWD/dist-release" sh packages/web/content/install.sh
           test "$(loopway --version)" = "$(node -p 'require("./packages/cli/package.json").version')"
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist-release/*.tgz --title "CLI ${GITHUB_REF_NAME#cli-v}" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" dist-release/*.tgz dist-release/manifest.txt --title "CLI ${GITHUB_REF_NAME#cli-v}" --generate-notes
