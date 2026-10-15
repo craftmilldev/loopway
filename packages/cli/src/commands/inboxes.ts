@@ -35,7 +35,7 @@ export async function showInbox(ctx: Context, ref: string, opts: { json?: boolea
         ["messages", stats.messages],
       ]),
       "",
-      inbox.source_type === "schedule" ? scheduleText(inbox.config as Partial<ScheduleConfig>) : setupText(inbox),
+      inbox.source_type === "schedule" ? scheduleText(inbox.config) : setupText(inbox),
     ].join("\n"),
   );
 }
@@ -309,8 +309,7 @@ export async function updateInbox(ctx: Context, ref: string, opts: UpdateOptions
   }
   if (isSchedule && config) await ctx.metrics?.capture("schedule_updated", { how: opts.config ? "file" : how });
   if (opts.json) return ctx.out(json(inbox));
-  const body =
-    inbox.source_type === "schedule" ? scheduleText(inbox.config as Partial<ScheduleConfig>) : setupText(inbox);
+  const body = inbox.source_type === "schedule" ? scheduleText(inbox.config) : setupText(inbox);
   ctx.out(`Updated inbox ${bold(inbox.name)} (${inbox.id})\n\n${body}`);
 }
 
