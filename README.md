@@ -32,7 +32,7 @@ npm run build -w @loopway/cli && npm link -w @loopway/cli      # or put your che
 ```
 
 ```bash
-loopway config                         # sets the API URL (default https://loopway.craftmill.dev) and, optionally, a GitHub bot; skip it for the defaults
+loopway config update                      # sets the API URL (default https://loopway.craftmill.dev) and, optionally, a GitHub bot; skip it for the defaults
 loopway login                          # emails you a one-time code, trades it for a 30-day session token, saves it (new emails get an account)
 loopway whoami
 loopway clear-config                   # deletes ~/.loopway/config.json
@@ -109,10 +109,10 @@ The inbox's GitHub webhook needs `pull_request`, `pull_request_review` and `pull
 
 #### Acting as a GitHub bot
 
-By default sessions use your own `gh` login and git credentials, so their comments, PRs and commits look like yours. To have them act as a bot user instead, add the bot's token and git identity. The token can be a fine-grained PAT with contents, issues and pull requests read/write on an org that allows them, or a classic PAT with `repo` scope (needed for repos where the bot is only a collaborator). Set them with `loopway config`, which prompts for each one in a terminal (an empty answer keeps the saved value), or pass flags:
+By default sessions use your own `gh` login and git credentials, so their comments, PRs and commits look like yours. To have them act as a bot user instead, add the bot's token and git identity. The token can be a fine-grained PAT with contents, issues and pull requests read/write on an org that allows them, or a classic PAT with `repo` scope (needed for repos where the bot is only a collaborator). Set them with `loopway config update`, which prompts for each one in a terminal (an empty answer keeps the saved value), or pass flags:
 
 ```sh
-loopway config --github-token github_pat_... --github-name loopway-bot --github-email 12345+loopway-bot@users.noreply.github.com
+loopway config update --github-token github_pat_... --github-name loopway-bot --github-email 12345+loopway-bot@users.noreply.github.com
 ```
 
 They're saved as the `github` block in `~/.loopway/config.json`:
@@ -125,7 +125,7 @@ They're saved as the `github` block in `~/.loopway/config.json`:
 }
 ```
 
-`LOOPWAY_GITHUB_TOKEN`, `LOOPWAY_GITHUB_NAME` and `LOOPWAY_GITHUB_EMAIL` override it. Set all three or none; `loopway config` won't save only some. `loopway login` keeps the `github` block. Each session then gets:
+`LOOPWAY_GITHUB_TOKEN`, `LOOPWAY_GITHUB_NAME` and `LOOPWAY_GITHUB_EMAIL` override it. Set all three or none; `loopway config update` won't save only some. `loopway login` keeps the `github` block. Each session then gets:
 
 - `GH_TOKEN` and `GITHUB_TOKEN`, so `gh` comments and opens PRs as the bot, and other tools that read `GITHUB_TOKEN` don't get a token you exported;
 - a git credential helper for `https://github.com` that answers with the bot's token, replacing your own helpers there, with `git@github.com:` remotes rewritten to HTTPS so pushes use it too;

@@ -4,6 +4,7 @@ import {
   clearConfig as removeConfig,
   configPath,
   loadConfig,
+  loadGithubBot,
   readGithubBot,
   resolveAuth,
   writeConfig,
@@ -18,20 +19,62 @@ import { bold, dim, fields, json } from "../format.js";
  */
 export async function configure(
   ctx: Context,
-  opts: { url?: string; githubToken?: string; githubName?: string; githubEmail?: string; autoUpdate?: "on" | "off" },
+  opts: { url?: string; posthogHost?: string; githubToken?: string; githubName?: string; githubEmail?: string; autoUpdate?: "on" | "off" },
 ) {
   const current = await loadConfig(ctx.configDir, ctx.env);
   const url = opts.url ?? (ctx.interactive ? await promptUrl(current.api_url) : current.api_url);
-  const github = await configureGithubBot(ctx, opts);
+  let github: GithubBot | undefined;
+  try {
+    github = await configureGithubBot(ctx, opts);
+  } catch (err) {
+    await ctx.metrics?.capture("config_update_rejected", { reason: "github_bot_incomplete" });
+    throw err;
+  }
   await writeConfig(ctx.configDir, {
     api_url: url,
+    ...(opts.posthogHost && { posthog_host: opts.posthogHost }),
     ...(github && { github }),
     ...(opts.autoUpdate && { auto_update: opts.autoUpdate === "on" }),
   });
   ctx.out(`Configured ${url}. Run \`loopway login\` next.`);
   if (github) ctx.out(`GitHub bot: ${bold(github.name)} <${github.email}>`);
   if (opts.autoUpdate) ctx.out(`Self-update: ${bold(opts.autoUpdate)}`);
+  if (opts.posthogHost) ctx.out(`Metrics host: ${bold(opts.posthogHost)}`);
   ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
+  await ctx.metrics?.capture("config_updated", {
+    url: !!opts.url,
+    posthog_host: !!opts.posthogHost,
+    github_bot: !!(opts.githubToken || opts.githubName || opts.githubEmail),
+    auto_update: opts.autoUpdate ?? "unchanged",
+  });
+}
+
+const MASK = "******";
+
+/** Prints the settings commands would use, env included, with the API key and GitHub token masked. */
+export async function showConfig(ctx: Context) {
+  const config = await loadConfig(ctx.configDir, ctx.env);
+  let bot: GithubBot | undefined;
+  let botError: string | undefined;
+  try {
+    bot = await loadGithubBot(ctx.configDir, ctx.env);
+  } catch (err) {
+    botError = (err as Error).message;
+  }
+  ctx.out(
+    fields([
+      ["api_url", config.api_url],
+      ["api_key", config.api_key ? MASK : "(not logged in)"],
+      ["posthog_host", config.posthog_host],
+      ["auto_update", config.auto_update ? "on" : "off"],
+      ["github_token", bot ? MASK : "(not set)"],
+      ["github_name", bot?.name],
+      ["github_email", bot?.email],
+    ]),
+  );
+  if (botError) ctx.out(botError);
+  ctx.out(dim(`Config file: ${configPath(ctx.configDir)}`));
+  await ctx.metrics?.capture("config_shown", { logged_in: !!config.api_key, github_bot: !!bot, bot_incomplete: !!botError });
 }
 
 /**
