@@ -3,7 +3,7 @@
 - **Stack:** TypeScript + [Hono](https://hono.dev), zero-config on Vercel.
 - **DB:** Postgres 17 everywhere, through [postgres.js](https://github.com/porsager/postgres). Locally a Docker container (`docker-compose.yml`); on Vercel, [Neon](https://neon.tech) via `DATABASE_URL`. Tests run against the same local Postgres, so they exercise the engine that is deployed.
 - **Data types:** `User` → owns `Inbox`es → which receive `Message`s; a `Bot` reads the messages of one or more inboxes.
-- **Sources:** `github`, `granola`, `linear`, `loopway`, `resend`, `vercel` (more can be added in `packages/sources/src/`, see [Adding a source](#adding-a-source)).
+- **Sources:** `github`, `granola`, `linear`, `loopway`, `resend`, `schedule`, `vercel` (more can be added in `packages/sources/src/`, see [Adding a source](#adding-a-source)).
 - **Packages:** npm workspaces — [`packages/web`](../packages/web) (the server) and [`packages/cli`](../packages/cli) (the `loopway` command, a client of the [API](api.md)).
 
 ## Run locally
@@ -33,7 +33,7 @@ To receive real GitHub webhooks locally, expose the port (e.g. `cloudflared tunn
 4. Deploy. Vercel picks up `packages/web/src/index.ts` as a Hono app automatically, and runs `npm run build` to bundle the web UI into `packages/web/public/`. The app serves `app.js` and `app.css` itself, since Vercel's CDN only serves the files in `public/` that are committed.
 5. Create users with `loopway login` pointed at your deployment (`loopway config` sets the URL).
 
-Optionally set `POSTHOG_API_KEY` (and `POSTHOG_HOST` for EU or self-hosted PostHog; an `eu.*` host also points the `/api/ingest` reverse proxy at PostHog EU) to send product metrics, from the server and from the web UI in the browser; without a key nothing is sent. The CLI reads the same two variables (its host can also be `posthog_host` in `~/.loopway/config.json`; the default is this API's `/api/ingest` proxy), and stays silent when `DO_NOT_TRACK` or `LOOPWAY_TELEMETRY=0` is set. Events: web `webhook_received` (by source and outcome), `api_error` (by code and `cli_version`), `install_sh_served`, `install_sh_missing`, `login_requested`, `signed_up`, `logged_in`, `inbox_created`; CLI `cli_command`, `cli_error`, `bot_session_stopped` (by how it stopped). The CLI identifies the logged-in user (from its session token), or a random id in `~/.loopway/install-id` before login.
+Optionally set `POSTHOG_API_KEY` (and `POSTHOG_HOST` for EU or self-hosted PostHog; an `eu.*` host also points the `/api/ingest` reverse proxy at PostHog EU) to send product metrics, from the server and from the web UI in the browser; without a key nothing is sent. The CLI reads the same two variables (its host can also be `posthog_host` in `~/.loopway/config.json`; the default is this API's `/api/ingest` proxy), and stays silent when `DO_NOT_TRACK` or `LOOPWAY_TELEMETRY=0` is set. Events: web `webhook_received` (by source and outcome), `schedule_message` (by outcome), `schedule_ticked`, `schedule_tick_rejected`, `api_error` (by code and `cli_version`), `install_sh_served`, `install_sh_missing`, `login_requested`, `signed_up`, `logged_in`, `inbox_created`; CLI `cli_command`, `cli_error`, `bot_session_stopped` (by how it stopped). The CLI identifies the logged-in user (from its session token), or a random id in `~/.loopway/install-id` before login.
 
 Tables live in a `loopway` schema (not `public`) with RLS enabled and no policies, so a Data API (Neon's is opt-in) can't reach them.
 

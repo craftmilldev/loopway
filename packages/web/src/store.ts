@@ -298,6 +298,11 @@ export async function getInbox(db: Db, id: string, userId?: string): Promise<Inb
   return row;
 }
 
+/** Every inbox of one source type, for the cron route. */
+export async function inboxesOfSource(db: Db, sourceType: string): Promise<Inbox[]> {
+  return db.query<Inbox>(`SELECT * FROM loopway.inboxes WHERE source_type = $1 ORDER BY id`, [sourceType]);
+}
+
 export async function updateInbox(db: Db, id: string, patch: { name?: string; config?: unknown }): Promise<Inbox> {
   const [row] = await db.query<Inbox>(
     `UPDATE loopway.inboxes SET

@@ -9,7 +9,12 @@ export interface Inbox {
   name: string;
   source_type: string;
   webhook_url: string;
-  config?: { secret?: string | null; events?: string[] };
+  config?: {
+    secret?: string | null;
+    events?: string[];
+    schedule?: { every: "hour" } | { every: "day"; hour: number };
+    messages?: { type: string; message: string }[];
+  };
 }
 
 /** Who holds the bot, in words. */
@@ -59,6 +64,9 @@ export function CreateInbox({ org: given, onCreated }: { org?: string; onCreated
   const [all, setAll] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [secret, setSecret] = useState("");
+  const [every, setEvery] = useState<"hour" | "day">("hour");
+  const [hour, setHour] = useState(9);
+  const [messages, setMessages] = useState<{ type: string; message: string }[]>([{ type: "", message: "" }]);
   const [error, setError] = useState<string | null>(null);
   const sourceRequest = useSourceRequest(setError);
 
@@ -66,11 +74,17 @@ export function CreateInbox({ org: given, onCreated }: { org?: string; onCreated
   // The first source is picked until the user picks another.
   const source = requesting ? undefined : (sources.find((s) => s.type === type) ?? sources[0]);
 
+  const minLength = source?.secret.from === "loopway" ? source.secret.min_length : undefined;
+
   function toggle(event: string, on: boolean) {
     const next = new Set(checked);
     if (on) next.add(event);
     else next.delete(event);
     setChecked(next);
+  }
+
+  function editMessage(i: number, patch: Partial<{ type: string; message: string }>) {
+    setMessages(messages.map((m, j) => (j === i ? { ...m, ...patch } : m)));
   }
 
   function generate() {
@@ -83,15 +97,25 @@ export function CreateInbox({ org: given, onCreated }: { org?: string; onCreated
     setError(null);
     if (requesting) return sourceRequest.send();
     if (!source) return;
+    if (!org) return setError("Choose an org.");
+    // A schedule has no webhook: its config is a clock and the messages it sends.
+    if (source.secret.from === "none") {
+      const config = { schedule: every === "hour" ? { every } : { every, hour }, messages };
+      return create(config);
+    }
     const events = all ? ["*"] : source.events.filter((ev) => checked.has(ev));
     if (!events.length) return setError("Pick at least one event.");
     // A sender-made secret is pasted in on the inbox page afterwards.
     const config = source.secret.from === "sender" ? { events } : { events, secret };
-    if (!org) return setError("Choose an org.");
+    return create(config);
+  }
+
+  async function create(config: unknown) {
+    if (!source) return;
     const r = await lw.api("/inboxes", { method: "POST", body: { org, name, source_type: source.type, config } });
     if (r.status === 401) return lw.expired(r);
     if (!r.ok) {
-      track("inbox_create_rejected", { status: r.status });
+      track("inbox_create_rejected", { status: r.status, source_type: source.type });
       return setError(await lw.message(r));
     }
     lw.rememberOrg(org);
@@ -133,6 +157,77 @@ export function CreateInbox({ org: given, onCreated }: { org?: string; onCreated
       </div>
       {requesting ? (
         sourceRequest.fields
+      ) : source?.secret.from === "none" ? (
+        <>
+          <div className="field">
+            <label htmlFor="every">Runs</label>
+            <div className="input-wrap">
+              <select id="every" value={every} onChange={(e) => setEvery(e.target.value as "hour" | "day")}>
+                <option value="hour">Every hour</option>
+                <option value="day">Every day</option>
+              </select>
+              {every === "day" && (
+                <select aria-label="Hour (UTC)" value={hour} onChange={(e) => setHour(Number(e.target.value))}>
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <option key={h} value={h}>
+                      at {String(h).padStart(2, "0")}:00 UTC
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          </div>
+          <div className="field">
+            <label>Messages</label>
+            {messages.map((m, i) => (
+              <div className="input-wrap" key={i}>
+                <input
+                  aria-label="Message type"
+                  placeholder="type, e.g. standup"
+                  required
+                  maxLength={64}
+                  pattern="[a-z0-9][a-z0-9._\-]*"
+                  value={m.type}
+                  onChange={(e) => editMessage(i, { type: e.target.value })}
+                />
+                <input
+                  aria-label="Message text"
+                  placeholder="text sent with it"
+                  required
+                  maxLength={10000}
+                  value={m.message}
+                  onChange={(e) => editMessage(i, { message: e.target.value })}
+                />
+                {messages.length > 1 && (
+                  <button
+                    className="btn btn-sm btn-quiet"
+                    type="button"
+                    onClick={() => setMessages(messages.filter((_, j) => j !== i))}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            ))}
+            {messages.length < 20 && (
+              <button
+                className="btn btn-sm btn-quiet"
+                type="button"
+                onClick={() => setMessages([...messages, { type: "", message: "" }])}
+              >
+                Add a message
+              </button>
+            )}
+            <p className="hint">
+              Each run sends one message per type, with its text. A type is lowercase letters, digits, "." "_" or "-".
+            </p>
+          </div>
+          <div className="form-actions">
+            <button className="btn" type="submit">
+              Create inbox
+            </button>
+          </div>
+        </>
       ) : (
         <>
           <div className="field">
@@ -173,7 +268,7 @@ export function CreateInbox({ org: given, onCreated }: { org?: string; onCreated
                 <input
                   id="secret"
                   required
-                  minLength={source?.secret.min_length}
+                  minLength={minLength}
                   autoComplete="off"
                   value={secret}
                   onChange={(e) => setSecret(e.target.value)}
@@ -183,8 +278,7 @@ export function CreateInbox({ org: given, onCreated }: { org?: string; onCreated
                 </button>
               </div>
               <p className="hint">
-                At least {source?.secret.min_length} characters. You enter the same secret in the sender's webhook
-                settings.
+                At least {minLength} characters. You enter the same secret in the sender's webhook settings.
               </p>
             </div>
           )}

@@ -40,15 +40,16 @@ export interface IncomingWebhook {
 export type ReceiveResult =
   | { kind: "event"; event: CloudEvent }
   | { kind: "ignored"; reason: string }
-  | { kind: "rejected"; status: 400 | 401 | 403 | 415 | 422; message: string };
+  | { kind: "rejected"; status: 400 | 401 | 403 | 404 | 415 | 422; message: string };
 
 /**
  * Who makes the webhook signing secret:
  * - `loopway`: loopway generates one (or takes one of at least `minLength` characters) and you enter it in the sender.
  * - `sender`: the sender shows one after the webhook is added there, and it's pasted into the inbox afterwards.
  *   The inbox rejects deliveries until then.
+ * - `none`: the inbox has no secret and takes no webhooks; it fills itself (see `tick`).
  */
-export type SecretOrigin = { from: "loopway"; minLength: number } | { from: "sender" };
+export type SecretOrigin = { from: "loopway"; minLength: number } | { from: "sender" } | { from: "none" };
 
 /**
  * A source type defines how an inbox is configured and how a raw webhook becomes a CloudEvent.
@@ -75,5 +76,7 @@ export interface SourceAdapter<Config = unknown> {
   summarize(event: CloudEvent): string | null;
   /** The title of the thing the event is about (an issue or pull request), for a thread's title. Null if it has none. */
   title(event: CloudEvent): string | null;
+  /** For sources that fill themselves on a clock: the events due at `now`. The server's cron route stores them; repeats must dedupe (same CE source and id). */
+  tick?(config: Config, inboxId: string, now: Date): CloudEvent[];
   receive(req: IncomingWebhook, config: Config): ReceiveResult | Promise<ReceiveResult>;
 }
