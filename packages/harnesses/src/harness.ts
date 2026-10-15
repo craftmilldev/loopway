@@ -15,6 +15,16 @@ export interface Launch {
   cwd?: string;
 }
 
+export type CanRun =
+  | { ok: true }
+  | {
+      ok: false;
+      /** A low-cardinality code, for metrics. */
+      reason: string;
+      /** What to tell the user, including what to install or do instead. */
+      message: string;
+    };
+
 /**
  * A coding-agent CLI that can run a bot's sessions (Claude Code, Cursor, ...). To add one, subclass this, fill in
  * `name`, `command`, `launch` and `watch`, and add it to harnesses/index.ts. `before` and `after` are for harnesses
@@ -28,6 +38,11 @@ export abstract class Harness {
 
   /** Whether `model` is one this harness takes (a bot's model is checked against its harness). */
   abstract modelFits(model: string): boolean;
+
+  /** Whether this harness can run on this machine (it may need a dependency or a platform). Checked before any bot starts. */
+  canRun(): CanRun {
+    return { ok: true };
+  }
 
   /** Runs before the process starts, so a harness can write the files it wants (an MCP config, say). */
   async before(run: AgentRun): Promise<void> {

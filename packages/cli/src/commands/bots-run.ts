@@ -1,7 +1,8 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { ApiError, type LoopwayClient } from "../client.js";
+import { getHarness } from "@loopway/harnesses";
 import { applyUpdate, availableUpdate as availableUpdateNow } from "../update.js";
-import { authedClient, type Context } from "../context.js";
+import { authedClient, UsageError, type Context } from "../context.js";
 import { DEFAULTS, Dispatcher, type ThreadsOptions } from "../bots/dispatcher.js";
 import { ensureRunner, savedRunnerOrg } from "../bots/runner.js";
 import { resolveOrg } from "./orgs.js";
@@ -31,6 +32,13 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
       `No bots to run. Create one with \`loopway bots create --name <name> --preset <preset> --model <model> --inbox <inbox>\`.`,
     );
     return;
+  }
+  // Refuse up front, rather than failing every run, if a bot's harness can't run here.
+  for (const name of new Set(bots.map((b) => b.harness))) {
+    const can = getHarness(name).canRun();
+    if (can.ok) continue;
+    void ctx.metrics?.capture("bots_run_refused", { reason: can.reason, platform: process.platform });
+    throw new UsageError(can.message);
   }
   const interval = opts.interval ?? DEFAULTS.interval;
   const dispatcherOpts = {
