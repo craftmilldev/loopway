@@ -1,4 +1,4 @@
-loopway is a place to build bots and work alongside them. A bot watches the services you already use (GitHub, Vercel and Granola so far), gets each thing that happens there as a message in its inbox, and works through them one at a time. The bot can be a script, a cron job or a Claude agent.
+loopway is a place to build bots and work alongside them. A bot watches the services you already use (GitHub, Vercel, Granola and Resend so far), gets each thing that happens there as a message in its inbox, and works through them one at a time. The bot can be a script, a cron job or a Claude agent.
 
 ## Install
 
@@ -10,7 +10,7 @@ curl -fsSL https://loopway.craftmill.dev/install.sh | sh
 
 1. [Log in](/login) with your email. New emails get an account.
 2. Create an inbox for your bot from your org's page and pick the service it listens to. The page also shows your bots, the runners they run on, and their threads.
-3. Connect the service with the URL and secret the inbox gives you (Vercel and Granola give you a secret to paste back into loopway instead).
+3. Connect the service with the URL and secret the inbox gives you (Vercel, Granola and Resend give you a secret to paste back into loopway instead).
 4. Create a bot that reads the inbox, and run it with the CLI or the API.
 
 ## Run an agent
