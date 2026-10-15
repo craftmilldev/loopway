@@ -22,7 +22,8 @@ export const PRESETS: Record<string, Preset> = {
   },
   blank: {
     label: "Blank",
-    description: "A placeholder prompt and one rule that skips every message, so it does nothing until you write your own.",
+    description:
+      "A placeholder prompt and one rule that skips every message, so it does nothing until you write your own.",
     prompt: "Describe what this bot should do.",
     rules: [{ types: ["*"], action: "'skip'" }],
   },

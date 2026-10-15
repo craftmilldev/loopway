@@ -155,7 +155,14 @@ describe("bots", () => {
     // The blank preset is a valid create.
     const blank = await call("POST", "/bots", {
       key,
-      body: { name: "blank", model: "sonnet", harness: "claude", inbox_ids: [a.id], prompt: PRESETS.blank!.prompt, rules: PRESETS.blank!.rules },
+      body: {
+        name: "blank",
+        model: "sonnet",
+        harness: "claude",
+        inbox_ids: [a.id],
+        prompt: PRESETS.blank!.prompt,
+        rules: PRESETS.blank!.rules,
+      },
     });
     expect(blank.status).toBe(201);
     // Every rule needs an action.
