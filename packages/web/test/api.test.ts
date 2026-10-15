@@ -659,7 +659,6 @@ describe("web ui", () => {
   });
 
   it("answers 404 on the old top-level API paths", async () => {
-    const id = "00000000-0000-7000-8000-000000000000";
     // Not the GETs: a path like /me is the page of an org of that name, which RESERVED_SLUGS keeps anyone from making.
     for (const [method, path] of [
       ["POST", "/auth/login"],
