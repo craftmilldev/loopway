@@ -1,4 +1,4 @@
-import { accessSync, constants } from "node:fs";
+import { accessSync, constants, existsSync } from "node:fs";
 import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentRun } from "./agent.js";
@@ -13,6 +13,8 @@ const WRITE_GUARD = fileURLToPath(new URL("./write-guard.mjs", import.meta.url))
 
 /** The `--settings` value that puts a Claude Code run in its sandbox, with the network left open. */
 export function claudeSandboxSettings(cwd: string, policy: SandboxPolicy = SANDBOX_POLICY) {
+  // Better to refuse to start a run than to run with the file tools unguarded (a build that skipped the copy, say).
+  if (!existsSync(WRITE_GUARD)) throw new Error(`The write guard is missing: ${WRITE_GUARD}`);
   const gitDir = sharedGitDir(cwd);
   const allowWrite = gitDir ? [...policy.allowWrite, gitDir] : policy.allowWrite;
   // The file tools follow permission rules rather than the sandbox; there `~/` is the home directory too.
@@ -26,7 +28,8 @@ export function claudeSandboxSettings(cwd: string, policy: SandboxPolicy = SANDB
           hooks: [
             {
               type: "command",
-              command: `LOOPWAY_WRITE_GUARD=${shq(guard)} ${shq(process.execPath)} ${shq(WRITE_GUARD)}`,
+              // Claude Code only blocks on exit 2, so a guard that can't even start (node's own exit 1) must still deny.
+              command: `LOOPWAY_WRITE_GUARD=${shq(guard)} ${shq(process.execPath)} ${shq(WRITE_GUARD)} || exit 2`,
             },
           ],
         },

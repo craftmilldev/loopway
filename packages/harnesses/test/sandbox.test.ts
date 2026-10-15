@@ -46,6 +46,15 @@ describe("sandbox", () => {
       return { cwd, code, input };
     };
 
+    it("denies when the guard can't even start", async () => {
+      const { cwd } = await guard("");
+      const command = claudeSandboxSettings(cwd).hooks.PreToolUse[0]!.hooks[0]!.command.replace(
+        "write-guard.mjs",
+        "missing.mjs",
+      );
+      expect(spawnSync("/bin/sh", ["-c", command], { input: "{}" }).status).toBe(2);
+    });
+
     it("allows the working directory and temp, denies everything else, and fails closed", async () => {
       const { cwd, code } = await guard("");
       const write = (file_path?: string) => ({ tool_name: "Write", tool_input: { file_path } });
