@@ -101,6 +101,7 @@ echo '{"type":"result","is_error":false,"result":"ok"}'
     const yaml = "model: x\nmcp_servers:\n  a:\n    url: u\n\n  b: 1\nagent:\n  y: 2\n";
     expect(withoutTopLevelKey(yaml, "mcp_servers")).toBe("model: x\nagent:\n  y: 2\n");
     expect(withoutTopLevelKey("model: x\n", "mcp_servers")).toBe("model: x\n");
+    expect(withoutTopLevelKey("mcp_servers:\n- name: a\n- name: b\nmodel: x\n", "mcp_servers")).toBe("model: x\n");
   });
 
   it("HermesHarness: gives each session its own home with the loopway MCP server, and resumes in it", async () => {

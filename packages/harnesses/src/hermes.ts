@@ -48,7 +48,8 @@ export function withoutTopLevelKey(text: string, key: string): string {
   const out: string[] = [];
   let skipping = false;
   for (const line of text.split("\n")) {
-    if (/^\S/.test(line)) skipping = line.startsWith(`${key}:`);
+    // A block sequence may sit at the key's own indent, so `- ` lines belong to the block too.
+    if (/^\S/.test(line) && !line.startsWith("-")) skipping = line.startsWith(`${key}:`);
     if (!skipping) out.push(line);
   }
   return out.join("\n");
@@ -79,7 +80,8 @@ export class HermesHarness extends Harness {
     const rest = withoutTopLevelKey(config, "mcp_servers").trimEnd();
     const loopway = `mcp_servers:\n  loopway:\n    url: ${JSON.stringify(run.mcpUrl)}\n`;
     await writeFile(join(home, "config.yaml"), (rest ? rest + "\n\n" : "") + loopway, { mode: 0o600 });
-    await copyFile(join(userHome, ".env"), join(home, ".env")).catch(() => {});
+    // The credentials: API keys in `.env`, and the tokens an OAuth login leaves in `auth.json`.
+    for (const file of [".env", "auth.json"]) await copyFile(join(userHome, file), join(home, file)).catch(() => {});
   }
 
   async launch(run: AgentRun): Promise<Launch> {
