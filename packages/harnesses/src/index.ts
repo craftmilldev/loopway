@@ -1,11 +1,17 @@
 import type { AgentRun, RunAgent } from "./agent.js";
 import type { Harness } from "./harness.js";
 import { ClaudeHarness } from "./claude.js";
+import { CodexHarness } from "./codex.js";
 import { CursorHarness } from "./cursor.js";
 import { HermesHarness } from "./hermes.js";
 
 /** Every harness a bot can run on. A new one is one class and one line here. */
-export const HARNESSES: Harness[] = [new ClaudeHarness(), new CursorHarness(), new HermesHarness()];
+export const HARNESSES: Harness[] = [
+  new ClaudeHarness(),
+  new CursorHarness(),
+  new CodexHarness(),
+  new HermesHarness(),
+];
 
 export function getHarness(name: string): Harness {
   const harness = HARNESSES.find((h) => h.name === name);
