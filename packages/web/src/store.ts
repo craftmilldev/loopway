@@ -1133,7 +1133,7 @@ export interface Assignment {
 /**
  * One transaction, so it's atomic: creates the threads the bot doesn't have yet, adds subjects, inserts the messages as
  * waiting (one already assigned is skipped), sets the threads' automation levels from the messages' author kinds
- * (`levels` lists each one that changed) and advances the cursor. Does nothing, and returns undefined, unless `token`
+ * (`levels` lists each one set or changed) and advances the cursor. Does nothing, and returns undefined, unless `token`
  * is the live lease. Callers check the ids, subjects and messages first (threadBots and friends).
  */
 export async function assignMessages(
@@ -1154,10 +1154,13 @@ export async function assignMessages(
     const a = `(SELECT (x->>'message_id')::uuid AS message_id, (x->>'thread_id')::uuid AS thread_id,
                        x->'add_subjects' AS add_subjects, x->>'subject' AS subject, x->>'author_kind' AS author_kind, n
                 FROM jsonb_array_elements($1::jsonb) WITH ORDINALITY AS e(x, n))`;
-    const created = await tx.query<{ id: string }>(
-      `INSERT INTO loopway.threads (id, bot_id, created_by, org_id)
-       SELECT DISTINCT a.thread_id, $2::uuid, $3, $4::uuid FROM ${a} a
-       ON CONFLICT (id) DO NOTHING RETURNING id`,
+    // A new thread's level comes from its first message's author kind: a person is 2, a bot 4.
+    const created = await tx.query<{ id: string; level: 2 | 4 | null }>(
+      `INSERT INTO loopway.threads (id, bot_id, created_by, org_id, automation_level)
+       SELECT DISTINCT ON (a.thread_id) a.thread_id, $2::uuid, $3, $4::uuid,
+              CASE a.author_kind WHEN 'human' THEN 2 WHEN 'bot' THEN 4 END
+       FROM ${a} a ORDER BY a.thread_id, a.n
+       ON CONFLICT (id) DO NOTHING RETURNING id, automation_level AS level`,
       [assignments, botId, bot.runner_id ? runnerActor(bot.runner_id) : botActor(botId), bot.org_id],
     );
     for (const t of created) await recordThreadEvents(tx, bot.org_id, botId, t.id, ["created"]);
@@ -1168,29 +1171,21 @@ export async function assignMessages(
        ON CONFLICT DO NOTHING`,
       [assignments, botId],
     );
-    const msgs = await tx.query<{ message_id: string }>(
+    const msgs = await tx.query(
       `INSERT INTO loopway.thread_messages (thread_id, bot_id, message_id, state, subject)
        SELECT DISTINCT ON (a.message_id) a.thread_id, $2::uuid, a.message_id, 'waiting', a.subject FROM ${a} a
        ON CONFLICT (bot_id, message_id) DO NOTHING RETURNING message_id`,
       [assignments, botId],
     );
-    // The level comes from the new messages' author kinds. A thread with none takes the first kind (a person: 2, a
-    // bot: 4, or 3 if a person comes in the same page). Then a person moves 4 to 3, and 2 and 3 stay.
-    const levels = await tx.query<{ level: 2 | 3 | 4 }>(
-      `UPDATE loopway.threads t SET updated_at = now(), automation_level = CASE
-           WHEN t.automation_level IS NULL THEN CASE WHEN k.first = 'human' THEN 2 WHEN k.human THEN 3 ELSE 4 END
-           ELSE 3 END
-       FROM (
-         SELECT a.thread_id, (array_agg(a.author_kind ORDER BY a.n))[1] AS first, bool_or(a.author_kind = 'human') AS human
-         FROM ${a} a
-         WHERE a.author_kind IS NOT NULL AND a.message_id IN (SELECT value::uuid FROM jsonb_array_elements_text($2::jsonb))
-         GROUP BY a.thread_id
-       ) k
-       WHERE t.id = k.thread_id AND (t.automation_level IS NULL OR (t.automation_level = 4 AND k.human))
-       RETURNING t.automation_level AS level`,
-      [assignments, msgs.map((m) => m.message_id)],
+    // A person's message moves a bot's thread from 4 to 3. 2 and 3 stay.
+    const joined = await tx.query(
+      `UPDATE loopway.threads SET automation_level = 3, updated_at = now()
+       WHERE automation_level = 4 AND id IN (SELECT a.thread_id FROM ${a} a WHERE a.author_kind = 'human')
+       RETURNING id`,
+      [assignments],
     );
-    return { assigned: msgs.length, levels: levels.map((r) => r.level) };
+    const levels = [...created.map((t) => t.level), ...joined.map(() => 3 as const)];
+    return { assigned: msgs.length, levels: levels.filter((l) => l !== null) };
   });
 }
 
