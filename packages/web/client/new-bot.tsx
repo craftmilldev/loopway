@@ -11,6 +11,7 @@ export const STEPS = ["Connect a source", "Choose its job", "Name and model", "S
 
 /** When to pick each model alias. */
 const MODEL_USE: Record<string, string> = {
+  best: "The strongest model your account has",
   sonnet: "The usual choice",
   opus: "Harder problems, slower",
   fable: "The newest family",
@@ -40,7 +41,7 @@ export function NewBot() {
   const [blankPrompt, setBlankPrompt] = useState("");
   const [blankRules, setBlankRules] = useState<RuleDraft[]>([]);
   const [name, setName] = useState("");
-  const [model, setModel] = useState(MODELS[0]!);
+  const [model, setModel] = useState("sonnet");
   const bot = lw.useGet<lw.Bot>(botId ? "/bots/" + encodeURIComponent(botId) : null, ready);
 
   // A reload or a link with `?bot=` lands on the first step that still has something to do.

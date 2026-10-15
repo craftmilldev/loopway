@@ -97,6 +97,7 @@ export class ClaudeHarness extends Harness {
 
   /** Aliases for the latest of a family, and full ids to pin a version. Add new models here and drop deprecated ones. */
   readonly models = [
+    "best",
     "fable",
     "opus",
     "sonnet",
