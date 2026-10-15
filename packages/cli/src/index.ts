@@ -5,16 +5,18 @@ import { CancelledError, UsageError } from "./context.js";
 import { red } from "./format.js";
 import { createMetrics } from "./metrics.js";
 import { createProgram } from "./program.js";
+import { updateAfterOutdated } from "./update.js";
 
 const configDir = defaultConfigDir();
 const metrics = createMetrics(configDir);
-const program = createProgram({
+const ctx = {
   configDir,
   env: process.env,
   interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
-  out: (text) => process.stdout.write(text + "\n"),
+  out: (text: string) => process.stdout.write(text + "\n"),
   metrics,
-});
+};
+const program = createProgram(ctx);
 
 try {
   await program.parseAsync();
@@ -22,6 +24,8 @@ try {
   // Counted by kind, so the metrics show where commands stop.
   const kind = err instanceof ApiError ? `api:${err.code}` : err instanceof Error ? err.constructor.name : "unknown";
   await metrics.capture("cli_error", { kind });
+  // The server turned this version away: update now and run the command again on the new one.
+  if (err instanceof ApiError && err.code === "cli_outdated") await updateAfterOutdated(ctx);
   if (err instanceof CancelledError) process.exit(130);
   if (err instanceof ApiError) {
     console.error(

@@ -18,14 +18,19 @@ import { bold, dim, fields, json } from "../format.js";
  */
 export async function configure(
   ctx: Context,
-  opts: { url?: string; githubToken?: string; githubName?: string; githubEmail?: string },
+  opts: { url?: string; githubToken?: string; githubName?: string; githubEmail?: string; autoUpdate?: "on" | "off" },
 ) {
   const current = await loadConfig(ctx.configDir, ctx.env);
   const url = opts.url ?? (ctx.interactive ? await promptUrl(current.api_url) : current.api_url);
   const github = await configureGithubBot(ctx, opts);
-  await writeConfig(ctx.configDir, { api_url: url, ...(github && { github }) });
+  await writeConfig(ctx.configDir, {
+    api_url: url,
+    ...(github && { github }),
+    ...(opts.autoUpdate && { auto_update: opts.autoUpdate === "on" }),
+  });
   ctx.out(`Configured ${url}. Run \`loopway login\` next.`);
   if (github) ctx.out(`GitHub bot: ${bold(github.name)} <${github.email}>`);
+  if (opts.autoUpdate) ctx.out(`Self-update: ${bold(opts.autoUpdate)}`);
   ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
 }
 
