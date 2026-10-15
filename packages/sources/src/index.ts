@@ -20,6 +20,5 @@ export const createSources = (deps: SourceDeps) =>
     vercel(deps),
   ]);
 
-export { windowStart } from "./schedule.js";
 export { SourceRegistry } from "./registry.js";
 export type { SourceAdapter, SourceDeps, CloudEvent, IncomingWebhook, ReceiveResult, SecretOrigin } from "./types.js";

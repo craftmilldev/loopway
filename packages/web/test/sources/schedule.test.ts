@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { windowStart } from "@loopway/sources";
+import { windowStart } from "../../../sources/src/schedule.js";
 import { createApi } from "../../src/api.js";
 import { app, call, db, newUser } from "../helpers.js";
 
