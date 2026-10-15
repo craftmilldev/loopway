@@ -28,11 +28,7 @@ export function LevelPie({
     start += share;
     const pt = (a: number) => `${r + r * Math.sin(a)} ${r - r * Math.cos(a)}`;
     return (
-      <path
-        key={level}
-        d={`M${r} ${r} L${pt(a0)} A${r} ${r} 0 ${share > 0.5 ? 1 : 0} 1 ${pt(a1)} Z`}
-        fill={color}
-      />
+      <path key={level} d={`M${r} ${r} L${pt(a0)} A${r} ${r} 0 ${share > 0.5 ? 1 : 0} 1 ${pt(a1)} Z`} fill={color} />
     );
   });
   return (
