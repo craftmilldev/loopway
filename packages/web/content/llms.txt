@@ -7,7 +7,7 @@ If a person asks you to set up loopway, make an inbox, or make a bot, the steps 
 ## Concepts
 
 - **Org**: owns inboxes and bots. Every user has a personal org; shared orgs can have several members.
-- **Inbox**: listens to one source (`github`, `vercel`, `granola` or `loopway`). The source's webhook points at the inbox, which checks the signature and keeps the message. `loopway inbox show <inbox>` prints the webhook URL and secret to paste into the sender.
+- **Inbox**: listens to one source (`github`, `vercel`, `granola`, `resend` or `loopway`). The source's webhook points at the inbox, which checks the signature and keeps the message. `loopway inbox show <inbox>` prints the webhook URL and secret to paste into the sender.
 - **Message**: one stored delivery: the CloudEvent (its `type`, e.g. `com.github.issues.opened`, and `data`), when it arrived, and its place in arrival order. Nothing is marked done.
 - **Bot**: reads the messages of one or more inboxes in arrival order and keeps a cursor, so it knows where it left off. A bot has a prompt, a model and rules. A new bot starts at the newest message, so it doesn't replay history.
 - **Thread**: one agent session working on a related set of messages. For GitHub, a thread is an issue and the PRs linked to it.
@@ -60,7 +60,7 @@ loopway bots threads <bot>                    # the bot's threads
 loopway bots run [--max 3] [--interval 5]     # run all your bots in the current directory
 ```
 
-`<inbox>` and `<bot>` are an id or an exact name. Read commands take `--json`. Without a terminal, `inbox create` runs from flags alone, so pass every flag. For `vercel` and `granola` inboxes the sender makes the secret: add the webhook in the sender, then give loopway the secret with `loopway inbox update <inbox> --secret <s>`.
+`<inbox>` and `<bot>` are an id or an exact name. Read commands take `--json`. Without a terminal, `inbox create` runs from flags alone, so pass every flag. For `vercel`, `granola` and `resend` inboxes the sender makes the secret: add the webhook in the sender, then give loopway the secret with `loopway inbox update <inbox> --secret <s>`.
 
 ## Typical setup
 

@@ -41,7 +41,7 @@ Org memberships and pending invites record `created_by` too (the member who adde
 | `PATCH /api/inboxes/:id` `{name?, config?}`        | Update. Config merges onto existing (secret kept unless given).                                                                                                                                                             |
 | `DELETE /api/inboxes/:id`                          | Deletes the inbox and its messages.                                                                                                                                                                                           |
 
-Each source's `config`, how to connect it in the sender, and how its deliveries map to CloudEvents are in `docs/sources/`: [github](sources/github.md), [vercel](sources/vercel.md), [linear](sources/linear.md), [granola](sources/granola.md) and [loopway](sources/loopway.md).
+Each source's `config`, how to connect it in the sender, and how its deliveries map to CloudEvents are in `docs/sources/`: [github](sources/github.md), [vercel](sources/vercel.md), [linear](sources/linear.md), [granola](sources/granola.md), [resend](sources/resend.md) and [loopway](sources/loopway.md).
 
 ## Webhook ingestion
 
@@ -50,7 +50,7 @@ Each source's `config`, how to connect it in the sender, and how its deliveries 
 - `202 {id, duplicate:false}` stored
 - `200 {id, duplicate:true}` redelivery of a message already stored (same CloudEvent `source`+`id`)
 - `200 {ignored:true, reason}` `ping`
-- `400` malformed body (for Loopway, one that doesn't match the inbox schema) · `401` bad/missing signature or token (or, for Vercel and Granola, no secret set yet) · `404` unknown inbox · `415` unsupported content type · `422` event type not in `config.events` (GitHub shows it as a failed delivery and doesn't retry it; Vercel retries any non-2xx for up to 24 hours; Granola retries only 408, 429 and 5xx)
+- `400` malformed body (for Loopway, one that doesn't match the inbox schema) · `401` bad/missing signature or token (or, for Vercel, Granola and Resend, no secret set yet) · `404` unknown inbox · `415` unsupported content type · `422` event type not in `config.events` (GitHub shows it as a failed delivery and doesn't retry it; Vercel retries any non-2xx for up to 24 hours; Granola retries only 408, 429 and 5xx)
 
 
 ## Messages

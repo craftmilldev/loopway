@@ -61,6 +61,19 @@ describe("granola summaries", () => {
   });
 });
 
+describe("resend summaries", () => {
+  it("names the email, contact or domain the event is about", () => {
+    const mail = event("com.resend.email.bounced", { type: "email.bounced", data: { subject: "Welcome" } });
+    expect(summary("resend", mail)).toBe("Resend email bounced: Welcome");
+    expect(title("resend", mail)).toBe("Welcome");
+    const contact = event("com.resend.contact.created", { type: "contact.created", data: { email: "a@b.co" } });
+    expect(summary("resend", contact)).toBe("Resend contact created: a@b.co");
+    const domain = event("com.resend.domain.updated", { type: "domain.updated", data: { name: "example.com" } });
+    expect(title("resend", domain)).toBe("example.com");
+    expect(title("resend", event("com.resend.domain.deleted", { type: "domain.deleted", data: {} }))).toBeNull();
+  });
+});
+
 describe("loopway summaries", () => {
   it("uses the message type and id", () => {
     const e = event("build.finished", { title: "Build 42" }, "build.finished/42");
