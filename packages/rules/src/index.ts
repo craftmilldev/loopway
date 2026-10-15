@@ -4,12 +4,14 @@ import { Environment } from "@marcbachmann/cel-js";
 /**
  * One assign rule of a bot. The first rule with a type glob matching a message applies; each field is a CEL
  * expression over the message (see `route`): `subject` gives the message's own subject ("" for none), `related`
- * the subjects it also names, and `action` (required) what to do with what they find (`attach` or `skip`).
+ * the subjects it also names, `authorKind` whether a person or a bot made the message (`'human'`, `'bot'` or `''` for
+ * unknown), and `action` (required) what to do with what they find (`attach` or `skip`).
  */
 export interface BotRule {
   types: string[];
   subject?: string;
   related?: string;
+  authorKind?: string;
   action: string;
 }
 
@@ -24,12 +26,15 @@ export interface Routed {
   thread_id: string;
   add_subjects: string[];
   key?: string;
+  /** Who made the message, if the rule said: it sets the thread's level of automation. */
+  author_kind?: "human" | "bot";
 }
 
 /**
  * The CEL environment rules run in. It is plain CEL plus this small API:
  *
  * - `data`: the event's payload, and `event_type`: its type.
+ * - In `authorKind`: nothing more; it returns `'human'`, `'bot'` or `''` when the rule can't tell.
  * - In `action` only: `subject` and `related` (what the rule's other expressions produced) and `held` (whether a
  *   thread already holds one of those subjects).
  * - `regex_all(text, pattern)` and `regex_all(text, pattern, flags)`: the first capture group (or the whole match if
@@ -61,7 +66,7 @@ export function checkRules(rules: BotRule[]): void {
   rules.forEach((rule, i) => {
     if (typeof rule.action !== "string" || !rule.action)
       throw new Error(`Rule ${i + 1} has no action; every rule needs one, such as "'attach'" or "'skip'".`);
-    for (const field of ["subject", "related", "action"] as const)
+    for (const field of ["subject", "related", "authorKind", "action"] as const)
       if (rule[field] !== undefined) base.parse(rule[field]);
   });
 }
@@ -95,10 +100,14 @@ export function route(
     const action = base.evaluate(rule.action, { ...vars, subject: key ?? "", related, held: !!found }) as string;
     if (action === "skip") continue;
     if (action !== "attach") throw new Error(`Unknown rule action "${action}"; use "attach" or "skip".`);
+    const kind: unknown = rule.authorKind !== undefined ? base.evaluate(rule.authorKind, vars) : "";
+    if (kind !== "" && kind !== "human" && kind !== "bot")
+      throw new Error(`Unknown author kind "${String(kind)}"; use "human", "bot" or "".`);
     return {
       thread_id: found ?? randomUUID(),
       add_subjects: [...new Set(subjects)].filter((s) => !held.has(s)),
       key,
+      ...(kind ? { author_kind: kind } : {}),
     };
   }
   return undefined;

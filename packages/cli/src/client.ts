@@ -163,6 +163,7 @@ export interface Assignment {
   thread_id: string;
   add_subjects?: string[];
   subject?: string;
+  author_kind?: "human" | "bot";
 }
 
 export interface ThreadPatch {

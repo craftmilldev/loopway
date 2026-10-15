@@ -595,6 +595,7 @@ export function createApi(opts: ApiOptions) {
         types: z.array(z.string().min(1).max(200)).min(1).max(50),
         subject: expression.optional(),
         related: expression.optional(),
+        authorKind: expression.optional(),
         action: expression,
       }),
     )
@@ -869,6 +870,7 @@ export function createApi(opts: ApiOptions) {
               thread_id: uuid,
               add_subjects: threadSubjects.optional(),
               subject: z.string().min(1).max(500).optional(),
+              author_kind: z.enum(["human", "bot"]).optional(),
             }),
           )
           .max(100),
@@ -897,6 +899,7 @@ export function createApi(opts: ApiOptions) {
 
     const done = await store.assignMessages(c.var.db, bot.id, input.lease_token, input.cursor, assignments);
     if (!done) throw leaseMismatch(bot);
+    for (const level of done.levels) await metrics.capture("thread_automation_level_set", c.var.user.id, { level });
     return c.json({ assigned: done.assigned });
   });
 
@@ -1185,6 +1188,7 @@ function serializeThreadRow(t: store.Thread) {
     interrupted: t.interrupted,
     limited: t.limited,
     runner_id: t.runner_id,
+    automation_level: t.automation_level,
     subjects: t.subjects,
     delivered: t.delivered,
     ...(t.delivered_ids ? { delivered_ids: t.delivered_ids } : {}),

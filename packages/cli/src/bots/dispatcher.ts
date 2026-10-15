@@ -445,6 +445,7 @@ export class Dispatcher {
         thread_id: routed.thread_id,
         ...(routed.add_subjects.length ? { add_subjects: routed.add_subjects } : {}),
         ...(routed.key ? { subject: routed.key } : {}),
+        ...(routed.author_kind ? { author_kind: routed.author_kind } : {}),
       });
     }
     await this.client.assign(bot.id, {

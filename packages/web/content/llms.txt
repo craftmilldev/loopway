@@ -20,6 +20,7 @@ Rules decide which thread each message goes to. A bot's rules are a list; the fi
 - `types`: list of event-type globs, e.g. `["com.github.*"]`.
 - `subject`: a CEL expression over the message returning the thread key it belongs to (e.g. `owner/repo#12`), or `''` for none.
 - `related`: optional CEL expression returning more thread keys the message also names (e.g. issues a PR body closes), so they join the same thread.
+- `authorKind`: optional CEL expression returning `'human'` or `'bot'` for who made the message, or `''` when unknown. A thread's level of automation comes from it: `2` if the first message was from a person, `4` if from a bot, and a person's later message moves `4` to `3`.
 - `action`: a CEL expression returning `'attach'` (deliver the message to the thread, creating it if needed) or `'skip'` (drop the message). Always set it, even to `'attach'`, so the rule says what it does (loopway treats a missing `action` as `'attach'`).
 
 In expressions, `data` is the event payload and `event_type` its type; `action` can also read `subject`, `related` and `held` (whether a thread already holds one of those subjects). `regex_all(text, pattern[, flags])` returns every match of a JavaScript regex as a list of strings. A message with an empty subject and no related keys belongs to no thread.

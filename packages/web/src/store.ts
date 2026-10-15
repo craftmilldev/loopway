@@ -887,6 +887,8 @@ export interface Thread {
   limited: boolean;
   /** The runner that owns the thread (see claimThread): its session lives there. Null until a runner claims it. */
   runner_id: string | null;
+  /** 2: a person started it. 3: a bot did, but a person took part. 4: no person did. Null while no message has a known author. */
+  automation_level: 2 | 3 | 4 | null;
   subjects: string[];
   /** Assigned, not handed to a run yet. */
   waiting: ThreadMessage[];
@@ -910,7 +912,7 @@ const threadMessages = (state: ThreadMessageState) => `
             WHERE tm.thread_id = t.id AND tm.state = '${state}'), '[]'::jsonb)`;
 
 const THREAD_COLS = `
-  t.id, t.bot_id, t.created_by, t.status, t.started, t.interrupted, t.limited, t.runner_id,
+  t.id, t.bot_id, t.created_by, t.status, t.started, t.interrupted, t.limited, t.runner_id, t.automation_level,
   t.created_at, t.updated_at,
   COALESCE((SELECT jsonb_agg(k.subject ORDER BY k.subject) FROM loopway.thread_subjects k WHERE k.thread_id = t.id),
            '[]'::jsonb) AS subjects,
@@ -1124,12 +1126,15 @@ export interface Assignment {
   thread_id: string;
   add_subjects?: string[];
   subject?: string;
+  /** Who made the message, as the bot's rules judged it (see `authorKind` in BotRule). Drives the thread's level. */
+  author_kind?: "human" | "bot";
 }
 
 /**
  * One transaction, so it's atomic: creates the threads the bot doesn't have yet, adds subjects, inserts the messages as
- * waiting (one already assigned is skipped) and advances the cursor. Does nothing, and returns undefined, unless
- * `token` is the live lease. Callers check the ids, subjects and messages first (threadBots and friends).
+ * waiting (one already assigned is skipped), sets the threads' automation levels from the messages' author kinds
+ * (`levels` lists each one set or changed) and advances the cursor. Does nothing, and returns undefined, unless `token`
+ * is the live lease. Callers check the ids, subjects and messages first (threadBots and friends).
  */
 export async function assignMessages(
   db: Db,
@@ -1137,7 +1142,7 @@ export async function assignMessages(
   token: string,
   cursor: number,
   assignments: Assignment[],
-): Promise<{ assigned: number } | undefined> {
+): Promise<{ assigned: number; levels: (2 | 3 | 4)[] } | undefined> {
   return db.transaction(async (tx) => {
     const [bot] = await tx.query<{ org_id: string; runner_id: string | null }>(
       `UPDATE loopway.bots b SET cursor = GREATEST(b.cursor, $3::bigint)
@@ -1147,12 +1152,15 @@ export async function assignMessages(
     if (!bot) return undefined;
     // The assignments as rows, shared by the three inserts below.
     const a = `(SELECT (x->>'message_id')::uuid AS message_id, (x->>'thread_id')::uuid AS thread_id,
-                       x->'add_subjects' AS add_subjects, x->>'subject' AS subject
-                FROM jsonb_array_elements($1::jsonb) x)`;
-    const created = await tx.query<{ id: string }>(
-      `INSERT INTO loopway.threads (id, bot_id, created_by, org_id)
-       SELECT DISTINCT a.thread_id, $2::uuid, $3, $4::uuid FROM ${a} a
-       ON CONFLICT (id) DO NOTHING RETURNING id`,
+                       x->'add_subjects' AS add_subjects, x->>'subject' AS subject, x->>'author_kind' AS author_kind, n
+                FROM jsonb_array_elements($1::jsonb) WITH ORDINALITY AS e(x, n))`;
+    // A new thread's level comes from its first message's author kind: a person is 2, a bot 4.
+    const created = await tx.query<{ id: string; level: 2 | 4 | null }>(
+      `INSERT INTO loopway.threads (id, bot_id, created_by, org_id, automation_level)
+       SELECT DISTINCT ON (a.thread_id) a.thread_id, $2::uuid, $3, $4::uuid,
+              CASE a.author_kind WHEN 'human' THEN 2 WHEN 'bot' THEN 4 END
+       FROM ${a} a ORDER BY a.thread_id, a.n
+       ON CONFLICT (id) DO NOTHING RETURNING id, automation_level AS level`,
       [assignments, botId, bot.runner_id ? runnerActor(bot.runner_id) : botActor(botId), bot.org_id],
     );
     for (const t of created) await recordThreadEvents(tx, bot.org_id, botId, t.id, ["created"]);
@@ -1169,7 +1177,15 @@ export async function assignMessages(
        ON CONFLICT (bot_id, message_id) DO NOTHING RETURNING message_id`,
       [assignments, botId],
     );
-    return { assigned: msgs.length };
+    // A person's message moves a bot's thread from 4 to 3. 2 and 3 stay.
+    const joined = await tx.query(
+      `UPDATE loopway.threads SET automation_level = 3, updated_at = now()
+       WHERE automation_level = 4 AND id IN (SELECT a.thread_id FROM ${a} a WHERE a.author_kind = 'human')
+       RETURNING id`,
+      [assignments],
+    );
+    const levels = [...created.map((t) => t.level), ...joined.map(() => 3 as const)];
+    return { assigned: msgs.length, levels: levels.filter((l) => l !== null) };
   });
 }
 

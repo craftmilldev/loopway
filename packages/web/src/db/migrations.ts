@@ -584,4 +584,12 @@ ALTER TABLE loopway.bots ADD COLUMN harness text NOT NULL DEFAULT 'claude';
 ALTER TABLE loopway.bots ALTER COLUMN harness DROP DEFAULT;
 `,
   },
+  {
+    // A thread's level of automation: 2 if a person started it, 3 if a bot did but a person took part, 4 if none did.
+    // Null for threads whose rules gave no author kind.
+    version: "027_automation_level",
+    sql: `
+ALTER TABLE loopway.threads ADD COLUMN automation_level smallint CHECK (automation_level BETWEEN 2 AND 4);
+`,
+  },
 ];
