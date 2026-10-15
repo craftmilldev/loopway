@@ -147,7 +147,10 @@ echo '{"type":"result","exit_code":0}'
     expect(config).toContain("model: m");
     expect(config).toContain('url: "http://127.0.0.1:1/mcp/t1"');
     expect(config).not.toContain("other");
+    // Credentials are linked, so a refreshed token is shared rather than copied per session.
     expect(await readFile(`${logPath}.home/.env`, "utf8")).toBe("KEY=1\n");
+    await writeFile(join(userHome, ".env"), "KEY=2\n");
+    expect(await readFile(`${logPath}.home/.env`, "utf8")).toBe("KEY=2\n");
 
     // A resumed session whose home is gone starts a new session rather than failing.
     await rm(`${logPath}.home`, { recursive: true });

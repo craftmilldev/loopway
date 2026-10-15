@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AgentRun, RunWatch } from "./agent.js";
@@ -58,7 +58,7 @@ export function withoutTopLevelKey(text: string, key: string): string {
 /**
  * Nous Research's Hermes Agent, run as `hermes chat --query-file -`. Hermes reads its MCP servers, credentials and
  * sessions from its home (`~/.hermes`), and each loopway session has its own MCP endpoint, so every session gets a
- * home of its own beside its log: the user's `config.yaml` (minus their MCP servers) and `.env`, plus the loopway
+ * home of its own beside its log: the user's `config.yaml` (minus their MCP servers) and links to their credentials, plus the loopway
  * server. Its `state.db` lives there too, so a resumed run continues the session with `--resume latest`.
  */
 export class HermesHarness extends Harness {
@@ -80,8 +80,14 @@ export class HermesHarness extends Harness {
     const rest = withoutTopLevelKey(config, "mcp_servers").trimEnd();
     const loopway = `mcp_servers:\n  loopway:\n    url: ${JSON.stringify(run.mcpUrl)}\n`;
     await writeFile(join(home, "config.yaml"), (rest ? rest + "\n\n" : "") + loopway, { mode: 0o600 });
-    // The credentials: API keys in `.env`, and the tokens an OAuth login leaves in `auth.json`.
-    for (const file of [".env", "auth.json"]) await copyFile(join(userHome, file), join(home, file)).catch(() => {});
+    // The credentials: API keys in `.env`, and the tokens an OAuth login leaves in `auth.json`. They are linked, not
+    // copied, so a token Hermes refreshes in one session is the one every session (and the user) sees, rather than
+    // each session keeping a copy that goes stale.
+    for (const file of [".env", "auth.json"]) {
+      if (!existsSync(join(userHome, file))) continue;
+      await rm(join(home, file), { force: true });
+      await symlink(join(userHome, file), join(home, file));
+    }
   }
 
   async launch(run: AgentRun): Promise<Launch> {
