@@ -99,7 +99,9 @@ export function Inbox({ id }: { id: string }) {
         </div>
         {unfinished && <span className="state state-limited">rejecting deliveries</span>}
       </div>
-      {inbox && <Setup inbox={inbox} source={source} unfinished={unfinished} onSaved={setInbox} />}
+      {inbox && source?.secret.from !== "none" && (
+        <Setup inbox={inbox} source={source} unfinished={unfinished} onSaved={setInbox} />
+      )}
       {inbox && <Settings inbox={inbox} onSaved={setInbox} />}
       {inbox && <h2 className="inbox-recent">Recent messages</h2>}
       <div>

@@ -14,7 +14,7 @@ An inbox with `source_type: "schedule"` fills itself on a clock: each hour, or e
 - `schedule`: `{ "every": "hour" }` or `{ "every": "day", "hour": 0-23 }` (UTC).
 - `messages`: 1–20 of `{ type, message }`. `type` is lowercase letters, digits, `.`, `_` or `-` and unique within the inbox; `message` is the text (up to 10,000 characters).
 
-The config is required, and an update replaces it whole. The inbox has no secret and no events list, and `POST /api/webhooks/<inbox>` answers `404`. Create it through the API (`POST /api/inboxes`); the dashboard and `loopway inbox create` don't offer it yet.
+The config is required, and an update replaces it whole. The inbox has no secret and no events list, and `POST /api/webhooks/<inbox>` answers `404`. Create it in the dashboard (New inbox → Schedule) or with `POST /api/inboxes`; `loopway inbox create` does not offer it yet.
 
 ## Delivery
 
