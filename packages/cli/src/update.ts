@@ -65,13 +65,19 @@ export function isNewer(a: string, b: string): boolean {
 /**
  * The newest release's version, from GitHub or, within ten minutes of the last lookup, from ~/.loopway/update-check.json.
  * Undefined when it can't be found (offline, rate limited): a failed lookup is remembered for the same ten minutes so
- * an offline machine doesn't wait on it every command. `force` skips the cached answer.
+ * an offline machine doesn't wait on it every command. `force` skips the cached answer; `fresh` also refuses the last known one when the lookup fails.
  */
-async function latestVersion(ctx: Context, force: boolean, deps: UpdateDeps): Promise<string | undefined> {
+async function latestVersion(
+  ctx: Context,
+  force: boolean,
+  deps: UpdateDeps,
+  fresh = false,
+): Promise<string | undefined> {
   const path = join(ctx.configDir, "update-check.json");
   const cached = await readCache(path);
   if (!force && cached && deps.now() - cached.checked_at < CHECK_TTL_MS) return cached.latest;
   let latest = cached?.latest;
+  let looked = false;
   try {
     // The repo's latest release is the CLI's only while release-cli.yml is the one thing that publishes releases here
     // (as install.sh also assumes); a release of anything else would hide newer CLI ones.
@@ -79,12 +85,16 @@ async function latestVersion(ctx: Context, force: boolean, deps: UpdateDeps): Pr
       headers: { accept: "application/vnd.github+json", "user-agent": "loopway-cli" },
       signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
     });
-    if (res.ok) latest = releaseVersion(((await res.json()) as { tag_name?: string }).tag_name ?? "") ?? latest;
+    if (res.ok) {
+      looked = true;
+      latest = releaseVersion(((await res.json()) as { tag_name?: string }).tag_name ?? "") ?? latest;
+    }
   } catch {
     // Offline or slow: keep what we knew.
   }
   await writeJson(path, { checked_at: deps.now(), latest }).catch(() => {});
-  return latest;
+  // `fresh`: the caller wants GitHub's answer, not the last one known.
+  return fresh && !looked ? undefined : latest;
 }
 
 async function readCache(path: string): Promise<{ checked_at: number; latest?: string } | undefined> {
@@ -190,7 +200,7 @@ export async function updateCommand(
       "This loopway runs from a git checkout, so it can't update itself. Run `npm run update` there.",
     );
   }
-  const latest = await latestVersion(ctx, true, deps);
+  const latest = await latestVersion(ctx, true, deps, true);
   if (!latest) {
     done("lookup_failed");
     throw new Error("Could not find the latest loopway release (offline or rate limited by GitHub). Try again later.");

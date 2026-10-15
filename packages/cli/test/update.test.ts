@@ -202,6 +202,13 @@ describe("updateCommand", () => {
     expect(installed).toHaveLength(1);
   });
 
+  it("does not trust an older cached answer when the lookup fails", async () => {
+    const { ctx, deps, installed } = setup();
+    await writeFile(join(dir, "update-check.json"), JSON.stringify({ checked_at: 0, latest: CLI_VERSION }));
+    await expect(updateCommand(ctx, { force: true }, deps)).rejects.toThrow("Could not find the latest");
+    expect(installed).toHaveLength(0);
+  });
+
   it("says so when the lookup fails or this is a checkout", async () => {
     const lookup = setup();
     await expect(updateCommand(lookup.ctx, {}, lookup.deps)).rejects.toThrow("Could not find the latest");
