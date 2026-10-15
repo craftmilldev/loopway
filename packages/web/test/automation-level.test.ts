@@ -47,6 +47,12 @@ describe("thread automation level", () => {
     expect(await assign(botThenHuman, [await send("issue_comment", comment(2, bot))])).toBe(4);
     expect(await assign(botThenHuman, [await send("issue_comment", comment(2, human))])).toBe(3);
 
+    // A machine user is a User to GitHub, so its login says it's a bot.
+    const machine = randomUUID();
+    expect(
+      await assign(machine, [await send("issue_comment", comment(3, { login: "loopway-bot", type: "User" }))]),
+    ).toBe(4);
+
     // No sender, so no known author.
     const unknown = randomUUID();
     expect(await assign(unknown, [await send("pull_request", prPayload(4))])).toBeNull();

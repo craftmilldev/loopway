@@ -261,12 +261,12 @@ function githubTitle(event: CloudEvent): string | null {
   return firstLine(str(get(p, "issue.title")) ?? str(get(p, "pull_request.title"))) ?? null;
 }
 
-/** A bot is a GitHub bot account: the sender's type, or a login ending in [bot]. */
+/** A bot is a GitHub app (the sender's type, or a login ending in [bot]) or a machine user with a login ending in -bot. */
 function githubAuthorKind(event: CloudEvent): "human" | "bot" | null {
   const p = (event.data ?? {}) as Payload;
   const login = str(get(p, "sender.login"));
   if (!login) return null;
-  return get(p, "sender.type") === "Bot" || login.endsWith("[bot]") ? "bot" : "human";
+  return get(p, "sender.type") === "Bot" || /(\[bot\]|-bot)$/i.test(login) ? "bot" : "human";
 }
 
 /** One line on who did what, from the event type (com.github.<event>[.<action>]) and its payload. */
