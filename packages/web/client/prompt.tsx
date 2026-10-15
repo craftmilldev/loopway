@@ -8,22 +8,29 @@ export interface RuleDraft {
   types: string;
   subject: string;
   related: string;
+  authorKind: string;
   action: string;
 }
 
 const EXPRESSIONS = [
   { key: "subject", label: "Subject", hint: 'CEL: the message\'s own subject, "" for none.' },
   { key: "related", label: "Related", hint: "CEL: a list of other subjects the message names." },
+  {
+    key: "authorKind",
+    label: "Author kind",
+    hint: "CEL: 'human' or 'bot' for who made the message, \"\" for unknown. Sets the thread's level of automation.",
+  },
   { key: "action", label: "Action", hint: "CEL, required: 'attach' or 'skip'." },
 ] as const;
 
-const blankRule = (): RuleDraft => ({ types: "", subject: "", related: "", action: "" });
+const blankRule = (): RuleDraft => ({ types: "", subject: "", related: "", authorKind: "", action: "" });
 
 export const toDrafts = (rules: lw.BotRule[] | null): RuleDraft[] =>
   (rules ?? []).map((r) => ({
     types: r.types.join("\n"),
     subject: r.subject ?? "",
     related: r.related ?? "",
+    authorKind: r.authorKind ?? "",
     action: r.action ?? "",
   }));
 

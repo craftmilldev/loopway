@@ -75,7 +75,5 @@ export interface SourceAdapter<Config = unknown> {
   summarize(event: CloudEvent): string | null;
   /** The title of the thing the event is about (an issue or pull request), for a thread's title. Null if it has none. */
   title(event: CloudEvent): string | null;
-  /** Whether a person or a bot made the event, from its metadata. Null if the source can't tell, or has no author. */
-  authorKind?(event: CloudEvent): "human" | "bot" | null;
   receive(req: IncomingWebhook, config: Config): ReceiveResult | Promise<ReceiveResult>;
 }

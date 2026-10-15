@@ -176,7 +176,6 @@ export const github = ({ newSecret, safeEqual, makeCloudEvent }: SourceDeps): So
 
   summarize: githubSummary,
   title: githubTitle,
-  authorKind: githubAuthorKind,
 
   receive({ headers, rawBody, receivedAt }, config) {
     const event = headers.get("x-github-event");
@@ -259,14 +258,6 @@ const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 function githubTitle(event: CloudEvent): string | null {
   const p = event.data as Payload | undefined;
   return firstLine(str(get(p, "issue.title")) ?? str(get(p, "pull_request.title"))) ?? null;
-}
-
-/** A bot is a GitHub app (the sender's type, or a login ending in [bot]) or a machine user with a login ending in -bot. */
-function githubAuthorKind(event: CloudEvent): "human" | "bot" | null {
-  const p = (event.data ?? {}) as Payload;
-  const login = str(get(p, "sender.login"));
-  if (!login) return null;
-  return get(p, "sender.type") === "Bot" || /(\[bot\]|-bot)$/i.test(login) ? "bot" : "human";
 }
 
 /** One line on who did what, from the event type (com.github.<event>[.<action>]) and its payload. */

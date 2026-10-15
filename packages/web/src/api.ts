@@ -148,12 +148,7 @@ export function createApi(opts: ApiOptions) {
       await received("ignored", { reason: result.reason });
       return c.json({ ignored: true, reason: result.reason }, 200);
     }
-    const { id, duplicate } = await store.insertMessage(
-      c.var.db,
-      inbox.id,
-      result.event,
-      sources.authorKind(inbox.source_type, result.event),
-    );
+    const { id, duplicate } = await store.insertMessage(c.var.db, inbox.id, result.event);
     await received(duplicate ? "duplicate" : "accepted");
     return c.json({ id, duplicate }, duplicate ? 200 : 202);
   });
@@ -600,6 +595,7 @@ export function createApi(opts: ApiOptions) {
         types: z.array(z.string().min(1).max(200)).min(1).max(50),
         subject: expression.optional(),
         related: expression.optional(),
+        authorKind: expression.optional(),
         action: expression,
       }),
     )
@@ -874,6 +870,7 @@ export function createApi(opts: ApiOptions) {
               thread_id: uuid,
               add_subjects: threadSubjects.optional(),
               subject: z.string().min(1).max(500).optional(),
+              author_kind: z.enum(["human", "bot"]).optional(),
             }),
           )
           .max(100),

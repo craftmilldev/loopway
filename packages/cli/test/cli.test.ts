@@ -1408,6 +1408,31 @@ describe("threads", () => {
     expect(route(held, "com.vercel.deployment.created", {})).toBeUndefined();
   });
 
+  it("route: the github-threads rules judge who made a message", () => {
+    const kind = (type: string, data: unknown) =>
+      routeWith(GITHUB_THREADS_RULES, new Map(), {
+        id: randomUUID(),
+        inbox_id: "in",
+        seq: 1,
+        received_at: "",
+        event: { type, data },
+      } as unknown as Message)?.author_kind;
+    const issue = (sender?: object) => ({ repository, issue: { number: 1 }, ...(sender ? { sender } : {}) });
+    expect(kind("com.github.issues.opened", issue({ login: "alice", type: "User" }))).toBe("human");
+    expect(kind("com.github.issues.opened", issue({ login: "vercel[bot]", type: "Bot" }))).toBe("bot");
+    expect(kind("com.github.issues.opened", issue({ login: "loopway-bot", type: "User" }))).toBe("bot");
+    expect(kind("com.github.issues.opened", issue({ login: "alice" }))).toBe("human");
+    expect(kind("com.github.issues.opened", issue())).toBeUndefined();
+  });
+
+  it("route: authorKind must be human, bot or empty", () => {
+    const msg = { id: randomUUID(), inbox_id: "in", seq: 1, received_at: "", event: { type: "x.y", data: {} } };
+    const rule = (authorKind: string): BotRule => ({ types: ["x.*"], authorKind, action: "'attach'" });
+    expect(routeWith([rule("'bot'")], new Map(), msg)).toMatchObject({ author_kind: "bot" });
+    expect(routeWith([rule("''")], new Map(), msg)?.author_kind).toBeUndefined();
+    expect(() => routeWith([rule("'robot'")], new Map(), msg)).toThrow(/author kind/);
+  });
+
   it("route: skip moves on to the next rule, attach stops", () => {
     const msg = { id: randomUUID(), inbox_id: "in", seq: 1, received_at: "", event: { type: "x.y", data: {} } };
     const held = new Map([["b", "t2"]]);

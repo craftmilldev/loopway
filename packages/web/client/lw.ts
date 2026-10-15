@@ -219,6 +219,7 @@ export interface BotRule {
   types: string[];
   subject?: string;
   related?: string;
+  authorKind?: string;
   action: string;
 }
 
