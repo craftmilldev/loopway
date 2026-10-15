@@ -12,21 +12,21 @@ import {
 import { authedClient, CancelledError, UsageError, type Context } from "../context.js";
 import { bold, dim, fields, json } from "../format.js";
 
+/** The flags of `loopway config`. */
+export interface ConfigureOptions {
+  url?: string;
+  githubToken?: string;
+  githubName?: string;
+  githubEmail?: string;
+  autoUpdate?: "on" | "off";
+  sandbox?: "on" | "off";
+}
+
 /**
  * Sets the API URL and the GitHub bot: flags, else prompts (starting from what's saved), else what's set.
  * Tokens are `loopway login`'s job, so it's the next step.
  */
-export async function configure(
-  ctx: Context,
-  opts: {
-    url?: string;
-    githubToken?: string;
-    githubName?: string;
-    githubEmail?: string;
-    autoUpdate?: "on" | "off";
-    sandbox?: "on" | "off";
-  },
-) {
+export async function configure(ctx: Context, opts: ConfigureOptions) {
   const current = await loadConfig(ctx.configDir, ctx.env);
   const url = opts.url ?? (ctx.interactive ? await promptUrl(current.api_url) : current.api_url);
   const github = await configureGithubBot(ctx, opts);
