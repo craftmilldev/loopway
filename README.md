@@ -8,7 +8,7 @@ loopway is a place to build bots and work alongside them. It accepts webhooks fr
 
 It runs on Vercel at [loopway.craftmill.dev](https://loopway.craftmill.dev), with a small web UI for logging in, creating inboxes and bots, and seeing runners, threads and messages.
 
-- [`docs/sources/`](docs/sources/): one page per source ([github](docs/sources/github.md), [vercel](docs/sources/vercel.md), [granola](docs/sources/granola.md), [loopway](docs/sources/loopway.md)): its config, how to connect it, and how its deliveries map to CloudEvents.
+- [`docs/sources/`](docs/sources/): one page per source ([github](docs/sources/github.md), [vercel](docs/sources/vercel.md), [granola](docs/sources/granola.md), [resend](docs/sources/resend.md), [loopway](docs/sources/loopway.md)): its config, how to connect it, and how its deliveries map to CloudEvents.
 - [`docs/api.md`](docs/api.md): the HTTP API and the webhook ingestion rules.
 - [`docs/developing.md`](docs/developing.md): running the server locally, deploying it, the repo layout, and adding a source.
 
@@ -67,7 +67,7 @@ loopway bots run [--max 3] [--interval 5] [--ttl <seconds>] [--no-tui]   # run y
 
 - `<inbox>` is an inbox id or its exact name; `<bot>` is a bot id or its exact name.
 - Every read command takes `--json` for the raw API response.
-- `inbox create` and `bots create` take `--org <slug>`. Without it, your only org is used; with several, a terminal asks and a script fails listing the slugs. `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`, `--schema file.json` for `loopway` inboxes); without a terminal it runs from flags alone. For sources whose sender makes the secret (`vercel`, `granola`) it doesn't ask for one: add the webhook in the sender, then paste the secret it shows with `loopway inbox update <inbox>` (or on the inbox's dashboard page).
+- `inbox create` and `bots create` take `--org <slug>`. Without it, your only org is used; with several, a terminal asks and a script fails listing the slugs. `inbox create` skips any prompt whose flag is given (`--name`, `--source`, `--events push,pull_request`, `--secret`, `--schema file.json` for `loopway` inboxes); without a terminal it runs from flags alone. For sources whose sender makes the secret (`vercel`, `granola`, `resend`) it doesn't ask for one: add the webhook in the sender, then paste the secret it shows with `loopway inbox update <inbox>` (or on the inbox's dashboard page).
 - Credentials live in `~/.loopway/config.json` (`{ "api_url", "api_key" }`, plus an optional `github` bot for [bot sessions](#acting-as-a-github-bot), mode 0600). `LOOPWAY_API_URL` / `LOOPWAY_API_KEY` override it, e.g. in CI. The URL defaults to `https://loopway.craftmill.dev`.
 - A bot reads messages from one or more inboxes (see [Bots](docs/api.md#bots)). `--preset` picks the template its first prompt and rules are copied from; the bot doesn't remember it. `loopway bots run` runs them (see [Running bots](#running-bots)).
 
