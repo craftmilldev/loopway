@@ -209,9 +209,9 @@ describe("bots", () => {
     expect(both.body).toMatchObject({ harness: "claude", model: "opus" });
     const codex = await call("POST", "/bots", {
       key,
-      body: { name: "cx", model: "gpt-5", harness: "codex", inbox_ids: [a.id] },
+      body: { name: "cx", model: "gpt-6-sol", harness: "codex", inbox_ids: [a.id] },
     });
-    expect(codex.body).toMatchObject({ harness: "codex", model: "gpt-5" });
+    expect(codex.body).toMatchObject({ harness: "codex", model: "gpt-6-sol" });
     await call("DELETE", `/bots/${codex.body.id}`, { key });
     const gemini = await call("POST", "/bots", {
       key,

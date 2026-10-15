@@ -115,7 +115,7 @@ echo '{"type":"turn.completed"}'
       sessionId: "t1",
       resume: false,
       message: "-hello",
-      model: "gpt-5",
+      model: "gpt-6-sol",
       logPath,
       mcpUrl: "http://127.0.0.1:1/mcp/t1",
       env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
@@ -128,7 +128,7 @@ echo '{"type":"turn.completed"}'
     expect(started).toBe(2);
 
     const args = (await readFile(join(out, "args"), "utf8")).trim().split("\n");
-    expect(args[0]).toMatch(/^exec --json --skip-git-repo-check -m gpt-5 /);
+    expect(args[0]).toMatch(/^exec --json --skip-git-repo-check -m gpt-6-sol /);
     expect(args[0]).toContain('mcp_servers.loopway.url="http://127.0.0.1:1/mcp/t1"');
     expect(args[0]).toContain('sandbox_mode="workspace-write"');
     expect(args[0]).toMatch(/ -$/);
@@ -136,6 +136,7 @@ echo '{"type":"turn.completed"}'
     expect(args[1]).toContain("--dangerously-bypass-approvals-and-sandbox");
     expect(args[1]).not.toContain("sandbox_mode");
     expect(args[1]).toMatch(/ th-123 -$/);
+    expect([harness.modelFits("gpt-6-sol"), harness.modelFits("sonnet")]).toEqual([true, false]);
     expect(await readFile(join(out, "stdin"), "utf8")).toBe("-hello-hello");
   });
 
