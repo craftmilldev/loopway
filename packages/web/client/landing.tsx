@@ -3,6 +3,7 @@ import { STATE_COLORS } from "@loopway/palette";
 import { Marked, type Tokens } from "marked";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { track } from "./metrics.js";
+import { ThreadFigure } from "./thread-figure.js";
 
 // The landing page, built from content/home.md: its comment says how the markdown maps to the page. Parsing turns
 // the markdown into sections of blocks; the components below lay each section out by its id, and styles.css (the
@@ -122,12 +123,12 @@ export function parseHome(markdown: string, agents: readonly string[] = AGENTS):
 }
 
 /**
- * The figure for a section, by id: the terminal (top), a thread (threads) and the bots table (dashboard). Empty for
- * now; each figure fills its slot here.
+ * The figure for a section, by id: the terminal (top), a thread (threads) and the bots table (dashboard). The thread is filled in;
+ * the others will fill their slots here.
  */
 export const FIGURES: Record<string, () => ReactNode> = {
   top: () => null,
-  threads: () => null,
+  threads: () => <ThreadFigure />,
   dashboard: () => null,
 };
 
