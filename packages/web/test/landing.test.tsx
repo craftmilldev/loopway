@@ -1,11 +1,17 @@
 // @vitest-environment jsdom
 import { HARNESS_LABELS } from "@loopway/harnesses/labels";
-import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import home from "../content/home.md";
+import { track } from "../client/metrics.js";
 import { agentList, AGENTS, LandingSections, parseHome } from "../client/landing.js";
 
-afterEach(cleanup);
+vi.mock("../client/metrics.js", () => ({ track: vi.fn() }));
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 
 const FIXTURE = `<!-- not on the page -->
 
@@ -121,6 +127,26 @@ describe("the landing page from markdown", () => {
       expect(w.querySelector(".lp-well-copy")?.textContent).toBe("Copy");
       expect(w.querySelector("pre")?.contains(w.querySelector(".lp-well-copy"))).toBe(false);
     }
+  });
+
+  it("copies a well's code without the prompt, and says so", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const c = draw(FIXTURE);
+    const button = c.querySelector<HTMLButtonElement>(".lp-well-copy")!;
+    fireEvent.click(button);
+    await waitFor(() => expect(button.textContent).toBe("Copied"));
+    expect(writeText).toHaveBeenCalledWith("curl -fsSL https://example.com/install.sh | sh\n  --continued");
+    expect(track).toHaveBeenCalledWith("landing_well_copied", { well: "install" });
+  });
+
+  it("records a failed copy and leaves the label alone", async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockRejectedValue(new Error("denied")) } });
+    const c = draw(FIXTURE);
+    const button = c.querySelector<HTMLButtonElement>(".lp-well-copy")!;
+    fireEvent.click(button);
+    await waitFor(() => expect(track).toHaveBeenCalledWith("landing_well_copy_failed", { well: "install" }));
+    expect(button.textContent).toBe("Copy");
   });
 
   it("leaves an empty slot for the figures of top, threads and dashboard", () => {

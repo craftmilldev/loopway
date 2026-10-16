@@ -1648,8 +1648,7 @@ main.lp {
   background: var(--ink-900);
   color: var(--paper-100);
 }
-.lp-well ::selection,
-.lp-well::selection {
+.lp-well ::selection {
   background: var(--paper-100);
   color: var(--ink-900);
 }
@@ -1666,6 +1665,7 @@ main.lp {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   cursor: pointer;
+  user-select: none;
   opacity: 0;
 }
 .lp-well:hover .lp-well-copy,
