@@ -5,6 +5,8 @@ Run your loopway bots in bb instead of in a terminal.
 - A loopway runner that starts when the plugin is enabled and stops when it is disabled.
 - One bb thread for each loopway thread. You can watch each bot thread work, and step in, like any other
   thread.
+- If you've set up a GitHub bot with `loopway config update`, those threads act on GitHub as the bot, as
+  `loopway bots run` sessions do.
 - `loopway_end` and `loopway_link` tools in those threads. They match the `end` and `link` tools that
   `loopway bots run` gives its sessions.
 - A **Loopway** page in the sidebar. It shows the runner's status and the bots it holds. It lists each loopway

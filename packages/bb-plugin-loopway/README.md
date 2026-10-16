@@ -10,6 +10,12 @@ org. Each loopway thread's messages go to a bb thread of its own instead of a he
 - `app.tsx` is the **Loopway** page in the left sidebar. It shows the runner's status, the bots, and each
   loopway thread with a link to its bb thread. It refetches when the server publishes `state-changed`, which
   it does when the runner's phase changes or it logs a line (a run starting or ending, say).
+- `github.ts` gives loopway threads' bb threads the GitHub bot identity that `loopway config update` saved,
+  as the CLI gives its sessions: `gh` and git act as the bot, and commits are the bot's. bb shows a
+  contributed environment in each thread's timeline, so the token isn't put in `GH_TOKEN`. It goes in a gh
+  config dir, `~/.loopway/bb-runner/gh/hosts.yml`, which `GH_CONFIG_DIR` points at, and git gets it through
+  `gh auth git-credential`. This works for threads on the bb server's own machine; the gh config isn't
+  copied to other machines.
 - `sessions.ts` holds `BbSessions`, the harness the dispatcher runs. It keeps the loopway thread ↔ bb thread
   map in the plugin's kv and starts or messages bb threads. Each run lasts until its bb thread is idle with
   nothing queued.

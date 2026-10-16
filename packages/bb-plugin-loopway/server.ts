@@ -10,14 +10,21 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { cliCommand, defineCli, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import type { LoopwayClient } from "@loopway/cli/src/client.js";
-import { defaultConfigDir, loadConfig } from "@loopway/cli/src/config.js";
+import { defaultConfigDir, loadConfig, loadGithubBot } from "@loopway/cli/src/config.js";
 import { authedClient, type Context } from "@loopway/cli/src/context.js";
 import { DEFAULTS, Dispatcher } from "@loopway/cli/src/bots/dispatcher.js";
 import { ensureRunner } from "@loopway/cli/src/bots/runner.js";
+import { botEnvEntries, writeGhConfig, type EnvEntry } from "./github.js";
 import { BbSessions, METADATA_KEY, type LoopwayThreadInfo } from "./sessions.js";
 import { buildSnapshot, RunnerStatus, rpcContract, STATE_CHANGED, type RunnerInfo, type Snapshot } from "./status.js";
 
 export { rpcContract };
+
+/** Where the bb runner keeps its runner id, run logs and the GitHub bot's gh config, apart from the CLI's. */
+const runnerDir = () => join(defaultConfigDir(), "bb-runner");
+
+/** Providers to give loopway threads' environment to, beside the ones bb lists when the plugin loads. */
+const KNOWN_PROVIDERS = ["claude-code", "codex", "pi", "acp-cursor"];
 
 /** The CLI's lease TTL default (see `defaultTtl` in bots-run.ts): several polls, at least 30s. */
 const ttlFor = (interval: number) => Math.max(DEFAULTS.ttl, 6 * interval);
@@ -113,7 +120,7 @@ export default async function plugin(bb: BbPluginApi) {
     const apiKey = typeof s.apiKey === "string" && s.apiKey ? s.apiKey : auth.api_key;
     if (!apiKey) throw needsConfiguration("Run `loopway login`, or set the plugin's apiKey setting.");
     const ctx: Context = {
-      configDir: join(defaultConfigDir(), "bb-runner"),
+      configDir: runnerDir(),
       env: { ...process.env, LOOPWAY_API_URL: auth.api_url, LOOPWAY_API_KEY: apiKey },
       interactive: false,
       out: (text) => note(text),
@@ -175,6 +182,47 @@ export default async function plugin(bb: BbPluginApi) {
   bb.events.on("thread.idle", ({ thread }) => running?.sessions.poke(thread.id));
   bb.events.on("thread.failed", ({ thread }) => running?.sessions.poke(thread.id));
   bb.events.on("thread.deleted", ({ thread }) => running?.sessions.forget(thread.id));
+
+  // The environment `loopway bots run` gives its sessions, for the bb threads of loopway threads: they act on
+  // GitHub as the loopway bot when one is configured (`loopway config update`), and their `loopway` calls never
+  // update the CLI. Threads are known by the plugin metadata they're spawned with, which is there from their
+  // first turn (the kv pair is written just after).
+  const sessionEnv = async ({ threadId }: { threadId: string }): Promise<EnvEntry[]> => {
+    const metadata = await bb.sdk.threads.getPluginMetadata({ threadId });
+    if (typeof metadata[METADATA_KEY] !== "string") return [];
+    const entries = [{ name: "LOOPWAY_NO_UPDATE", value: "1", reason: "Only the runner updates the loopway CLI" }];
+    let bot;
+    try {
+      bot = await loadGithubBot(defaultConfigDir(), process.env);
+    } catch (err) {
+      note(`not acting as the GitHub bot: ${err instanceof Error ? err.message : String(err)}`, "warn");
+      throw err;
+    }
+    if (!bot) return entries;
+    const dir = join(runnerDir(), "gh");
+    await writeGhConfig(dir, bot);
+    return [...entries, ...botEnvEntries(dir, bot)];
+  };
+  for (const id of await providerIds()) {
+    try {
+      bb.providers.experimental_contributeEnv(id, sessionEnv);
+    } catch (err) {
+      bb.log.warn(
+        `can't give ${id} threads the loopway environment: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /** Every provider bb has now, and the usual ones, in case one registers after this plugin loads. */
+  async function providerIds(): Promise<string[]> {
+    const ids = new Set(KNOWN_PROVIDERS);
+    try {
+      for (const p of await bb.sdk.providers.list()) ids.add(p.id);
+    } catch {
+      // The usual ones will do.
+    }
+    return [...ids];
+  }
 
   // The session tools `loopway bots run` gives each Claude Code session over MCP, as bb agent tools.
   const toolCall = async (bbThreadId: string, name: string, args: Record<string, unknown>) => {

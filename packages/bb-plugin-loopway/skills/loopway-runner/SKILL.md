@@ -46,6 +46,10 @@ while `loopway bots run` holds a bot's lease, the plugin skips that bot, and the
 
 ## In a bb thread that is a loopway thread
 
+If a GitHub bot is set up with `loopway config update`, `gh` and git in these threads act as the bot, and
+commits are the bot's. `GH_CONFIG_DIR` points `gh` at the runner's own login, and git gets its github.com
+credentials from `gh`. Don't set `GH_TOKEN`, and don't run `gh auth login` there.
+
 The plugin gives these threads two tools. They are the same as the `end` and `link` tools that
 `loopway bots run` gives its sessions:
 
