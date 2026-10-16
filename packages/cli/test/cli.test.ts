@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -321,9 +322,12 @@ describe("auth", () => {
         GIT_CONFIG_VALUE_0: "!echo password=user-token #",
       },
       { token: "ghp_bot", name: "loopway-bot", email: "2+loopway-bot@users.noreply.github.com" },
+      join(configDir, ".loopway"),
     );
     const git = (args: string[], input?: string) => execFileSync("git", args, { env, input, encoding: "utf8" });
-    expect(env).toMatchObject({ GH_TOKEN: "ghp_bot", GITHUB_TOKEN: "ghp_bot" });
+    // gh gets a Loopway-owned config directory, so a sandboxed run never reads the user's ~/.config/gh.
+    expect(env).toMatchObject({ GH_TOKEN: "ghp_bot", GITHUB_TOKEN: "ghp_bot", GH_CONFIG_DIR: join(configDir, ".loopway", "gh") });
+    expect(existsSync(join(configDir, ".loopway", "gh"))).toBe(true);
     expect(git(["var", "GIT_AUTHOR_IDENT"])).toMatch(/^loopway-bot <2\+loopway-bot@users\.noreply\.github\.com>/);
     expect(git(["var", "GIT_COMMITTER_IDENT"])).toMatch(/^loopway-bot </);
     // The helper the environment already had is reset for github.com, so the user's token never answers.

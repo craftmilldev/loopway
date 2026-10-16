@@ -160,7 +160,7 @@ export class Dispatcher {
     // With a GitHub bot configured, sessions comment, push and commit as it; otherwise as the user.
     const gh = await loadGithubBot(ctx.configDir, ctx.env);
     // Their `loopway` calls never update the CLI: only this process does, once the sessions have finished.
-    const env = { ...(gh ? botEnv(ctx.env, gh) : ctx.env), LOOPWAY_NO_UPDATE: "1" };
+    const env = { ...(gh ? botEnv(ctx.env, gh, ctx.configDir) : ctx.env), LOOPWAY_NO_UPDATE: "1" };
     // The tools reach the dispatcher once it exists; no session calls one before then.
     const later: { dispatcher?: Dispatcher } = {};
     const mcp = await startMcpServer(

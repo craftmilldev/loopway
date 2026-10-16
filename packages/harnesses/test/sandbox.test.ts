@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentRun } from "../src/agent.js";
 import { claudeCanRun, claudeSandboxSettings, ClaudeHarness } from "../src/claude.js";
 import { LimitWatch } from "../src/claude-watch.js";
+import { openProxyPort } from "../src/open-proxy.js";
 import { sandboxPolicy } from "../src/sandbox.js";
 
 const run = (resume: boolean): AgentRun => ({
@@ -20,14 +21,14 @@ const run = (resume: boolean): AgentRun => ({
 });
 
 describe("sandbox", () => {
-  it.each([false, true])("claude runs with sandbox: false get no settings (resume=%s)", (resume) => {
-    const { args } = new ClaudeHarness().launch({ ...run(resume), sandbox: false });
+  it.each([false, true])("claude runs with sandbox: false get no settings (resume=%s)", async (resume) => {
+    const { args } = await new ClaudeHarness().launch({ ...run(resume), sandbox: false });
     expect(args).not.toContain("--settings");
     expect(args).toContain(resume ? "--resume" : "--session-id");
   });
 
-  it.each([false, true])("claude runs always get sandbox settings (resume=%s)", (resume) => {
-    const { args } = new ClaudeHarness().launch(run(resume));
+  it.each([false, true])("claude runs always get sandbox settings (resume=%s)", async (resume) => {
+    const { args } = await new ClaudeHarness().launch(run(resume));
     const settings = JSON.parse(args[args.indexOf("--settings") + 1]!);
     expect(settings.sandbox).toMatchObject({ enabled: true, failIfUnavailable: true, allowUnsandboxedCommands: false });
     expect(settings.sandbox.filesystem.denyRead).toEqual(
@@ -37,16 +38,61 @@ describe("sandbox", () => {
   });
 
   it("allows writes to caches and temp, and leaves the network open", () => {
-    const s = claudeSandboxSettings("/nonexistent");
+    const s = claudeSandboxSettings("/nonexistent", 4321);
     expect(s.sandbox.filesystem.allowWrite).toEqual(expect.arrayContaining(["~/.npm", "~/.claude", "~/.loopway"]));
-    expect(s.sandbox.network.allowedDomains).toEqual(["*"]);
+    // Claude's own proxy rejects `allowedDomains: ["*"]`, so open egress goes through ours.
+    expect(s.sandbox.network).toEqual({ httpProxyPort: 4321 });
+  });
+
+  it("sandboxed runs reach the network through the open proxy, and Node's fetch is told to use it", async () => {
+    const { args, env } = await new ClaudeHarness().launch(run(false));
+    const settings = JSON.parse(args[args.indexOf("--settings") + 1]!);
+    expect(settings.sandbox.network.httpProxyPort).toBeGreaterThan(0);
+    expect(settings.sandbox.network.allowedDomains).toBeUndefined();
+    expect(env).toEqual({ NODE_USE_ENV_PROXY: "1" });
+    expect((await new ClaudeHarness().launch({ ...run(false), sandbox: false })).env).toBeUndefined();
+  });
+
+  it("the open proxy tunnels HTTPS (CONNECT) and forwards plain HTTP to any host", async () => {
+    const { createServer } = await import("node:http");
+    const { connect } = await import("node:net");
+    const target = createServer((_req, res) => res.end("hello")).listen(0, "127.0.0.1");
+    await new Promise((r) => target.once("listening", r));
+    const targetPort = (target.address() as { port: number }).port;
+    const proxyPort = await openProxyPort();
+    try {
+      const reply = await new Promise<string>((resolve, reject) => {
+        const s = connect(proxyPort, "127.0.0.1", () => s.write(`CONNECT 127.0.0.1:${targetPort} HTTP/1.1\r\n\r\n`));
+        let data = "";
+        s.on("data", (d) => {
+          data += d;
+          if (data.includes("200 Connection Established") && !data.includes("hello")) s.write("GET / HTTP/1.0\r\n\r\n");
+          if (data.includes("hello")) (s.destroy(), resolve(data));
+        });
+        s.on("error", reject);
+      });
+      expect(reply).toContain("200 Connection Established");
+      expect(reply).toContain("hello");
+      const viaProxy = await new Promise<string>((resolve, reject) => {
+        const s = connect(proxyPort, "127.0.0.1", () =>
+          s.write(`GET http://127.0.0.1:${targetPort}/ HTTP/1.1\r\nHost: 127.0.0.1:${targetPort}\r\nConnection: close\r\n\r\n`),
+        );
+        let data = "";
+        s.on("data", (d) => (data += d));
+        s.on("end", () => resolve(data));
+        s.on("error", reject);
+      });
+      expect(viaProxy).toContain("hello");
+    } finally {
+      target.close();
+    }
   });
 
   describe("write guard hook", () => {
     const guard = async (input: string) => {
       const cwd = await mkdtemp(join(tmpdir(), "lw-guard-"));
       await symlink(homedir(), join(cwd, "escape"));
-      const command = claudeSandboxSettings(cwd).hooks.PreToolUse[0]!.hooks[0]!.command;
+      const command = claudeSandboxSettings(cwd, 4321).hooks.PreToolUse[0]!.hooks[0]!.command;
       const code = (payload: unknown) =>
         spawnSync("/bin/sh", ["-c", command], {
           input: typeof payload === "string" ? payload : JSON.stringify(payload),
@@ -56,7 +102,7 @@ describe("sandbox", () => {
 
     it("denies when the guard can't even start", async () => {
       const { cwd } = await guard("");
-      const command = claudeSandboxSettings(cwd).hooks.PreToolUse[0]!.hooks[0]!.command.replace(
+      const command = claudeSandboxSettings(cwd, 4321).hooks.PreToolUse[0]!.hooks[0]!.command.replace(
         "write-guard.mjs",
         "missing.mjs",
       );
@@ -82,7 +128,7 @@ describe("sandbox", () => {
   describe("legitimate work passes", () => {
     const guardCode = async (env: NodeJS.ProcessEnv, file: string) => {
       const cwd = await mkdtemp(join(tmpdir(), "lw-legit-"));
-      const settings = claudeSandboxSettings(cwd, sandboxPolicy(env));
+      const settings = claudeSandboxSettings(cwd, 4321, sandboxPolicy(env));
       const command = settings.hooks.PreToolUse[0]!.hooks[0]!.command;
       const target = file.replace("<cwd>", cwd);
       return spawnSync("/bin/sh", ["-c", command], {
@@ -101,6 +147,7 @@ describe("sandbox", () => {
       ["temp files", join(tmpdir(), "lw-legit-x")],
       ["Claude session files", join(home, ".claude/projects/p/s.jsonl")],
       ["loopway session logs", join(home, ".loopway/sessions/s.log")],
+      ["gh's own config (GH_CONFIG_DIR=~/.loopway/gh)", join(home, ".loopway/gh/config.yml")],
     ])("%s", async (_what, file) => {
       expect(await guardCode({}, file)).toBe(0);
     });
