@@ -7,13 +7,14 @@ import type { AgentRun } from "../src/agent.js";
 import { LIMIT_FALLBACK_MS, LimitWatch } from "../src/claude-watch.js";
 import { CodexWatch } from "../src/codex.js";
 import { CursorWatch } from "../src/cursor.js";
+import { HermesWatch, withoutTopLevelKey } from "../src/hermes.js";
 import { getHarness, HARNESSES } from "../src/index.js";
 
 const temp = () => mkdtemp(join(tmpdir(), "lw-harness-"));
 
 describe("harnesses", () => {
-  it("knows claude, cursor and codex, and refuses others", () => {
-    expect(HARNESSES.map((h) => h.name)).toEqual(["claude", "cursor", "codex"]);
+  it("knows claude, cursor, codex and hermes, and refuses others", () => {
+    expect(HARNESSES.map((h) => h.name)).toEqual(["claude", "cursor", "codex", "hermes"]);
     expect(() => getHarness("gemini")).toThrow(/Unknown harness "gemini"/);
   });
 
@@ -78,6 +79,85 @@ echo '{"type":"result","is_error":false,"result":"ok"}'
     expect(await readFile(join(out, "mcp"), "utf8")).toContain('"url":"http://127.0.0.1:1/mcp/t1"');
     expect(existsSync(`${logPath}.workspace`)).toBe(false);
     expect(await readFile(logPath, "utf8")).toContain('"subtype":"init"');
+  });
+
+  it("HermesWatch: init starts the session and delivers; a result with an error or exit code is an API error", () => {
+    let started = 0;
+    const w = new HermesWatch(() => started++);
+    w.line("not json");
+    w.line(JSON.stringify({ type: "system", subtype: "init" }));
+    w.line(JSON.stringify({ type: "text", text: "hi" }));
+    expect([started, w.delivered, w.finished, w.apiError()]).toEqual([1, true, false, undefined]);
+    w.line(JSON.stringify({ type: "result", exit_code: 0, session_id: "s1" }));
+    expect([w.finished, w.apiError()]).toEqual([true, undefined]);
+    const failed = new HermesWatch();
+    failed.line(JSON.stringify({ type: "result", exit_code: 1, error: "no key" }));
+    expect(failed.apiError()).toBe("no key");
+    const code = new HermesWatch();
+    code.line(JSON.stringify({ type: "result", exit_code: 130 }));
+    expect(code.apiError()).toMatch(/130/);
+  });
+
+  it("withoutTopLevelKey: drops the block under the key and nothing else", () => {
+    const yaml = "model: x\nmcp_servers:\n  a:\n    url: u\n\n  b: 1\nagent:\n  y: 2\n";
+    expect(withoutTopLevelKey(yaml, "mcp_servers")).toBe("model: x\nagent:\n  y: 2\n");
+    expect(withoutTopLevelKey("model: x\n", "mcp_servers")).toBe("model: x\n");
+    expect(withoutTopLevelKey("mcp_servers:\n- name: a\n- name: b\nmodel: x\n", "mcp_servers")).toBe("model: x\n");
+  });
+
+  it("HermesHarness: gives each session its own home with the loopway MCP server, and resumes in it", async () => {
+    const bin = await temp();
+    const out = await temp();
+    const userHome = await temp();
+    await writeFile(join(userHome, "config.yaml"), "model: m\nmcp_servers:\n  other:\n    url: x\n");
+    await writeFile(join(userHome, ".env"), "KEY=1\n");
+    // A stand-in for hermes: records its args, stdin and config, and keeps a state.db in its home like the real one.
+    const script = `#!/bin/sh
+echo "$@" >> "${out}/args"
+cat >> "${out}/stdin"
+cat "$HERMES_HOME/config.yaml" >> "${out}/config"
+touch "$HERMES_HOME/state.db"
+echo '{"type":"system","subtype":"init"}'
+echo '{"type":"result","exit_code":0}'
+`;
+    await writeFile(join(bin, "hermes"), script);
+    await chmod(join(bin, "hermes"), 0o755);
+    const logPath = join(await temp(), "threads", "t1.log");
+    let started = 0;
+    const base: AgentRun = {
+      harness: "hermes",
+      sessionId: "t1",
+      resume: false,
+      message: "hello",
+      model: "some-model",
+      logPath,
+      mcpUrl: "http://127.0.0.1:1/mcp/t1",
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, HERMES_HOME: userHome },
+      onStarted: () => started++,
+    };
+    const harness = getHarness("hermes");
+    expect(await harness.run(base)).toMatchObject({ code: 0, delivered: true, finished: true });
+    expect(await harness.run({ ...base, resume: true })).toMatchObject({ code: 0, finished: true });
+    expect(started).toBe(2);
+
+    const args = (await readFile(join(out, "args"), "utf8")).trim().split("\n");
+    expect(args[0]).toBe("chat --query-file - --format stream-json --yolo --model some-model");
+    expect(args[1]).toBe(`${args[0]} --resume latest`);
+    expect(await readFile(join(out, "stdin"), "utf8")).toBe("hellohello");
+    const config = await readFile(join(out, "config"), "utf8");
+    expect(config).toContain("model: m");
+    expect(config).toContain('url: "http://127.0.0.1:1/mcp/t1"');
+    expect(config).not.toContain("other");
+    // Credentials are linked, so a refreshed token is shared rather than copied per session.
+    expect(await readFile(`${logPath}.home/.env`, "utf8")).toBe("KEY=1\n");
+    await writeFile(join(userHome, ".env"), "KEY=2\n");
+    expect(await readFile(`${logPath}.home/.env`, "utf8")).toBe("KEY=2\n");
+
+    // A resumed session whose home is gone starts a new session rather than failing.
+    await rm(`${logPath}.home`, { recursive: true });
+    await harness.run({ ...base, resume: true });
+    const last = (await readFile(join(out, "args"), "utf8")).trim().split("\n").pop();
+    expect(last).toBe(args[0]);
   });
 
   it("CodexWatch: a thread starts the session, a turn delivers, a failed turn is an API error", () => {
