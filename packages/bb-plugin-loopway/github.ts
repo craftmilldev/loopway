@@ -4,7 +4,8 @@
 // bb shows contributed environment values in each thread's timeline, so the token doesn't go in GH_TOKEN. It
 // goes in a gh config dir of the runner's own, which GH_CONFIG_DIR points gh at, and git gets it from
 // `gh auth git-credential`. Every value in the environment is safe to show.
-import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { GithubBot } from "@loopway/cli/src/config.js";
 
@@ -26,8 +27,10 @@ export async function writeGhConfig(dir: string, bot: GithubBot): Promise<void> 
     "    git_protocol: https",
     "",
   ].join("\n");
-  await writeFile(path, yaml, { mode: 0o600 });
-  await chmod(path, 0o600); // mode only applies on create
+  // Threads start together; a rename keeps a gh that's reading the file from seeing it half-written.
+  const temp = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  await writeFile(temp, yaml, { mode: 0o600 });
+  await rename(temp, path);
 }
 
 /** The environment that makes a session act as the bot whose gh config is in `dir`. */
