@@ -64,9 +64,10 @@ describe("New bot flow", () => {
     fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "dev" } });
     expect(screen.getAllByRole("radio").map((r) => (r.parentElement as HTMLElement).textContent?.trim())).toEqual([
       "Claude Code",
-      "sonnet",
-      "opus",
+      "best",
       "fable",
+      "opus",
+      "sonnet",
       "haiku",
     ]);
     fireEvent.click(screen.getByText("Create bot and continue"));
