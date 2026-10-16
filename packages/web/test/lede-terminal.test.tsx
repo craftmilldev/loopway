@@ -2,6 +2,7 @@
 import { LEVEL_COLORS, STATE_COLORS } from "@loopway/palette";
 import { cleanup, render } from "@testing-library/react";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { LedeTerminal } from "../client/lede-terminal.js";
 
@@ -44,7 +45,7 @@ describe("LedeTerminal", () => {
   });
 
   it("has no hard-coded status hex values", () => {
-    const src = readFileSync("client/lede-terminal.tsx", "utf8");
+    const src = readFileSync(join(import.meta.dirname, "../client/lede-terminal.tsx"), "utf8");
     expect(src).not.toMatch(/#[0-9a-fA-F]{6}\b/);
   });
 });
