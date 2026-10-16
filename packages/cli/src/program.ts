@@ -404,11 +404,11 @@ A CLI installed from a release updates itself to the newest one; turn that off w
       "most sessions running at once; sessions waiting on their thread don't count (default 3)",
       positiveInt,
     )
-    .option("--interval <seconds>", "seconds between polls (default 5)", positiveInt)
+    .option("--interval <seconds>", "seconds between polls right after activity; polling slows to once a minute when quiet (default 5)", positiveInt)
     .addOption(
       new Option(
         "--ttl <seconds>",
-        "how long each bot lease lasts; it is renewed every poll (default 6 × --interval, at least 30; max 43200)",
+        "how long each bot lease lasts; it is renewed every poll (default 6 × --interval, at least 180; max 43200)",
       ).argParser(positiveInt),
     )
     .option(
