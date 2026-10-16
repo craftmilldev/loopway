@@ -15,8 +15,6 @@ export interface Config {
   github?: GithubBot;
   /** Whether the CLI updates itself from GitHub releases. On unless this is false (or LOOPWAY_NO_UPDATE is set). */
   auto_update?: boolean;
-  /** Whether `loopway bots run` puts Claude bots in the sandbox. On unless this is false; `--no-sandbox` also turns it off. */
-  sandbox?: boolean;
 }
 
 /** A GitHub user account, and its token, for sessions to comment, push and commit as. */
@@ -32,20 +30,14 @@ const DEFAULTS = { api_url: "https://loopway.craftmill.dev" };
 
 export const configPath = (dir: string) => join(dir, "config.json");
 
-/** The settings commands use, once env, config.json and DEFAULTS are resolved. */
-export interface LoadedConfig {
-  api_url: string;
-  api_key?: string;
-  posthog_host: string;
-  auto_update: boolean;
-  sandbox: boolean;
-}
-
 /**
  * The settings commands should use: LOOPWAY_API_URL / LOOPWAY_API_KEY / POSTHOG_HOST, then config.json, then DEFAULTS.
  * The env vars let CI and scripts run without `loopway login`. There's no default key.
  */
-export async function loadConfig(dir: string, env: NodeJS.ProcessEnv = process.env): Promise<LoadedConfig> {
+export async function loadConfig(
+  dir: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ api_url: string; api_key?: string; posthog_host: string; auto_update: boolean }> {
   const file = await readConfig(dir);
   const api_url = env.LOOPWAY_API_URL || file?.api_url || DEFAULTS.api_url;
   return {
@@ -54,7 +46,6 @@ export async function loadConfig(dir: string, env: NodeJS.ProcessEnv = process.e
     // Metrics go through the API's PostHog reverse proxy unless pointed elsewhere.
     posthog_host: env.POSTHOG_HOST || file?.posthog_host || `${api_url}/api/ingest`,
     auto_update: !(env.LOOPWAY_NO_UPDATE && env.LOOPWAY_NO_UPDATE !== "0") && file?.auto_update !== false,
-    sandbox: file?.sandbox !== false,
   };
 }
 
@@ -95,13 +86,12 @@ export async function readGithubBot(dir: string): Promise<Partial<GithubBot>> {
 async function readConfig(dir: string): Promise<Partial<Config> | undefined> {
   const raw = await readJson(configPath(dir));
   if (!raw || typeof raw !== "object") return undefined;
-  const { api_url, api_key, posthog_host, auto_update, sandbox } = raw as Partial<Config>;
+  const { api_url, api_key, posthog_host, auto_update } = raw as Partial<Config>;
   return {
     api_url: typeof api_url === "string" ? api_url : undefined,
     api_key: typeof api_key === "string" ? api_key : undefined,
     posthog_host: typeof posthog_host === "string" && posthog_host ? posthog_host : undefined,
     auto_update: typeof auto_update === "boolean" ? auto_update : undefined,
-    sandbox: typeof sandbox === "boolean" ? sandbox : undefined,
   };
 }
 
@@ -111,14 +101,7 @@ async function readConfig(dir: string): Promise<Partial<Config> | undefined> {
  */
 export async function writeConfig(
   dir: string,
-  config: {
-    api_url: string;
-    api_key?: string;
-    posthog_host?: string;
-    github?: GithubBot;
-    auto_update?: boolean;
-    sandbox?: boolean;
-  },
+  config: { api_url: string; api_key?: string; posthog_host?: string; github?: GithubBot; auto_update?: boolean },
 ): Promise<void> {
   const existing = await readJson(configPath(dir));
   const rest = existing && typeof existing === "object" ? existing : {};
