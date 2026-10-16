@@ -6,7 +6,7 @@
   "description": "The coding-agent CLIs a bot can run on (Claude Code, Cursor, ...), shared by the web API and the CLI.",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.21"
   },
   "exports": {
     ".": {

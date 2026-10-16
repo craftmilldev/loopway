@@ -17,7 +17,7 @@ import { UsageError, type Context } from "../context.js";
 import { clock, dim } from "../format.js";
 import { startMcpServer, type McpServer } from "../mcp.js";
 import { runHarness, type RunAgent, type RunOutcome } from "@loopway/harnesses";
-import { botEnv } from "./github.js";
+import { botEnv, ghConfigDir } from "./github.js";
 import { checkRules, route, type BotRule } from "@loopway/rules";
 import { sessionTools } from "./tools.js";
 import { sessionLogPath } from "./transcript.js";
@@ -160,7 +160,11 @@ export class Dispatcher {
     // With a GitHub bot configured, sessions comment, push and commit as it; otherwise as the user.
     const gh = await loadGithubBot(ctx.configDir, ctx.env);
     // Their `loopway` calls never update the CLI: only this process does, once the sessions have finished.
-    const env = { ...(gh ? botEnv(ctx.env, gh, ctx.configDir) : ctx.env), LOOPWAY_NO_UPDATE: "1" };
+    const base = gh ? botEnv(ctx.env, gh, ctx.configDir) : ctx.env;
+    // In the sandbox `gh` can't read the user's ~/.config/gh, so without a bot it gets its own config dir too (and
+    // needs GH_TOKEN in the environment).
+    const ghDir = !gh && opts.sandbox !== false ? { GH_CONFIG_DIR: ghConfigDir(ctx.configDir) } : {};
+    const env = { ...base, ...ghDir, LOOPWAY_NO_UPDATE: "1" };
     // The tools reach the dispatcher once it exists; no session calls one before then.
     const later: { dispatcher?: Dispatcher } = {};
     const mcp = await startMcpServer(

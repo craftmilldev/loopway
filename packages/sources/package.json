@@ -6,7 +6,7 @@
   "description": "Webhook sources shared by the web API and the CLI: each source's webhook adapter.",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.21"
   },
   "exports": {
     ".": {

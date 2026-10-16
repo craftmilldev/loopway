@@ -6,7 +6,7 @@
   "description": "Command-line client for the loopway API.",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.21"
   },
   "bin": {
     "loopway": "./dist/index.js"

@@ -6,7 +6,7 @@
   "description": "Webhook ingestion into per-user CloudEvents inboxes, with a lock/claim/ack API for consumers.",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.21"
   },
   "workspaces": [
     "packages/harnesses",

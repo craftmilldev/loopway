@@ -6,7 +6,7 @@
   "description": "Bot assign rules shared by the web API and the CLI: the CEL environment, rule checking and routing.",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.21"
   },
   "exports": {
     ".": {

@@ -15,7 +15,7 @@ It runs on Vercel at [loopway.craftmill.dev](https://loopway.craftmill.dev), wit
 ## Getting started
 
 ```bash
-curl -fsSL https://loopway.craftmill.dev/install.sh | sh   # puts `loopway` on your PATH; needs Node 22+
+curl -fsSL https://loopway.craftmill.dev/install.sh | sh   # puts `loopway` on your PATH; needs Node 22.21+
 loopway login                 # emails you a one-time code; new emails get an account
 loopway inbox create          # name → source → events → secret → confirm
 loopway inbox show <inbox>    # the webhook URL and secret to add in the sender

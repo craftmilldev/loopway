@@ -6,7 +6,7 @@
   "description": "loopway HTTP API: webhook ingestion and the inbox/event API. Deployed to Vercel.",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.21"
   },
   "exports": {
     ".": "./src/index.ts",
