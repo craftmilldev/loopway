@@ -134,21 +134,25 @@ function RunnerCard({ runner, now }: { runner: Snapshot["runner"]; now: number }
   );
 }
 
+/** One small chip per bot; a bot another runner holds is dimmed, with when its lease ends on hover. */
 function Bots({ bots }: { bots: Snapshot["bots"] }) {
   if (!bots.length) return <EmptyState>No bots yet. Bots with a prompt and rules are picked up each poll.</EmptyState>;
   return (
-    <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
+    <ul className="flex flex-wrap gap-1.5">
       {bots.map((bot) => (
-        <li key={bot.name} className="flex items-center gap-3 px-4 py-2 text-sm">
-          <span className="font-medium">{bot.name}</span>
-          <span className="text-xs text-muted-foreground">
-            {bot.harness} · {bot.model}
-          </span>
-          <span className="ml-auto text-xs text-muted-foreground">
-            {bot.held
-              ? "running here"
-              : `another runner holds it${bot.leasedUntil ? ` until ${clock(bot.leasedUntil)}` : ""}`}
-          </span>
+        <li
+          key={bot.name}
+          title={
+            bot.held
+              ? "Running here"
+              : `Another runner holds it${bot.leasedUntil ? ` until ${clock(bot.leasedUntil)}` : ""}`
+          }
+          className={cn(
+            "rounded-md border px-2 py-0.5 text-xs",
+            bot.held ? "border-border bg-card" : "border-dashed border-border text-muted-foreground",
+          )}
+        >
+          {bot.name}
         </li>
       ))}
     </ul>
@@ -249,7 +253,13 @@ function LoopwayPage() {
         ) : null}
         {runner.phase === "running" ? (
           <>
-            <Section title="Bots">
+            <Section
+              title="Bots"
+              aside={(() => {
+                const elsewhere = bots.filter((b) => !b.held).length;
+                return elsewhere ? `${elsewhere} held by another runner` : null;
+              })()}
+            >
               <Bots bots={bots} />
             </Section>
             <Section
