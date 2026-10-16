@@ -33,7 +33,8 @@ const thread = (
 const bot = (name: string) => ({ id: name, name, kind: "github-threads", inbox_ids: [] }) as unknown as Bot;
 
 const snapshot: Snapshot = {
-  bots: { held: [bot("dev")], skipped: [bot("ci")] },
+  bots: { held: [bot("dev")], skipped: [bot("ci")], unleased: [] },
+  leaseBots: true,
   waiting: [
     { id: "e1", inbox_id: "in", type: "com.github.push", subject: "a/b#9", thread_id: "aaaaaaaa-1", bot_name: "dev" },
   ],
@@ -187,7 +188,8 @@ describe("ThreadsTui", () => {
       ]),
     );
     const { frame, press } = await show({
-      bots: { held: [], skipped: [] },
+      bots: { held: [], skipped: [], unleased: [] },
+      leaseBots: true,
       waiting: [],
       threads,
       runnerId: "me",

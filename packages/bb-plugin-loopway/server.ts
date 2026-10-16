@@ -61,6 +61,11 @@ export default async function plugin(bb: BbPluginApi) {
       label: "Loopway API key (defaults to `loopway login`'s)",
       secret: true,
     },
+    leaseBots: {
+      type: "boolean",
+      label: "Take bot leases (read new messages and start threads); off, only deliver to this runner's threads",
+      default: true,
+    },
   });
 
   let running: Running | undefined;
@@ -79,7 +84,15 @@ export default async function plugin(bb: BbPluginApi) {
   };
   /** Aborted when the settings change, so the runner starts again with them. */
   let restart = new AbortController();
-  settings.onChange(() => restart.abort());
+  settings.onChange((next, prev) => {
+    // Bot leases switch on the running dispatcher, so the runs in flight carry on undisturbed.
+    const changed = (Object.keys(next) as (keyof typeof next)[]).filter((k) => next[k] !== prev[k]);
+    if (running && changed.length === 1 && changed[0] === "leaseBots") {
+      running.dispatcher.setLeaseBots(next.leaseBots);
+      return;
+    }
+    restart.abort();
+  });
 
   const initial = await settings.get();
   if (!initial.project)
@@ -146,6 +159,7 @@ export default async function plugin(bb: BbPluginApi) {
       ttl: ttlFor(interval),
       runnerId: runner.id,
       seen: all.map((b) => b.id),
+      leaseBots: s.leaseBots,
     });
     running = {
       info: { org, runnerId: runner.id, projectId: s.project, interval, max: s.max },
@@ -295,21 +309,29 @@ export default async function plugin(bb: BbPluginApi) {
     }
   }
 
-  bb.rpc.register(rpcContract, { state: () => snapshot() });
+  bb.rpc.register(rpcContract, {
+    state: () => snapshot(),
+    async setLeaseBots({ on }) {
+      const { leaseBots } = await settings.experimental_set({ leaseBots: on });
+      return { leaseBots };
+    },
+  });
 
   async function statusText(): Promise<string> {
     const { runner, bots, threads, moreThreads, stateError } = await snapshot();
     if (runner.phase !== "running")
       return `The loopway runner is ${runner.phase}${runner.message ? `: ${runner.message}` : "."}\n`;
+    const names = (lease: string) =>
+      bots
+        .filter((b) => b.lease === lease)
+        .map((b) => b.name)
+        .join(", ");
     const lines = [
       `org ${runner.org}, runner ${runner.runnerId}`,
-      `bots: ${
-        bots
-          .filter((b) => b.held)
-          .map((b) => b.name)
-          .join(", ") || "none"
-      }`,
-      ...bots.filter((b) => !b.held).map((b) => `skipped ${b.name}: another runner holds its lease`),
+      runner.leaseBots
+        ? `bots: ${names("held") || "none"}`
+        : `not taking bot leases: only delivering to this runner's threads`,
+      ...bots.filter((b) => b.lease === "elsewhere").map((b) => `skipped ${b.name}: another runner holds its lease`),
       ...(stateError ? [`couldn't read the threads: ${stateError}`] : []),
       "",
       "loopway thread  status   bb thread         subjects",

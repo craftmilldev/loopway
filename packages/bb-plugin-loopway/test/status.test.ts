@@ -31,8 +31,10 @@ describe("buildSnapshot", () => {
     const state: DispatcherState = {
       bots: {
         held: [bot("b1", "reviewer")],
+        unleased: [bot("b3", "parked")],
         skipped: [{ ...bot("b2", "triager"), leased_until: "2026-10-15T01:00:00Z" }],
       },
+      leaseBots: true,
       waiting: [],
       threads: {
         ended: thread("ended", { status: "ended", updated_at: "2026-10-15T03:00:00Z" }),
@@ -59,10 +61,18 @@ describe("buildSnapshot", () => {
       titles: new Map([["thr_new", "reviewer: o/r#new"]]),
     });
 
-    expect(snap.runner).toMatchObject({ phase: "running", org: "craftmill", runnerId: "r1", interval: 5, max: 3 });
+    expect(snap.runner).toMatchObject({
+      phase: "running",
+      org: "craftmill",
+      runnerId: "r1",
+      interval: 5,
+      max: 3,
+      leaseBots: true,
+    });
     expect(snap.bots).toEqual([
-      { name: "reviewer", harness: "claude", model: "opus", held: true, leasedUntil: null },
-      { name: "triager", harness: "claude", model: "opus", held: false, leasedUntil: "2026-10-15T01:00:00Z" },
+      { name: "reviewer", harness: "claude", model: "opus", lease: "held", leasedUntil: null },
+      { name: "triager", harness: "claude", model: "opus", lease: "elsewhere", leasedUntil: "2026-10-15T01:00:00Z" },
+      { name: "parked", harness: "claude", model: "opus", lease: "none", leasedUntil: null },
     ]);
     expect(snap.threads.map((t) => [t.id, t.status])).toEqual([
       ["busy", "running"],
