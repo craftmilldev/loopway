@@ -112,8 +112,7 @@ async function runnerOrg(ctx: Context, client: LoopwayClient, flag: string | und
  * The lease TTL when --ttl isn't given. The lease is renewed every poll, so it lasts several polls: one
  * slow renewal mustn't lose it. The floor keeps a tiny --interval from making it fragile.
  */
-export const defaultTtl = (interval: number) =>
-  Math.max(DEFAULTS.ttl, 6 * interval, 3 * MAX_POLL_INTERVAL);
+export const defaultTtl = (interval: number) => Math.max(DEFAULTS.ttl, 6 * interval, 3 * MAX_POLL_INTERVAL);
 
 /**
  * Seconds to wait before the next poll: the --interval right after something happened, growing with the time
