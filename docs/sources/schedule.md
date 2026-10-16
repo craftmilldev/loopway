@@ -16,6 +16,21 @@ An inbox with `source_type: "schedule"` fills itself on a clock: each hour, or e
 
 The config is required, and an update replaces it whole. The inbox has no secret and no events list, and `POST /api/webhooks/<inbox>` answers `404`. Create it in the dashboard (New inbox → Schedule) or with `POST /api/inboxes`; `loopway inbox create` does not offer it yet.
 
+## Changing it from the CLI
+
+`loopway inbox update <inbox>` reads the inbox's current config, applies your flags and sends the whole config, so adding one type keeps the others:
+
+```sh
+loopway inbox update clock --every hour
+loopway inbox update clock --every day --hour 9          # UTC; --hour alone changes a daily inbox's hour
+loopway inbox update clock --message standup="Write the standup"      # add or replace a type (repeatable)
+loopway inbox update clock --message-file report=report.md            # long text from a file (repeatable)
+loopway inbox update clock --remove-message standup                   # (repeatable)
+loopway inbox update clock --config schedule.json        # replace the whole {schedule, messages}; other flags then apply on top
+```
+
+With no flags in a terminal it asks for the schedule, then lets you add, edit and remove messages. The schedule flags are refused on any other source. The CLI checks the same limits as the server (1–20 messages, type characters, unique types, text up to 10,000 characters, hour 0–23) and passes the server's own errors through. `loopway inbox show <inbox>` prints the schedule and each message type with its text.
+
 ## Delivery
 
 `GET /api/cron/schedules` is called by Vercel Cron every hour (`packages/web/vercel.json`) with `Authorization: Bearer $CRON_SECRET`. It stores the messages due in the current window for every schedule inbox. A run at 11:15 of an hourly inbox belongs to the 11:00 window; a daily inbox at hour 9 has windows from 09:00 to 09:00. Windows missed while the server or cron was down are not backfilled.

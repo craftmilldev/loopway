@@ -26,38 +26,10 @@ export function leaseText(b: lw.Bot, runner: string | undefined) {
 /** The Source option that asks for a new source type instead of creating an inbox. */
 const REQUEST = "request:";
 
-/** The org a new inbox or bot goes in. */
-export function OrgSelect({
-  orgs,
-  value,
-  onChange,
-}: {
-  orgs: lw.Org[];
-  value: string;
-  onChange: (slug: string) => void;
-}) {
-  return (
-    <div className="field">
-      <label htmlFor="org">Org</label>
-      <div className="input-wrap">
-        <select id="org" value={value} onChange={(e) => onChange(e.target.value)}>
-          {orgs.map((o) => (
-            <option key={o.id} value={o.slug}>
-              {o.slug}
-              {o.personal ? " (personal)" : ""}
-            </option>
-          ))}
-        </select>
-      </div>
-    </div>
-  );
-}
-
-/** The org dropdown is shown unless the caller (the new-bot flow) already asked for the org and passes `org`. */
-export function CreateInbox({ org: given, onCreated }: { org?: string; onCreated: (inbox: Inbox) => void }) {
+/** The inbox goes in the current org; the header's org switcher is the only way to change it. */
+export function CreateInbox({ onCreated }: { onCreated: (inbox: Inbox) => void }) {
   const orgs = lw.useOrgs(true);
-  const [chosen, setChosen] = useState<string | null>(null);
-  const org = given ?? chosen ?? (orgs ? lw.startOrg(orgs) : "");
+  const org = orgs ? lw.startOrg(orgs) : "";
   const { data: sources = [], can_request } = lw.useSources() ?? {};
   const [name, setName] = useState("");
   const [type, setType] = useState("");
@@ -124,7 +96,6 @@ export function CreateInbox({ org: given, onCreated }: { org?: string; onCreated
 
   return (
     <form className="panel" onSubmit={(e) => void submit(e)}>
-      {!requesting && given === undefined && orgs && <OrgSelect orgs={orgs} value={org} onChange={setChosen} />}
       {!requesting && (
         <div className="field">
           <label htmlFor="name">Name</label>

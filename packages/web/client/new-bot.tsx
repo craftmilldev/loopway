@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { PRESETS } from "@loopway/presets";
 import { HarnessRequest } from "../ee/client/harness-request.js";
-import { CreateInbox, OrgSelect, type Inbox } from "./shared.js";
+import { CreateInbox, type Inbox } from "./shared.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
@@ -11,6 +11,7 @@ export const STEPS = ["Connect a source", "Choose its job", "Name and model", "S
 
 /** When to pick each model alias. */
 const MODEL_USE: Record<string, string> = {
+  best: "The strongest model your account has",
   sonnet: "The usual choice",
   opus: "Harder problems, slower",
   fable: "The newest family",
@@ -30,8 +31,7 @@ export function NewBot() {
   const ready = !!me;
   const inboxes = lw.useList<Inbox>("/inboxes", ready);
   const orgs = lw.useOrgs(ready);
-  const [chosenOrg, setOrg] = useState<string | null>(null);
-  const org = chosenOrg ?? (orgs ? lw.startOrg(orgs) : "");
+  const org = orgs ? lw.startOrg(orgs) : "";
   // Read once: creating the bot rewrites the URL, and that must not count as a resume.
   const [resumeId] = useState(() => new URLSearchParams(location.search).get("bot"));
   const [botId, setBotId] = useState(resumeId);
@@ -41,7 +41,7 @@ export function NewBot() {
   const [blankPrompt, setBlankPrompt] = useState("");
   const [blankRules, setBlankRules] = useState<RuleDraft[]>([]);
   const [name, setName] = useState("");
-  const [model, setModel] = useState(MODELS[0]!);
+  const [model, setModel] = useState("sonnet");
   const bot = lw.useGet<lw.Bot>(botId ? "/bots/" + encodeURIComponent(botId) : null, ready);
 
   // A reload or a link with `?bot=` lands on the first step that still has something to do.
@@ -88,7 +88,6 @@ export function NewBot() {
             <Source
               orgs={orgs}
               org={org}
-              setOrg={setOrg}
               inboxes={inboxes.data}
               picked={picked}
               setPicked={setPicked}
@@ -139,7 +138,6 @@ export function NewBot() {
 function Source({
   orgs,
   org,
-  setOrg,
   inboxes,
   picked,
   setPicked,
@@ -148,7 +146,6 @@ function Source({
 }: {
   orgs: lw.Org[];
   org: string;
-  setOrg: (slug: string) => void;
   inboxes: Inbox[];
   picked: Set<string>;
   setPicked: (s: Set<string>) => void;
@@ -179,15 +176,6 @@ function Source({
   return (
     <section>
       <h2>Where do its messages come from?</h2>
-      <OrgSelect
-        orgs={orgs}
-        value={org}
-        onChange={(slug) => {
-          setOrg(slug);
-          setPicked(new Set());
-          setCreating(!inboxes.some((i) => i.org_id === orgs.find((o) => o.slug === slug)?.id));
-        }}
-      />
       {inOrg.length > 0 && (
         <div className="options">
           {inOrg.map((i) => (
@@ -203,7 +191,6 @@ function Source({
       )}
       {creating ? (
         <CreateInbox
-          org={org}
           onCreated={(i) => {
             track("new_bot_inbox_created", { source_type: i.source_type });
             setCreating(false);

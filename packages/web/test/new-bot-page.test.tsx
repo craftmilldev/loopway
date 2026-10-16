@@ -33,8 +33,8 @@ function stubFetch() {
   );
 }
 
-function at(search: string) {
-  window.history.replaceState(null, "", "/acme/bots/new" + search);
+function at(search: string, org = "acme") {
+  window.history.replaceState(null, "", `/${org}/bots/new` + search);
 }
 
 beforeEach(() => {
@@ -64,9 +64,10 @@ describe("New bot flow", () => {
     fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "dev" } });
     expect(screen.getAllByRole("radio").map((r) => (r.parentElement as HTMLElement).textContent?.trim())).toEqual([
       "Claude Code",
-      "sonnet",
-      "opus",
+      "best",
       "fable",
+      "opus",
+      "sonnet",
       "haiku",
     ]);
     fireEvent.click(screen.getByText("Create bot and continue"));
@@ -125,15 +126,19 @@ describe("New bot flow", () => {
     });
   });
 
-  it("starts on the org something was last created in, and lists only its inboxes", async () => {
-    localStorage.setItem("loopway_last_org", "craftmill");
-    at("");
+  it("uses the org in the URL, with no org picker, and lists only its inboxes", async () => {
+    at("", "craftmill");
     render(<NewBot />);
-    expect((await screen.findByLabelText<HTMLSelectElement>("Org")).value).toBe("craftmill");
+    await screen.findByText("Continue");
+    expect(screen.queryByLabelText("Org")).toBeNull();
     expect(screen.queryByLabelText(/github/)).toBeNull();
+  });
 
-    fireEvent.change(screen.getByLabelText("Org"), { target: { value: "me" } });
+  it("lists the inboxes of the URL's org", async () => {
+    at("", "me");
+    render(<NewBot />);
     expect(await screen.findByLabelText(/github/)).toBeTruthy();
+    expect(screen.queryByLabelText("Org")).toBeNull();
   });
 
   it("asks for an inbox before continuing", async () => {

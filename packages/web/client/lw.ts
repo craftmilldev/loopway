@@ -521,9 +521,10 @@ export function subjectUrl(subject: string) {
 
 /** The models a Claude bot may run on (ClaudeHarness.models in packages/harnesses): aliases for the latest of a family, then full ids to pin one. */
 export const BOT_MODELS = [
-  "sonnet",
-  "opus",
+  "best",
   "fable",
+  "opus",
+  "sonnet",
   "haiku",
   "claude-fable-5-1",
   "claude-opus-5-5",
