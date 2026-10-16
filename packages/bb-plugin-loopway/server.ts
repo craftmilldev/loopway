@@ -15,14 +15,16 @@ import { authedClient, type Context } from "@loopway/cli/src/context.js";
 import { DEFAULTS, Dispatcher } from "@loopway/cli/src/bots/dispatcher.js";
 import { ensureRunner } from "@loopway/cli/src/bots/runner.js";
 import { BbSessions, METADATA_KEY, type LoopwayThreadInfo } from "./sessions.js";
+import { buildSnapshot, RunnerStatus, rpcContract, STATE_CHANGED, type RunnerInfo, type Snapshot } from "./status.js";
+
+export { rpcContract };
 
 /** The CLI's lease TTL default (see `defaultTtl` in bots-run.ts): several polls, at least 30s. */
 const ttlFor = (interval: number) => Math.max(DEFAULTS.ttl, 6 * interval);
 
-/** What `bb loopway status` and the agent tools reach while the runner is going. */
+/** What the Loopway page, `bb loopway status` and the agent tools reach while the runner is going. */
 interface Running {
-  org: string;
-  runnerId: string;
+  info: RunnerInfo;
   dispatcher: Dispatcher;
   sessions: BbSessions;
 }
@@ -55,6 +57,19 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   let running: Running | undefined;
+  // The page refetches on this signal; a burst of log lines makes one.
+  let publish: ReturnType<typeof setTimeout> | undefined;
+  const status = new RunnerStatus(() => {
+    publish ??= setTimeout(() => {
+      publish = undefined;
+      bb.realtime.publish(STATE_CHANGED, null);
+    }, 300);
+  });
+  bb.onDispose(() => clearTimeout(publish));
+  const note = (text: string, level: "info" | "warn" = "info") => {
+    bb.log[level](text);
+    status.note(text, level);
+  };
   /** Aborted when the settings change, so the runner starts again with them. */
   let restart = new AbortController();
   settings.onChange(() => restart.abort());
@@ -70,8 +85,16 @@ export default async function plugin(bb: BbPluginApi) {
       while (!signal.aborted) {
         restart = new AbortController();
         const stop = AbortSignal.any([signal, restart.signal]);
+        status.set("starting");
         try {
           await runUntil(stop);
+          status.set("stopped", signal.aborted ? "The plugin stopped." : "Restarting with the new settings.");
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          const configure = err instanceof Error && err.name === "NeedsConfigurationError";
+          status.set(configure ? "needs-configuration" : "error", message);
+          if (!configure) note(`runner stopped: ${message}`, "warn");
+          throw err;
         } finally {
           running = undefined;
         }
@@ -93,7 +116,7 @@ export default async function plugin(bb: BbPluginApi) {
       configDir: join(defaultConfigDir(), "bb-runner"),
       env: { ...process.env, LOOPWAY_API_URL: auth.api_url, LOOPWAY_API_KEY: apiKey },
       interactive: false,
-      out: (text) => bb.log.info(text),
+      out: (text) => note(text),
     };
     const client = await authedClient(ctx);
     const org = await pickOrg(client, s.org);
@@ -106,7 +129,7 @@ export default async function plugin(bb: BbPluginApi) {
       kv: bb.storage.kv,
       projectId: s.project,
       describe: (id) => describe(client, id),
-      log: (text) => bb.log.info(text),
+      log: (text) => note(text),
       signal: stop,
     });
     const interval = s.interval;
@@ -117,16 +140,22 @@ export default async function plugin(bb: BbPluginApi) {
       runnerId: runner.id,
       seen: all.map((b) => b.id),
     });
-    running = { org, runnerId: runner.id, dispatcher, sessions };
-    bb.log.info(`running ${bots.map((b) => b.name).join(", ") || "no bots yet"} for ${org} every ${interval}s`);
+    running = {
+      info: { org, runnerId: runner.id, projectId: s.project, interval, max: s.max },
+      dispatcher,
+      sessions,
+    };
+    status.set("running");
+    note(`running ${bots.map((b) => b.name).join(", ") || "no bots yet"} for ${org} every ${interval}s`);
     try {
       while (!stop.aborted) {
         try {
           await dispatcher.tick();
         } catch (err) {
           // A flaky network shouldn't stop the runner; try again next tick.
-          bb.log.warn(`error: ${err instanceof Error ? err.message : String(err)}`);
+          note(`error: ${err instanceof Error ? err.message : String(err)}`, "warn");
         }
+        status.ticked();
         // Poll again after the interval, or as soon as a run ends so its slot goes to a waiting thread.
         const timer = new AbortController();
         await Promise.race([
@@ -191,34 +220,58 @@ export default async function plugin(bb: BbPluginApi) {
         status: cliCommand({
           summary: "Show the runner's org and bots, and each loopway thread's bb thread (at most 200 threads)",
           async run() {
-            return { exitCode: 0, stdout: await status() };
+            return { exitCode: 0, stdout: await statusText() };
           },
         }),
       },
     }),
   );
 
-  async function status(): Promise<string> {
+  /** The page's snapshot: the dispatcher's view of the bots and threads, with each thread's bb thread. */
+  async function snapshot(): Promise<Snapshot> {
     const r = running;
-    if (!r) return "The loopway runner isn't running. See `bb plugin list` for why.\n";
-    const state = await r.dispatcher.state();
+    if (!r) return buildSnapshot({ status, pairs: new Map(), titles: new Map() });
     const pairs = new Map((await r.sessions.pairs()).map((p) => [p.loopwayThreadId, p.bbThreadId]));
+    const titles = new Map<string, string | null>();
+    try {
+      const threads = await bb.sdk.threads.list({ originPluginId: bb.pluginId, includeHidden: true, limit: 500 });
+      for (const t of threads) titles.set(t.id, t.title ?? t.titleFallback);
+    } catch {
+      // Titles are a nicety; the ids still link.
+    }
+    try {
+      return buildSnapshot({ status, info: r.info, state: await r.dispatcher.state(), pairs, titles });
+    } catch (err) {
+      const stateError = err instanceof Error ? err.message : String(err);
+      return buildSnapshot({ status, info: r.info, stateError, pairs, titles });
+    }
+  }
+
+  bb.rpc.register(rpcContract, { state: () => snapshot() });
+
+  async function statusText(): Promise<string> {
+    const { runner, bots, threads, moreThreads, stateError } = await snapshot();
+    if (runner.phase !== "running")
+      return `The loopway runner is ${runner.phase}${runner.message ? `: ${runner.message}` : "."}\n`;
     const lines = [
-      `org ${r.org}, runner ${r.runnerId}`,
-      `bots: ${state.bots.held.map((b) => b.name).join(", ") || "none"}`,
-      ...state.bots.skipped.map((b) => `skipped ${b.name}: another runner holds its lease`),
+      `org ${runner.org}, runner ${runner.runnerId}`,
+      `bots: ${
+        bots
+          .filter((b) => b.held)
+          .map((b) => b.name)
+          .join(", ") || "none"
+      }`,
+      ...bots.filter((b) => !b.held).map((b) => `skipped ${b.name}: another runner holds its lease`),
+      ...(stateError ? [`couldn't read the threads: ${stateError}`] : []),
       "",
       "loopway thread  status   bb thread         subjects",
+      ...threads.map(
+        (t) =>
+          `${t.id.slice(0, 14).padEnd(16)}${t.status.padEnd(9)}${(t.bbThreadId ?? "-").padEnd(18)}${t.subjects.join(", ")}`,
+      ),
     ];
-    const mine = Object.values(state.threads).filter((t) => t.runner_id === r.runnerId);
-    for (const t of mine.slice(0, 200)) {
-      const flag = state.running.has(t.id) ? "running" : t.status;
-      lines.push(
-        `${t.id.slice(0, 14).padEnd(16)}${flag.padEnd(9)}${(pairs.get(t.id) ?? "-").padEnd(18)}${t.subjects.join(", ")}`,
-      );
-    }
-    if (!mine.length) lines.push("(no threads yet)");
-    if (mine.length > 200) lines.push(`… and ${mine.length - 200} more`);
+    if (!threads.length) lines.push("(no threads yet)");
+    if (moreThreads) lines.push(`… and ${moreThreads} more`);
     return lines.join("\n") + "\n";
   }
 }
