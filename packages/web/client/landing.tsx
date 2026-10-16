@@ -2,6 +2,8 @@ import { HARNESS_LABELS } from "@loopway/harnesses/labels";
 import { STATE_COLORS } from "@loopway/palette";
 import { Marked, type Tokens } from "marked";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { BotsTable } from "./bots-table.js";
+import { SAMPLE_BOTS } from "./landing-bots.js";
 import { track } from "./metrics.js";
 
 // The landing page, built from content/home.md: its comment says how the markdown maps to the page. Parsing turns
@@ -122,13 +124,13 @@ export function parseHome(markdown: string, agents: readonly string[] = AGENTS):
 }
 
 /**
- * The figure for a section, by id: the terminal (top), a thread (threads) and the bots table (dashboard). Empty for
- * now; each figure fills its slot here.
+ * The figure for a section, by id: the terminal (top), a thread (threads) and the bots table (dashboard). Each figure
+ * fills its slot here; the terminal and the thread are empty for now.
  */
 export const FIGURES: Record<string, () => ReactNode> = {
   top: () => null,
   threads: () => null,
-  dashboard: () => null,
+  dashboard: () => <BotsTable rows={SAMPLE_BOTS} />,
 };
 
 /** How each section lays out, by id. Any other id is "wide": the heading and its prose side by side, then the rest. */

@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import { botState, countThreads, filterOf, stateReason, type BotFilter } from "./bot-state.js";
 import type { Inbox } from "./shared.js";
-import { BAR_DAYS, DeliveryBars } from "./delivery-bars.js";
-import { LevelPie } from "./level-pie.js";
+import { BotsTable, type BotRow } from "./bots-table.js";
+import { BAR_DAYS } from "./delivery-bars.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
-import { StateBadge } from "./overview.js";
 import { Updated } from "./updated.js";
 
 const FILTERS: { key: BotFilter; label: string }[] = [
@@ -101,6 +100,28 @@ export function Bots() {
       (!needle || [r.bot.name, ...r.inboxes].some((n) => n.toLowerCase().includes(needle))),
   );
 
+  const tableRow = (r: (typeof rows)[number]): BotRow => {
+    const a = activity?.[r.bot.id];
+    const org = lw.orgLabel(orgs, bots.data!, r.bot.org_id);
+    return {
+      id: r.bot.id,
+      name: r.bot.name,
+      href: lw.orgBase() + "/bots/" + r.bot.id,
+      detail:
+        (org ? org + " · " : "") +
+        r.bot.model +
+        (r.bot.prompt_version ? ` · prompt v${r.bot.prompt_version.version}` : ""),
+      state: r.state,
+      reason: r.reason,
+      reads: r.inboxes.join(", "),
+      runner: r.runner,
+      open: r.open,
+      waiting: r.waiting,
+      activity: a,
+      last: activity ? (a?.last_delivery_at ? lw.ago(a.last_delivery_at) : null) : undefined,
+    };
+  };
+
   const pick = (key: BotFilter) => {
     track("bots_filter_changed", { filter: key });
     setFilter(key);
@@ -165,64 +186,7 @@ export function Bots() {
             </div>
           </section>
 
-          <div className="scroll">
-            <table className="ledger bots-ledger">
-              <thead>
-                <tr>
-                  <th scope="col">Bot</th>
-                  <th scope="col">State</th>
-                  <th scope="col">Reads</th>
-                  <th scope="col">Runner</th>
-                  <th scope="col" className="num">
-                    Open threads
-                  </th>
-                  <th scope="col" className="num">
-                    Messages waiting
-                  </th>
-                  <th scope="col">Deliveries, {BAR_DAYS} days</th>
-                  <th scope="col">Levels</th>
-                  <th scope="col" className="num">
-                    Last delivery
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map((r) => (
-                  <tr key={r.bot.id}>
-                    <td>
-                      <a className="bot-link" href={lw.orgBase() + "/bots/" + r.bot.id}>
-                        {r.bot.name}
-                      </a>
-                      <div className="lbl small">
-                        {lw.orgLabel(orgs, bots.data!, r.bot.org_id)
-                          ? lw.orgLabel(orgs, bots.data!, r.bot.org_id) + " · "
-                          : ""}
-                        {r.bot.model}
-                        {r.bot.prompt_version ? ` · prompt v${r.bot.prompt_version.version}` : ""}
-                      </div>
-                    </td>
-                    <td>
-                      <StateBadge state={r.state} />
-                      {r.reason && <div className="why">{r.reason}</div>}
-                    </td>
-                    <td className="mono">{r.inboxes.join(", ")}</td>
-                    <td className={"mono" + (r.runner ? "" : " muted")}>{r.runner ?? "not held"}</td>
-                    <td className="num">{r.open}</td>
-                    <td className="num">{r.waiting}</td>
-                    <td>
-                      <DeliveryBars activity={activity?.[r.bot.id]} days={BAR_DAYS} />
-                    </td>
-                    <td>
-                      <LevelPie levels={activity?.[r.bot.id]?.levels} />
-                    </td>
-                    <td className={"num" + (activity?.[r.bot.id]?.last_delivery_at ? "" : " muted")}>
-                      {activity ? lw.ago(activity[r.bot.id]?.last_delivery_at ?? null) : "…"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <BotsTable rows={shown.map(tableRow)} />
           {!shown.length && <p className="muted">No bots match.</p>}
 
           <section className="bots-note">
