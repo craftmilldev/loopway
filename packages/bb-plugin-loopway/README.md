@@ -47,4 +47,5 @@ Stopping the plugin, by disabling or reloading it or by changing a setting, rele
 that are mid-turn keep running. Each run writes an `init` record to its log when the bb thread gets the
 message, and a `result` record when the turn ends. On the next start, the dispatcher's reconcile finds the runs
 that have no `result` and puts their messages back to waiting. Those messages then go to the same bb thread
-again.
+again. Any setting change restarts the runner, so saving an unrelated setting while a run is in flight
+hands its messages to the bb thread a second time.

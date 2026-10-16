@@ -147,9 +147,13 @@ export class BbSessions {
    * Waits until the bb thread is idle (or failed) with nothing left in its queue, so the message this run
    * sent has had its turn. Lifecycle events wake it early; a poll covers any it missed. When the runner
    * stops it never returns: the run is left cut off, for the next runner's reconcile to pick up.
+   * Right after a send or spawn the thread may still read idle, so idle only counts once the thread has been
+   * seen working, or has stayed idle through a few polls (the message was taken and answered between two).
    */
   private async settle(bbThreadId: string): Promise<"success" | "error" | "deleted"> {
     const pollMs = this.opts.pollMs ?? 10_000;
+    let idlePolls = 0;
+    let sawWork = false;
     try {
       for (;;) {
         const woken = new Promise<void>((resolve) => this.waiting.set(bbThreadId, resolve));
@@ -169,8 +173,15 @@ export class BbSessions {
           continue; // try again next poll
         }
         if (thread.deletedAt) return "deleted";
-        if (thread.queuedMessageCount > 0) continue;
-        if (thread.status === "idle") return "success";
+        if (thread.queuedMessageCount > 0) {
+          sawWork = true;
+          continue;
+        }
+        if (thread.status === "idle") {
+          if (sawWork || ++idlePolls >= IDLE_POLLS_BEFORE_DONE) return "success";
+          continue;
+        }
+        sawWork = true;
         if (thread.status === "error") return "error";
       }
     } finally {
@@ -188,6 +199,8 @@ export class BbSessions {
     }
   }
 }
+
+const IDLE_POLLS_BEFORE_DONE = 3;
 
 function isNotFound(err: unknown): boolean {
   const status = (err as { status?: unknown } | null)?.status;

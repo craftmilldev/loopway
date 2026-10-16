@@ -148,6 +148,24 @@ describe("BbSessions", () => {
     expect((await outcome).code).toBe(0);
   });
 
+  it("doesn't take a stale idle for a finished turn", async () => {
+    const outcome = sessions.run(run());
+    await settleSoon();
+    const thread = store.threads.get("thr_1")!;
+    // Idle before the thread has picked the message up.
+    thread.status = "idle";
+    sessions.poke("thr_1");
+    let done = false;
+    void outcome.then(() => (done = true));
+    await sleep(20);
+    expect(done).toBe(false);
+
+    thread.status = "active";
+    await sleep(20);
+    thread.status = "idle";
+    expect((await outcome).code).toBe(0);
+  });
+
   it("finds a finished turn by polling when no event comes", async () => {
     const outcome = sessions.run(run());
     await settleSoon();
