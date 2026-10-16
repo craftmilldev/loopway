@@ -15,7 +15,7 @@ import { ApiError, LoopwayClient, type Bot, type Message } from "../src/client.j
 import { checkRules, route as routeWith, THREAD_MESSAGE_TYPE, type BotRule } from "@loopway/rules";
 import { getHarness, type AgentRun, type RunOutcome } from "@loopway/harnesses";
 import { API_ERROR_BACKOFF_MS, Dispatcher, NETWORK_ERROR_MAX_BACKOFF_MS } from "../src/bots/dispatcher.js";
-import { checkSandbox, defaultTtl, pollUntilUpdate } from "../src/commands/bots-run.js";
+import { defaultTtl, pollUntilUpdate } from "../src/commands/bots-run.js";
 import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
 import { botEnv } from "../src/bots/github.js";
 import { UsageError, type Context } from "../src/context.js";
@@ -215,7 +215,6 @@ describe("auth", () => {
       api_key: undefined,
       posthog_host: "https://loopway.craftmill.dev/api/ingest",
       auto_update: true,
-      sandbox: true,
     });
     await writeConfig(configDir, { api_url: "https://file.test/", api_key: "lw_file" });
     expect(await loadConfig(configDir, {})).toEqual({
@@ -223,14 +222,12 @@ describe("auth", () => {
       api_key: "lw_file",
       posthog_host: "https://file.test/api/ingest",
       auto_update: true,
-      sandbox: true,
     });
     expect(await loadConfig(configDir, { LOOPWAY_API_URL: "https://env.test", LOOPWAY_API_KEY: "lw_env" })).toEqual({
       api_url: "https://env.test",
       api_key: "lw_env",
       posthog_host: "https://env.test/api/ingest",
       auto_update: true,
-      sandbox: true,
     });
     // Self-update is on unless config.json or LOOPWAY_NO_UPDATE turns it off, and `login` keeps the setting.
     await writeConfig(configDir, { api_url: "https://file.test", auto_update: false });
@@ -239,18 +236,14 @@ describe("auth", () => {
     await writeConfig(configDir, { api_url: "https://file.test", auto_update: true });
     expect((await loadConfig(configDir, { LOOPWAY_NO_UPDATE: "1" })).auto_update).toBe(false);
     expect((await loadConfig(configDir, { LOOPWAY_NO_UPDATE: "0" })).auto_update).toBe(true);
-    // Bots are sandboxed unless config.json says `sandbox: false`, and `config update --sandbox` keeps the other settings.
-    expect((await loadConfig(configDir, {})).sandbox).toBe(true);
-    await writeConfig(configDir, { api_url: "https://file.test", sandbox: false });
-    expect((await loadConfig(configDir, {})).sandbox).toBe(false);
-    await run("config", "update", "--sandbox", "on");
-    expect((await loadConfig(configDir, {})).sandbox).toBe(true);
-    await run("config", "update", "--sandbox", "off");
-    expect((await loadConfig(configDir, {})).sandbox).toBe(false);
     // The metrics host lives in config.json (which login and config keep), and POSTHOG_HOST overrides it.
     await writeConfig(configDir, { api_url: "https://file.test", posthog_host: "https://eu.i.posthog.com" });
     expect((await loadConfig(configDir, {})).posthog_host).toBe("https://eu.i.posthog.com");
     expect((await loadConfig(configDir, { POSTHOG_HOST: "https://ph.test" })).posthog_host).toBe("https://ph.test");
+    // A `sandbox` key left by an older CLI is ignored.
+    await writeFile(join(configDir, "config.json"), JSON.stringify({ api_url: "https://file.test", sandbox: false }));
+    expect(await loadConfig(configDir, {})).not.toHaveProperty("sandbox");
+    expect((await loadConfig(configDir, {})).api_url).toBe("https://file.test");
   });
 
   it("loadGithubBot: env over config.json; all three or none; config and login keep it", async () => {
@@ -1040,7 +1033,7 @@ describe("threads", () => {
     ]);
   }
 
-  async function setup(max: number, env: NodeJS.ProcessEnv = {}, inboxes = 1, startOpts: { sandbox?: boolean } = {}) {
+  async function setup(max: number, env: NodeJS.ProcessEnv = {}, inboxes = 1) {
     const key = await configured();
     const bots: Bot[] = [];
     const boxes: { id: string; config: { secret: string } }[] = [];
@@ -1078,7 +1071,7 @@ describe("threads", () => {
     };
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
     const runner = await ensure(client);
-    const d = await Dispatcher.start(ctx, client, bots, { max, ttl: 60, runnerId: runner.id, ...startOpts });
+    const d = await Dispatcher.start(ctx, client, bots, { max, ttl: 60, runnerId: runner.id });
     const finish = async (outcome: RunOutcome = { code: 0, delivered: true }) => (
       busy.splice(0).forEach((f) => f(outcome)),
       await d.idle()
@@ -1870,65 +1863,6 @@ describe("threads", () => {
     expect((await sessions())[id]).toMatchObject({ started: true, waiting: [] });
     expect((await sessions())[id].inflight).toEqual([]);
     await finish();
-  });
-
-  it("runs sessions sandboxed by default", async () => {
-    const plain = await setup(3);
-    await send(plain.inbox, "issues", issue("opened", 1));
-    await plain.d.tick();
-    expect(plain.runs[0]!.sandbox).not.toBe(false);
-    expect(await plain.d.readLog(plain.runs[0]!.sessionId)).not.toContain("sandbox is off");
-  });
-
-  it("notes in the session log when the sandbox is off", async () => {
-    const off = await setup(3, {}, 1, { sandbox: false });
-    await send(off.inbox, "issues", issue("opened", 2));
-    await off.d.tick();
-    expect(off.runs[0]!.sandbox).toBe(false);
-    expect(await off.d.readLog(off.runs[0]!.sessionId)).toMatch(/WARNING: the sandbox is off/);
-    await off.finish();
-  });
-
-  it("bots run: --no-sandbox or config skips the harness check, warns and counts it; the flag beats the file", async () => {
-    const refuse = vi
-      .spyOn(getHarness("claude"), "canRun")
-      .mockReturnValue({ ok: false, reason: "missing_dependency", message: "needs bubblewrap" });
-    const out: string[] = [];
-    const events: [string, Record<string, unknown> | undefined][] = [];
-    const ctx: Context = {
-      configDir,
-      env: {},
-      interactive: false,
-      out: (t) => out.push(t),
-      fetch: apiFetch,
-      metrics: { capture: async (e, p) => void events.push([e, p]) },
-    };
-    const bots = [{ harness: "claude" }];
-    try {
-      // Sandboxed by default: the harness check refuses.
-      await expect(checkSandbox(ctx, bots)).rejects.toThrow(/needs bubblewrap/);
-      expect(events).toEqual([["bots_run_refused", expect.objectContaining({ reason: "missing_dependency" })]]);
-      expect(out).toEqual([]);
-      // --no-sandbox: starts anyway, with the warning and the event.
-      events.length = 0;
-      expect(await checkSandbox(ctx, bots, false)).toBe(false);
-      expect(out).toEqual([expect.stringMatching(/sandbox is off.*full access to your files/)]);
-      expect(events).toEqual([["bots_run_unsandboxed", expect.objectContaining({ source: "flag" })]]);
-      // sandbox: false in config.json does the same without the flag.
-      await writeConfig(configDir, { api_url: "https://file.test", sandbox: false });
-      events.length = 0;
-      expect(await checkSandbox(ctx, bots)).toBe(false);
-      expect(events).toEqual([["bots_run_unsandboxed", expect.objectContaining({ source: "config" })]]);
-      // The flag takes precedence over the file.
-      events.length = 0;
-      expect(await checkSandbox(ctx, bots, false)).toBe(false);
-      expect(events).toEqual([["bots_run_unsandboxed", expect.objectContaining({ source: "flag" })]]);
-      // With the file back on and no flag, the check applies again.
-      await writeConfig(configDir, { api_url: "https://file.test", sandbox: true });
-      await expect(checkSandbox(ctx, bots)).rejects.toThrow(/needs bubblewrap/);
-    } finally {
-      refuse.mockRestore();
-    }
   });
 
   it("serves a link tool that routes a PR's messages to the session", async () => {

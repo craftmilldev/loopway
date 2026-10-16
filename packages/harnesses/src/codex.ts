@@ -1,7 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import type { AgentRun, RunWatch } from "./agent.js";
 import { Harness, type Launch } from "./harness.js";
-import { expandPath, sandboxPolicy, sharedGitDir } from "./sandbox.js";
 
 /**
  * Reads the JSONL `codex exec --json` prints. It has no usage-limit signal and doesn't echo the prompt, so a turn
@@ -43,26 +42,10 @@ export class CodexWatch implements RunWatch {
   }
 }
 
-/** The `-c` overrides that put a Codex run in its sandbox: writes limited to the working directory and the policy's paths, the network left open. */
-export function codexSandboxArgs(cwd: string): string[] {
-  const gitDir = sharedGitDir(cwd);
-  // Codex keeps its own sessions in ~/.codex, outside the sandbox, so that isn't listed.
-  const roots = [...sandboxPolicy().allowWrite.filter((p) => !p.startsWith("~/.claude")), ...(gitDir ? [gitDir] : [])];
-  return [
-    "-c",
-    'sandbox_mode="workspace-write"',
-    "-c",
-    "sandbox_workspace_write.network_access=true",
-    "-c",
-    `sandbox_workspace_write.writable_roots=${JSON.stringify(roots.map(expandPath))}`,
-  ];
-}
-
 /**
  * OpenAI's Codex CLI, run as `codex exec`. It signs in the way the user's own `codex` does (`codex login`). Codex
  * makes its own thread ids, so the one made for a session is kept beside the session's log (read from the log once
- * the run ends) and later runs resume it. The sandbox limits writes but, unlike Claude's, can't deny reads of
- * `~/.ssh` and the like.
+ * the run ends) and later runs resume it.
  */
 export class CodexHarness extends Harness {
   readonly name = "codex";
@@ -107,8 +90,8 @@ export class CodexHarness extends Harness {
     // The dispatcher's tools, with their calls approved up front: a headless run has nobody to ask.
     args.push("-c", `mcp_servers.loopway.url=${JSON.stringify(run.mcpUrl)}`);
     args.push("-c", 'mcp_servers.loopway.default_tools_approval_mode="approve"');
-    if (run.sandbox === false) args.push("--dangerously-bypass-approvals-and-sandbox");
-    else args.push(...codexSandboxArgs(process.cwd()));
+    // No sandbox, as with Claude: the bot runs with your access, and a headless run has nobody to approve commands.
+    args.push("--dangerously-bypass-approvals-and-sandbox");
     // The message goes in on stdin, so one that starts with a dash isn't read as a flag.
     args.push(...(thread ? [thread] : []), "-");
     return { args, stdin: run.message };
