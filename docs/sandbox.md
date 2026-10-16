@@ -30,5 +30,5 @@ worktree, `npm ci`, run the tests, commit, push, `gh pr create`, and call `link`
 ## Diagnosing a denial
 
 When a sandboxed run has tool results that look like denials (`Operation not permitted`, `Read-only file system`, or the
-write guard's message), the session log gets a `SANDBOX:` note listing them and pointing at `--no-sandbox`. The
+write guard's message), the session log gets a `SANDBOX:` note listing them (the note does not suggest leaving the sandbox; the bot reads its own log). The
 `bot_sandbox_denied` metric counts those sessions.

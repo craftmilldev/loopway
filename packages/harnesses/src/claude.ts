@@ -1,4 +1,5 @@
 import { accessSync, constants, existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentRun } from "./agent.js";
@@ -130,7 +131,16 @@ export class ClaudeHarness extends Harness {
     if (run.sandbox !== false) args.push("--settings", JSON.stringify(claudeSandboxSettings(process.cwd())));
     // The message goes in as stream-json so Claude Code can echo it back once it's in the session.
     args.push("--input-format", "stream-json", "--replay-user-messages");
-    return { args, stdin: JSON.stringify({ type: "user", message: { role: "user", content: run.message } }) + "\n" };
+    // `gh` reads its config dir even with GH_TOKEN set, and ~/.config/gh is closed to the sandbox, so it gets its own.
+    const env =
+      run.sandbox !== false && !run.env.GH_CONFIG_DIR
+        ? { GH_CONFIG_DIR: join(homedir(), ".loopway", "gh") }
+        : undefined;
+    return {
+      args,
+      env,
+      stdin: JSON.stringify({ type: "user", message: { role: "user", content: run.message } }) + "\n",
+    };
   }
 
   watch(onStarted?: () => void) {

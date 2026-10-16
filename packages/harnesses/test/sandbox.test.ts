@@ -36,6 +36,13 @@ describe("sandbox", () => {
     expect(settings.permissions.deny).toEqual(expect.arrayContaining(["Read(~/.ssh/**)", "Edit(~/.aws/**)"]));
   });
 
+  it("gives gh a config dir of its own in the sandbox, unless the environment sets one", () => {
+    const h = new ClaudeHarness();
+    expect(h.launch(run(false)).env?.GH_CONFIG_DIR).toBe(join(homedir(), ".loopway", "gh"));
+    expect(h.launch({ ...run(false), env: { GH_CONFIG_DIR: "/x" } }).env).toBeUndefined();
+    expect(h.launch({ ...run(false), sandbox: false }).env).toBeUndefined();
+  });
+
   it("allows writes to caches and temp, and leaves the network open", () => {
     const s = claudeSandboxSettings("/nonexistent");
     expect(s.sandbox.filesystem.allowWrite).toEqual(expect.arrayContaining(["~/.npm", "~/.claude", "~/.loopway"]));

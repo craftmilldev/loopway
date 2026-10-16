@@ -57,7 +57,6 @@ export const sandboxDenialNote = (denials: string[]) =>
   [
     `SANDBOX: ${denials.length} tool call${denials.length === 1 ? "" : "s"} in this run look like sandbox denials:`,
     ...denials.map((d) => `  ${d}`),
-    "If this blocked legitimate work, rerun with `loopway bots run --no-sandbox` and report the path on the loopway issue tracker.",
   ].join("\n");
 
 /** Printed at startup, and written to each session's log, when the sandbox is off. */
