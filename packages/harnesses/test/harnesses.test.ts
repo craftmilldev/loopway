@@ -213,6 +213,7 @@ echo '{"type":"turn.completed"}'
     expect(args[0]).toContain("--dangerously-bypass-approvals-and-sandbox");
     expect(args[0]).toMatch(/ -$/);
     expect(args[1]).toMatch(/^exec resume --json /);
+    expect(args[1]).toContain("--dangerously-bypass-approvals-and-sandbox");
     expect(args[1]).toMatch(/ th-123 -$/);
     expect([harness.modelFits("gpt-6-sol"), harness.modelFits("sonnet")]).toEqual([true, false]);
     expect(await readFile(join(out, "stdin"), "utf8")).toBe("-hello-hello");
