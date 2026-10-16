@@ -377,7 +377,9 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .argument("<thread>", "thread id")
     .addOption(jsonOpt())
     // The parent `threads` command takes --json too, and claims it wherever it appears.
-    .action((ref, thread, _opts, cmd) => endBotThread(ctx, ref, thread, cmd.optsWithGlobals()));
+    .action((ref: string, thread: string, _opts: unknown, cmd: Command) =>
+      endBotThread(ctx, ref, thread, cmd.optsWithGlobals()),
+    );
 
   botThreads
     .command("send")
