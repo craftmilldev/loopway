@@ -1048,6 +1048,10 @@ main.dash {
 .dot.state-stranded {
   color: var(--madder-600);
 }
+.dot.state-waiting,
+.dot.state-idle {
+  color: var(--ink-500);
+}
 .tabs {
   display: flex;
   flex-wrap: wrap;
