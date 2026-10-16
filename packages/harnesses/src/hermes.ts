@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AgentRun, RunWatch } from "./agent.js";
 import { Harness, type Launch } from "./harness.js";
+import { HARNESS_LABELS } from "./labels.js";
 
 /**
  * Reads the JSONL `hermes chat --format stream-json` prints: a `system` `init` record first, then `text` and tool
@@ -63,6 +64,7 @@ export function withoutTopLevelKey(text: string, key: string): string {
  */
 export class HermesHarness extends Harness {
   readonly name = "hermes";
+  readonly label = HARNESS_LABELS.hermes;
   readonly command = "hermes";
 
   /** Hermes' models depend on its provider and the account, so any name goes through and `hermes` has the last word. */

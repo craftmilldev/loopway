@@ -19,12 +19,15 @@ export interface Launch {
 
 /**
  * A coding-agent CLI that can run a bot's sessions (Claude Code, Cursor, ...). To add one, subclass this, fill in
- * `name`, `command`, `launch` and `watch`, and add it to harnesses/index.ts. `before` and `after` are for harnesses
- * that need files set up around a run; everything else (the spawn, the log, the outcome) is done here.
+ * `name`, `label`, `command`, `launch` and `watch`, then add it to harnesses/index.ts and its label to labels.ts.
+ * `before` and `after` are for harnesses that need files set up around a run; everything else (the spawn, the log,
+ * the outcome) is done here.
  */
 export abstract class Harness {
   /** What a bot's `harness` is set to. */
   abstract readonly name: string;
+  /** What people read it as (the site's "Claude Code"); set from labels.ts. */
+  abstract readonly label: string;
   /** The binary to spawn. */
   abstract readonly command: string;
 
