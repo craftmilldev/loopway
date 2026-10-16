@@ -182,8 +182,10 @@ export async function pollUntilUpdate(
     if (updating && !dispatcher.busy) return updating;
     // Poll again after a delay that grows while idle, or as soon as a run exits so its slot goes to a waiting session.
     const delay = pollDelay(interval, dispatcher.idleMs());
-    if (delay >= MAX_POLL_INTERVAL && !capped) void ctx.metrics?.capture("bot_poll_backed_off_to_max");
-    capped = delay >= MAX_POLL_INTERVAL;
+    // Only a delay that grew to the cap counts: an --interval above it never backed off.
+    const atMax = delay >= MAX_POLL_INTERVAL && delay > interval;
+    if (atMax && !capped) void ctx.metrics?.capture("bot_poll_backed_off_to_max");
+    capped = atMax;
     const timer = new AbortController();
     await Promise.race([
       sleep(delay * 1000, undefined, { signal: timer.signal }).catch(() => {}),

@@ -1121,6 +1121,29 @@ describe("threads", () => {
     expect(out.join("\n")).toContain("loopway 9.9.9 is out");
   });
 
+  it("records the backoff to the cap once per quiet stretch, and not when --interval is already above it", async () => {
+    const run = async (interval: number, idle: number[]) => {
+      const events: string[] = [];
+      const ctx = { ...ctxOf([]), metrics: { capture: async (e: string) => void events.push(e) } } as Context;
+      let i = 0;
+      const d = {
+        tick: async () => {},
+        drain: () => {},
+        busy: false,
+        slotFreed: async () => {},
+        idleMs: () => idle[Math.min(i, idle.length - 1)]!,
+      } as unknown as Dispatcher;
+      await pollUntilUpdate(ctx, d, interval, async () => (++i > idle.length ? "9.9.9" : undefined));
+      return events;
+    };
+    const quiet = 10 * 60_000;
+    expect(await run(5, [0, quiet, quiet, 0, quiet])).toEqual([
+      "bot_poll_backed_off_to_max",
+      "bot_poll_backed_off_to_max",
+    ]);
+    expect(await run(90, [0, quiet, quiet])).toEqual([]);
+  });
+
   it("looks for a release at once, but only once, when the server turns the CLI away", async () => {
     const { d, out } = await setup(3);
     const forced: (boolean | undefined)[] = [];
