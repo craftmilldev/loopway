@@ -24,6 +24,7 @@ describe("install.sh", () => {
     dir = mkdtempSync(join(tmpdir(), "install-sh-"));
     prefix = join(dir, "prefix");
     fakeBin = join(dir, "fake-bin");
+    mkdirSync(fakeBin);
     const release = join(dir, "release");
     mkdirSync(release);
     writeFileSync(join(release, "manifest.txt"), "loopway-cli.tgz\n");
@@ -31,14 +32,18 @@ describe("install.sh", () => {
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-  function install({ link = true, onPath = true, otherLoopway = false } = {}) {
+  // `layout` is where npm puts global commands: prefix/bin, Volta's shim directory, or the prefix itself (Windows).
+  function install({ link = true, onPath = true, otherLoopway = false, layout = "unix" } = {}) {
+    const volta = join(dir, "volta");
+    const binDir = layout === "volta" ? join(volta, "bin") : layout === "windows" ? prefix : join(prefix, "bin");
     writeScript(
-      join(fakeBin, "npm"),
+      join(layout === "volta" ? binDir : fakeBin, "npm"),
       `case "$1 $2" in
   "prefix -g") echo "${prefix}" ;;
-  "install -g") ${link ? `mkdir -p "${prefix}/bin" && printf '#!/bin/sh\\necho 9.9.9\\n' > "${prefix}/bin/loopway" && chmod +x "${prefix}/bin/loopway"` : ":"} ;;
+  "install -g") ${link ? `mkdir -p "${binDir}" && printf '#!/bin/sh\\necho 9.9.9\\n' > "${binDir}/loopway" && chmod +x "${binDir}/loopway"` : ":"} ;;
 esac`,
     );
+    if (layout === "windows") writeScript(join(fakeBin, "uname"), "echo MINGW64_NT-10.0-19045");
     // Only node from its own directory, which may also hold a real loopway (Homebrew's, say)
     symlinkSync(process.execPath, join(fakeBin, "node"));
     const path = [fakeBin, "/usr/bin", "/bin"];
@@ -47,11 +52,14 @@ esac`,
       writeScript(join(other, "loopway"), "echo 0.0.1");
       path.unshift(other);
     }
-    if (onPath) path.push(join(prefix, "bin"));
-    return spawnSync("sh", [script], {
-      encoding: "utf8",
-      env: { PATH: path.join(":"), HOME: dir, LOOPWAY_DOWNLOAD_URL: `file://${join(dir, "release")}` },
-    });
+    if (onPath) path.push(binDir);
+    const env: Record<string, string> = {
+      PATH: path.join(":"),
+      HOME: dir,
+      LOOPWAY_DOWNLOAD_URL: `file://${join(dir, "release")}`,
+    };
+    if (layout === "volta") env.VOLTA_HOME = volta;
+    return spawnSync("sh", [script], { encoding: "utf8", env });
   }
 
   it("reports the installed version when it's the loopway on PATH", () => {
@@ -74,6 +82,20 @@ esac`,
     expect(res.status).toBe(0);
     expect(res.stdout).toContain("Installed loopway 9.9.9.");
     expect(res.stderr).toContain(`the loopway on your PATH is ${join(dir, "other-bin", "loopway")}`);
+  });
+
+  it("finds the command where Volta puts it", () => {
+    const res = install({ layout: "volta" });
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("Installed loopway 9.9.9.");
+    expect(res.stderr).toBe("");
+  });
+
+  it("finds the command in the prefix itself on Windows", () => {
+    const res = install({ layout: "windows" });
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("Installed loopway 9.9.9.");
+    expect(res.stderr).toBe("");
   });
 
   it("warns when npm's bin directory isn't on PATH", () => {

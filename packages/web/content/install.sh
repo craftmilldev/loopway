@@ -49,9 +49,21 @@ done
 # shellcheck disable=SC2086
 npm install -g $PACKAGES || fail "npm install failed."
 
-# npm can exit 0 without linking the command (seen replacing an `npm link` of the repo), so check it's there and run
-# that file, not whichever loopway is first on PATH.
-BIN_DIR="$(npm prefix -g)/bin"
+# npm can exit 0 without linking the command (seen replacing an `npm link` of the repo), so check it's where npm puts
+# global commands and run that file, not whichever loopway is first on PATH.
+PREFIX=$(npm prefix -g) || fail "npm prefix -g failed."
+if [ -n "${VOLTA_HOME:-}" ] && [ "$(command -v npm)" = "$VOLTA_HOME/bin/npm" ]; then
+  BIN_DIR="$VOLTA_HOME/bin" # Volta installs global packages itself and puts a shim here
+else
+  case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*)
+      # npm on Windows puts commands in the prefix itself, which it names with a Windows path
+      if command -v cygpath >/dev/null 2>&1; then PREFIX=$(cygpath -u "$PREFIX"); fi
+      BIN_DIR="$PREFIX"
+      ;;
+    *) BIN_DIR="$PREFIX/bin" ;;
+  esac
+fi
 BIN="$BIN_DIR/loopway"
 [ -x "$BIN" ] || fail "npm installed the packages but didn't create $BIN. Run: npm rebuild -g @loopway/cli"
 VERSION=$("$BIN" --version) || fail "$BIN --version failed."
