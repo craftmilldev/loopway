@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import type { AgentRun, RunWatch } from "./agent.js";
 import { Harness, type Launch } from "./harness.js";
-import { expandPath, SANDBOX_POLICY, sharedGitDir } from "./sandbox.js";
+import { expandPath, sandboxPolicy, sharedGitDir } from "./sandbox.js";
 
 /**
  * Reads the JSONL `codex exec --json` prints. It has no usage-limit signal and doesn't echo the prompt, so a turn
@@ -47,7 +47,7 @@ export class CodexWatch implements RunWatch {
 export function codexSandboxArgs(cwd: string): string[] {
   const gitDir = sharedGitDir(cwd);
   // Codex keeps its own sessions in ~/.codex, outside the sandbox, so that isn't listed.
-  const roots = [...SANDBOX_POLICY.allowWrite.filter((p) => !p.startsWith("~/.claude")), ...(gitDir ? [gitDir] : [])];
+  const roots = [...sandboxPolicy().allowWrite.filter((p) => !p.startsWith("~/.claude")), ...(gitDir ? [gitDir] : [])];
   return [
     "-c",
     'sandbox_mode="workspace-write"',

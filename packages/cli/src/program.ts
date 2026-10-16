@@ -1,6 +1,12 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import { clearConfig, configure, login, showConfig, username, whoami } from "./commands/auth.js";
-import { listBotThreads, moveBotSubject, releaseBotThread, sendBotThreadMessage } from "./commands/botThreads.js";
+import {
+  endBotThread,
+  listBotThreads,
+  moveBotSubject,
+  releaseBotThread,
+  sendBotThreadMessage,
+} from "./commands/botThreads.js";
 import {
   botMessages,
   botVersions,
@@ -361,6 +367,19 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .argument("<bot>", "bot id or name")
     .argument("<thread>", "thread id")
     .action((ref, thread) => releaseBotThread(ctx, ref, thread));
+
+  botThreads
+    .command("end")
+    .description(
+      "end a thread; its waiting and inflight messages stay as they are, its runner keeps its claim, and the next message for it resumes it",
+    )
+    .argument("<bot>", "bot id or name")
+    .argument("<thread>", "thread id")
+    .addOption(jsonOpt())
+    // The parent `threads` command takes --json too, and claims it wherever it appears.
+    .action((ref: string, thread: string, _opts: unknown, cmd: Command) =>
+      endBotThread(ctx, ref, thread, cmd.optsWithGlobals()),
+    );
 
   botThreads
     .command("send")
