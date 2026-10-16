@@ -40,7 +40,7 @@ export default defineConfig(
       "@typescript-eslint/no-unsafe-return": "off",
     },
   },
-  { files: ["**/*.js", "**/*.mjs"], extends: [tseslint.configs.disableTypeChecked] },
+  { files: ["**/*.js"], extends: [tseslint.configs.disableTypeChecked] },
   // Last, so it turns off any rule that would fight Prettier's formatting.
   prettier,
 );
