@@ -1,6 +1,7 @@
+import type { State } from "@loopway/palette";
 import type { Runner, Thread } from "./lw.js";
 
-export type BotState = "stranded" | "limited" | "working" | "waiting" | "idle";
+export type BotState = State;
 
 /**
  * Where a bot stands, from its threads and the runners. The first that holds wins:

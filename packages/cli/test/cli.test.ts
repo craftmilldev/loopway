@@ -1867,6 +1867,13 @@ describe("threads", () => {
     await expect(run("bots", "release", bot.id)).rejects.toThrow(/Pass --force/);
     await d.tick();
     expect((await d.state()).bots.held).toEqual([]);
+    // The TUI says who holds it, and which runners no process holds, whose threads are stranded.
+    const idle = await client.registerRunner({ org: second.org, id: randomUUID(), name: "idle" });
+    const state = await d.state();
+    expect(state.bots.skipped).toMatchObject([{ name: "dev1", held_by: "other" }]);
+    expect(state.offline.has(idle.id)).toBe(true);
+    expect(state.offline.has(second.id)).toBe(false);
+    expect(state.offline.has(state.runnerId)).toBe(false);
     expect(await run("bots", "release", bot.id, "--force")).toMatch(/Released the lease/);
     await d.tick();
     expect((await d.state()).bots).toMatchObject({ held: [{ name: "dev1" }], skipped: [] });

@@ -59,6 +59,8 @@ export const DEFAULTS = { max: 3, interval: 5, ttl: 30 };
 export interface SkippedBot extends Bot {
   /** When that lease expires, if the server said. */
   leased_until?: string;
+  /** The name of the runner that holds it, if the server said. */
+  held_by?: string;
 }
 
 /** A message waiting on one of this runner's threads. The same message can wait on a thread of each bot. */
@@ -83,6 +85,8 @@ export interface DispatcherState {
   /** This runner's id, and the names of the account's runners, to say whose a thread is. */
   runnerId: string;
   runners: Record<string, string>;
+  /** The runners no process holds the lease of; their active threads are stranded. */
+  offline: ReadonlySet<string>;
   /** Threads with a run in flight. */
   running: ReadonlySet<string>;
 }
@@ -310,7 +314,8 @@ export class Dispatcher {
   async state(): Promise<DispatcherState> {
     const threads: Record<string, Thread> = {};
     for (const bot of this.bots) for (const t of await this.client.listThreads(bot.id, "all")) threads[t.id] = t;
-    const runners = Object.fromEntries((await this.client.listRunners()).map((r) => [r.id, r.name]));
+    const all = await this.client.listRunners();
+    const runners = Object.fromEntries(all.map((r) => [r.id, r.name]));
     const names = new Map(this.bots.map((b) => [b.id, b.name]));
     const waiting = Object.values(threads)
       .filter((t) => t.runner_id === this.runnerId)
@@ -322,13 +327,18 @@ export class Dispatcher {
         held: this.bots.filter((b) => this.leases.has(b.id)),
         skipped: this.bots
           .filter((b) => this.skipped.has(b.id))
-          .map((b) => ({ ...b, leased_until: this.skipped.get(b.id) })),
+          .map((b) => ({
+            ...b,
+            leased_until: this.skipped.get(b.id),
+            held_by: all.find((r) => r.id !== this.runnerId && r.bots.some((x) => x.id === b.id))?.name,
+          })),
         unleased: this.bots.filter((b) => !this.leases.has(b.id) && !this.skipped.has(b.id)),
       },
       waiting,
       threads,
       runnerId: this.runnerId,
       runners,
+      offline: new Set(all.filter((r) => !r.leased_until).map((r) => r.id)),
       running: new Set(this.running.keys()),
     };
   }

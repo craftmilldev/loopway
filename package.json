@@ -12,13 +12,14 @@
     "packages/harnesses",
     "packages/rules",
     "packages/presets",
+    "packages/palette",
     "packages/sources",
     "packages/web",
     "packages/cli",
     "packages/bb-plugin-loopway"
   ],
   "scripts": {
-    "postinstall": "npm run build -w @loopway/sources -w @loopway/harnesses -w @loopway/rules -w @loopway/presets",
+    "postinstall": "npm run build -w @loopway/sources -w @loopway/harnesses -w @loopway/rules -w @loopway/presets -w @loopway/palette",
     "dev": "npm run dev -w @loopway/web",
     "start": "npm run start -w @loopway/web",
     "db:up": "docker compose -p loopway up -d --wait",

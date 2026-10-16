@@ -49,6 +49,7 @@ describe("buildSnapshot", () => {
       },
       runnerId: "r1",
       runners: {},
+      offline: new Set(),
       running: new Set(["busy"]),
     };
     const status = new RunnerStatus(() => {});

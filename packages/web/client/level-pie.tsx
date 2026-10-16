@@ -1,9 +1,7 @@
+import { LEVEL_COLORS } from "@loopway/palette";
+
 /** The automation levels a thread can be at, with the slice color for each. */
-const LEVELS = [
-  { level: 2, color: "var(--ink-300)" },
-  { level: 3, color: "var(--indigo-600)" },
-  { level: 4, color: "var(--madder-600)" },
-] as const;
+const LEVELS = ([2, 3, 4] as const).map((level) => ({ level, color: LEVEL_COLORS[level].paper }));
 
 /** A pie of the share of a bot's threads at each automation level. Words for a bot with no threads. */
 export function LevelPie({

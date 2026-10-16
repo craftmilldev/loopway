@@ -24,14 +24,14 @@ describe("GET /", () => {
 describe("the marketing home", () => {
   it("shows Log in to an anonymous visitor", () => {
     render(marketingPage("/"));
-    expect(screen.getByRole("heading", { name: "Make a bot" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1 })).toBeTruthy();
     expect(within(screen.getByRole("navigation")).getByRole("link", { name: "Log in" })).toBeTruthy();
   });
 
   it("shows the same page with Dashboard to a signed-in visitor", () => {
     localStorage.setItem("loopway_token", "t");
     render(marketingPage("/"));
-    expect(screen.getByRole("heading", { name: "Make a bot" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1 })).toBeTruthy();
     expect(within(screen.getByRole("navigation")).getByRole("link", { name: "Dashboard" }).getAttribute("href")).toBe(
       "/dashboard",
     );
@@ -40,8 +40,20 @@ describe("the marketing home", () => {
 
   it("shows how to install the CLI with the install.sh link", () => {
     const { container } = render(marketingPage("/"));
-    expect(screen.getByRole("heading", { name: "Install" })).toBeTruthy();
-    expect(container.textContent).toContain("curl -fsSL https://loopway.craftmill.dev/install.sh | sh");
+    expect(container.querySelector("#top .lp-well")?.textContent).toContain(
+      "curl -fsSL https://loopway.craftmill.dev/install.sh | sh",
+    );
+  });
+
+  it("links the top bar to the page's sections, by their labels", () => {
+    const { container } = render(marketingPage("/"));
+    const links = within(screen.getByRole("navigation")).getAllByRole("link");
+    const anchors = links.filter((a) => a.getAttribute("href")!.startsWith("#"));
+    expect(anchors.map((a) => a.getAttribute("href"))).toEqual(["#levels", "#bots", "#how", "#dashboard", "#sources"]);
+    for (const a of anchors) {
+      const section = container.querySelector(a.getAttribute("href")!)!;
+      expect(a.textContent).toBe(section.querySelector(".lp-label")!.textContent);
+    }
   });
 
   it("isn't a page for other paths", () => {

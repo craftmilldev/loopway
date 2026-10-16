@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import type { AgentRun, RunWatch } from "./agent.js";
 import { Harness, type Launch } from "./harness.js";
+import { HARNESS_LABELS } from "./labels.js";
 
 /**
  * Reads the JSONL `codex exec --json` prints. It has no usage-limit signal and doesn't echo the prompt, so a turn
@@ -49,6 +50,7 @@ export class CodexWatch implements RunWatch {
  */
 export class CodexHarness extends Harness {
   readonly name = "codex";
+  readonly label = HARNESS_LABELS.codex;
   readonly command = "codex";
 
   /** The models `codex` lists (its `models_cache.json`) for the accounts it supports. Add new models here and drop retired ones. */
