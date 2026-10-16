@@ -17,7 +17,13 @@ function startOpenProxy(): Promise<Server> {
       return;
     }
     const out = request(
-      { host: url.hostname, port: url.port || 80, path: url.pathname + url.search, method: req.method, headers: req.headers },
+      {
+        host: url.hostname,
+        port: url.port || 80,
+        path: url.pathname + url.search,
+        method: req.method,
+        headers: req.headers,
+      },
       (up) => {
         res.writeHead(up.statusCode ?? 502, up.headers);
         up.pipe(res);

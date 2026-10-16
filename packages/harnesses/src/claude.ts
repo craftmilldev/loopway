@@ -127,7 +127,8 @@ export class ClaudeHarness extends Harness {
     // Resumed runs get it too: a session keeps its model only if the flag says so.
     args.push("--model", run.model, "--permission-mode", "auto", "--output-format", "stream-json", "--verbose");
     // Sandboxed unless the user opted out, resumed runs included; Claude Code refuses to start if it can't be.
-    if (run.sandbox !== false) args.push("--settings", JSON.stringify(claudeSandboxSettings(process.cwd(), await openProxyPort())));
+    if (run.sandbox !== false)
+      args.push("--settings", JSON.stringify(claudeSandboxSettings(process.cwd(), await openProxyPort())));
     // The message goes in as stream-json so Claude Code can echo it back once it's in the session.
     args.push("--input-format", "stream-json", "--replay-user-messages");
     return {

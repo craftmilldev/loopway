@@ -78,7 +78,9 @@ describe("sandbox", () => {
       expect(reply).toContain("hello");
       const viaProxy = await new Promise<string>((resolve, reject) => {
         const s = connect(proxyPort, "127.0.0.1", () =>
-          s.write(`GET http://127.0.0.1:${targetPort}/ HTTP/1.1\r\nHost: 127.0.0.1:${targetPort}\r\nConnection: close\r\n\r\n`),
+          s.write(
+            `GET http://127.0.0.1:${targetPort}/ HTTP/1.1\r\nHost: 127.0.0.1:${targetPort}\r\nConnection: close\r\n\r\n`,
+          ),
         );
         let data = "";
         s.on("data", (d: Buffer) => (data += d.toString()));

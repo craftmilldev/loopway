@@ -326,7 +326,11 @@ describe("auth", () => {
     );
     const git = (args: string[], input?: string) => execFileSync("git", args, { env, input, encoding: "utf8" });
     // gh gets a Loopway-owned config directory, so a sandboxed run never reads the user's ~/.config/gh.
-    expect(env).toMatchObject({ GH_TOKEN: "ghp_bot", GITHUB_TOKEN: "ghp_bot", GH_CONFIG_DIR: join(configDir, ".loopway", "gh") });
+    expect(env).toMatchObject({
+      GH_TOKEN: "ghp_bot",
+      GITHUB_TOKEN: "ghp_bot",
+      GH_CONFIG_DIR: join(configDir, ".loopway", "gh"),
+    });
     expect(existsSync(join(configDir, ".loopway", "gh"))).toBe(true);
     expect(git(["var", "GIT_AUTHOR_IDENT"])).toMatch(/^loopway-bot <2\+loopway-bot@users\.noreply\.github\.com>/);
     expect(git(["var", "GIT_COMMITTER_IDENT"])).toMatch(/^loopway-bot </);
