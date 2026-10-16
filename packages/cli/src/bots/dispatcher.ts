@@ -15,7 +15,7 @@ import {
 import { loadGithubBot } from "../config.js";
 import { UsageError, type Context } from "../context.js";
 import { clock, dim } from "../format.js";
-import { startMcpServer, type McpServer } from "../mcp.js";
+import { startMcpServer, type McpServer, type McpTool } from "../mcp.js";
 import { runHarness, type RunAgent, type RunOutcome } from "@loopway/harnesses";
 import { botEnv } from "./github.js";
 import { checkRules, route, type BotRule } from "@loopway/rules";
@@ -163,14 +163,12 @@ export class Dispatcher {
     const env = { ...(gh ? botEnv(ctx.env, gh) : ctx.env), LOOPWAY_NO_UPDATE: "1" };
     // The tools reach the dispatcher once it exists; no session calls one before then.
     const later: { dispatcher?: Dispatcher } = {};
-    const mcp = await startMcpServer(
-      "loopway",
-      sessionTools({
-        get: (id) => later.dispatcher!.getThread(id),
-        patch: (id, patch) => later.dispatcher!.patchThread(id, patch),
-      }),
-    );
-    const dispatcher = (later.dispatcher = new Dispatcher(ctx, client, bots, rules, prompts, opts, mcp, env));
+    const tools = sessionTools({
+      get: (id) => later.dispatcher!.getThread(id),
+      patch: (id, patch) => later.dispatcher!.patchThread(id, patch),
+    });
+    const mcp = await startMcpServer("loopway", tools);
+    const dispatcher = (later.dispatcher = new Dispatcher(ctx, client, bots, rules, prompts, opts, mcp, tools, env));
     try {
       await dispatcher.leaseRunner();
     } catch (err) {
@@ -188,6 +186,7 @@ export class Dispatcher {
     private readonly prompts: Map<string, string>,
     opts: StartOptions,
     private readonly mcp: McpServer,
+    private readonly tools: McpTool[],
     /** The environment each session runs with. */
     private readonly env: NodeJS.ProcessEnv,
   ) {
@@ -335,6 +334,16 @@ export class Dispatcher {
     } catch {
       // A log that can't be written shouldn't stop the run.
     }
+  }
+
+  /**
+   * Calls one of the session tools (see tools.ts) for a run in flight, as its session does over MCP. For
+   * runAgent overrides whose sessions get their tools another way than the MCP URL.
+   */
+  callTool(threadId: string, name: string, args: Record<string, unknown>): Promise<string> {
+    const tool = this.tools.find((t) => t.name === name);
+    if (!tool) return Promise.reject(new Error(`Unknown tool ${name}`));
+    return tool.call(threadId, args);
   }
 
   /** A session's transcript so far, or "" if it hasn't written one. */
