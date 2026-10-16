@@ -1643,9 +1643,39 @@ main.lp {
 
 /* Terminal wells */
 .lp-well {
+  position: relative;
   margin: 0;
   background: var(--ink-900);
   color: var(--paper-100);
+}
+.lp-well ::selection {
+  background: var(--paper-100);
+  color: var(--ink-900);
+}
+.lp-well-copy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 3px 10px;
+  border: 1px solid color-mix(in srgb, var(--paper-100) 40%, transparent);
+  background: var(--ink-800);
+  color: var(--paper-100);
+  font-family: var(--font-type);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0;
+}
+.lp-well:hover .lp-well-copy,
+.lp-well-copy:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .lp-well-copy {
+    opacity: 1;
+  }
 }
 .lp-well-label {
   padding: 10px 16px;
