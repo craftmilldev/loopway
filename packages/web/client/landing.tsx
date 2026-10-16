@@ -221,8 +221,9 @@ function Well({ label, code }: { label: string; code: string }) {
       <pre>
         <code>
           {code.split("\n").map((line, i, all) => (
-            // A line that doesn't start indented is a command, and gets a prompt; an indented one continues it.
-            <span key={i} className={/^\s/.test(line) ? undefined : "lp-cmd"}>
+            // A line that doesn't start indented is a command, and gets a prompt; an indented one continues it, and a
+            // blank one gets nothing.
+            <span key={i} className={line === "" || /^\s/.test(line) ? undefined : "lp-cmd"}>
               {line}
               {i < all.length - 1 ? "\n" : ""}
             </span>

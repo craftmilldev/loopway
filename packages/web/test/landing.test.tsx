@@ -41,6 +41,8 @@ Our bots:
 [Again](/login)
 
 \`\`\`cli
+loopway login
+
 loopway bots run
 \`\`\`
 `;
@@ -105,6 +107,11 @@ describe("the landing page from markdown", () => {
     );
     expect([...wells[0]!.querySelectorAll(".lp-cmd")].map((l) => l.textContent)).toEqual([
       "curl -fsSL https://example.com/install.sh | sh\n",
+    ]);
+    // A blank line between commands gets no prompt.
+    expect([...wells[1]!.querySelectorAll(".lp-cmd")].map((l) => l.textContent)).toEqual([
+      "loopway login\n",
+      "loopway bots run",
     ]);
   });
 
