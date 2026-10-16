@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>loopway — a runner for bots</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/craftmill/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sorts+Mill+Goudy:ital@0;1&amp;family=Courier+Prime:ital,wght@0,400;0,700;1,400&amp;display=swap">
+<style>
+body{margin:0;background:#e4ddc9}
+a{color:#9e2b1c;text-underline-offset:3px}
+a:hover{color:#16130e}
+.lw-nav a{color:#3a352b;text-decoration:none}
+.lw-nav a:hover{color:#16130e;text-decoration:underline;text-underline-offset:5px}
+.lw-btn{color:#f2eede;text-decoration:none}
+.lw-btn:hover{background:#241f17 !important;color:#f2eede}
+.lw-ghost{color:#16130e;text-decoration:none}
+.lw-ghost:hover{background:#f2eede !important;color:#16130e}
+.lw-ink a{color:#d08a76}
+.lw-ink a:hover{color:#f2eede}
+.lw-copy:hover{color:#f2eede !important;border-color:#f2eede52 !important}
+.lw-row:hover{background:#f2eede}
+.lw-cols > * + *{border-left:1px solid #16130e29}
+.lw-levels > * + *{border-left:1px solid #16130e29}
+.lw-levels > .lw-on + .lw-on{border-left:1px solid #f2eede29}
+@media (max-width: 820px){
+  .lw-pad{padding-left:16px !important;padding-right:16px !important}
+  .lw-cols,.lw-levels,.lw-flow{flex-direction:column !important}
+  .lw-cols > *{flex-basis:auto !important;padding-left:0 !important;padding-right:0 !important}
+  .lw-cols > * + *{border-left:0;border-top:1px solid #16130e29}
+  .lw-levels > *{flex-basis:auto !important}
+  .lw-levels > * + *{border-left:0;border-top:1px solid #16130e29}
+  .lw-levels > .lw-on + .lw-on{border-left:0;border-top:1px solid #f2eede29}
+  .lw-hide-sm{display:none !important}
+}
+</style>
+</helmet>
+<div id="top" style="background: var(--paper-200); color: var(--ink-900); font-family: var(--font-text); font-size: 17px; line-height: 1.5; min-height: 100vh;">
+
+  <!-- Masthead -->
+  <header class="lw-pad" style="max-width: 1280px; margin: 0 auto; padding: 20px 40px 0; box-sizing: border-box;">
+    <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 32px; padding-bottom: 16px; border-bottom: 3px double var(--ink-900);">
+      <a href="#top" aria-label="loopway home" style="display: block; line-height: 0;"><img src="/_blob/399dbb44478a4f7d5212921ec89d06bc" alt="loopway" style="height: 44px; width: auto; display: block;"></a>
+      <nav class="lw-nav" aria-label="Main" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 28px; font-family: var(--font-type); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;">
+        <a href="#levels">Levels</a>
+        <a href="#bots">Bots</a>
+        <a href="#how">How it works</a>
+        <a href="#dashboard">Dashboard</a>
+        <a href="#sources">Sources</a>
+        <a href="https://github.com/craftmilldev/loopway">GitHub</a>
+        <a href="/login">Log in</a>
+        <a class="lw-btn" href="/login" style="display: inline-flex; align-items: center; height: 36px; padding: 0 16px; background: var(--ink-900); color: var(--paper-100);">Get started</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Lede -->
+  <section class="lw-pad" style="max-width: 1280px; margin: 0 auto; padding: 56px 40px 64px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 48px 56px; align-items: flex-start;">
+    <div style="flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 24px;">
+      <div style="font-family: var(--font-type); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-600); padding-bottom: 10px; border-bottom: 1px solid var(--rule-hair);">A runner for bots</div>
+      <h1 style="margin: 0; font-weight: 400; font-size: clamp(44px, 5vw, 72px); line-height: 1.02; letter-spacing: -0.021em; color: var(--ink-900);">Bots that run your process, and <em style="font-style: italic; color: var(--madder-600);">ask</em> when they need you.</h1>
+      <p style="margin: 0; font-size: 20px; line-height: 1.5; color: var(--ink-700); max-width: 34em;">loopway listens to the services you already use, keeps every event in an inbox, and hands them to bots running on your machines. A bot is a prompt and a few rules, run by the coding agent you pick: Claude Code, Codex, Cursor or Hermes. We build loopway with seven of them.</p>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px; font-family: var(--font-type); font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase;">
+        <a class="lw-btn" href="/login" style="display: inline-flex; align-items: center; height: 44px; padding: 0 24px; background: var(--ink-900); color: var(--paper-100);">Get started</a>
+        <a class="lw-ghost" href="https://github.com/craftmilldev/loopway" style="display: inline-flex; align-items: center; height: 44px; padding: 0 24px; border: 1px solid var(--ink-900); color: var(--ink-900);">Read the docs</a>
+      </div>
+      <div class="lw-ink" style="background: var(--ink-900); color: var(--paper-100); padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <span style="font-family: var(--font-type); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-200);">Install</span>
+          <button class="lw-copy" type="button" aria-label="Copy the install command" style="display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 32px; margin: -6px -8px -6px 0; padding: 0; background: transparent; border: 1px solid transparent; color: var(--ink-200); cursor: pointer;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true"><rect width="14" height="14" x="8" y="8"></rect><path d="M4 16V4h12"></path></svg>
+          </button>
+        </div>
+        <code style="font-family: var(--font-type); font-size: 15px; line-height: 1.6; color: var(--paper-100); overflow-x: auto; white-space: pre;"><span style="color: var(--ink-300);">$ </span>curl -fsSL https://loopway.craftmill.dev/install.sh | sh
+<span style="color: var(--ink-300);">$ </span>loopway login</code>
+      </div>
+      <p style="margin: -8px 0 0; font-size: 15px; color: var(--ink-500);">The login emails you a one-time code. New emails get an account.</p>
+    </div>
+
+    <!-- The runner, as it looks in a terminal. Status marks use the ink-ground pair of the dashboard's status colors. -->
+    <figure style="flex: 1.35 1 560px; min-width: 0; margin: 0; display: flex; flex-direction: column; gap: 10px;">
+      <div style="background: var(--ink-900); color: var(--paper-100); box-shadow: 6px 6px 0 #16130e3d; overflow-x: auto;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 16px; border-bottom: 1px solid #f2eede29; font-family: var(--font-type); font-size: 12px; color: var(--ink-200); min-width: 640px;">
+          <span>~/code/loopway</span>
+          <span>loopway bots run --max 3</span>
+        </div>
+        <div style="padding: 18px 20px 16px; font-family: var(--font-type); font-size: 13px; line-height: 1.6; min-width: 640px; display: flex; flex-direction: column; gap: 16px;">
+          <div>
+            <div style="color: var(--paper-100); letter-spacing: 0.06em;">LOOPWAY <span style="color: var(--ink-300);">·</span> runner mw-studio <span style="color: var(--ink-300);">·</span> org craftmill</div>
+            <div style="color: var(--ink-200);">holds loopway-dev, loopway-review, prod-deploy-errors <span style="color: var(--ink-300);">·</span> skipped call-learnings, held by mw-air until 14:32</div>
+          </div>
+
+          <div style="display: flex; flex-direction: column;">
+            <div style="color: var(--ink-200); letter-spacing: 0.12em; border-bottom: 1px solid #f2eede29; padding-bottom: 4px; margin-bottom: 4px;">WAITING MESSAGES <span style="color: var(--paper-100);">1</span></div>
+            <div style="display: grid; grid-template-columns: 14px 150px minmax(0, 1fr) 28px auto; gap: 12px; align-items: center;">
+              <span style="width: 8px; height: 8px; border-radius: 50%; border: 1px solid #a9a28c; box-sizing: border-box;"></span>
+              <span style="color: var(--ink-200);">prod-deploy-errors</span>
+              <span style="color: var(--paper-100);">issue_comment on #241</span>
+              <span></span>
+              <span style="color: var(--ink-200);">14:20</span>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column;">
+            <div style="color: var(--ink-200); letter-spacing: 0.12em; border-bottom: 1px solid #f2eede29; padding-bottom: 4px; margin-bottom: 4px;">WORKING <span style="color: var(--paper-100);">2</span></div>
+            <div style="display: grid; grid-template-columns: 14px 150px minmax(0, 1fr) 28px auto; gap: 2px 12px; align-items: center;">
+              <span style="width: 8px; height: 8px; border-radius: 50%; background: #9db4ba;"></span>
+              <span style="color: var(--ink-200);">loopway-dev</span>
+              <span style="color: var(--paper-100); background: #f2eede1f; margin-left: -4px; padding-left: 4px;">#306 Fix sandboxed bots: gh can't read its config</span>
+              <span style="color: #d08a76;">L4</span>
+              <span style="color: var(--ink-200);">run 3 · 4m</span>
+              <span style="width: 8px; height: 8px; border-radius: 50%; background: #9db4ba;"></span>
+              <span style="color: var(--ink-200);">loopway-review</span>
+              <span style="color: var(--paper-100);">#309 Fix sandboxed bots</span>
+              <span style="color: #d08a76;">L4</span>
+              <span style="color: var(--ink-200);">run 1 · 1m</span>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column;">
+            <div style="color: var(--ink-200); letter-spacing: 0.12em; border-bottom: 1px solid #f2eede29; padding-bottom: 4px; margin-bottom: 4px;">WAITING <span style="color: var(--paper-100);">2</span></div>
+            <div style="display: grid; grid-template-columns: 14px 150px minmax(0, 1fr) 28px auto; gap: 2px 12px; align-items: center;">
+              <span style="width: 8px; height: 8px; border-radius: 50%; background: #a9a28c;"></span>
+              <span style="color: var(--ink-200);">prod-deploy-errors</span>
+              <span style="color: var(--paper-100);">#241 Production deploy failed at build</span>
+              <span style="color: #9db4ba;">L3</span>
+              <span style="color: var(--ink-200);">asked you 13:14</span>
+              <span style="width: 8px; height: 8px; border-radius: 50%; background: #a9a28c;"></span>
+              <span style="color: var(--ink-200);">loopway-dev</span>
+              <span style="color: var(--paper-100);">#235 Create a shared org</span>
+              <span style="color: #8b8471;">L2</span>
+              <span style="color: var(--ink-200);">review requested</span>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column;">
+            <div style="color: var(--ink-200); letter-spacing: 0.12em; border-bottom: 1px solid #f2eede29; padding-bottom: 4px; margin-bottom: 4px;">DONE <span style="color: var(--paper-100);">31</span></div>
+            <div style="display: grid; grid-template-columns: 14px 150px minmax(0, 1fr) 28px auto; gap: 2px 12px; align-items: center; color: var(--ink-300);">
+              <span></span>
+              <span>loopway-dev</span>
+              <span>#307 Add loopway bots threads end</span>
+              <span>L3</span>
+              <span>ended 11:02</span>
+              <span></span>
+              <span>loopway-review</span>
+              <span>#308 Add loopway bots threads end</span>
+              <span>L4</span>
+              <span>ended 10:47</span>
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; gap: 16px; padding-top: 10px; border-top: 1px solid #f2eede29; color: var(--ink-200); font-size: 12px;">
+            <span>14:21:07 delivered 1 message to prod-deploy-errors</span>
+            <span>q quit · enter transcript</span>
+          </div>
+        </div>
+      </div>
+      <figcaption style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">One runner holding three of our bots. Sample data.</figcaption>
+    </figure>
+  </section>
+
+  <!-- Sources strip -->
+  <div style="background: var(--paper-300); border-top: 1px solid var(--ink-900); border-bottom: 1px solid var(--ink-900);">
+    <div class="lw-pad" style="max-width: 1280px; margin: 0 auto; padding: 18px 40px; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 28px;">
+      <span style="font-family: var(--font-type); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-600);">Listens to</span>
+      <span style="font-size: 24px; letter-spacing: -0.01em; flex: 1 1 auto;">GitHub <span style="color: var(--ink-400);">·</span> Linear <span style="color: var(--ink-400);">·</span> Vercel <span style="color: var(--ink-400);">·</span> Granola <span style="color: var(--ink-400);">·</span> Resend <span style="color: var(--ink-400);">·</span> a clock <span style="color: var(--ink-400);">·</span> other bots</span>
+      <span style="font-size: 15px; color: var(--ink-600);">Need another? Ask for it from the dashboard.</span>
+    </div>
+  </div>
+
+  <!-- Levels of automation -->
+  <section id="levels" class="lw-pad" style="max-width: 1280px; margin: 0 auto; padding: 56px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 32px;">
+    <div style="display: flex; flex-wrap: wrap; gap: 16px 56px; align-items: flex-end;">
+      <div style="flex: 1 1 420px; display: flex; flex-direction: column; gap: 12px;">
+        <div style="font-family: var(--font-type); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-600); padding-bottom: 10px; border-bottom: 1px solid var(--rule-hair);">Levels of automation</div>
+        <h2 style="margin: 0; font-weight: 400; font-size: clamp(32px, 3.6vw, 48px); line-height: 1.1; letter-spacing: -0.021em;">From starting every piece of work to writing the rules it runs by</h2>
+      </div>
+      <p style="flex: 1 1 380px; margin: 0; font-size: 18px; color: var(--ink-700); max-width: 32em;">loopway records the level of every thread. One a person starts is level 2. One a bot starts is level 3 if a person takes part, and level 4 if no one does. The dashboard shows each bot's threads by level, so you can see the work move up.</p>
+    </div>
+
+    <ol class="lw-levels" style="list-style: none; margin: 0; padding: 0; display: flex; border-top: 2px solid var(--ink-900);">
+      <li style="flex: 1 1 0; min-width: 0; padding: 20px 20px 24px 0; display: flex; flex-direction: column; gap: 10px;">
+        <div style="font-family: var(--font-type); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-500);">Level 1</div>
+        <h3 style="margin: 0; font-weight: 400; font-size: 26px; line-height: 1.15; color: var(--ink-600);">Assisted</h3>
+        <p style="margin: 0; font-size: 16px; color: var(--ink-600);">You ask a model, read the answer, and do the work yourself. Nothing for loopway to run.</p>
+        <div style="margin-top: auto; padding-top: 10px; font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">You start it. You do it.</div>
+      </li>
+      <li style="flex: 1 1 0; min-width: 0; padding: 20px 20px 24px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 8px; font-family: var(--font-type); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-500);"><span style="width: 10px; height: 10px; background: #8b8471;"></span>Level 2</div>
+        <h3 style="margin: 0; font-weight: 400; font-size: 26px; line-height: 1.15;">You start it</h3>
+        <p style="margin: 0; font-size: 16px; color: var(--ink-700);">A person opens the issue or sends the message, and a bot carries the work from there.</p>
+        <div style="margin-top: auto; padding-top: 10px; font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">You start it. A bot does it.</div>
+      </li>
+      <li class="lw-on" style="flex: 1 1 0; min-width: 0; padding: 20px 20px 24px; display: flex; flex-direction: column; gap: 10px; background: var(--ink-900); color: var(--paper-100);">
+        <div style="display: flex; align-items: center; gap: 8px; font-family: var(--font-type); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-200);"><span style="width: 10px; height: 10px; background: #9db4ba;"></span>Level 3</div>
+        <h3 style="margin: 0; font-weight: 400; font-size: 26px; line-height: 1.15;">A bot starts it, you take part</h3>
+        <p style="margin: 0; font-size: 16px; color: var(--paper-300);">A deploy, a schedule or another bot starts the work. The bot asks when it needs a decision, where you already are: a comment, a review, an issue.</p>
+        <div style="margin-top: auto; padding-top: 10px; font-family: var(--font-type); font-size: 12px; color: var(--ink-200);">A bot starts it. You answer it.</div>
+      </li>
+      <li class="lw-on" style="flex: 1 1 0; min-width: 0; padding: 20px 20px 24px; display: flex; flex-direction: column; gap: 10px; background: var(--ink-900); color: var(--paper-100);">
+        <div style="display: flex; align-items: center; gap: 8px; font-family: var(--font-type); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-200);"><span style="width: 10px; height: 10px; background: #d08a76;"></span>Level 4</div>
+        <h3 style="margin: 0; font-weight: 400; font-size: 26px; line-height: 1.15;">No one has to</h3>
+        <p style="margin: 0; font-size: 16px; color: var(--paper-300);">Bots start the work and finish it, handing it to each other. You read the results and change the rules, not the work.</p>
+        <div style="margin-top: auto; padding-top: 10px; font-family: var(--font-type); font-size: 12px; color: var(--ink-200);">Bots start it. Bots finish it.</div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- The bots we build loopway with -->
+  <section id="bots" style="border-top: 1px solid var(--ink-900); background: var(--paper-100);">
+    <div class="lw-pad" style="max-width: 1280px; margin: 0 auto; padding: 56px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 32px;">
+      <div style="display: flex; flex-wrap: wrap; gap: 16px 56px; align-items: flex-end;">
+        <div style="flex: 1 1 420px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="font-family: var(--font-type); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-600); padding-bottom: 10px; border-bottom: 1px solid var(--rule-hair);">Bots</div>
+          <h2 style="margin: 0; font-weight: 400; font-size: clamp(32px, 3.6vw, 48px); line-height: 1.1; letter-spacing: -0.021em;">The bots we build loopway with</h2>
+        </div>
+        <p style="flex: 1 1 380px; margin: 0; font-size: 18px; color: var(--ink-700); max-width: 32em;">Seven bots on two agents run most of our own process. A request someone sends from the dashboard can become a reviewed pull request without anyone starting the work.</p>
+      </div>
+
+      <div class="lw-flow" style="display: flex; align-items: stretch; border: 1px solid var(--rule-soft); background: var(--paper-200);">
+        <div style="flex: 1 1 0; min-width: 0; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-family: var(--font-type); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-500);">loopway inbox</span>
+          <span style="font-size: 17px;">A request from the dashboard</span>
+        </div>
+        <div class="lw-hide-sm" style="display: flex; align-items: center; color: var(--ink-400);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></div>
+        <div style="flex: 1 1 0; min-width: 0; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-family: var(--font-type); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-500);">loopway-requests</span>
+          <span style="font-size: 17px;">Files a ready issue</span>
+        </div>
+        <div class="lw-hide-sm" style="display: flex; align-items: center; color: var(--ink-400);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></div>
+        <div style="flex: 1 1 0; min-width: 0; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-family: var(--font-type); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-500);">loopway-dev</span>
+          <span style="font-size: 17px;">Opens the pull request</span>
+        </div>
+        <div class="lw-hide-sm" style="display: flex; align-items: center; color: var(--ink-400);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></div>
+        <div style="flex: 1 1 0; min-width: 0; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-family: var(--font-type); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-500);">loopway-review</span>
+          <span style="font-size: 17px;">Reviews it, dev answers</span>
+        </div>
+        <div style="flex: 0 0 auto; padding: 14px 16px; display: flex; align-items: center; gap: 8px; background: var(--ink-900); color: var(--paper-100); font-family: var(--font-type); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;"><span style="width: 10px; height: 10px; background: #d08a76;"></span>Level 4</div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); border-top: 2px solid var(--ink-900);">
+        <div style="padding: 20px 24px 24px 0; border-bottom: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">Claude Code · GitHub, Vercel</div>
+          <h3 style="margin: 0; font-weight: 400; font-size: 24px; line-height: 1.15;">loopway-dev</h3>
+          <p style="margin: 0; font-size: 16px; color: var(--ink-700);">Works each ready issue through to a pull request, then follows its reviews and CI.</p>
+        </div>
+        <div style="padding: 20px 24px 24px 0; border-bottom: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">Claude Code · GitHub</div>
+          <h3 style="margin: 0; font-weight: 400; font-size: 24px; line-height: 1.15;">loopway-review</h3>
+          <p style="margin: 0; font-size: 16px; color: var(--ink-700);">Reviews each pull request and talks its feedback through. It never changes the code.</p>
+        </div>
+        <div style="padding: 20px 24px 24px 0; border-bottom: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">Claude Code · GitHub</div>
+          <h3 style="margin: 0; font-weight: 400; font-size: 24px; line-height: 1.15;">loopway-epic</h3>
+          <p style="margin: 0; font-size: 16px; color: var(--ink-700);">Works out an epic with us on GitHub, then cuts it into issues another bot can build.</p>
+        </div>
+        <div style="padding: 20px 24px 24px 0; border-bottom: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">Claude Code · loopway</div>
+          <h3 style="margin: 0; font-weight: 400; font-size: 24px; line-height: 1.15;">loopway-requests</h3>
+          <p style="margin: 0; font-size: 16px; color: var(--ink-700);">Checks each request people send from the dashboard and files the real ones as issues.</p>
+        </div>
+        <div style="padding: 20px 24px 24px 0; border-bottom: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">Claude Code · Vercel</div>
+          <h3 style="margin: 0; font-weight: 400; font-size: 24px; line-height: 1.15;">prod-deploy-errors</h3>
+          <p style="margin: 0; font-size: 16px; color: var(--ink-700);">When a production deploy fails, finds out why and files an issue so it can be fixed quickly.</p>
+        </div>
+        <div style="padding: 20px 24px 24px 0; border-bottom: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">Claude Code · a daily schedule</div>
+          <h3 style="margin: 0; font-weight: 400; font-size: 24px; line-height: 1.15;">model-updater</h3>
+          <p style="margin: 0; font-size: 16px; color: var(--ink-700);">Checks each day which models every agent takes, and files an issue when that changes.</p>
+        </div>
+        <div style="padding: 20px 24px 24px 0; border-bottom: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">Cursor · GitHub</div>
+          <h3 style="margin: 0; font-weight: 400; font-size: 24px; line-height: 1.15;">call-learnings</h3>
+          <p style="margin: 0; font-size: 16px; color: var(--ink-700);">When new call notes land in our knowledge base, adds what we learned to its running list.</p>
+        </div>
+        <div style="padding: 20px 24px 24px 0; border-bottom: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">Your agent · your inboxes</div>
+          <h3 style="margin: 0; font-weight: 400; font-size: 24px; line-height: 1.15; font-style: italic;">Yours</h3>
+          <p style="margin: 0; font-size: 16px; color: var(--ink-700);">Start from a preset or from blank. A bot is a prompt and the rules that say which events it takes.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section id="how" style="border-top: 1px solid var(--ink-900);">
+    <div class="lw-pad" style="max-width: 1280px; margin: 0 auto; padding: 56px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 32px;">
+      <div style="display: flex; flex-wrap: wrap; gap: 16px 56px; align-items: flex-end;">
+        <div style="flex: 1 1 420px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="font-family: var(--font-type); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-600); padding-bottom: 10px; border-bottom: 1px solid var(--rule-hair);">How it works</div>
+          <h2 style="margin: 0; font-weight: 400; font-size: clamp(32px, 3.6vw, 48px); line-height: 1.1; letter-spacing: -0.021em;">From an event to finished work</h2>
+        </div>
+        <p style="flex: 1 1 380px; margin: 0; font-size: 18px; color: var(--ink-700); max-width: 32em;">Each part keeps one fact and passes the rest along. Nothing is locked and nothing is marked done, so an event is never lost to a crash.</p>
+      </div>
+
+      <ol class="lw-cols" style="list-style: none; margin: 0; padding: 0; display: flex; border-top: 2px solid var(--ink-900); border-bottom: 1px solid var(--rule-hair);">
+        <li style="flex: 1 1 0; min-width: 0; padding: 20px 20px 24px 0; display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-family: var(--font-type); font-size: 12px; color: var(--ink-500);"><span>01</span><svg class="lw-hide-sm" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></div>
+          <h3 style="margin: 0; font-weight: 400; font-size: 26px; line-height: 1.15;">Source</h3>
+          <code style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">deployment.error</code>
+          <p style="margin: 0; font-size: 16px; color: var(--ink-700);">A service you use, a schedule, or another bot sends an event to the inbox. The inbox checks its signature.</p>
+        </li>
+        <li style="flex: 1 1 0; min-width: 0; padding: 20px 20px 24px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-family: var(--font-type); font-size: 12px; color: var(--ink-500);"><span>02</span><svg class="lw-hide-sm" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></div>
+          <h3 style="margin: 0; font-weight: 400; font-size: 26px; line-height: 1.15;">Inbox</h3>
+          <code style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">com.vercel.deployment</code>
+          <p style="margin: 0; font-size: 16px; color: var(--ink-700);">Keeps each event as a CloudEvent, in the order it arrived. Messages are a record to read from, not a queue to drain.</p>
+        </li>
+        <li style="flex: 1 1 0; min-width: 0; padding: 20px 20px 24px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-family: var(--font-type); font-size: 12px; color: var(--ink-500);"><span>03</span><svg class="lw-hide-sm" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></div>
+          <h3 style="margin: 0; font-weight: 400; font-size: 26px; line-height: 1.15;">Bot</h3>
+          <code style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">prompt v2 · 3 rules</code>
+          <p style="margin: 0; font-size: 16px; color: var(--ink-700);">Reads its inboxes with a cursor, so it picks up where it left off. Its rules decide which thread each event belongs to.</p>
+        </li>
+        <li style="flex: 1 1 0; min-width: 0; padding: 20px 20px 24px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-family: var(--font-type); font-size: 12px; color: var(--ink-500);"><span>04</span><svg class="lw-hide-sm" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></div>
+          <h3 style="margin: 0; font-weight: 400; font-size: 26px; line-height: 1.15;">Runner</h3>
+          <code style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">lease 30s · max 3</code>
+          <p style="margin: 0; font-size: 16px; color: var(--ink-700);">Your machine, running <code style="font-family: var(--font-type); font-size: 14px;">loopway bots run</code>. It leases each bot, so two runners never do the same work.</p>
+        </li>
+        <li style="flex: 1 1 0; min-width: 0; padding: 20px 0 24px 20px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-family: var(--font-type); font-size: 12px; color: var(--ink-500);"><span>05</span></div>
+          <h3 style="margin: 0; font-weight: 400; font-size: 26px; line-height: 1.15;">Session</h3>
+          <code style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">claude · codex · cursor · hermes</code>
+          <p style="margin: 0; font-size: 16px; color: var(--ink-700);">The bot's agent, started with its prompt. It does the job, asks when it needs to, and ends the thread when the work is done.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- Threads -->
+  <section id="threads" style="border-top: 1px solid var(--ink-900);">
+    <div class="lw-pad" style="max-width: 1280px; margin: 0 auto; padding: 56px 40px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 40px 64px; align-items: flex-start;">
+      <div style="flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+        <div style="font-family: var(--font-type); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-600); padding-bottom: 10px; border-bottom: 1px solid var(--rule-hair);">Threads</div>
+        <h2 style="margin: 0; font-weight: 400; font-size: clamp(32px, 3.6vw, 48px); line-height: 1.1; letter-spacing: -0.021em;">A thread is one piece of work and every event about it</h2>
+        <p style="margin: 0; font-size: 18px; color: var(--ink-700);">Every later event for the same work lands in the same session, so the bot remembers what it already tried. When it needs you, it asks where you already work, and the next run reads your answer.</p>
+        <ul style="list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; border-top: 1px solid var(--rule-hair);">
+          <li style="padding: 12px 0; border-bottom: 1px solid var(--rule-hair); font-size: 16px; color: var(--ink-700);">Rules match on event type and subject. A subject no thread holds starts a new one.</li>
+          <li style="padding: 12px 0; border-bottom: 1px solid var(--rule-hair); font-size: 16px; color: var(--ink-700);">A thread ends when the bot says the work is done. Its next event wakes it.</li>
+          <li style="padding: 12px 0; border-bottom: 1px solid var(--rule-hair); font-size: 16px; color: var(--ink-700);">You can write to a thread from the dashboard or the terminal, and every transcript stays on the runner that wrote it.</li>
+        </ul>
+      </div>
+
+      <figure style="flex: 1.3 1 520px; min-width: 0; margin: 0; background: var(--paper-100); border: 1px solid var(--rule-soft); box-shadow: 6px 6px 0 #16130e3d;">
+        <div style="padding: 20px 24px 16px; border-bottom: 2px solid var(--ink-900); display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-family: var(--font-type); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-500);">prod-deploy-errors · thread</div>
+          <div style="font-size: 26px; line-height: 1.2;">Production deploy failed at build</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-family: var(--font-type); font-size: 12px;">
+            <span style="padding: 2px 8px; border: 1px solid var(--rule-soft); color: var(--ink-700);">vercel dpl_9xK2</span>
+            <span style="padding: 2px 8px; border: 1px solid var(--rule-soft); color: var(--ink-700);">craftmilldev/loopway#241</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid var(--rule-soft); color: var(--ink-700);"><span style="width: 8px; height: 8px; background: #2c4a53;"></span>level 3</span>
+          </div>
+        </div>
+        <div style="padding: 4px 24px 20px; display: flex; flex-direction: column;">
+          <div style="font-family: var(--font-type); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-600); padding: 14px 0 6px; border-bottom: 1px solid var(--rule-hair);">Waiting · 1</div>
+          <div style="display: flex; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--rule-hair);">
+            <div style="flex: 1 1 auto; min-width: 0;">
+              <div style="font-size: 16px;">mcwhittemore commented on #241: “Yes, roll back and leave the fix to loopway-dev.”</div>
+              <div style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">com.github.issue_comment.created</div>
+            </div>
+            <div style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500); white-space: nowrap;">14:20</div>
+          </div>
+
+          <div style="font-family: var(--font-type); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-600); padding: 18px 0 6px; border-bottom: 1px solid var(--rule-hair);">Run 1 · delivered 13:12</div>
+          <div style="display: flex; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--rule-hair);">
+            <div style="flex: 1 1 auto; min-width: 0;">
+              <div style="font-size: 16px;">The production deploy of loopway failed at build</div>
+              <div style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">com.vercel.deployment.error</div>
+            </div>
+            <div style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500); white-space: nowrap;">13:11</div>
+          </div>
+          <div style="padding: 12px 0 12px 16px; border-bottom: 1px solid var(--rule-hair); border-left: 2px solid var(--ink-900); margin-top: 10px; font-size: 16px; color: var(--ink-700);">
+            <div style="font-family: var(--font-type); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-500); margin-bottom: 4px;">The bot, on #241</div>
+            The build fails on a type error from b9e20e2. Roll back to eb83c73 and leave the fix to loopway-dev?
+          </div>
+
+          <div class="lw-ink" style="margin-top: 20px; background: var(--ink-900); color: var(--paper-100); padding: 12px 14px; font-family: var(--font-type); font-size: 13px; overflow-x: auto; white-space: nowrap;"><span style="color: var(--ink-300);">$ </span>tail -f ~/.loopway/threads/thr_8f2c.log</div>
+        </div>
+      </figure>
+    </div>
+  </section>
+
+  <!-- Runners -->
+  <section id="runners" style="border-top: 1px solid var(--ink-900); background: var(--paper-100);">
+    <div class="lw-pad" style="max-width: 1280px; margin: 0 auto; padding: 56px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 32px;">
+      <div style="display: flex; flex-wrap: wrap; gap: 16px 56px; align-items: flex-end;">
+        <div style="flex: 1 1 420px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="font-family: var(--font-type); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-600); padding-bottom: 10px; border-bottom: 1px solid var(--rule-hair);">Runners</div>
+          <h2 style="margin: 0; font-weight: 400; font-size: clamp(32px, 3.6vw, 48px); line-height: 1.1; letter-spacing: -0.021em;">It runs on your machine, with your own agents</h2>
+        </div>
+        <p style="flex: 1 1 380px; margin: 0; font-size: 18px; color: var(--ink-700); max-width: 32em;">We host the inboxes and the threads. The sessions run where you start the runner, on the agent accounts you already pay for.</p>
+      </div>
+      <div class="lw-cols" style="display: flex; border-top: 2px solid var(--ink-900);">
+        <div style="flex: 1 1 0; min-width: 0; padding: 20px 24px 8px 0; display: flex; flex-direction: column; gap: 8px;">
+          <h3 style="margin: 0; font-family: var(--font-type); font-weight: 400; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-900);">Leases</h3>
+          <p style="margin: 0; font-size: 16px; color: var(--ink-700);">Each tick the runner renews its lease on every bot it holds. A second runner skips a held bot and says until when. Quit, crash or close the lid, and the lease is released or runs out.</p>
+        </div>
+        <div style="flex: 1 1 0; min-width: 0; padding: 20px 24px 8px; display: flex; flex-direction: column; gap: 8px;">
+          <h3 style="margin: 0; font-family: var(--font-type); font-weight: 400; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-900);">A sandbox</h3>
+          <p style="margin: 0; font-size: 16px; color: var(--ink-700);">Sessions can write to the checkout and the caches they need. Your SSH keys, cloud credentials and the rest of your home directory stay out of reach.</p>
+        </div>
+        <div style="flex: 1 1 0; min-width: 0; padding: 20px 24px 8px; display: flex; flex-direction: column; gap: 8px;">
+          <h3 style="margin: 0; font-family: var(--font-type); font-weight: 400; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-900);">Usage limits</h3>
+          <p style="margin: 0; font-size: 16px; color: var(--ink-700);">When an agent reports a usage limit, the runner stops delivering until it resets, then carries on. Events keep arriving and wait on their threads.</p>
+        </div>
+        <div style="flex: 1 1 0; min-width: 0; padding: 20px 0 8px 24px; display: flex; flex-direction: column; gap: 8px;">
+          <h3 style="margin: 0; font-family: var(--font-type); font-weight: 400; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-900);">Versions</h3>
+          <p style="margin: 0; font-size: 16px; color: var(--ink-700);">A bot's prompt and rules are saved together as a version. Running threads keep the version they started on.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Dashboard. State badges, dots and level colors are the dashboard's own (packages/web/client/styles.css). -->
+  <section id="dashboard" style="border-top: 1px solid var(--ink-900);">
+    <div class="lw-pad" style="max-width: 1280px; margin: 0 auto; padding: 56px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 28px;">
+      <div style="display: flex; flex-wrap: wrap; gap: 16px 56px; align-items: flex-end;">
+        <div style="flex: 1 1 420px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="font-family: var(--font-type); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-600); padding-bottom: 10px; border-bottom: 1px solid var(--rule-hair);">The dashboard</div>
+          <h2 style="margin: 0; font-weight: 400; font-size: clamp(32px, 3.6vw, 48px); line-height: 1.1; letter-spacing: -0.021em;">One word for what each bot is doing</h2>
+        </div>
+        <p style="flex: 1 1 380px; margin: 0; font-size: 18px; color: var(--ink-700); max-width: 32em;">When the work runs without you, you need to see it at a glance: is anything stuck, what are my bots doing, and how much of it ran without anyone.</p>
+      </div>
+
+      <div style="border-top: 2px solid var(--ink-900); overflow-x: auto;">
+        <table style="width: 100%; min-width: 920px; border-collapse: collapse; font-size: 16px;">
+          <thead>
+            <tr style="font-family: var(--font-type); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-600); text-align: left;">
+              <th scope="col" style="font-weight: 400; padding: 12px 16px 10px 0; border-bottom: 1px solid var(--rule-soft);">Bot</th>
+              <th scope="col" style="font-weight: 400; padding: 12px 16px 10px 0; border-bottom: 1px solid var(--rule-soft);">State</th>
+              <th scope="col" style="font-weight: 400; padding: 12px 16px 10px 0; border-bottom: 1px solid var(--rule-soft);">Inboxes</th>
+              <th scope="col" style="font-weight: 400; padding: 12px 16px 10px 0; border-bottom: 1px solid var(--rule-soft); text-align: right;">Open</th>
+              <th scope="col" style="font-weight: 400; padding: 12px 16px 10px 0; border-bottom: 1px solid var(--rule-soft); text-align: right;">Waiting</th>
+              <th scope="col" style="font-weight: 400; padding: 12px 16px 10px 0; border-bottom: 1px solid var(--rule-soft);">14 days</th>
+              <th scope="col" style="font-weight: 400; padding: 12px 16px 10px 0; border-bottom: 1px solid var(--rule-soft);">Levels</th>
+              <th scope="col" style="font-weight: 400; padding: 12px 0 10px 0; border-bottom: 1px solid var(--rule-soft); text-align: right;">Last delivery</th>
+            </tr>
+          </thead>
+          <tbody>
+            <sc-for list="{{bots}}" as="bot" hint-placeholder-count="6">
+              <tr class="lw-row">
+                <td style="padding: 14px 16px 14px 0; border-bottom: 1px solid var(--rule-hair); vertical-align: top;">
+                  <div style="font-size: 20px; line-height: 1.2;">{{bot.name}}</div>
+                  <div style="font-family: var(--font-type); font-size: 12px; color: var(--ink-500);">{{bot.meta}}</div>
+                </td>
+                <td style="padding: 14px 16px 14px 0; border-bottom: 1px solid var(--rule-hair); vertical-align: top;">
+                  <span style="{{bot.badgeStyle}}">{{bot.state}}</span>
+                  <div style="font-size: 14px; color: var(--ink-600); margin-top: 4px;">{{bot.why}}</div>
+                </td>
+                <td style="padding: 14px 16px 14px 0; border-bottom: 1px solid var(--rule-hair); vertical-align: top; font-family: var(--font-type); font-size: 13px; color: var(--ink-700);">{{bot.inboxes}}</td>
+                <td style="padding: 14px 16px 14px 0; border-bottom: 1px solid var(--rule-hair); vertical-align: top; font-family: var(--font-type); font-size: 15px; text-align: right;">{{bot.open}}</td>
+                <td style="padding: 14px 16px 14px 0; border-bottom: 1px solid var(--rule-hair); vertical-align: top; font-family: var(--font-type); font-size: 15px; text-align: right;">{{bot.waiting}}</td>
+                <td style="padding: 14px 16px 14px 0; border-bottom: 1px solid var(--rule-hair); vertical-align: top;">
+                  <div role="img" aria-label="{{bot.barsLabel}}" style="display: flex; align-items: flex-end; gap: 2px; height: 24px;">
+                    <sc-for list="{{bot.bars}}" as="b" hint-placeholder-count="14">
+                      <span style="{{b.style}}"></span>
+                    </sc-for>
+                  </div>
+                </td>
+                <td style="padding: 14px 16px 14px 0; border-bottom: 1px solid var(--rule-hair); vertical-align: top;">
+                  <span role="img" aria-label="{{bot.levelsLabel}}" style="{{bot.pieStyle}}"></span>
+                </td>
+                <td style="padding: 14px 0 14px 0; border-bottom: 1px solid var(--rule-hair); vertical-align: top; font-family: var(--font-type); font-size: 13px; color: var(--ink-600); text-align: right; white-space: nowrap;">{{bot.last}}</td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 24px 56px;">
+        <dl style="flex: 2 1 560px; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px 24px;">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <dt><span style="display: inline-block; padding: 1px 6px; border: 1px solid currentColor; font-family: var(--font-type); font-size: 10.5px; letter-spacing: 0.12em; line-height: 16px; color: #9e2b1c;">stranded</span></dt>
+            <dd style="margin: 0; font-size: 15px; color: var(--ink-700);">Owns threads on a runner whose lease has run out.</dd>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <dt><span style="display: inline-block; padding: 1px 6px; border: 1px solid currentColor; font-family: var(--font-type); font-size: 10.5px; letter-spacing: 0.12em; line-height: 16px; color: #9e2b1c;">limited</span></dt>
+            <dd style="margin: 0; font-size: 15px; color: var(--ink-700);">A thread hit a usage limit and waits for it to reset.</dd>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <dt><span style="display: inline-block; padding: 1px 6px; border: 1px solid currentColor; font-family: var(--font-type); font-size: 10.5px; letter-spacing: 0.12em; line-height: 16px; color: #2c4a53;">working</span></dt>
+            <dd style="margin: 0; font-size: 15px; color: var(--ink-700);">A run is in flight on one of its threads.</dd>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <dt><span style="display: inline-block; padding: 1px 6px; border: 1px solid currentColor; font-family: var(--font-type); font-size: 10.5px; letter-spacing: 0.12em; line-height: 16px; color: #5c5544;">waiting</span></dt>
+            <dd style="margin: 0; font-size: 15px; color: var(--ink-700);">Open threads, nothing in flight.</dd>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <dt><span style="display: inline-block; padding: 1px 6px; border: 1px solid currentColor; font-family: var(--font-type); font-size: 10.5px; letter-spacing: 0.12em; line-height: 16px; color: #5c5544;">idle</span></dt>
+            <dd style="margin: 0; font-size: 15px; color: var(--ink-700);">No open threads.</dd>
+          </div>
+        </dl>
+        <ul style="flex: 1 1 220px; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-family: var(--font-type); font-size: 13px; color: var(--ink-700);">
+          <li style="display: flex; align-items: center; gap: 8px;"><span style="width: 10px; height: 10px; background: #8b8471;"></span>Level 2 · a person started it</li>
+          <li style="display: flex; align-items: center; gap: 8px;"><span style="width: 10px; height: 10px; background: #2c4a53;"></span>Level 3 · a bot started it, a person took part</li>
+          <li style="display: flex; align-items: center; gap: 8px;"><span style="width: 10px; height: 10px; background: #9e2b1c;"></span>Level 4 · no person took part</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Write your own -->
+  <section id="api" style="border-top: 1px solid var(--ink-900); background: var(--paper-100);">
+    <div class="lw-pad" style="max-width: 1280px; margin: 0 auto; padding: 56px 40px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 40px 64px; align-items: flex-start;">
+      <div style="flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+        <div style="font-family: var(--font-type); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-600); padding-bottom: 10px; border-bottom: 1px solid var(--rule-hair);">Write your own</div>
+        <h2 style="margin: 0; font-weight: 400; font-size: clamp(32px, 3.6vw, 48px); line-height: 1.1; letter-spacing: -0.021em;">A bot is a prompt, its rules, and an agent to run them</h2>
+        <p style="margin: 0; font-size: 18px; color: var(--ink-700);">Pick the agent and model, write the prompt, and add rules that say which events it takes and how they group into threads. Or skip the runner and read the inbox yourself: every read command in the CLI takes <code style="font-family: var(--font-type); font-size: 15px;">--json</code>.</p>
+        <p style="margin: 0; font-size: 16px;"><a href="https://github.com/craftmilldev/loopway/blob/main/docs/api.md">The HTTP API</a> <span style="color: var(--ink-400);">·</span> <a href="https://github.com/craftmilldev/loopway#cli">The CLI</a></p>
+      </div>
+      <div style="flex: 1.3 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+        <div class="lw-ink" style="background: var(--ink-900); color: var(--paper-100); box-shadow: 6px 6px 0 #16130e3d;">
+          <div style="padding: 10px 16px; border-bottom: 1px solid #f2eede29; font-family: var(--font-type); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-200);">CLI</div>
+          <pre style="margin: 0; padding: 14px 16px 16px; font-family: var(--font-type); font-size: 13px; line-height: 1.7; overflow-x: auto; color: var(--paper-100);"><span style="color: var(--ink-300);">$ </span>loopway inbox create --name vercel-prod --source vercel
+<span style="color: var(--ink-300);">$ </span>loopway bots create --name deploys --harness codex --inbox vercel-prod
+<span style="color: var(--ink-300);">$ </span>loopway bots run</pre>
+        </div>
+        <div class="lw-ink" style="background: var(--ink-900); color: var(--paper-100); box-shadow: 6px 6px 0 #16130e3d;">
+          <div style="padding: 10px 16px; border-bottom: 1px solid #f2eede29; font-family: var(--font-type); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-200);">HTTP</div>
+          <pre style="margin: 0; padding: 14px 16px 16px; font-family: var(--font-type); font-size: 13px; line-height: 1.7; overflow-x: auto; color: var(--paper-100);"><span style="color: var(--ink-300);">$ </span>curl -H "Authorization: Bearer $TOKEN" \
+    https://loopway.craftmill.dev/api/bots/$BOT/messages</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Sources -->
+  <section id="sources" style="border-top: 1px solid var(--ink-900);">
+    <div class="lw-pad" style="max-width: 1280px; margin: 0 auto; padding: 56px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 32px;">
+      <div style="display: flex; flex-wrap: wrap; gap: 16px 56px; align-items: flex-end;">
+        <div style="flex: 1 1 420px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="font-family: var(--font-type); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-600); padding-bottom: 10px; border-bottom: 1px solid var(--rule-hair);">Sources</div>
+          <h2 style="margin: 0; font-weight: 400; font-size: clamp(32px, 3.6vw, 48px); line-height: 1.1; letter-spacing: -0.021em;">Seven sources so far, and loopway is one of them</h2>
+        </div>
+        <p style="flex: 1 1 380px; margin: 0; font-size: 18px; color: var(--ink-700); max-width: 32em;">An inbox listens to one source. A bot can read several, so a failed deploy and the issue it caused can land in the same thread.</p>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); border-top: 2px solid var(--ink-900);">
+        <div style="padding: 20px 20px 20px 0; border-bottom: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 8px;">
+          <h3 style="margin: 0; font-weight: 400; font-size: 24px;">GitHub</h3>
+          <code style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">source_type: "github"</code>
+          <p style="margin: 0; font-size: 15px; color: var(--ink-700);">Issues, comments, pull requests, reviews, pushes and CI, from a repository or an organization.</p>
+        </div>
+        <div style="padding: 20px 20px 20px 0; border-bottom: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 8px;">
+          <h3 style="margin: 0; font-weight: 400; font-size: 24px;">Linear</h3>
+          <code style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">source_type: "linear"</code>
+          <p style="margin: 0; font-size: 15px; color: var(--ink-700);">A workspace's issues and the comments on them.</p>
+        </div>
+        <div style="padding: 20px 20px 20px 0; border-bottom: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 8px;">
+          <h3 style="margin: 0; font-weight: 400; font-size: 24px;">Vercel</h3>
+          <code style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">source_type: "vercel"</code>
+          <p style="margin: 0; font-size: 15px; color: var(--ink-700);">A team's deployments, as they start, fail and finish.</p>
+        </div>
+        <div style="padding: 20px 20px 20px 0; border-bottom: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 8px;">
+          <h3 style="margin: 0; font-weight: 400; font-size: 24px;">Granola</h3>
+          <code style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">source_type: "granola"</code>
+          <p style="margin: 0; font-size: 15px; color: var(--ink-700);">Meeting notes from a workspace or a folder.</p>
+        </div>
+        <div style="padding: 20px 20px 20px 0; border-bottom: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 8px;">
+          <h3 style="margin: 0; font-weight: 400; font-size: 24px;">Resend</h3>
+          <code style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">source_type: "resend"</code>
+          <p style="margin: 0; font-size: 15px; color: var(--ink-700);">What happens to the email you send and receive: delivered, bounced, opened, clicked.</p>
+        </div>
+        <div style="padding: 20px 20px 20px 0; border-bottom: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 8px;">
+          <h3 style="margin: 0; font-weight: 400; font-size: 24px;">Schedule</h3>
+          <code style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">source_type: "schedule"</code>
+          <p style="margin: 0; font-size: 15px; color: var(--ink-700);">A message each hour, or each day at an hour you pick, to wake a bot on a rhythm.</p>
+        </div>
+        <div style="padding: 20px 20px 20px 0; border-bottom: 1px solid var(--rule-hair); display: flex; flex-direction: column; gap: 8px;">
+          <h3 style="margin: 0; font-weight: 400; font-size: 24px;">loopway</h3>
+          <code style="font-family: var(--font-type); font-size: 12px; color: var(--indigo-600);">source_type: "loopway"</code>
+          <p style="margin: 0; font-size: 15px; color: var(--ink-700);">Messages posted straight to an inbox, so bots and backends can message each other.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Closing -->
+  <section style="border-top: 2px solid var(--ink-900); background: var(--paper-300);">
+    <div class="lw-pad" style="max-width: 1280px; margin: 0 auto; padding: 64px 40px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 32px 64px; align-items: flex-end;">
+      <div style="flex: 1 1 480px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+        <h2 style="margin: 0; font-weight: 400; font-size: clamp(36px, 4.4vw, 60px); line-height: 1.04; letter-spacing: -0.021em;">Start with one inbox and one bot.</h2>
+        <p style="margin: 0; font-size: 18px; color: var(--ink-700); max-width: 34em;">Log in with your email, point a webhook at an inbox, give a bot a prompt and its rules, and run <code style="font-family: var(--font-type); font-size: 15px;">loopway bots run</code>. The next event is its first thread.</p>
+        <div style="display: flex; flex-wrap: wrap; gap: 12px; font-family: var(--font-type); font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; margin-top: 8px;">
+          <a class="lw-btn" href="/login" style="display: inline-flex; align-items: center; height: 44px; padding: 0 24px; background: var(--ink-900); color: var(--paper-100);">Get started</a>
+          <a class="lw-ghost" href="https://github.com/craftmilldev/loopway" style="display: inline-flex; align-items: center; height: 44px; padding: 0 24px; border: 1px solid var(--ink-900); color: var(--ink-900);">View on GitHub</a>
+        </div>
+      </div>
+      <p style="flex: 0 1 340px; margin: 0; padding-top: 14px; border-top: 1px solid var(--rule-soft); font-size: 15px; color: var(--ink-600);">loopway is open core. Everything is MIT-licensed except <code style="font-family: var(--font-type); font-size: 13px;">packages/web/ee</code>.</p>
+    </div>
+  </section>
+
+  <!-- Colophon -->
+  <footer class="lw-pad" style="max-width: 1280px; margin: 0 auto; padding: 0 40px 40px; box-sizing: border-box;">
+    <div class="lw-nav" style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 32px; padding-top: 18px; border-top: 3px double var(--ink-900); font-family: var(--font-type); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-600);">
+      <span>Loopway · a Craftmill works · Plumbline LLC, Maine</span>
+      <span style="display: flex; flex-wrap: wrap; gap: 8px 24px;">
+        <a href="https://github.com/craftmilldev/loopway/blob/main/docs/api.md">API</a>
+        <a href="https://github.com/craftmilldev/loopway/tree/main/docs/sources">Sources</a>
+        <a href="https://github.com/craftmilldev/loopway">GitHub</a>
+        <a href="/login">Log in</a>
+      </span>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":7200}}'>
+class Component extends DCLogic {
+  renderVals() {
+    // The dashboard's status colors (packages/web/client/styles.css, .state and .dot) and its level-pie colors.
+    var STATE = { working: '#2c4a53', limited: '#9e2b1c', stranded: '#9e2b1c', waiting: '#5c5544', idle: '#5c5544' };
+    var LEVEL = { 2: '#8b8471', 3: '#2c4a53', 4: '#9e2b1c' };
+    function badge(state) {
+      return 'display: inline-block; padding: 1px 6px; border: 1px solid currentColor; font-family: var(--font-type); font-size: 10.5px; letter-spacing: 0.12em; line-height: 16px; white-space: nowrap; color: ' + STATE[state] + ';';
+    }
+    function bars(counts) {
+      var max = Math.max.apply(null, counts.concat([1]));
+      return counts.map(function (n) {
+        var h = n === 0 ? 1 : Math.max(3, Math.round((n / max) * 24));
+        return { style: 'display: block; width: 5px; height: ' + h + 'px; background: ' + (n === 0 ? '#16130e29' : '#2c4a53') + ';' };
+      });
+    }
+    function pie(l) {
+      var total = l[2] + l[3] + l[4];
+      var a = (l[2] / total) * 100, b = a + (l[3] / total) * 100;
+      return 'display: block; width: 24px; height: 24px; border-radius: 50%; background: conic-gradient(' +
+        LEVEL[2] + ' 0 ' + a + '%, ' + LEVEL[3] + ' ' + a + '% ' + b + '%, ' + LEVEL[4] + ' ' + b + '% 100%);';
+    }
+    var rows = [
+      { name: 'loopway-dev', meta: 'claude · sonnet', state: 'working', why: '2 messages in flight', inboxes: 'craftmill/loopway, vercel/loopway', open: 4, waiting: 2, last: '2m ago', counts: [6, 9, 4, 0, 0, 11, 8, 12, 7, 5, 0, 9, 14, 10], levels: { 2: 3, 3: 9, 4: 6 } },
+      { name: 'loopway-review', meta: 'claude · sonnet', state: 'working', why: '1 message in flight', inboxes: 'craftmill/loopway', open: 2, waiting: 1, last: '1m ago', counts: [3, 5, 2, 0, 0, 6, 4, 7, 4, 3, 0, 5, 8, 6], levels: { 2: 0, 3: 4, 4: 14 } },
+      { name: 'prod-deploy-errors', meta: 'claude · opus', state: 'waiting', why: 'Waiting for a runner', inboxes: 'vercel/loopway', open: 1, waiting: 0, last: '1h ago', counts: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2], levels: { 2: 0, 3: 2, 4: 1 } },
+      { name: 'loopway-epic', meta: 'claude · sonnet', state: 'limited', why: 'Hit its usage limit', inboxes: 'craftmill/loopway', open: 2, waiting: 3, last: '38m ago', counts: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 4, 3, 5], levels: { 2: 4, 3: 0, 4: 0 } },
+      { name: 'call-learnings', meta: 'cursor · auto', state: 'stranded', why: 'Its runner is offline', inboxes: 'craftmill/knowledge-base', open: 1, waiting: 2, last: 'yesterday', counts: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0], levels: { 2: 0, 3: 0, 4: 3 } },
+      { name: 'model-updater', meta: 'claude · sonnet', state: 'idle', why: '', inboxes: 'harness-supported-models', open: 0, waiting: 0, last: '6h ago', counts: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], levels: { 2: 0, 3: 0, 4: 1 } }
+    ];
+    return {
+      bots: rows.map(function (r) {
+        var total = r.counts.reduce(function (a, b) { return a + b; }, 0);
+        var n = r.levels[2] + r.levels[3] + r.levels[4];
+        return Object.assign({}, r, {
+          badgeStyle: badge(r.state),
+          bars: bars(r.counts),
+          barsLabel: total + ' messages delivered in 14 days',
+          pieStyle: pie(r.levels),
+          levelsLabel: [2, 3, 4].map(function (l) { return Math.round((r.levels[l] / n) * 100) + '% level ' + l; }).join(', ')
+        });
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>
