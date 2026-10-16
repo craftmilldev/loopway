@@ -9,6 +9,7 @@ import { CodexWatch } from "../src/codex.js";
 import { CursorWatch } from "../src/cursor.js";
 import { HermesWatch, withoutTopLevelKey } from "../src/hermes.js";
 import { getHarness, HARNESSES } from "../src/index.js";
+import { HARNESS_LABELS } from "../src/labels.js";
 
 const temp = () => mkdtemp(join(tmpdir(), "lw-harness-"));
 
@@ -16,6 +17,11 @@ describe("harnesses", () => {
   it("knows claude, cursor, codex and hermes, and refuses others", () => {
     expect(HARNESSES.map((h) => h.name)).toEqual(["claude", "cursor", "codex", "hermes"]);
     expect(() => getHarness("gemini")).toThrow(/Unknown harness "gemini"/);
+  });
+
+  it("labels every harness, in HARNESSES order, with the label each one carries", () => {
+    expect(Object.keys(HARNESS_LABELS)).toEqual(HARNESSES.map((h) => h.name));
+    for (const h of HARNESSES) expect(h.label).toBe(HARNESS_LABELS[h.name as keyof typeof HARNESS_LABELS]);
   });
 
   it("CursorWatch: init starts the session, a user record delivers, an error result is an API error", () => {

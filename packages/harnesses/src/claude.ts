@@ -1,10 +1,12 @@
 import type { AgentRun } from "./agent.js";
 import { LimitWatch } from "./claude-watch.js";
 import { Harness, type Launch } from "./harness.js";
+import { HARNESS_LABELS } from "./labels.js";
 
 /** Claude Code, run as `claude -p`. */
 export class ClaudeHarness extends Harness {
   readonly name = "claude";
+  readonly label = HARNESS_LABELS.claude;
   readonly command = "claude";
 
   /** Aliases for the latest of a family, and full ids to pin a version. Add new models here and drop deprecated ones. */
