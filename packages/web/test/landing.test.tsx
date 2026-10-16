@@ -149,9 +149,9 @@ describe("the landing page from markdown", () => {
     expect(button.textContent).toBe("Copy");
   });
 
-  it("leaves an empty slot for the figures of top, threads and dashboard", () => {
+  it("fills the top figure with the terminal, and leaves threads and dashboard empty", () => {
     const c = draw(FIXTURE);
-    expect(c.querySelector('#top .lp-figure[data-figure="top"]')?.childNodes.length).toBe(0);
+    expect(c.querySelector('#top .lp-figure[data-figure="top"] .lt')).not.toBeNull();
     expect(c.querySelector("#how .lp-figure")).toBeNull();
   });
 
