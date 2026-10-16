@@ -1,7 +1,7 @@
 import { HARNESS_LABELS } from "@loopway/harnesses/labels";
 import { STATE_COLORS } from "@loopway/palette";
 import { Marked, type Tokens } from "marked";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { track } from "./metrics.js";
 
 // The landing page, built from content/home.md: its comment says how the markdown maps to the page. Parsing turns
@@ -215,9 +215,23 @@ function List({ section, list }: { section: string; list: Extract<Block, { kind:
 }
 
 function Well({ label, code }: { label: string; code: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+    } catch {
+      return track("landing_well_copy_failed", { well: label || "none" });
+    }
+    track("landing_well_copied", { well: label || "none" });
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
   return (
     <figure className="lp-well">
       {label && <figcaption className="lp-well-label">{label}</figcaption>}
+      <button className="lp-well-copy" type="button" onClick={() => void copy()}>
+        {copied ? "Copied" : "Copy"}
+      </button>
       <pre>
         <code>
           {code.split("\n").map((line, i, all) => (

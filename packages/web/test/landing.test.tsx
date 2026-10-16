@@ -115,6 +115,14 @@ describe("the landing page from markdown", () => {
     ]);
   });
 
+  it("gives each well a copy button outside the code, so selecting the code never picks it up", () => {
+    const c = draw(FIXTURE);
+    for (const w of c.querySelectorAll(".lp-well")) {
+      expect(w.querySelector(".lp-well-copy")?.textContent).toBe("Copy");
+      expect(w.querySelector("pre")?.contains(w.querySelector(".lp-well-copy"))).toBe(false);
+    }
+  });
+
   it("leaves an empty slot for the figures of top, threads and dashboard", () => {
     const c = draw(FIXTURE);
     expect(c.querySelector('#top .lp-figure[data-figure="top"]')?.childNodes.length).toBe(0);
