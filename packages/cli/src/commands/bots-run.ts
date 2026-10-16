@@ -7,6 +7,7 @@ import { loadConfig } from "../config.js";
 import { DEFAULTS, Dispatcher, UNSANDBOXED_WARNING, type ThreadsOptions } from "../bots/dispatcher.js";
 import { ensureRunner, savedRunnerOrg } from "../bots/runner.js";
 import { resolveOrg } from "./orgs.js";
+import { colorSupport } from "../bots/colors.js";
 import { showTui } from "../bots/tui.js";
 import { CLI_VERSION } from "../version.js";
 
@@ -73,9 +74,12 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     version = v;
     closeTui.abort();
   });
+  // How often the TUI's colors fall back to the 256-color palette, or go without.
+  void ctx.metrics?.capture("bots_run_tui_opened", { colors: colorSupport() });
   try {
     await showTui(
       {
+        org: runner.org,
         load: async () => ({ ...(await dispatcher.state()), message }),
         readLog: (id) => dispatcher.readLog(id),
         send: async (threadId, text) => {

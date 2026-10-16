@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@loopway/presets": "*",
+    "@loopway/palette": "*",
     "@loopway/rules": "*",
     "@loopway/harnesses": "*",
     "@loopway/sources": "*",

@@ -1,0 +1,29 @@
+{
+  "name": "@loopway/palette",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "The status colors the web dashboard and the CLI's TUI share: each state and each automation level.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.3"
+  }
+}

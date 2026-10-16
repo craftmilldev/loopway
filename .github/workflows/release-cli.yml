@@ -89,9 +89,9 @@ jobs:
         if: steps.plan.outputs.release == 'true'
         run: |
           mkdir dist-release
-          npm pack -w @loopway/harnesses -w @loopway/rules -w @loopway/presets -w @loopway/cli --pack-destination dist-release
+          npm pack -w @loopway/harnesses -w @loopway/rules -w @loopway/presets -w @loopway/palette -w @loopway/cli --pack-destination dist-release
           # Fixed names, so the manifest and install.sh don't need to know versions
-          for name in harnesses rules presets cli; do
+          for name in harnesses rules presets palette cli; do
             mv dist-release/loopway-$name-*.tgz dist-release/loopway-$name.tgz
           done
           # install.sh installs whatever this lists

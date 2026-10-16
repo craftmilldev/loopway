@@ -149,6 +149,10 @@ export interface Thread {
   runner_id: string | null;
   /** What the thread works on: for GitHub, its issues and PRs (`owner/repo#number`). */
   subjects: string[];
+  /** From the newest message that carries one (an issue or PR title); null if none does. Older servers omit it. */
+  title?: string | null;
+  /** 2 if a person started it, 3 if a bot did and a person took part, 4 if no one did; null or omitted counts as 2. */
+  automation_level?: 2 | 3 | 4 | null;
   waiting: ThreadMessage[];
   inflight: ThreadMessage[];
   delivered: number;

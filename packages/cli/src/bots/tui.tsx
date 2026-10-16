@@ -1,6 +1,9 @@
+import { FAINT, INDIGO, INK, LEVEL_COLORS, MADDER, STATE_COLORS, type Level, type State } from "@loopway/palette";
+import chalk from "chalk";
 import { Box, render, Text, useApp, useInput, useWindowSize } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ago, clock } from "../format.js";
+import { termColor } from "./colors.js";
 import type { DispatcherState } from "./dispatcher.js";
 import { transcriptLines, wrap, type TranscriptLine } from "./transcript.js";
 import { CLI_VERSION } from "../version.js";
@@ -17,17 +20,28 @@ export interface TuiProps {
   readLog: (sessionId: string) => Promise<string>;
   /** Sends a message to a thread; rejects with the reason it couldn't. */
   send: (threadId: string, text: string) => Promise<void>;
+  /** The slug of the org the runner runs bots for. */
+  org?: string;
   refreshMs?: number;
 }
 
 type Section = "working" | "waiting" | "done";
 const SECTIONS: Section[] = ["working", "waiting", "done"];
 const TITLES: Record<Section, string> = { working: "Working", waiting: "Waiting", done: "Done" };
+
+// The landing page's terminal, on a dark ground: secondary text, separators and done rows, rules, and the band behind
+// the selected row (ink-200, -300, -600 and -700). Text that isn't secondary keeps the terminal's own color.
+const MUTED = INK.ink;
+const DIM = FAINT.ink;
+const RULE = "#4b4534";
+const BAND = "#3a352b";
+const BAND_TEXT = "#f2eede";
+
 const KIND_STYLE: Record<TranscriptLine["kind"], { color?: string; dimColor?: boolean }> = {
   text: {},
-  tool: { color: "cyan" },
+  tool: { color: INDIGO.ink },
   result: { dimColor: true },
-  error: { color: "red" },
+  error: { color: MADDER.ink },
   meta: { dimColor: true },
 };
 
@@ -42,7 +56,7 @@ export async function showTui(props: TuiProps, signal?: AbortSignal): Promise<vo
  * The threads TUI: waiting messages, then working, waiting and done sessions. ↑/↓ moves between
  * sessions (messages can't be opened), Tab jumps to the next list, Enter or → opens a session's transcript.
  */
-export function ThreadsTui({ load, readLog, send, refreshMs = 1000 }: TuiProps) {
+export function ThreadsTui({ load, readLog, send, org, refreshMs = 1000 }: TuiProps) {
   const [snap, setSnap] = useState<Snapshot>();
   const [selected, setSelected] = useState<string>();
   const [open, setOpen] = useState<string>();
@@ -60,7 +74,7 @@ export function ThreadsTui({ load, readLog, send, refreshMs = 1000 }: TuiProps) 
         onBack={() => setOpen(undefined)}
       />
     );
-  return <ListView snap={snap} selected={selected} onSelect={setSelected} onOpen={setOpen} />;
+  return <ListView snap={snap} org={org} selected={selected} onSelect={setSelected} onOpen={setOpen} />;
 }
 
 /** Sorts threads into the three lists, most recently updated first. */
@@ -74,6 +88,25 @@ export function sessionLists({ threads, running }: DispatcherState): Record<Sect
 const sectionOf = ({ threads, running }: Pick<DispatcherState, "threads" | "running">, id: string): Section =>
   running.has(id) ? "working" : threads[id]?.status === "ended" ? "done" : "waiting";
 
+/**
+ * Where a thread stands, in the dashboard's words: working (a run in flight), stranded (its runner's lease ran out),
+ * limited (it hit a usage limit), waiting, or done.
+ */
+export function threadState(
+  snap: Pick<DispatcherState, "threads" | "running" | "offline">,
+  id: string,
+): State | "done" {
+  const t = snap.threads[id];
+  if (snap.running.has(id)) return "working";
+  if (!t || t.status === "ended") return "done";
+  if (t.runner_id && snap.offline.has(t.runner_id)) return "stranded";
+  return t.limited ? "limited" : "waiting";
+}
+
+/** A thread's level; one with none set is level 2, as the dashboard counts it. */
+const levelOf = ({ threads }: Pick<DispatcherState, "threads">, id: string): Level =>
+  threads[id]?.automation_level ?? 2;
+
 /** " on <runner>" for a thread another runner owns (its session lives on that machine), "" for this runner's. */
 const owner = ({ threads, runnerId, runners }: DispatcherState, id: string): string => {
   const runner = threads[id]?.runner_id;
@@ -84,25 +117,45 @@ const owner = ({ threads, runnerId, runners }: DispatcherState, id: string): str
 const botName = ({ bots }: Pick<DispatcherState, "bots">, id: string): string =>
   [...bots.held, ...bots.skipped].find((b) => b.id === id)?.name ?? id.slice(0, 8);
 
+/** What a thread is about: its subjects, then its title. */
+const threadLabel = ({ threads }: Pick<DispatcherState, "threads">, id: string): string => {
+  const t = threads[id];
+  return [t?.subjects.join(", ") || "new thread", t?.title].filter(Boolean).join(" ");
+};
+
+/** A state's dot: filled in its color, none for a done thread. */
+const Dot = ({ state }: { state: State | "done" }) =>
+  state === "done" ? <Text>{"  "}</Text> : <Text color={termColor(STATE_COLORS[state].ink)}>● </Text>;
+
+const LevelMark = ({ level, color }: { level: Level; color?: string }) => (
+  <Text color={termColor(color ?? LEVEL_COLORS[level].ink)}>L{level}</Text>
+);
+
 interface Row {
   key: string;
   /** Set on rows that can be selected (sessions). */
   id?: string;
-  header?: string;
+  heading?: { title: string; count: number };
+  /** Rows with no bot are notes under a heading ("none", "… 3 more"). */
+  bot?: string;
+  /** undefined: a waiting message, which gets a ring. */
+  state?: State | "done";
   label?: string;
+  level?: Level;
   meta?: string;
 }
 
 interface ListViewProps {
   snap: Snapshot;
+  org: string | undefined;
   selected: string | undefined;
   onSelect: (id: string) => void;
   onOpen: (id: string) => void;
 }
 
-function ListView({ snap, selected, onSelect, onOpen }: ListViewProps) {
+function ListView({ snap, org, selected, onSelect, onOpen }: ListViewProps) {
   const { exit } = useApp();
-  const { rows: height } = useWindowSize();
+  const { rows: height, columns } = useWindowSize();
   const lists = sessionLists(snap);
   const order = SECTIONS.flatMap((s) => lists[s]);
   const current = selected && order.includes(selected) ? selected : order[0];
@@ -119,18 +172,24 @@ function ListView({ snap, selected, onSelect, onOpen }: ListViewProps) {
     } else if ((key.return || key.rightArrow) && current) onOpen(current);
   });
 
-  // Title above, status and help below; the lists scroll in what's left.
+  // Two lines of header above, the status line below; the lists scroll in what's left.
   const body = Math.max(1, height - 3);
   const rows = listRows(snap, lists, Math.max(3, Math.floor(body / 4)));
-  const names = (bots: { name: string }[]) => bots.map((b) => b.name).join(", ");
-  const leased = snap.bots.skipped.map((b) => b.name + (b.leased_until ? ` (until ${clock(b.leased_until)})` : ""));
-  const skipped = leased.length ? ` · leased elsewhere: ${leased.join(", ")}` : "";
+  // The bot and the meta are columns as wide as their longest, so the levels line up.
+  const botWidth = Math.min(20, Math.max(0, ...rows.map((r) => r.bot?.length ?? 0))) + 2;
+  const metaWidth = Math.min(40, Math.max(0, ...rows.map((r) => (r.bot === undefined ? 0 : (r.meta?.length ?? 0)))));
+  const held = snap.bots.held.map((b) => b.name).join(", ") || "no bots";
+  const skipped = snap.bots.skipped.map(
+    (b) =>
+      `${b.name}, held by ${b.held_by ?? "another runner"}` + (b.leased_until ? ` until ${clock(b.leased_until)}` : ""),
+  );
+  const sep = <Text color={termColor(DIM)}> · </Text>;
 
-  // Scroll just enough to keep the selection on screen, along with its list's header.
+  // Scroll just enough to keep the selection on screen, along with its list's heading.
   const offset = useRef(0);
   const sel = rows.findIndex((r) => r.id === current);
   if (sel >= 0) {
-    const top = rows[sel - 1]?.header ? sel - 1 : sel;
+    const top = rows[sel - 1]?.heading ? sel - 1 : sel;
     if (top < offset.current) offset.current = top;
     else if (sel >= offset.current + body) offset.current = sel - body + 1;
   }
@@ -138,49 +197,81 @@ function ListView({ snap, selected, onSelect, onOpen }: ListViewProps) {
 
   return (
     <Box flexDirection="column" height={height}>
-      <Text bold>
-        loopway bots run <Text dimColor>v{CLI_VERSION}</Text>{" "}
-        <Text dimColor>
-          · {names(snap.bots.held) || "no bots held"}
-          {skipped}
-        </Text>
+      <Text wrap="truncate-end">
+        <Text bold>LOOPWAY</Text>
+        {sep}runner {snap.runners[snap.runnerId] ?? snap.runnerId.slice(0, 8)}
+        {org && (
+          <>
+            {sep}org {org}
+          </>
+        )}
+        {sep}
+        <Text color={termColor(DIM)}>v{CLI_VERSION}</Text>
+      </Text>
+      <Text color={termColor(MUTED)} wrap="truncate-end">
+        holds {held}
+        {skipped.length > 0 && (
+          <>
+            {sep}skipped {skipped.join("; ")}
+          </>
+        )}
       </Text>
       <Box flexDirection="column" height={body} overflow="hidden">
         {rows.slice(offset.current, offset.current + body).map((r) => (
-          <ListRow key={r.key} row={r} selected={r.id !== undefined && r.id === current} />
+          <ListRow
+            key={r.key}
+            row={r}
+            botWidth={botWidth}
+            metaWidth={metaWidth}
+            columns={columns}
+            selected={r.id !== undefined && r.id === current}
+          />
         ))}
       </Box>
-      <Text dimColor wrap="truncate-end">
-        {snap.message ?? ""}
-      </Text>
-      <Text dimColor wrap="truncate-end">
-        ↑↓ move · tab next list · enter/→ open · q quit
-      </Text>
+      <Box>
+        <Box flexGrow={1} flexShrink={1}>
+          <Text color={termColor(MUTED)} wrap="truncate-end">
+            {snap.message ?? ""}
+          </Text>
+        </Box>
+        <Box flexShrink={0} marginLeft={2}>
+          <Text color={termColor(MUTED)}>↑↓ move · tab next list · enter/→ open · q quit</Text>
+        </Box>
+      </Box>
     </Box>
   );
 }
 
 /** Every row of the list view. Waiting messages stop at `waitingMax` so the session lists stay in view. */
 function listRows(snap: Snapshot, lists: Record<Section, string[]>, waitingMax: number): Row[] {
-  const rows: Row[] = [{ key: "h-messages", header: `Waiting messages (${snap.waiting.length})` }];
+  const rows: Row[] = [{ key: "h-messages", heading: { title: "Waiting messages", count: snap.waiting.length } }];
   // The same message waits once per bot that routed it, so a row is keyed by its thread too.
-  for (const m of snap.waiting.slice(0, waitingMax)) {
-    const where = `${m.bot_name} ${m.thread_id.slice(0, 8)}${snap.running.has(m.thread_id) ? " working" : ""}`;
-    rows.push({ key: `${m.thread_id}:${m.id}`, label: m.type, meta: [m.subject, where].filter(Boolean).join("  ") });
-  }
+  for (const m of snap.waiting.slice(0, waitingMax))
+    rows.push({
+      key: `${m.thread_id}:${m.id}`,
+      bot: m.bot_name,
+      label: m.subject ? `${m.type} on ${m.subject}` : m.type,
+      meta: `${m.thread_id.slice(0, 8)}${snap.running.has(m.thread_id) ? " working" : ""}`,
+    });
   const more = snap.waiting.length - waitingMax;
   if (more > 0) rows.push({ key: "more-messages", meta: `… ${more} more` });
   if (!snap.waiting.length) rows.push({ key: "none-messages", meta: "none" });
 
   for (const sec of SECTIONS) {
-    rows.push({ key: `gap-${sec}` }, { key: `h-${sec}`, header: `${TITLES[sec]} (${lists[sec].length})` });
+    rows.push({ key: `gap-${sec}` }, { key: `h-${sec}`, heading: { title: TITLES[sec], count: lists[sec].length } });
     for (const id of lists[sec]) {
       const t = snap.threads[id]!;
+      const state = threadState(snap, id);
+      const age = state === "done" ? `ended ${ago(t.updated_at)}` : ago(t.updated_at);
+      const why = state === "limited" || state === "stranded" ? `${state} · ` : "";
       rows.push({
         key: id,
         id,
-        label: t.subjects.join(", ") || "new thread",
-        meta: `${botName(snap, t.bot_id)} ${id.slice(0, 8)}  ${ago(t.updated_at)}${owner(snap, id)}`,
+        bot: botName(snap, t.bot_id),
+        state,
+        label: threadLabel(snap, id),
+        level: levelOf(snap, id),
+        meta: `${why}${id.slice(0, 8)} · ${age}${owner(snap, id)}`,
       });
     }
     if (!lists[sec].length) rows.push({ key: `none-${sec}`, meta: "none" });
@@ -188,14 +279,67 @@ function listRows(snap: Snapshot, lists: Record<Section, string[]>, waitingMax: 
   return rows;
 }
 
-function ListRow({ row, selected }: { row: Row; selected: boolean }) {
-  if (row.header) return <Text bold>{row.header}</Text>;
+interface ListRowProps {
+  row: Row;
+  botWidth: number;
+  metaWidth: number;
+  columns: number;
+  selected: boolean;
+}
+
+function ListRow({ row, botWidth, metaWidth, columns, selected }: ListRowProps) {
+  if (row.heading) {
+    const { title, count } = row.heading;
+    return (
+      <Text wrap="truncate-end">
+        <Text color={termColor(MUTED)}>{title.toUpperCase()}</Text> {count}{" "}
+        <Text color={termColor(RULE)}>
+          {"─".repeat(Math.max(0, columns - title.length - String(count).length - 2))}
+        </Text>
+      </Text>
+    );
+  }
+  if (row.bot === undefined)
+    return (
+      <Text color={termColor(DIM)} wrap="truncate-end">
+        {row.meta ? `  ${row.meta}` : " "}
+      </Text>
+    );
+  // Done rows are dim all the way across; the selected row is lighter text on a band.
+  const done = row.state === "done";
+  const text = selected ? termColor(BAND_TEXT) : done ? termColor(DIM) : undefined;
+  const muted = termColor(done ? DIM : MUTED);
   return (
-    <Text wrap="truncate-end" color={selected ? "cyan" : undefined}>
-      {selected ? "❯ " : "  "}
-      {row.label && <Text bold={selected}>{row.label} </Text>}
-      <Text dimColor={!selected}>{row.meta ?? ""}</Text>
-    </Text>
+    <Box backgroundColor={selected ? termColor(BAND) : undefined}>
+      <Box width={2} flexShrink={0}>
+        {selected && chalk.level === 0 ? (
+          // Without colors there's no band, so the selection takes the dot's place.
+          <Text>› </Text>
+        ) : row.state ? (
+          <Dot state={row.state} />
+        ) : (
+          <Text color={termColor(MUTED)}>○ </Text>
+        )}
+      </Box>
+      <Box width={botWidth} flexShrink={0}>
+        <Text color={muted} wrap="truncate-end">
+          {row.bot}
+        </Text>
+      </Box>
+      <Box flexGrow={1} flexShrink={1} minWidth={0}>
+        <Text color={text} wrap="truncate-end">
+          {row.label}
+        </Text>
+      </Box>
+      <Box width={4} flexShrink={0} marginLeft={1}>
+        {row.level && <LevelMark level={row.level} color={done ? DIM : undefined} />}
+      </Box>
+      <Box width={metaWidth} flexShrink={0}>
+        <Text color={muted} wrap="truncate-end">
+          {row.meta}
+        </Text>
+      </Box>
+    </Box>
   );
 }
 
@@ -262,36 +406,42 @@ function LogView({ id, snap, readLog, send, refreshMs, onBack }: LogViewProps) {
   });
 
   const thread = snap.threads[id];
+  const state = threadState(snap, id);
+  const muted = termColor(MUTED);
   const empty = log === undefined ? "Loading…" : "No transcript yet.";
   return (
     <Box flexDirection="column" height={height}>
-      <Text bold wrap="truncate-end">
-        {thread?.subjects.join(", ") || "new thread"}{" "}
-        <Text dimColor>
-          · {id.slice(0, 8)} · {sectionOf(snap, id)}
-          {owner(snap, id)}
-        </Text>
+      <Text wrap="truncate-end">
+        <Dot state={state} />
+        {thread && <Text color={muted}>{botName(snap, thread.bot_id)} </Text>}
+        <Text bold>{threadLabel(snap, id)}</Text> <LevelMark level={levelOf(snap, id)} />
+        <Text color={muted}> · {id.slice(0, 8)} · </Text>
+        <Text color={state === "done" ? muted : termColor(STATE_COLORS[state].ink)}>{state}</Text>
+        <Text color={muted}>{owner(snap, id)}</Text>
       </Text>
       <Box flexDirection="column" height={body} overflow="hidden">
         {lines.length ? (
-          lines.slice(start, start + body).map((l, i) => (
-            <Text key={start + i} wrap="truncate-end" {...KIND_STYLE[l.kind]}>
-              {l.text}
-            </Text>
-          ))
+          lines.slice(start, start + body).map((l, i) => {
+            const { color, dimColor } = KIND_STYLE[l.kind];
+            return (
+              <Text key={start + i} wrap="truncate-end" color={color && termColor(color)} dimColor={dimColor}>
+                {l.text}
+              </Text>
+            );
+          })
         ) : (
           <Text dimColor>{empty}</Text>
         )}
       </Box>
       {draft !== undefined ? (
         <Text wrap="truncate-start">
-          <Text color="cyan">message ❯ </Text>
+          <Text color={termColor(INDIGO.ink)}>message ❯ </Text>
           {draft}
           <Text inverse> </Text>
-          <Text dimColor> enter send · esc cancel</Text>
+          <Text color={muted}> enter send · esc cancel</Text>
         </Text>
       ) : (
-        <Text dimColor wrap="truncate-end">
+        <Text color={muted} wrap="truncate-end">
           {sent ? `${sent} · ` : ""}
           {lines.length ? `${start + 1}–${Math.min(start + body, lines.length)} of ${lines.length} · ` : ""}↑↓ PgUp/PgDn
           scroll · m message · ← back · q quit
