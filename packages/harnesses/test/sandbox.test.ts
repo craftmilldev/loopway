@@ -1,10 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { mkdtemp, symlink } from "node:fs/promises";
+import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AgentRun } from "../src/agent.js";
 import { claudeCanRun, claudeSandboxSettings, ClaudeHarness } from "../src/claude.js";
+import { LimitWatch } from "../src/claude-watch.js";
+import { sandboxPolicy } from "../src/sandbox.js";
 
 const run = (resume: boolean): AgentRun => ({
   harness: "claude",
@@ -73,6 +75,91 @@ describe("sandbox", () => {
       expect(code(write(join(homedir(), ".claude", "projects", "x.jsonl")))).toBe(0);
       expect(code(write(undefined))).toBe(2);
       expect(code("not json")).toBe(2);
+    });
+  });
+
+  // The checked-in list of legitimate bot work (docs/sandbox.md); each row is a path an action writes.
+  describe("legitimate work passes", () => {
+    const guardCode = async (env: NodeJS.ProcessEnv, file: string) => {
+      const cwd = await mkdtemp(join(tmpdir(), "lw-legit-"));
+      const settings = claudeSandboxSettings(cwd, sandboxPolicy(env));
+      const command = settings.hooks.PreToolUse[0]!.hooks[0]!.command;
+      const target = file.replace("<cwd>", cwd);
+      return spawnSync("/bin/sh", ["-c", command], {
+        input: JSON.stringify({ tool_name: "Write", tool_input: { file_path: target } }),
+      }).status;
+    };
+    const home = homedir();
+    it.each([
+      ["a file in the working directory or a worktree under it", "<cwd>/.claude/worktrees/issue-1/a.ts"],
+      ["npm ci (npm cache)", join(home, ".npm/_cacache/index-v5/x")],
+      ["tool caches (~/.cache)", join(home, ".cache/node/x")],
+      ["macOS per-user caches", join(home, "Library/Caches/node-gyp/x")],
+      ["node-gyp headers", join(home, ".node-gyp/22/x")],
+      ["tool data and state", join(home, ".local/share/x/y")],
+      ["tool state", join(home, ".local/state/x/y")],
+      ["temp files", join(tmpdir(), "lw-legit-x")],
+      ["Claude session files", join(home, ".claude/projects/p/s.jsonl")],
+      ["loopway session logs", join(home, ".loopway/sessions/s.log")],
+    ])("%s", async (_what, file) => {
+      expect(await guardCode({}, file)).toBe(0);
+    });
+
+    it("a cache the environment moves is resolved at run time", async () => {
+      const moved = await mkdtemp(join(homedir(), "lw-moved-"));
+      try {
+        expect(await guardCode({}, join(moved, "x"))).toBe(2);
+        for (const name of ["npm_config_cache", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"]) {
+          expect(await guardCode({ [name]: moved }, join(moved, "x"))).toBe(0);
+        }
+        expect(await guardCode({ XDG_CACHE_HOME: "relative/dir" }, join(homedir(), "relative/dir/x"))).toBe(2);
+      } finally {
+        await rm(moved, { recursive: true, force: true });
+      }
+    });
+
+    it.each([
+      ["~/.ssh", join(home, ".ssh/id_x")],
+      ["~/.aws", join(home, ".aws/credentials")],
+      ["~/.gnupg", join(home, ".gnupg/x")],
+      ["~/.config/gh", join(home, ".config/gh/hosts.yml")],
+      ["~/.netrc", join(home, ".netrc")],
+      ["the rest of $HOME", join(home, "lw-legit-outside")],
+      ["~/.config", join(home, ".config/x/y")],
+      ["Claude's settings", join(home, ".claude/settings.json")],
+    ])("still denied: %s", async (_what, file) => {
+      expect(await guardCode({}, file)).toBe(2);
+    });
+
+    it("keeps the secret paths unreadable and leaves them out of the write roots", () => {
+      const p = sandboxPolicy({});
+      expect(p.denyRead).toEqual(["~/.ssh", "~/.aws", "~/.gnupg", "~/.config/gh", "~/.netrc"]);
+      expect(p.allowWrite).not.toEqual(expect.arrayContaining(["~", "~/.config", "~/.ssh"]));
+    });
+  });
+
+  describe("denials in a run", () => {
+    const toolError = (text: unknown, is_error = true) =>
+      JSON.stringify({
+        type: "user",
+        message: { content: [{ type: "tool_result", is_error, content: text }] },
+      });
+
+    it("collects failed tool results that look like sandbox denials, up to a few", () => {
+      const watch = new LimitWatch();
+      watch.line(toolError("mkdir: /Users/x/foo: Operation not permitted"));
+      watch.line(toolError([{ type: "text", text: "line one\ntouch: cannot touch 'a': Read-only file system" }]));
+      watch.line(toolError("Writes outside the working directory are not allowed: /Users/x/y"));
+      watch.line(toolError("npm ERR! 404 not found"));
+      watch.line(toolError("Operation not permitted", false));
+      expect(watch.denials()).toEqual([
+        "mkdir: /Users/x/foo: Operation not permitted",
+        "touch: cannot touch 'a': Read-only file system",
+        "Writes outside the working directory are not allowed: /Users/x/y",
+      ]);
+      for (let i = 0; i < 10; i++) watch.line(toolError("Operation not permitted"));
+      expect(watch.denials()).toHaveLength(5);
+      expect(watch.delivered).toBe(false);
     });
   });
 

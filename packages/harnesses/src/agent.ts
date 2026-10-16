@@ -28,6 +28,8 @@ export interface RunOutcome {
   limitedUntil?: number;
   /** Set when the run ended on an API error (offline, asleep, overloaded) rather than finishing: the error text. */
   apiError?: string;
+  /** The first tool results that looked like sandbox denials, so a run's log can say where to look. */
+  denials?: string[];
 }
 
 /**
@@ -41,6 +43,8 @@ export interface RunWatch {
   delivered: boolean;
   /** Whether the run got as far as its final result rather than being cut off. */
   finished: boolean;
+  /** Tool results that look like the sandbox denied something (a harness without a sandbox leaves this out). */
+  denials?(): string[];
   /** The error the run ended on, if it ended on one that isn't the usage limit. */
   apiError(): string | undefined;
   /** When the usage limit resets (ms since the epoch), if the run stopped because of it. */

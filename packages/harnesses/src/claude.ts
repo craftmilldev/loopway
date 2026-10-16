@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import type { AgentRun } from "./agent.js";
 import { LimitWatch } from "./claude-watch.js";
 import { Harness, type CanRun, type Launch } from "./harness.js";
-import { expandPath, SANDBOX_POLICY, sharedGitDir, type SandboxPolicy } from "./sandbox.js";
+import { expandPath, sandboxPolicy, sharedGitDir, type SandboxPolicy } from "./sandbox.js";
 
 const shq = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
 
@@ -12,7 +12,7 @@ const shq = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
 const WRITE_GUARD = fileURLToPath(new URL("./write-guard.mjs", import.meta.url));
 
 /** The `--settings` value that puts a Claude Code run in its sandbox, with the network left open. */
-export function claudeSandboxSettings(cwd: string, policy: SandboxPolicy = SANDBOX_POLICY) {
+export function claudeSandboxSettings(cwd: string, policy: SandboxPolicy = sandboxPolicy()) {
   // Better to refuse to start a run than to run with the file tools unguarded (a build that skipped the copy, say).
   if (!existsSync(WRITE_GUARD)) throw new Error(`The write guard is missing: ${WRITE_GUARD}`);
   const gitDir = sharedGitDir(cwd);

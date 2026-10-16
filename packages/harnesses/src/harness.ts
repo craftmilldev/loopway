@@ -91,6 +91,7 @@ export abstract class Harness {
         finished: watch.finished,
         limitedUntil: watch.limitedUntil(),
         apiError: watch.apiError(),
+        denials: watch.denials?.(),
       };
     } finally {
       closeSync(errFd);

@@ -52,6 +52,14 @@ export function isNetworkError(error: string): boolean {
   return /Can't reach the API server|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH/.test(error);
 }
 
+/** The note a session's log gets when its tool results look like sandbox denials. */
+export const sandboxDenialNote = (denials: string[]) =>
+  [
+    `SANDBOX: ${denials.length} tool call${denials.length === 1 ? "" : "s"} in this run look like sandbox denials:`,
+    ...denials.map((d) => `  ${d}`),
+    "If this blocked legitimate work, rerun with `loopway bots run --no-sandbox` and report the path on the loopway issue tracker.",
+  ].join("\n");
+
 /** Printed at startup, and written to each session's log, when the sandbox is off. */
 export const UNSANDBOXED_WARNING =
   "WARNING: the sandbox is off, so bots run with full access to your files. Turn it back on with `loopway config update --sandbox on` and no --no-sandbox.";
@@ -320,6 +328,15 @@ export class Dispatcher {
     }
   }
 
+  /** Notes in a session's log that the sandbox seems to have denied something, with the way to rule it out. */
+  private logDenials(id: string, denials: string[]): void {
+    try {
+      appendFileSync(sessionLogPath(this.dir, id), sandboxDenialNote(denials) + "\n", { mode: 0o600 });
+    } catch {
+      // A log that can't be written shouldn't stop the run.
+    }
+  }
+
   /** A session's transcript so far, or "" if it hasn't written one. */
   readLog(id: string): Promise<string> {
     return readFile(sessionLogPath(this.dir, id), "utf8").catch(() => "");
@@ -578,6 +595,10 @@ export class Dispatcher {
     }
 
     const { code, delivered, limitedUntil, apiError } = outcome;
+    if (this.sandbox && outcome.denials?.length) {
+      this.logDenials(id, outcome.denials);
+      void this.ctx.metrics?.capture("bot_sandbox_denied", { harness: bot.harness, denials: outcome.denials.length });
+    }
     // The usage limit has its own wait; an API error gets a backoff per thread, and a cap so a permanent one can't loop.
     const prior = this.errored.get(id)?.retries ?? 0;
     const retry = !limitedUntil && !!apiError && (isNetworkError(apiError) || prior < API_ERROR_RETRIES);
