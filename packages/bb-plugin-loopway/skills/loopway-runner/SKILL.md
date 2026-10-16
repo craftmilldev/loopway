@@ -19,8 +19,8 @@ bb thread is idle with nothing queued. At most `max` threads run at once.
 
 ## Checking on it
 
-The **Loopway** page in bb's left sidebar shows the runner's status, its bots, each loopway thread with a
-link to its bb thread, and the runner's live log. From a terminal:
+The **Loopway** page in bb's left sidebar shows the runner's status, its bots, and each loopway thread with a
+link to its bb thread. From a terminal:
 
 ```
 bb loopway status

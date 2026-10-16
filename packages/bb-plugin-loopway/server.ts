@@ -57,7 +57,7 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   let running: Running | undefined;
-  // The page refetches on this signal; a burst of log lines makes one.
+  // The page refetches on this signal; a burst of log lines (runs starting and ending, say) makes one.
   let publish: ReturnType<typeof setTimeout> | undefined;
   const status = new RunnerStatus(() => {
     publish ??= setTimeout(() => {
@@ -68,7 +68,7 @@ export default async function plugin(bb: BbPluginApi) {
   bb.onDispose(() => clearTimeout(publish));
   const note = (text: string, level: "info" | "warn" = "info") => {
     bb.log[level](text);
-    status.note(text, level);
+    status.touch();
   };
   /** Aborted when the settings change, so the runner starts again with them. */
   let restart = new AbortController();

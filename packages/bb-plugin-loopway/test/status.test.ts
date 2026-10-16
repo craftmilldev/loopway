@@ -96,15 +96,12 @@ describe("buildSnapshot", () => {
 });
 
 describe("RunnerStatus", () => {
-  it("keeps the last 200 log lines and reports every change", () => {
+  it("reports every change", () => {
     const changed = vi.fn();
     const status = new RunnerStatus(changed);
-    for (let i = 0; i < 205; i++) status.note(`line ${i}`);
-    status.note("uh oh", "warn");
-    expect(status.log).toHaveLength(200);
-    expect(status.log[0]!.text).toBe("line 6");
-    expect(status.log.at(-1)).toMatchObject({ level: "warn", text: "uh oh" });
-    expect(changed).toHaveBeenCalledTimes(206);
+    status.set("running");
+    status.touch();
+    expect(changed).toHaveBeenCalledTimes(2);
   });
 
   it("records when the runner started, and forgets it on a restart", () => {

@@ -1,6 +1,6 @@
-// The Loopway page: what the runner is doing, which bots it holds, each loopway thread with a link to its bb
-// thread, and the runner's recent log. It refetches the server's snapshot on the "state-changed" signal, on
-// reconnect, and every 15 seconds for what changes without a log line (like waiting counts).
+// The Loopway page: what the runner is doing, which bots it holds, and each loopway thread with a link to its bb
+// thread. It refetches the server's snapshot on the "state-changed" signal, on reconnect, and every 15 seconds
+// for what changes without a signal (like waiting counts).
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   definePluginApp,
@@ -209,34 +209,6 @@ function Threads({ threads }: { threads: Snapshot["threads"] }) {
   );
 }
 
-function Log({ log }: { log: Snapshot["log"] }) {
-  const end = useRef<HTMLDivElement>(null);
-  const box = useRef<HTMLDivElement>(null);
-  // Follow new lines unless the reader has scrolled up.
-  const following = useRef(true);
-  useEffect(() => {
-    if (following.current) end.current?.scrollIntoView({ block: "nearest" });
-  }, [log]);
-  if (!log.length) return <EmptyState>Nothing logged since the plugin loaded.</EmptyState>;
-  return (
-    <div
-      ref={box}
-      onScroll={() => {
-        const el = box.current;
-        if (el) following.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
-      }}
-      className="max-h-80 overflow-y-auto rounded-lg border border-border bg-card px-3 py-2 font-mono text-xs leading-5"
-    >
-      {log.map((line, i) => (
-        <div key={i} className={cn("whitespace-pre-wrap break-words", line.level === "warn" && "text-destructive")}>
-          <span className="text-muted-foreground">{clock(line.at)}</span> {line.text}
-        </div>
-      ))}
-      <div ref={end} />
-    </div>
-  );
-}
-
 function LoopwayPage() {
   const { snapshot, error } = useSnapshot();
   const now = useNow();
@@ -256,7 +228,7 @@ function LoopwayPage() {
       </div>
     );
   }
-  const { runner, bots, threads, moreThreads, otherRunnerThreads, log, stateError } = snapshot;
+  const { runner, bots, threads, moreThreads, otherRunnerThreads, stateError } = snapshot;
   const shown = showEnded ? threads : threads.filter((t) => t.status !== "ended");
   const running = threads.filter((t) => t.status === "running").length;
   const waiting = threads.reduce((n, t) => n + t.waiting, 0);
@@ -310,9 +282,6 @@ function LoopwayPage() {
             </Section>
           </>
         ) : null}
-        <Section title="Log" aside="the runner's last 200 lines">
-          <Log log={log} />
-        </Section>
       </div>
     </div>
   );

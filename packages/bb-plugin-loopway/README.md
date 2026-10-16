@@ -6,10 +6,10 @@ org. Each loopway thread's messages go to a bb thread of its own instead of a he
 - `server.ts` sets up the settings, the background `runner` service, the `loopway_end` and `loopway_link`
   agent tools, the thread lifecycle listeners, the page's `state` RPC, and `bb loopway status`.
 - `status.ts` holds the RPC contract and the snapshot behind the **Loopway** page, plus `RunnerStatus`: the
-  runner's phase and its last 200 log lines.
-- `app.tsx` is the **Loopway** page in the left sidebar. It shows the runner's status, the bots, each loopway
-  thread with a link to its bb thread, and the log. It refetches when the server publishes `state-changed`,
-  which it does on every log line.
+  runner's phase.
+- `app.tsx` is the **Loopway** page in the left sidebar. It shows the runner's status, the bots, and each
+  loopway thread with a link to its bb thread. It refetches when the server publishes `state-changed`, which
+  it does when the runner's phase changes or it logs a line (a run starting or ending, say).
 - `sessions.ts` holds `BbSessions`, the harness the dispatcher runs. It keeps the loopway thread ↔ bb thread
   map in the plugin's kv and starts or messages bb threads. Each run lasts until its bb thread is idle with
   nothing queued.

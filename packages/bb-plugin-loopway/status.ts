@@ -1,14 +1,11 @@
-// What the Loopway page shows: the runner's phase and recent log, kept here as it happens, and a snapshot of its
-// bots and threads, read from the dispatcher when the page asks.
+// What the Loopway page shows: the runner's phase, kept here as it changes, and a snapshot of its bots and
+// threads, read from the dispatcher when the page asks.
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import type { DispatcherState } from "@loopway/cli/src/bots/dispatcher.js";
 
 const phaseSchema = z.enum(["starting", "running", "stopped", "needs-configuration", "error"]);
 export type Phase = z.infer<typeof phaseSchema>;
-
-const logLineSchema = z.object({ at: z.number(), level: z.enum(["info", "warn"]), text: z.string() });
-export type LogLine = z.infer<typeof logLineSchema>;
 
 const snapshotSchema = z.object({
   runner: z.object({
@@ -52,7 +49,6 @@ const snapshotSchema = z.object({
   moreThreads: z.number(),
   /** Threads of the same bots that other runners (like `loopway bots run`) own. */
   otherRunnerThreads: z.number(),
-  log: z.array(logLineSchema),
   /** Why the bots and threads couldn't be read just now, if they couldn't. */
   stateError: z.string().nullable(),
 });
@@ -65,16 +61,14 @@ export const rpcContract = defineRpcContract({
 /** The realtime channel the page refetches on. */
 export const STATE_CHANGED = "state-changed";
 
-const LOG_LINES = 200;
 const MAX_THREADS = 200;
 
-/** The runner's phase and recent log, which `changed` is told about (the server debounces it into a signal). */
+/** The runner's phase, which `changed` is told about (the server debounces it into a signal). */
 export class RunnerStatus {
   phase: Phase = "starting";
   message: string | null = null;
   startedAt: number | null = null;
   lastTickAt: number | null = null;
-  readonly log: LogLine[] = [];
 
   constructor(private readonly changed: () => void) {}
 
@@ -85,9 +79,8 @@ export class RunnerStatus {
     this.changed();
   }
 
-  note(text: string, level: LogLine["level"] = "info"): void {
-    this.log.push({ at: Date.now(), level, text });
-    if (this.log.length > LOG_LINES) this.log.splice(0, this.log.length - LOG_LINES);
+  /** Something the page shows may have changed: the runner logged a line (a run started or ended, say). */
+  touch(): void {
     this.changed();
   }
 
@@ -166,7 +159,6 @@ export function buildSnapshot(input: {
     threads: threads.slice(0, MAX_THREADS),
     moreThreads: Math.max(0, threads.length - MAX_THREADS),
     otherRunnerThreads: all.length - mine.length,
-    log: [...status.log],
     stateError: input.stateError ?? null,
   };
 }

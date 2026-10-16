@@ -8,7 +8,7 @@ Run your loopway bots in bb instead of in a terminal.
 - `loopway_end` and `loopway_link` tools in those threads. They match the `end` and `link` tools that
   `loopway bots run` gives its sessions.
 - A **Loopway** page in the sidebar. It shows the runner's status and the bots it holds. It lists each loopway
-  thread with its status, its waiting messages, and a link to its bb thread, and shows the runner's live log.
+  thread with its status, its waiting messages, and a link to its bb thread.
 - `bb loopway status`, the same overview from a terminal.
 
 ## How it works
