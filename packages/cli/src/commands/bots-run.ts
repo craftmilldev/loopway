@@ -2,7 +2,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { ApiError, type LoopwayClient } from "../client.js";
 import { applyUpdate, availableUpdate as availableUpdateNow } from "../update.js";
 import { authedClient, type Context } from "../context.js";
-import { DEFAULTS, Dispatcher, type ThreadsOptions } from "../bots/dispatcher.js";
+import { DEFAULTS, Dispatcher, MAX_POLL_INTERVAL, type ThreadsOptions } from "../bots/dispatcher.js";
 import { ensureRunner, savedRunnerOrg } from "../bots/runner.js";
 import { resolveOrg } from "./orgs.js";
 import { colorSupport } from "../bots/colors.js";
@@ -41,7 +41,7 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     seen: all.map((b) => b.id),
   };
   const names = bots.map((b) => b.name).join(", ");
-  const watching = `loopway ${CLI_VERSION}: running ${names} every ${interval}s (at most ${opts.max ?? DEFAULTS.max} sessions running at once).`;
+  const watching = `loopway ${CLI_VERSION}: running ${names} every ${interval}s, less when quiet (at most ${opts.max ?? DEFAULTS.max} sessions running at once).`;
 
   if (opts.tui === false || !ctx.interactive) {
     const dispatcher = await Dispatcher.start(ctx, client, bots, dispatcherOpts);
@@ -112,7 +112,14 @@ async function runnerOrg(ctx: Context, client: LoopwayClient, flag: string | und
  * The lease TTL when --ttl isn't given. The lease is renewed every poll, so it lasts several polls: one
  * slow renewal mustn't lose it. The floor keeps a tiny --interval from making it fragile.
  */
-export const defaultTtl = (interval: number) => Math.max(DEFAULTS.ttl, 6 * interval);
+export const defaultTtl = (interval: number) => Math.max(DEFAULTS.ttl, 6 * interval, 3 * MAX_POLL_INTERVAL);
+
+/**
+ * Seconds to wait before the next poll: the --interval right after something happened, growing with the time
+ * since, up to a minute, so a quiet runner asks the server far less often.
+ */
+export const pollDelay = (interval: number, idleMs: number) =>
+  Math.min(Math.max(interval, idleMs / 1000), Math.max(interval, MAX_POLL_INTERVAL));
 
 /** How long an exit waits for the leases to be released before going ahead without. */
 const RELEASE_TIMEOUT_MS = 5000;
@@ -155,6 +162,7 @@ export async function pollUntilUpdate(
   let updating: string | undefined;
   let outdated = false;
   let forced = false;
+  let capped = false;
   for (;;) {
     try {
       await dispatcher.tick();
@@ -171,10 +179,15 @@ export async function pollUntilUpdate(
     forced ||= outdated;
     outdated = false;
     if (updating && !dispatcher.busy) return updating;
-    // Poll again after the interval, or as soon as a run exits so its slot goes to a waiting session.
+    // Poll again after a delay that grows while idle, or as soon as a run exits so its slot goes to a waiting session.
+    const delay = pollDelay(interval, dispatcher.idleMs());
+    // Only a delay that grew to the cap counts: an --interval above it never backed off.
+    const atMax = delay >= MAX_POLL_INTERVAL && delay > interval;
+    if (atMax && !capped) void ctx.metrics?.capture("bot_poll_backed_off_to_max");
+    capped = atMax;
     const timer = new AbortController();
     await Promise.race([
-      sleep(interval * 1000, undefined, { signal: timer.signal }).catch(() => {}),
+      sleep(delay * 1000, undefined, { signal: timer.signal }).catch(() => {}),
       dispatcher.slotFreed(),
     ]);
     timer.abort();

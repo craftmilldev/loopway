@@ -15,7 +15,7 @@ import { ApiError, LoopwayClient, type Bot, type Message } from "../src/client.j
 import { checkRules, route as routeWith, THREAD_MESSAGE_TYPE, type BotRule } from "@loopway/rules";
 import { getHarness, type AgentRun, type RunOutcome } from "@loopway/harnesses";
 import { API_ERROR_BACKOFF_MS, Dispatcher, NETWORK_ERROR_MAX_BACKOFF_MS } from "../src/bots/dispatcher.js";
-import { defaultTtl, pollUntilUpdate } from "../src/commands/bots-run.js";
+import { defaultTtl, pollDelay, pollUntilUpdate } from "../src/commands/bots-run.js";
 import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
 import { botEnv } from "../src/bots/github.js";
 import { UsageError, type Context } from "../src/context.js";
@@ -1121,6 +1121,29 @@ describe("threads", () => {
     expect(out.join("\n")).toContain("loopway 9.9.9 is out");
   });
 
+  it("records the backoff to the cap once per quiet stretch, and not when --interval is already above it", async () => {
+    const run = async (interval: number, idle: number[]) => {
+      const events: string[] = [];
+      const ctx = { ...ctxOf([]), metrics: { capture: async (e: string) => void events.push(e) } } as Context;
+      let i = 0;
+      const d = {
+        tick: async () => {},
+        drain: () => {},
+        busy: false,
+        slotFreed: async () => {},
+        idleMs: () => idle[Math.min(i, idle.length - 1)]!,
+      } as unknown as Dispatcher;
+      await pollUntilUpdate(ctx, d, interval, async () => (++i > idle.length ? "9.9.9" : undefined));
+      return events;
+    };
+    const quiet = 10 * 60_000;
+    expect(await run(5, [0, quiet, quiet, 0, quiet])).toEqual([
+      "bot_poll_backed_off_to_max",
+      "bot_poll_backed_off_to_max",
+    ]);
+    expect(await run(90, [0, quiet, quiet])).toEqual([]);
+  });
+
   it("looks for a release at once, but only once, when the server turns the CLI away", async () => {
     const { d, out } = await setup(3);
     const forced: (boolean | undefined)[] = [];
@@ -1795,9 +1818,12 @@ describe("threads", () => {
   });
 
   it("leases are short by default, and `bots release --force` drops one a dead runner left", async () => {
-    expect(defaultTtl(5)).toBe(30);
-    expect(defaultTtl(10)).toBe(60);
-    expect(defaultTtl(1)).toBe(30);
+    expect(defaultTtl(5)).toBe(180);
+    expect(defaultTtl(40)).toBe(240);
+    expect(pollDelay(5, 0)).toBe(5);
+    expect(pollDelay(5, 20_000)).toBe(20);
+    expect(pollDelay(5, 600_000)).toBe(60);
+    expect(pollDelay(90, 0)).toBe(90);
     const { bot, client, d } = await setup(3);
     const second = await client.registerRunner({
       org: (await client.listOrgs())[0]!.slug,

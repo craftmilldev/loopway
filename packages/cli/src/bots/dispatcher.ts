@@ -50,6 +50,9 @@ export function isNetworkError(error: string): boolean {
 
 export const DEFAULTS = { max: 3, interval: 5, ttl: 30 };
 
+/** The longest the runner waits between polls once nothing has happened for a while. */
+export const MAX_POLL_INTERVAL = 60;
+
 /** A bot another runner holds the lease on. */
 export interface SkippedBot extends Bot {
   /** When that lease expires, if the server said. */
@@ -130,6 +133,8 @@ export class Dispatcher {
   /** Whether a run has exited since the last tick started, and who to tell when one does. */
   private freed = false;
   private onFreed?: () => void;
+  /** When the runner last had something happen: messages read, a session started or a run exited (ms). */
+  private lastActivity = Date.now();
 
   /**
    * `bots` must all have a prompt version with rules, and `runnerId` is this machine's runner
@@ -194,6 +199,11 @@ export class Dispatcher {
   /** Whether any session is running. */
   get busy(): boolean {
     return this.running.size > 0;
+  }
+
+  /** Milliseconds since the runner last had something to do; polling slows down as this grows. */
+  idleMs(): number {
+    return Date.now() - this.lastActivity;
   }
 
   async tick(): Promise<void> {
@@ -425,6 +435,7 @@ export class Dispatcher {
     while (this.leases.has(bot.id)) {
       const messages = await this.client.botMessages(bot.id, { limit: 100 });
       if (!messages.length) return;
+      this.lastActivity = Date.now();
       await this.assign(bot, messages);
     }
   }
@@ -511,6 +522,7 @@ export class Dispatcher {
     this.reportWaiting(ready.length - deliveries.length - failed);
     // Not awaited: each session runs in the background, so threads proceed in parallel and the
     // next tick isn't held up. `running` tracks them for --max and for batching.
+    if (deliveries.length) this.lastActivity = Date.now();
     for (const { thread, messages } of deliveries) this.running.set(thread.id, this.run(thread, messages));
   }
 
@@ -620,6 +632,7 @@ export class Dispatcher {
     this.running.delete(id);
     this.threadBots.delete(id);
     this.freed = true;
+    this.lastActivity = Date.now();
     this.onFreed?.();
   }
 
