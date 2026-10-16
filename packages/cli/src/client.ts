@@ -434,6 +434,14 @@ export class LoopwayClient {
   }
 
   /**
+   * Ends the thread. Needs no lease; fine on an ended thread. Its waiting and inflight messages stay as they are, the
+   * runner keeps its claim, and the next message for the thread resumes it.
+   */
+  endThread(botId: string, threadId: string) {
+    return this.request<Thread>("POST", `/bots/${enc(botId)}/threads/${enc(threadId)}/end`, {});
+  }
+
+  /**
    * Moves a subject (`owner/repo#number`) from one thread of the bot to another, with its waiting messages, and
    * resumes the target if it ended. Needs no lease. 404 if the subject isn't on `fromThreadId` or a thread isn't the bot's.
    */

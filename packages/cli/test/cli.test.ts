@@ -914,6 +914,46 @@ describe("runners", () => {
     expect(await run("bots", "threads", "dev")).toMatch(/none/);
   });
 
+  it("ends a thread, even one that already ended, and says so for unknown ones", async () => {
+    const key = await configured();
+    const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
+    const inbox = await inboxWithEvents(1);
+    const bot = await runJson(
+      "bots",
+      "create",
+      "--name",
+      "dev",
+      "--preset",
+      "github-threads",
+      "--model",
+      "sonnet",
+      "--harness",
+      "claude",
+      "--inbox",
+      inbox.id,
+    );
+    const runner = await ensure(client);
+    const id = randomUUID();
+    const botLease = (await client.leaseBot(bot.id, { runner_id: runner.id })).lease;
+    const [message] = (await client.listMessages(inbox.id)).data;
+    await client.assign(bot.id, {
+      lease_token: botLease.token,
+      cursor: message!.seq,
+      assignments: [{ message_id: message!.id, thread_id: id, add_subjects: ["a/b#1"] }],
+    });
+    await client.releaseBot(bot.id, botLease.token);
+
+    expect(await run("bots", "threads", "end", "dev", id)).toBe(`Thread ${id} is ended.`);
+    expect((await runJson("bots", "threads", "dev", "--status", "all"))[0].status).toBe("ended");
+    expect((await runJson("bots", "threads", "dev")).length).toBe(0);
+    const again = await runJson("bots", "threads", "end", "dev", id, "--json");
+    expect(again.id).toBe(id);
+    expect(again.status).toBe("ended");
+    expect(again.waiting.length).toBe(1);
+    await expect(run("bots", "threads", "end", "dev", randomUUID())).rejects.toThrow();
+    await expect(run("bots", "threads", "end", "nope", id)).rejects.toThrow();
+  });
+
   it("moves a subject to another thread, matching the thread by the start of its id", async () => {
     const key = await configured();
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });

@@ -38,6 +38,25 @@ export async function releaseBotThread(ctx: Context, ref: string, threadId: stri
 }
 
 /**
+ * `loopway bots threads end <bot> <thread>`: ends a thread from the terminal, with no lease. Its waiting and inflight
+ * messages stay as they are and the runner keeps its claim; the next message for the thread resumes it.
+ */
+export async function endBotThread(ctx: Context, ref: string, threadId: string, opts: { json?: boolean }) {
+  const client = await authedClient(ctx);
+  let thread;
+  try {
+    thread = await client.endThread(await resolveBot(client, ref), threadId);
+  } catch (err) {
+    const reason = err instanceof ApiError ? err.code : "error";
+    void ctx.metrics?.capture("thread_end_failed", { surface: "cli", reason });
+    throw err;
+  }
+  void ctx.metrics?.capture("thread_ended", { surface: "cli" });
+  if (opts.json) return ctx.out(json(thread));
+  ctx.out(`Thread ${thread.id} is ${thread.status}.`);
+}
+
+/**
  * `loopway bots threads move <bot> <subject> <from-thread> <to-thread>`: the repair for a subject on the wrong thread.
  * The threads may be the start of their ids. The subject's waiting messages go with it; a target that ended resumes.
  */
