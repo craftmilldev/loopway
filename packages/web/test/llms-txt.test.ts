@@ -1,4 +1,6 @@
+import { HARNESSES } from "@loopway/harnesses";
 import { describe, expect, it } from "vitest";
+import { sources } from "../src/sources.js";
 import { createWeb } from "../src/ui.js";
 
 describe("GET /llms.txt", () => {
@@ -14,5 +16,11 @@ describe("GET /llms.txt", () => {
       expect(body).toContain(part);
     }
     expect(captured).toEqual(["llms_txt_served"]);
+  });
+
+  it("names every agent and every source the code has", async () => {
+    const body = await (await createWeb().request("/llms.txt")).text();
+    for (const harness of HARNESSES) expect(body).toContain(`\`${harness.name}\``);
+    for (const type of sources.types()) expect(body).toContain(`\`${type}\``);
   });
 });
