@@ -49,4 +49,18 @@ done
 # shellcheck disable=SC2086
 npm install -g $PACKAGES || fail "npm install failed."
 
-echo "Installed loopway $(loopway --version). Next: loopway login"
+# npm can exit 0 without linking the command (seen replacing an `npm link` of the repo), so check it's there and run
+# that file, not whichever loopway is first on PATH.
+BIN_DIR="$(npm prefix -g)/bin"
+BIN="$BIN_DIR/loopway"
+[ -x "$BIN" ] || fail "npm installed the packages but didn't create $BIN. Run: npm rebuild -g @loopway/cli"
+VERSION=$("$BIN" --version) || fail "$BIN --version failed."
+
+FOUND=$(command -v loopway || true)
+if [ -z "$FOUND" ]; then
+  echo "loopway install: warning: $BIN_DIR isn't on your PATH, so the loopway command won't be found. Add it to PATH." >&2
+elif [ "$FOUND" != "$BIN" ] && ! [ "$FOUND" -ef "$BIN" ]; then
+  echo "loopway install: warning: the loopway on your PATH is $FOUND, not the $BIN just installed. Remove it or put $BIN_DIR earlier on PATH." >&2
+fi
+
+echo "Installed loopway $VERSION. Next: loopway login"
