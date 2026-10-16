@@ -43,6 +43,8 @@ export function claudeSandboxSettings(cwd: string, policy: SandboxPolicy = sandb
       filesystem: { allowWrite, denyWrite: policy.denyWrite, denyRead: policy.denyRead },
       // No domain restrictions. Allowing every domain up front means a headless run is never prompted or blocked.
       network: { allowedDomains: ["*"] },
+      // macOS only: without it, tools that check TLS certificates through the system (`gh`, a Go binary) can't connect.
+      enableWeakerNetworkIsolation: true,
     },
     permissions: { allow: ["WebFetch(domain:*)"], deny: denyTools },
   };

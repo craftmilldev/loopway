@@ -40,6 +40,8 @@ describe("sandbox", () => {
     const s = claudeSandboxSettings("/nonexistent");
     expect(s.sandbox.filesystem.allowWrite).toEqual(expect.arrayContaining(["~/.npm", "~/.claude", "~/.loopway"]));
     expect(s.sandbox.network.allowedDomains).toEqual(["*"]);
+    // gh needs this to verify TLS on macOS.
+    expect(s.sandbox.enableWeakerNetworkIsolation).toBe(true);
   });
 
   describe("write guard hook", () => {
