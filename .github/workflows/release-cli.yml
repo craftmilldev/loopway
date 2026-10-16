@@ -100,6 +100,7 @@ jobs:
         if: steps.plan.outputs.release == 'true'
         run: |
           LOOPWAY_DOWNLOAD_URL="file://$PWD/dist-release" sh packages/web/content/install.sh
+          test "$(command -v loopway)" = "$(npm prefix -g)/bin/loopway"
           test "$(loopway --version)" = "${{ steps.plan.outputs.version }}"
       - name: Publish the release
         if: steps.plan.outputs.release == 'true'
