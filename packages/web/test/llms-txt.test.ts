@@ -20,7 +20,9 @@ describe("GET /llms.txt", () => {
 
   it("names every agent and every source the code has", async () => {
     const body = await (await createWeb().request("/llms.txt")).text();
-    for (const harness of HARNESSES) expect(body).toContain(`\`${harness.name}\``);
-    for (const type of sources.types()) expect(body).toContain(`\`${type}\``);
+    // Look in the concept that lists each, since some names (`loopway`) also show up elsewhere.
+    const concept = (name: string) => body.split("\n").find((line) => line.startsWith(`- **${name}**:`)) ?? "";
+    for (const harness of HARNESSES) expect(concept("Bot")).toContain(`\`${harness.name}\``);
+    for (const type of sources.types()) expect(concept("Inbox")).toContain(`\`${type}\``);
   });
 });
