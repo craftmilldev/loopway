@@ -63,7 +63,7 @@ export const SAMPLE_BOTS: BotRow[] = [
     runner: "build-box",
     open: 1,
     waiting: 1,
-    activity: { days: days([0, 1, 0, 0, 2, 0, 1, 0, 0, 1, 0, 0, 1, 0]), levels: { 2: 0, 3: 1, 4: 4 } },
+    activity: { days: days([0, 1, 0, 0, 2, 0, 1, 0, 0, 1, 0, 0, 0, 1]), levels: { 2: 0, 3: 1, 4: 4 } },
     last: "3 h ago",
   },
   {
