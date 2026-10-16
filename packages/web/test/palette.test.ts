@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { STATE_COLORS, type State } from "@loopway/palette";
+import { LEVEL_COLORS, STATE_COLORS, type State } from "@loopway/palette";
 import { describe, expect, it } from "vitest";
 
 const css = readFileSync(new URL("../client/styles.css", import.meta.url), "utf8");
@@ -34,4 +34,13 @@ describe("the dashboard's status colors", () => {
       expect(color(`.dot.state-${state}`) ?? color(".dot")).toBe(paper);
     });
   }
+});
+
+describe("the level pie's colors", () => {
+  // LevelPie reads the palette, so its slices only match the rest of the dashboard while these tokens do.
+  const tokens = { 2: "--ink-300", 3: "--indigo-600", 4: "--madder-600" } as const;
+  for (const level of [2, 3, 4] as const)
+    it(`gives level ${level} styles.css's ${tokens[level]}`, () => {
+      expect(token(tokens[level])?.toLowerCase()).toBe(LEVEL_COLORS[level].paper);
+    });
 });

@@ -312,8 +312,8 @@ function ListRow({ row, botWidth, metaWidth, columns, selected }: ListRowProps) 
   return (
     <Box backgroundColor={selected ? termColor(BAND) : undefined}>
       <Box width={2} flexShrink={0}>
-        {selected && chalk.level === 0 ? (
-          // Without colors there's no band, so the selection takes the dot's place.
+        {selected && chalk.level < 2 ? (
+          // Without 256 colors the band doesn't show (16 colors make it black), so the selection takes the dot's place.
           <Text>› </Text>
         ) : row.state ? (
           <Dot state={row.state} />

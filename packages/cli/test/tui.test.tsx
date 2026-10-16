@@ -214,10 +214,12 @@ describe("ThreadsTui", () => {
     expect([nearest256("#000000"), nearest256("#ffffff"), nearest256("#808080")]).toEqual([16, 231, 244]);
   });
 
-  it("marks the selection without colors", async () => {
-    chalk.level = 0;
+  // With 16 colors the band would be the terminal's black, as good as none.
+  it.each([0, 1] as const)("marks the selection where the band can't show (color level %i)", async (l) => {
+    chalk.level = l;
     const { frame } = await show();
     expect(frame()).toMatch(/^› dev +a\/b#1/m);
+    expect(frame()).toMatch(/^● dev +a\/b#2/m);
   });
 
   it("moves with the arrows and tab, never onto waiting messages, and opens a transcript until ←", async () => {
