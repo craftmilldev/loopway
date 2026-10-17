@@ -725,20 +725,26 @@ export function createApi(opts: ApiOptions) {
       .object({
         org: z.string().optional(),
         name: z.string().min(1).max(200),
-        model: modelBody,
+        model: modelBody.optional(),
         harness: harnessBody,
         inbox_ids: inboxIdsBody,
         prompt: promptBody.optional(),
         rules: rulesBody.optional(),
       })
       .parse(await jsonBody(c));
-    await checkedModel(c, input.harness, input.model);
+    // A script bot has no model; it keeps a placeholder, as the column can't be empty.
+    const model = input.model ?? (input.harness === "script" ? "see-script" : undefined);
+    if (!model) {
+      await metrics.capture("bot_model_rejected", c.var.user.id, { harness: input.harness });
+      throw new ApiError(400, "invalid_model", `The ${input.harness} harness needs a model`);
+    }
+    await checkedModel(c, input.harness, model);
     const org = await createOrg(c, "bot", input.org);
     const bot = await store.createBot(c.var.db, {
       userId: c.var.user.id,
       orgId: org.id,
       name: input.name,
-      model: input.model,
+      model,
       harness: input.harness,
       inboxIds: await memberInboxIds(c, input.inbox_ids, org.id),
       prompt: input.prompt,

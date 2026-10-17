@@ -29,8 +29,7 @@ export class ScriptWatch implements RunWatch {
 
 /**
  * A shell command instead of a coding agent, for bots that call an API and act on the answer themselves. The command
- * comes from the bot's entry in the runner's loopway.json (`"script"`), runs in the bot's directory with the
- * messages on stdin, and gets LOOPWAY_SESSION_ID and LOOPWAY_MCP_URL in its environment. Exit 0 ends the thread,
+ * is the bot's prompt (so it is versioned and pushed like one), runs in the bot's directory with the messages on stdin, and gets LOOPWAY_SESSION_ID and LOOPWAY_MCP_URL in its environment. Exit 0 ends the thread,
  * 255 (-1) leaves it waiting for its next messages, and anything else is a failed run.
  */
 export class ScriptHarness extends Harness {
@@ -38,13 +37,16 @@ export class ScriptHarness extends Harness {
   readonly label = HARNESS_LABELS.script;
   readonly command = "sh";
 
-  /** There is no model to pick; the bot's `model` is not read. */
+  /** There is no model to pick: the bot's `model` is not read, so any value fits. */
   modelFits(model: string) {
     return model.length > 0;
   }
 
   launch(run: AgentRun): Launch {
-    if (!run.script) throw new Error("This bot runs scripts, but no script is set for it in loopway.json.");
+    if (!run.script)
+      throw new Error(
+        "This bot runs scripts, but its prompt (the command) is empty; save one with `loopway bots edit --prompt-file`.",
+      );
     return {
       args: ["-c", run.script],
       stdin: run.message,

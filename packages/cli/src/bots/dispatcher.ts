@@ -38,8 +38,6 @@ interface StartOptions extends ThreadsOptions {
   seen?: string[];
   /** Bot name → the absolute directory its sessions run in (see loadWorkdirs); the others run in this process's. */
   workdirs?: Map<string, string>;
-  /** Bot name → the shell command a `script` bot runs (see loadScripts). */
-  scripts?: Map<string, string>;
 }
 
 /**
@@ -138,7 +136,6 @@ export class Dispatcher {
   private readonly runnerId: string;
   /** Bot name → the directory its sessions run in, for the bots loopway.json names. */
   private readonly workdirs: Map<string, string>;
-  private readonly scripts: Map<string, string>;
   /** This process's lease on its runner, so no other process uses the same runner id. Thread writes take its token. */
   private runnerLease?: Lease;
   private readonly runAgent: RunAgent;
@@ -208,7 +205,6 @@ export class Dispatcher {
     this.ttl = opts.ttl ?? DEFAULTS.ttl;
     this.runnerId = opts.runnerId;
     this.workdirs = opts.workdirs ?? new Map<string, string>();
-    this.scripts = opts.scripts ?? new Map<string, string>();
     this.runAgent = ctx.runAgent ?? runHarness;
     this.dir = ctx.configDir;
   }
@@ -605,14 +601,15 @@ export class Dispatcher {
     this.ctx.out(`${thread.started ? "resumed" : "started"} ${short} for ${what}`);
 
     const prompt = this.prompts.get(thread.bot_id)!;
+    const bot = this.bots.find((b) => b.id === thread.bot_id)!;
+    // A script bot's prompt is its command (see ScriptHarness), not text to put in front of the messages.
     const parts = [
-      !thread.started && prompt,
+      !thread.started && bot.harness !== "script" && prompt,
       thread.limited && RESUME_AFTER_LIMIT,
       thread.interrupted && RESUME_AFTER_INTERRUPT,
       messages.length > 0 && describeMessages(messages),
     ];
     const message = parts.filter((p): p is string => typeof p === "string").join("\n\n");
-    const bot = this.bots.find((b) => b.id === thread.bot_id)!;
     // A bot with its own directory runs there, and may still work in the runner's (the workspace it started from).
     const cwd = this.workdirs.get(bot.name);
     const own = cwd !== undefined && cwd !== process.cwd();
@@ -623,7 +620,7 @@ export class Dispatcher {
         resume,
         message,
         model: bot.model,
-        script: this.scripts.get(bot.name),
+        ...(bot.harness === "script" ? { script: prompt } : {}),
         logPath: sessionLogPath(this.dir, id),
         mcpUrl: this.mcp.urlFor(id),
         env: this.env,

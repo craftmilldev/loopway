@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadScripts, loadWorkdirs, WORKDIRS_FILE } from "../src/bots/workdirs.js";
+import { loadWorkdirs, WORKDIRS_FILE } from "../src/bots/workdirs.js";
 import { UsageError } from "../src/context.js";
 
 let dir: string;
@@ -51,15 +51,5 @@ describe("loadWorkdirs", () => {
     await expect(loadWorkdirs(dir)).rejects.toThrow(/bot "dev" needs a "cwd" string/);
     await write({ bots: { dev: "repos/one" } });
     await expect(loadWorkdirs(dir)).rejects.toThrow(/bot "dev" needs a "cwd" string/);
-  });
-});
-
-describe("loadScripts", () => {
-  it("reads each bot's script, skips bots without one, and refuses one that isn't a string", async () => {
-    expect(await loadScripts(dir)).toEqual(new Map());
-    await write({ bots: { merge: { cwd: ".", script: "node merge.js" }, dev: { cwd: "." } } });
-    expect(await loadScripts(dir)).toEqual(new Map([["merge", "node merge.js"]]));
-    await write({ bots: { merge: { cwd: ".", script: "" } } });
-    await expect(loadScripts(dir)).rejects.toThrow(/bot "merge".*non-empty string/);
   });
 });

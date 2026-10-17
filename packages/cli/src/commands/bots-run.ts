@@ -1,10 +1,10 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { ApiError, type LoopwayClient } from "../client.js";
 import { applyUpdate, availableUpdate as availableUpdateNow } from "../update.js";
-import { authedClient, UsageError, type Context } from "../context.js";
+import { authedClient, type Context } from "../context.js";
 import { DEFAULTS, Dispatcher, MAX_POLL_INTERVAL, type ThreadsOptions } from "../bots/dispatcher.js";
 import { ensureRunner, savedRunnerOrg } from "../bots/runner.js";
-import { loadScripts, loadWorkdirs, WORKDIRS_FILE } from "../bots/workdirs.js";
+import { loadWorkdirs, WORKDIRS_FILE } from "../bots/workdirs.js";
 import { resolveOrg } from "./orgs.js";
 import { colorSupport } from "../bots/colors.js";
 import { showTui } from "../bots/tui.js";
@@ -37,15 +37,6 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
   const interval = opts.interval ?? DEFAULTS.interval;
   // Bots the directory we run from gives their own working directory; checked now, so a bad file stops us here.
   const workdirs = await loadWorkdirs(process.cwd());
-  // A bot on the script harness needs a command to run; checked now, like the directories.
-  const scripts = await loadScripts(process.cwd());
-  for (const b of bots) {
-    if (b.harness === "script" && !scripts.has(b.name)) {
-      void ctx.metrics?.capture("bot_script_missing", {});
-      throw new UsageError(`Bot "${b.name}" runs scripts, but ${WORKDIRS_FILE} gives it no "script" command.`);
-    }
-  }
-  if (scripts.size) void ctx.metrics?.capture("bot_scripts_loaded", { bots: scripts.size });
   if (workdirs.size) void ctx.metrics?.capture("bot_workdirs_loaded", { bots: workdirs.size });
   const dispatcherOpts = {
     ...opts,
@@ -53,7 +44,6 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     runnerId: runner.id,
     seen: all.map((b) => b.id),
     workdirs,
-    scripts,
   };
   const names = bots.map((b) => b.name).join(", ");
   const dirs = workdirs.size

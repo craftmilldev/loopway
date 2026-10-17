@@ -15,7 +15,7 @@ export interface AgentRun {
   cwd?: string;
   /** Other directories the session may work in besides `cwd`, for harnesses that take them (`--add-dir`). */
   addDirs?: string[];
-  /** The shell command of a `script` bot, from the runner's loopway.json; other harnesses ignore it. */
+  /** The shell command of a `script` bot (its prompt); other harnesses ignore it. */
   script?: string;
   /** Called once Claude Code has created the session (its `system` `init` record), so later runs must resume it. */
   onStarted?: () => void;

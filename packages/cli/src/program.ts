@@ -276,7 +276,10 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .addOption(
       new Option("--preset <preset>", "template for the bot's first prompt and rules").choices(Object.keys(PRESETS)),
     )
-    .option("--model <model>", "model its sessions run on: an alias (sonnet, opus) or a full model id")
+    .option(
+      "--model <model>",
+      "model its sessions run on: an alias (sonnet, opus) or a full model id (not needed for --harness script)",
+    )
     .addOption(harnessOpt("coding-agent CLI its sessions run in"))
     .addOption(inboxesOpt("comma-separated inbox ids or names"))
     .addOption(jsonOpt())

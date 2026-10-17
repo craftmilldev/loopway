@@ -357,6 +357,6 @@ echo '{"type":"turn.completed"}'
     expect(await harness.run(run("exit 255"))).toMatchObject({ code: 0, ended: false });
     expect(await harness.run(run("exit 3"))).toMatchObject({ code: 3, ended: false });
     expect(started).toBe(3);
-    await expect(harness.run(run(undefined))).rejects.toThrow(/no script is set/);
+    await expect(harness.run(run(undefined))).rejects.toThrow(/prompt.*empty/);
   });
 });

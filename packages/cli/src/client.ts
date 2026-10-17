@@ -345,7 +345,7 @@ export class LoopwayClient {
   createBot(input: {
     org: string;
     name: string;
-    model: string;
+    model?: string;
     harness: string;
     inbox_ids: string[];
     prompt?: string;
