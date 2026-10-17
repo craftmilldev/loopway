@@ -30,6 +30,7 @@ app.route(
     posthogRegion: posthogRegion(process.env.POSTHOG_HOST),
     publicBaseUrl: process.env.PUBLIC_BASE_URL || undefined,
     minCliVersion: process.env.MIN_CLI_VERSION || undefined,
+    enterpriseLicense: process.env.CRAFTMILL_ENTERPRISE_LICENSE || undefined,
     sourceRequests:
       process.env.SOURCE_REQUEST_URL && process.env.SOURCE_REQUEST_TOKEN
         ? { url: process.env.SOURCE_REQUEST_URL, token: process.env.SOURCE_REQUEST_TOKEN }
