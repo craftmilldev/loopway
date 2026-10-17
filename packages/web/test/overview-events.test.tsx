@@ -18,16 +18,19 @@ const event = (id: string, over: object = {}) => ({
 const longAgo = new Date(Date.now() - 3 * 86_400_000).toISOString();
 let pages: Record<string, object>;
 let requests: string[];
+let failing: boolean;
 
 beforeEach(() => {
   window.history.replaceState(null, "", "/acme");
   localStorage.setItem("loopway_token", "t");
   requests = [];
+  failing = false;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (apiPath: string) => {
       const path = apiPath.replace(/^\/api/, "");
       requests.push(path);
+      if (failing && path.includes("before=")) return new Response("{}", { status: 500 });
       const key = new URLSearchParams(path.split("?")[1]).get("before") ?? "first";
       return new Response(JSON.stringify(pages[key] ?? { data: [], next: null }), { status: 200 });
     }),
@@ -84,11 +87,7 @@ describe("ThreadEventsFeed", () => {
     pages = { first: { data: [event("2")], next: "2" } };
     render(<ThreadEventsFeed ready />);
     await screen.findByText("acme/app#1");
-    const ok = (fetch as ReturnType<typeof vi.fn>).getMockImplementation()!;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (u: string) => (u.includes("before=") ? new Response("{}", { status: 500 }) : ok(u))),
-    );
+    failing = true;
     fireEvent.click(screen.getByText("Older"));
     await waitFor(() => expect((screen.getByText("Older") as HTMLButtonElement).disabled).toBe(false));
     expect(screen.queryByText("Newer")).toBeNull();
