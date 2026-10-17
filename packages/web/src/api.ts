@@ -23,6 +23,8 @@ export interface ApiOptions extends EeOptions {
   getDb: () => Promise<Db>;
   /** Base for webhook URLs. Defaults to the request origin. */
   publicBaseUrl?: string;
+  /** `/` redirects to `/login` instead of serving the landing page. */
+  selfHosted?: boolean;
   /** Delivers login codes. Defaults to printing them to the console. */
   sendEmail?: SendEmail;
   /** PostHog cloud region the /api/ingest proxy forwards to. Defaults to "us". */
@@ -108,6 +110,8 @@ export function createApi(opts: ApiOptions) {
     "/",
     createWeb({
       metrics,
+      selfHosted: opts.selfHosted,
+      publicBaseUrl: opts.publicBaseUrl,
       posthogKey: opts.posthogKey,
       posthogUiHost:
         opts.posthogUiHost ?? (opts.posthogRegion === "eu" ? "https://eu.posthog.com" : "https://us.posthog.com"),

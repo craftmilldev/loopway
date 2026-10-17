@@ -42,6 +42,8 @@ function posthogMeta(key: string | undefined, uiHost: string | undefined) {
 
 // For tools like Codex and Claude Code to learn about loopway (https://llmstxt.org). The URL is literal for file tracing.
 const LLMS_TXT = new URL("../content/llms.txt", import.meta.url);
+// The placeholder in llms.txt for the deploy's own URL.
+const LLMS_TXT_BASE_URL = "{{base_url}}";
 // `curl -fsSL https://<host>/install.sh | sh` installs the CLI from the latest GitHub release.
 const INSTALL_SH = new URL("../content/install.sh", import.meta.url);
 
@@ -71,6 +73,10 @@ export interface WebOptions {
   posthogUiHost?: string;
   /** Product metrics. Defaults to recording nothing. */
   metrics?: Metrics;
+  /** A self-hosted deploy: `/` redirects to `/login` instead of serving the landing page. */
+  selfHosted?: boolean;
+  /** The deploy's public URL, named in /llms.txt. Defaults to the request's origin. */
+  publicBaseUrl?: string;
 }
 
 export function createWeb(opts: WebOptions = {}) {
@@ -92,7 +98,16 @@ export function createWeb(opts: WebOptions = {}) {
     "/dashboard/runners",
     "/dashboard/inboxes/:inboxId",
   ];
-  for (const path of pages) app.get(path, (c) => c.html(html));
+  for (const path of pages) {
+    if (path === "/" && opts.selfHosted) {
+      app.get(path, async (c) => {
+        await metrics.capture("home_redirected_to_login", ANONYMOUS);
+        return c.redirect("/login");
+      });
+    } else {
+      app.get(path, (c) => c.html(html));
+    }
+  }
   // The inbox page used to live at /dashboard/<id>.
   app.get("/dashboard/:inboxId", (c) => c.redirect("/dashboard/inboxes/" + c.req.param("inboxId")));
   app.get("/llms.txt", async (c) => {
@@ -102,7 +117,8 @@ export function createWeb(opts: WebOptions = {}) {
       return c.notFound();
     }
     await metrics.capture("llms_txt_served", ANONYMOUS);
-    return c.body(body, 200, { "content-type": "text/plain; charset=utf-8" });
+    const baseUrl = (opts.publicBaseUrl || new URL(c.req.url).origin).replace(/\/+$/, "");
+    return c.body(body.replaceAll(LLMS_TXT_BASE_URL, baseUrl), 200, { "content-type": "text/plain; charset=utf-8" });
   });
   app.get("/install.sh", async (c) => {
     const body = await readFile(INSTALL_SH, "utf8").catch(() => undefined);

@@ -2,7 +2,7 @@
 
 > loopway is a runner for bots. It hears events from the services you use, keeps each one as a CloudEvent in an inbox, routes them to bots by their rules, and runs each bot on your machines with the agent it's set to: Claude Code, Codex, Cursor or Hermes.
 
-If a person asks you to set up loopway, make an inbox, or make a bot, the steps are below. Everything is done with the `loopway` CLI, which talks to https://loopway.craftmill.dev.
+If a person asks you to set up loopway, make an inbox, or make a bot, the steps are below. Everything is done with the `loopway` CLI, which talks to {{base_url}}.
 
 ## Concepts
 
@@ -33,7 +33,7 @@ The default `github-threads` preset routes every GitHub issue, PR, comment and r
 Install and log in:
 
 ```
-curl -fsSL https://loopway.craftmill.dev/install.sh | sh   # needs Node 22+
+curl -fsSL {{base_url}}/install.sh | sh   # needs Node 22+
 loopway login              # emails a one-time code; new emails get an account
 loopway whoami
 ```
