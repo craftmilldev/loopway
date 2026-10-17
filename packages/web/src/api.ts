@@ -774,6 +774,15 @@ export function createApi(opts: ApiOptions) {
         inbox_ids: inboxIdsBody.optional(),
       })
       .parse(await jsonBody(c));
+    // A script bot's prompt is a shell command and any other bot's is text, so neither can take the other's.
+    if (input.harness && input.harness !== bot.harness && (input.harness === "script" || bot.harness === "script")) {
+      await metrics.capture("bot_harness_change_rejected", c.var.user.id, { from: bot.harness, to: input.harness });
+      throw new ApiError(
+        409,
+        "harness_not_swappable",
+        "A bot can't be switched to or from the script harness; create a new bot",
+      );
+    }
     // A started thread's session lives in the harness that made it, and another harness can't resume it.
     if (input.harness && input.harness !== bot.harness) {
       const live = (await store.listThreads(c.var.db, bot.id, "active")).filter((t) => t.started).length;
