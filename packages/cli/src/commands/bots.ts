@@ -90,12 +90,12 @@ export async function createBot(
   opts: JsonOpt & { name?: string; preset?: string; model?: string; harness?: string; inbox?: string[]; org?: string },
 ) {
   if (!opts.name) throw new UsageError("--name is required");
-  if (!opts.harness) throw new UsageError(`--harness is required (${HARNESSES.map((h) => h.name).join(", ")})`);
   // A script bot's prompt is its command, which has no preset; save it after with `bots edit --prompt-file`.
   if (!opts.preset && opts.harness !== "script")
     throw new UsageError(`--preset is required (${Object.keys(PRESETS).join(", ")})`);
   if (!opts.model && opts.harness !== "script")
     throw new UsageError("--model is required (an alias like sonnet or opus, or a full model id)");
+  if (!opts.harness) throw new UsageError(`--harness is required (${HARNESSES.map((h) => h.name).join(", ")})`);
   if (!opts.inbox?.length) throw new UsageError("--inbox is required");
   const client = await authedClient(ctx);
   const bot = await client.createBot({
