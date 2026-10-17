@@ -1571,6 +1571,15 @@ main.lp {
   flex-wrap: wrap;
   gap: 12px;
 }
+.lp-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.lp-links a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .lp-caption,
 .lp-kicker {
   display: flex;
@@ -1702,6 +1711,17 @@ main.lp {
   content: "$ ";
   color: var(--ink-300);
 }
+/* The install well never scrolls: a command too long for the box wraps, its continuation indented past the prompt. */
+.lp-well-wrap pre {
+  overflow-x: visible;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.lp-well-wrap .lp-cmd {
+  display: block;
+  padding-left: 2ch;
+  text-indent: -2ch;
+}
 
 /* Top and threads: the words beside their figure */
 .lp-split .lp-in {
@@ -1711,7 +1731,8 @@ main.lp {
   gap: 48px 56px;
 }
 .lp-split .lp-main {
-  flex: 1 1 420px;
+  /* Wide enough for the install command on one line beside the terminal. */
+  flex: 1.2 1 560px;
   display: flex;
   flex-direction: column;
   gap: 24px;

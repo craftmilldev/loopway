@@ -192,6 +192,33 @@ describe("content/home.md", () => {
     ]);
   });
 
+  it("has no buttons in the lede or the start section, and the install well in both", () => {
+    const c = draw(home);
+    for (const id of ["top", "start"]) {
+      const section = c.querySelector<HTMLElement>(`#${id}`)!;
+      expect(section.querySelector(".btn")).toBeNull();
+      expect(section.querySelector(".lp-well-wrap .lp-well-label")?.textContent).toBe("install");
+    }
+    const link = within(c.querySelector<HTMLElement>("#start")!).getByRole("link", { name: "View on GitHub" });
+    expect(link.className).toBe("");
+    expect(link.parentElement?.className).toBe("lp-links");
+    expect(c.querySelector(".lp-id-api .lp-well-wrap")).toBeNull();
+  });
+
+  it("copies exactly the install commands from either well", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const c = draw(home);
+    for (const id of ["top", "start"]) {
+      fireEvent.click(c.querySelector<HTMLButtonElement>(`#${id} .lp-well-copy`)!);
+      await waitFor(() =>
+        expect(writeText).toHaveBeenLastCalledWith(
+          "curl -fsSL https://loopway.craftmill.dev/install.sh | sh\nloopway login",
+        ),
+      );
+    }
+  });
+
   it("names every agent in the lede, and says nothing of a sandbox", () => {
     const c = draw(home);
     expect(c.querySelector("#top")!.textContent).toContain(agentList(AGENTS));

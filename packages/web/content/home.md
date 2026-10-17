@@ -8,8 +8,10 @@ How the page reads it:
 - Paragraphs under the heading are its prose.
 - A list is the section's columns or items. Each item is `**Title**`, then ` — `, then its text. An indented line in
   italics under an item is that column's footnote.
-- A `[link](url)` alone on a line is a button. The first one in a section is the solid one.
-- A fenced code block is a terminal well. Its info string is the well's label (`install`, `cli`, `http`).
+- A `[link](url)` alone on a line is a button. The first one in a section is the solid one. The last section (`#start`)
+  has no buttons: a link alone on a line there is a plain text link.
+- A fenced code block is a terminal well. Its info string is the well's label (`install`, `cli`, `http`). The
+  `install` well wraps a long command onto a second line; the others scroll sideways.
 - `{agents}` is replaced with the coding agents a bot can run on (the harness labels in packages/harnesses).
 - Sample data in the figures (the terminal, the thread, the bots table) lives in the page code, not here.
 -->
@@ -19,9 +21,6 @@ How the page reads it:
 # Bots that run your process, and *ask* when they need you.
 
 loopway listens to the services you already use, keeps every event in an inbox, and hands them to bots running on your machines. A bot is a prompt and a few rules, run by the coding agent you pick: {agents}.
-
-[Get started](/login)
-[Read the docs](https://github.com/craftmilldev/loopway)
 
 ```install
 curl -fsSL https://loopway.craftmill.dev/install.sh | sh
@@ -180,7 +179,11 @@ An inbox listens to one source. A bot can read several, so a failed deploy and t
 
 Log in with your email, point a webhook at an inbox, give a bot a prompt and its rules, and run `loopway bots run`. The next event is its first thread.
 
-[Get started](/login)
+```install
+curl -fsSL https://loopway.craftmill.dev/install.sh | sh
+loopway login
+```
+
 [View on GitHub](https://github.com/craftmilldev/loopway)
 
 loopway is open core. Everything is MIT-licensed except `packages/web/ee`.
