@@ -183,10 +183,11 @@ export async function applyUpdate(
   deps: UpdateDeps = defaultDeps,
 ): Promise<never> {
   const installed = await installRelease(ctx, version, deps, log);
-  // Recorded before the hand-off: an exec replaces this process, so nothing after it would run.
+  // Recorded before the hand-off, since an exec replaces this process. So `handoff` is what will be tried, not what
+  // happened: an exec that throws still falls back to a child.
   await ctx.metrics?.capture("cli_self_update", {
     outcome: installed ? "installed" : "install_failed",
-    handoff: typeof process.execve === "function" ? "exec" : "child",
+    handoff: typeof process.execve === "function" ? "exec_available" : "child_only",
   });
   reexec(installed ? "1" : "failed");
 }

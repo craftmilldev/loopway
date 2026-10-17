@@ -241,4 +241,29 @@ describe("reexec", () => {
     expect(args[0]).toBe(process.execPath);
     expect(env.LOOPWAY_UPDATED).toBe("1");
   });
+
+  it.each([
+    [
+      "execve throws",
+      {
+        execve: () => {
+          throw new Error("nope");
+        },
+      },
+    ],
+    ["execve is missing", {}],
+  ])("falls back to a child and exits with its status when %s", (_, proc) => {
+    const argv = process.argv;
+    // The child exits 7 only if it was given LOOPWAY_UPDATED=1.
+    process.argv = [argv[0]!, "-e", "process.exit(process.env.LOOPWAY_UPDATED === '1' ? 7 : 1)"];
+    const exit = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new Error(`exit ${code}`);
+    }) as never);
+    try {
+      expect(() => reexec("1", proc as never)).toThrow("exit 7");
+    } finally {
+      exit.mockRestore();
+      process.argv = argv;
+    }
+  });
 });
