@@ -160,16 +160,25 @@ const Swatch = ({ level }: { level?: number }) =>
 const linkTarget = (href: string) =>
   href.startsWith("#") ? "anchor" : href === "/login" ? "login" : href.includes("github.com") ? "github" : "other";
 
-function Buttons({ section, links }: { section: string; links: Extract<Block, { kind: "buttons" }>["links"] }) {
+function Buttons({
+  section,
+  links,
+  plain,
+}: {
+  section: string;
+  links: Extract<Block, { kind: "buttons" }>["links"];
+  /** Set links as plain text links, not buttons. */
+  plain?: boolean;
+}) {
   return (
-    <div className="lp-buttons">
+    <div className={plain ? "lp-links" : "lp-buttons"}>
       {links.map((l) => (
         <a
           key={l.href + l.html}
-          className={l.solid ? "btn" : "btn btn-quiet"}
+          className={plain ? undefined : l.solid ? "btn" : "btn btn-quiet"}
           href={l.href}
           onClick={() =>
-            track("landing_link_clicked", { section, kind: l.solid ? "solid" : "ghost", to: linkTarget(l.href) })
+            track("landing_link_clicked", { section, kind: plain ? "plain" : l.solid ? "solid" : "ghost", to: linkTarget(l.href) })
           }
           dangerouslySetInnerHTML={{ __html: l.html }}
         />
@@ -233,7 +242,7 @@ function Well({ label, code }: { label: string; code: string }) {
     timer.current = setTimeout(() => setCopied(false), 2000);
   };
   return (
-    <figure className="lp-well">
+    <figure className={label === "install" ? "lp-well lp-well-wrap" : "lp-well"}>
       {label && <figcaption className="lp-well-label">{label}</figcaption>}
       <button className="lp-well-copy" type="button" onClick={() => void copy()}>
         {copied ? "Copied" : "Copy"}
@@ -254,12 +263,12 @@ function Well({ label, code }: { label: string; code: string }) {
   );
 }
 
-function Blocks({ section, blocks }: { section: string; blocks: Block[] }) {
+function Blocks({ section, blocks, plain }: { section: string; blocks: Block[]; plain?: boolean }) {
   return blocks.map((b, i) =>
     b.kind === "prose" ? (
       <Html key={i} className="lp-prose" html={b.html} />
     ) : b.kind === "buttons" ? (
-      <Buttons key={i} section={section} links={b.links} />
+      <Buttons key={i} section={section} links={b.links} plain={plain} />
     ) : b.kind === "list" ? (
       <List key={i} section={section} list={b} />
     ) : (
@@ -286,7 +295,8 @@ function SectionView({ s }: { s: Section }) {
       {s.heading && <Html as="h2" className="lp-heading" html={s.heading} />}
     </>
   );
-  const blocks = (bs: Block[]) => <Blocks section={s.id} blocks={bs} />;
+  // The close has no buttons: its links are plain text links.
+  const blocks = (bs: Block[]) => <Blocks section={s.id} blocks={bs} plain={layout === "close"} />;
   let body: ReactNode;
   if (layout === "split")
     body = (
