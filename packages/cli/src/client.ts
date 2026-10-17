@@ -97,7 +97,7 @@ export interface Bot {
   name: string;
   /** The model its sessions run on, as `claude --model` takes it. */
   model: string;
-  /** The coding-agent CLI its sessions run in: `claude`, `cursor`, `codex` or `hermes`. */
+  /** The coding-agent CLI its sessions run in: `claude`, `cursor`, `codex`, `hermes` or `script`. */
   harness: string;
   inbox_ids: string[];
   /** The bot's newest prompt version; null if it has none yet. */
