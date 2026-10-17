@@ -16,6 +16,7 @@ describe("source requests", () => {
     const a = createApi({
       getDb: async () => db,
       tokenSecret: SECRET,
+      enterpriseLicense: "test-license",
       sourceRequests: { url: inbox.webhook_url, token: inbox.config.secret },
       fetch: viaApp,
     });
@@ -52,6 +53,22 @@ describe("source requests", () => {
     expect((await post(key, { description: " " })).status).toBe(400);
   });
 
+  it("is not mounted without an enterprise license", async () => {
+    const unlicensed = createApi({
+      getDb: async () => db,
+      tokenSecret: SECRET,
+      sourceRequests: { url: "https://loopway.test/api/webhooks/x", token: "t" },
+      fetch: viaApp,
+    });
+    const key = await newUser();
+    const headers = { authorization: `Bearer ${key}`, "content-type": "application/json" };
+    const body = JSON.stringify({ description: "Linear", url: "https://example.com/product" });
+    expect((await unlicensed.request("/api/sources/requests", { method: "POST", headers, body })).status).toBe(404);
+    expect((await unlicensed.request("/api/harnesses/requests", { method: "POST", headers, body })).status).toBe(404);
+    const sources = await unlicensed.request("/api/sources", { headers });
+    expect((await sources.json()).can_request).toBe(false);
+  });
+
   it("is off unless the deployment sets a requests inbox", async () => {
     const key = await newUser();
     expect((await call("GET", "/sources", { key })).body.can_request).toBe(false);
@@ -62,6 +79,7 @@ describe("source requests", () => {
     const broken = createApi({
       getDb: async () => db,
       tokenSecret: SECRET,
+      enterpriseLicense: "test-license",
       sourceRequests: { url: "https://loopway.test/api/webhooks/nope", token: "wrong" },
       fetch: viaApp,
     });
