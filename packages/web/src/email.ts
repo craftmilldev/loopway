@@ -23,3 +23,12 @@ export function resendSender(opts: { apiKey: string; from: string; fetch?: typeo
 export const consoleSender: SendEmail = async ({ to, subject, text }) => {
   console.log(`[email to ${to}] ${subject}\n${text}`);
 };
+
+/** Sender address used when EMAIL_FROM isn't set, so deploys that predate the variable keep working. */
+export const DEFAULT_EMAIL_FROM = "loopway <matthew@craftmill.dev>";
+
+/** Resend when RESEND_API_KEY is set (from EMAIL_FROM), else the console. */
+export function senderFromEnv(env: NodeJS.ProcessEnv = process.env, fetchFn?: typeof fetch): SendEmail {
+  if (!env.RESEND_API_KEY) return consoleSender;
+  return resendSender({ apiKey: env.RESEND_API_KEY, from: env.EMAIL_FROM || DEFAULT_EMAIL_FROM, fetch: fetchFn });
+}

@@ -195,11 +195,16 @@ export function createApi(opts: ApiOptions) {
     const login = await store.createLoginCode(c.var.db, email);
     await metrics.capture("login_requested", ANONYMOUS, { sent: !!login.code });
     if (login.code) {
-      await (opts.sendEmail ?? consoleSender)({
-        to: login.email,
-        subject: `Your loopway login code: ${login.code}`,
-        text: `Your loopway login code is ${login.code}\n\nIt expires in ${store.LOGIN_CODE_TTL_MINUTES} minutes. If you didn't ask for it, ignore this email.`,
-      });
+      try {
+        await (opts.sendEmail ?? consoleSender)({
+          to: login.email,
+          subject: `Your loopway login code: ${login.code}`,
+          text: `Your loopway login code is ${login.code}\n\nIt expires in ${store.LOGIN_CODE_TTL_MINUTES} minutes. If you didn't ask for it, ignore this email.`,
+        });
+      } catch (err) {
+        await metrics.capture("login_email_failed", ANONYMOUS);
+        throw err;
+      }
     }
     return c.json({ sent: true }, 202);
   });
