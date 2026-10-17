@@ -40,6 +40,40 @@ export default defineConfig(
       "@typescript-eslint/no-unsafe-return": "off",
     },
   },
+  // Tests that touch the database use the one openTestDb() builds from the migrations, never their own store or DB fake.
+  {
+    files: ["packages/*/test/**", "packages/*/ee/test/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "../src/db/index.js",
+              importNames: ["openDb"],
+              message: "Get a database from openTestDb() in src/db/testing.ts.",
+            },
+          ],
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "TSAsExpression > TSTypeReference[typeName.name='Db']",
+          message: "Don't fake a Db: use openTestDb().",
+        },
+        {
+          selector:
+            "CallExpression[callee.object.name='vi'][callee.property.name='mock'][arguments.0.value=/(store|db)/]",
+          message: "Don't mock the store or db module: use openTestDb().",
+        },
+        {
+          selector: "Identifier[name=/^(fake|mock|stub|inMemory|memory)(Db|Store|Database|Pool)$/i]",
+          message: "Don't build a fake store or database: use openTestDb().",
+        },
+      ],
+    },
+  },
   { files: ["**/*.js"], extends: [tseslint.configs.disableTypeChecked] },
   // Last, so it turns off any rule that would fight Prettier's formatting.
   prettier,
