@@ -1,6 +1,6 @@
 // Vercel entry point. Vercel detects Hono at src/index.ts and serves the default export as a Function.
 import { Hono } from "hono";
-import { createApi } from "./api.js";
+import { createApi, parseScheduleOptions } from "./api.js";
 import { getDb } from "./db/index.js";
 import { consoleSender, resendSender } from "./email.js";
 import { createMetrics } from "./metrics.js";
@@ -25,6 +25,7 @@ app.route(
     getDb,
     tokenSecret,
     cronSecret: process.env.CRON_SECRET || undefined,
+    scheduleOptions: parseScheduleOptions(process.env.SCHEDULE_OPTIONS),
     metrics: createMetrics(),
     posthogKey: process.env.POSTHOG_API_KEY || undefined,
     posthogRegion: posthogRegion(process.env.POSTHOG_HOST),

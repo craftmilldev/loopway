@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Inbox } from "../client/inbox.js";
+import { CreateInbox } from "../client/shared.js";
 import { eventsText, Inboxes } from "../client/inboxes.js";
 
 const inbox = (over: object = {}) => ({
@@ -231,5 +232,42 @@ describe("Inbox page", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Delete inbox" }));
     await waitFor(() => expect(assign).toHaveBeenCalledWith("/acme/inboxes"));
     expect(requests.some((r) => r.method === "DELETE" && r.path === "/inboxes/i1")).toBe(true);
+  });
+});
+
+describe("CreateInbox schedule options", () => {
+  const withSchedule = (schedule_options?: string[]) => {
+    const body = {
+      ...sources,
+      schedule_options,
+      data: [
+        ...sources.data,
+        { type: "schedule", label: "Schedule", description: "", events: [], secret: { from: "none" } },
+      ],
+    };
+    const real = fetch as unknown as (p: string, i?: unknown) => Promise<Response>;
+    vi.stubGlobal("fetch", async (p: string, i?: unknown) =>
+      p.replace(/^\/api/, "") === "/sources" ? new Response(JSON.stringify(body)) : real(p, i),
+    );
+  };
+  const options = async () => {
+    render(<CreateInbox onCreated={() => {}} />);
+    const source = await screen.findByLabelText("Source");
+    await waitFor(() => expect(within(source).getAllByRole("option").length).toBe(3));
+    fireEvent.change(source, { target: { value: "schedule" } });
+    const every = await screen.findByLabelText("Runs");
+    return within(every)
+      .getAllByRole("option")
+      .map((o) => o.textContent);
+  };
+
+  it("offers every hour only when the deploy has it on", async () => {
+    withSchedule(["day"]);
+    expect(await options()).toEqual(["Every day"]);
+  });
+
+  it("offers both when both are on", async () => {
+    withSchedule(["hour", "day"]);
+    expect(await options()).toEqual(["Every hour", "Every day"]);
   });
 });

@@ -3,5 +3,5 @@
   "git": {
     "deploymentEnabled": { "**": false, "main": true }
   },
-  "crons": [{ "path": "/api/cron/schedules", "schedule": "0 * * * *" }]
+  "crons": [{ "path": "/api/cron/schedules", "schedule": "0 0 * * *" }]
 }

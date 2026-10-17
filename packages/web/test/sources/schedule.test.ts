@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { windowStart } from "../../../sources/src/schedule.js";
-import { createApi } from "../../src/api.js";
-import { app, call, db, newUser } from "../helpers.js";
+import { createApi, parseScheduleOptions } from "../../src/api.js";
+import type { Metrics } from "../../src/metrics.js";
+import { app, call, db, newUser, SECRET } from "../helpers.js";
 
 const CRON = "cron-secret";
 const cronApp = () => createApi({ getDb: async () => db, tokenSecret: "x", cronSecret: CRON });
@@ -93,5 +94,80 @@ describe("schedule inboxes", () => {
     const inbox = (await scheduleInbox(key)).body;
     const r = await app.request(`/api/webhooks/${inbox.id}`, { method: "POST", body: "{}" });
     expect(r.status).toBe(404);
+  });
+
+  describe("schedule options", () => {
+    const events: { event: string; properties?: Record<string, unknown> }[] = [];
+    const metrics: Metrics = { capture: async (event, _id, properties) => void events.push({ event, properties }) };
+    const dayOnly = () =>
+      createApi({ getDb: async () => db, tokenSecret: SECRET, cronSecret: CRON, scheduleOptions: ["day"], metrics });
+    const daily = { schedule: { every: "day", hour: 9 }, messages: [config.messages[0]] };
+
+    it("reads SCHEDULE_OPTIONS, defaulting to day", () => {
+      expect(parseScheduleOptions(undefined)).toEqual(["day"]);
+      expect(parseScheduleOptions("")).toEqual(["day"]);
+      expect(parseScheduleOptions("day,hour")).toEqual(["hour", "day"]);
+      expect(parseScheduleOptions(" hour ")).toEqual(["hour"]);
+      expect(() => parseScheduleOptions("week")).toThrow(/week/);
+    });
+
+    it("lists the enabled options with the sources", async () => {
+      const key = await newUser();
+      expect((await call("GET", "/sources", { key })).body.schedule_options).toEqual(["hour", "day"]);
+      const r = await dayOnly().request("/api/sources", { headers: { authorization: `Bearer ${key}` } });
+      expect((await r.json()).schedule_options).toEqual(["day"]);
+    });
+
+    it("rejects creating or updating an inbox with a disabled option", async () => {
+      const key = await newUser();
+      const post = (body: unknown) =>
+        dayOnly().request("/api/inboxes", {
+          method: "POST",
+          headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      const org = (await call("GET", "/orgs", { key })).body.data.find((o: { personal: boolean }) => o.personal).slug;
+      events.length = 0;
+      const hourly = await post({ org, name: "clock", source_type: "schedule", config });
+      expect(hourly.status).toBe(400);
+      expect((await hourly.json()).error.code).toBe("schedule_option_disabled");
+      expect(events).toContainEqual({
+        event: "schedule_option_rejected",
+        properties: { option: "hour", action: "create" },
+      });
+      expect((await post({ org, name: "clock", source_type: "schedule", config: daily })).status).toBe(201);
+
+      const inbox = (await scheduleInbox(key, daily)).body;
+      const patch = await dayOnly().request(`/api/inboxes/${inbox.id}`, {
+        method: "PATCH",
+        headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+        body: JSON.stringify({ config }),
+      });
+      expect(patch.status).toBe(400);
+      expect(events).toContainEqual({
+        event: "schedule_option_rejected",
+        properties: { option: "hour", action: "update" },
+      });
+    });
+
+    it("accepts both options when both are on", async () => {
+      const key = await newUser();
+      expect((await scheduleInbox(key)).status).toBe(201);
+      expect((await scheduleInbox(key, daily)).status).toBe(201);
+    });
+
+    it("skips inboxes on a disabled option at a cron tick and records it", async () => {
+      const key = await newUser();
+      const hourly = (await scheduleInbox(key)).body;
+      const dailyInbox = (await scheduleInbox(key, daily)).body;
+      events.length = 0;
+      const result = await (await tick(CRON, dayOnly())).json();
+      expect(result.disabled).toBeGreaterThanOrEqual(1);
+      expect(events.filter((e) => e.event === "schedule_tick_rejected")).toEqual([
+        { event: "schedule_tick_rejected", properties: { reason: "option_disabled", option: "hour" } },
+      ]);
+      expect((await call("GET", `/inboxes/${hourly.id}/messages`, { key })).body.data).toHaveLength(0);
+      expect((await call("GET", `/inboxes/${dailyInbox.id}/messages`, { key })).body.data).toHaveLength(1);
+    });
   });
 });

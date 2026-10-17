@@ -33,6 +33,8 @@ export interface ApiOptions extends EeOptions {
   posthogUiHost?: string;
   /** Vercel Cron's bearer token (`CRON_SECRET`). Unset, /cron/schedules refuses every call. */
   cronSecret?: string;
+  /** The schedule options (`hour`, `day`) this deploy offers. Defaults to both. */
+  scheduleOptions?: ScheduleOption[];
   /** Signs session tokens (JWTs). */
   tokenSecret: string;
   /** Product metrics. Defaults to recording nothing. */
@@ -44,9 +46,39 @@ export interface ApiOptions extends EeOptions {
 const DEFAULT_TTL = 300;
 const MAX_TTL = 12 * 60 * 60;
 
+export const SCHEDULE_OPTIONS = ["hour", "day"] as const;
+export type ScheduleOption = (typeof SCHEDULE_OPTIONS)[number];
+
+/** Reads `SCHEDULE_OPTIONS` (e.g. "hour,day"). Unset or empty means just `day`, which a Vercel Hobby cron can drive. */
+export function parseScheduleOptions(value: string | undefined): ScheduleOption[] {
+  const names = (value ?? "")
+    .split(",")
+    .map((v) => v.trim().toLowerCase())
+    .filter(Boolean);
+  const bad = names.find((n) => !SCHEDULE_OPTIONS.includes(n as ScheduleOption));
+  if (bad) throw new Error(`SCHEDULE_OPTIONS: unknown option "${bad}" (use ${SCHEDULE_OPTIONS.join(", ")})`);
+  return names.length ? SCHEDULE_OPTIONS.filter((o) => names.includes(o)) : ["day"];
+}
+
+/** How often a schedule inbox's config runs, if it has one. */
+const everyOf = (config: unknown) => (config as { schedule?: { every?: ScheduleOption } } | null)?.schedule?.every;
+
 export function createApi(opts: ApiOptions) {
   const app = new Hono<Env>();
   const metrics = opts.metrics ?? noopMetrics;
+  const scheduleOptions = opts.scheduleOptions ?? [...SCHEDULE_OPTIONS];
+
+  /** Refuses a schedule config whose option this deploy has turned off. */
+  async function requireScheduleOption(c: Context<Env>, sourceType: string, config: unknown, action: string) {
+    const every = sourceType === "schedule" ? everyOf(config) : undefined;
+    if (!every || scheduleOptions.includes(every)) return;
+    await metrics.capture("schedule_option_rejected", c.get("user")?.id ?? ANONYMOUS, { option: every, action });
+    throw new ApiError(
+      400,
+      "schedule_option_disabled",
+      `This deploy doesn't offer "${every}" schedules. Available: ${scheduleOptions.join(", ")}`,
+    );
+  }
 
   // Every error response is counted by its code, so the metrics show where requests stop.
   const failed = (c: Context<Env>, code: string, status: number) =>
@@ -156,7 +188,7 @@ export function createApi(opts: ApiOptions) {
     return c.json({ id, duplicate }, duplicate ? 200 : 202);
   });
 
-  // Vercel Cron calls this every hour (see vercel.json) with `Authorization: Bearer $CRON_SECRET`. Every inbox whose
+  // Vercel Cron calls this on the schedule in vercel.json (daily by default; hourly where the plan allows) with `Authorization: Bearer $CRON_SECRET`. Every inbox whose
   // source fills itself on a clock gets the messages due in the current window. Runs in the same window repeat the
   // same CloudEvent ids, so they are stored once.
   api.get("/cron/schedules", async (c) => {
@@ -166,9 +198,20 @@ export function createApi(opts: ApiOptions) {
       throw new ApiError(401, "unauthorized", "Missing or wrong cron secret");
     }
     const now = new Date();
-    const total = { inboxes: 0, accepted: 0, duplicate: 0, failed: 0 };
+    const total = { inboxes: 0, accepted: 0, duplicate: 0, failed: 0, disabled: 0 };
+    const rejected = new Set<string>();
     for (const inbox of await store.inboxesOfSource(c.var.db, "schedule")) {
       total.inboxes++;
+      // An inbox made before its option was turned off is skipped, once per option per tick in the metrics.
+      const every = everyOf(inbox.config);
+      if (every && !scheduleOptions.includes(every)) {
+        total.disabled++;
+        if (!rejected.has(every)) {
+          rejected.add(every);
+          await metrics.capture("schedule_tick_rejected", ANONYMOUS, { reason: "option_disabled", option: every });
+        }
+        continue;
+      }
       try {
         for (const event of sources.get(inbox.source_type)!.tick!(inbox.config, inbox.id, now)) {
           const { duplicate } = await store.insertMessage(c.var.db, inbox.id, event);
@@ -383,7 +426,9 @@ export function createApi(opts: ApiOptions) {
     return c.body(null, 204);
   });
 
-  authed.get("/sources", (c) => c.json({ data: sources.describe(), can_request: !!opts.sourceRequests }));
+  authed.get("/sources", (c) =>
+    c.json({ data: sources.describe(), can_request: !!opts.sourceRequests, schedule_options: scheduleOptions }),
+  );
 
   // Routes under ee/ are the commercially licensed ones.
   authed.route("/", eeRoutes(opts, metrics));
@@ -442,12 +487,14 @@ export function createApi(opts: ApiOptions) {
     if (!source) {
       throw new ApiError(400, "invalid_request", `Unknown source_type. Available: ${sources.types().join(", ")}`);
     }
+    const config = source.parseConfig(input.config);
+    await requireScheduleOption(c, source.type, config, "create");
     const inbox = await store.createInbox(c.var.db, {
       userId: c.var.user.id,
       orgId: org.id,
       name: input.name,
       sourceType: source.type,
-      config: source.parseConfig(input.config),
+      config,
     });
     await metrics.capture("inbox_created", c.var.user.id, { source_type: inbox.source_type });
     return c.json(serializeInbox(c, inbox), 201);
@@ -498,10 +545,9 @@ export function createApi(opts: ApiOptions) {
       .object({ name: z.string().min(1).max(200).optional(), config: z.unknown().optional() })
       .parse(await jsonBody(c));
     const source = sources.get(inbox.source_type)!;
-    const updated = await store.updateInbox(c.var.db, inbox.id, {
-      name: input.name,
-      config: input.config === undefined ? undefined : source.parseConfig(input.config, inbox.config),
-    });
+    const config = input.config === undefined ? undefined : source.parseConfig(input.config, inbox.config);
+    if (config !== undefined) await requireScheduleOption(c, inbox.source_type, config, "update");
+    const updated = await store.updateInbox(c.var.db, inbox.id, { name: input.name, config });
     return c.json(serializeInbox(c, updated));
   });
 
