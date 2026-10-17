@@ -407,8 +407,10 @@ export class LoopwayClient {
   // ---------- threads ----------
 
   /** `assign` needs the bot's live lease token; thread writes need the live lease token of the runner that owns the thread. */
-  async listThreads(botId: string, status: "active" | "ended" | "all" | "pending" = "active") {
-    return (await this.request<{ data: Thread[] }>("GET", `/bots/${enc(botId)}/threads?status=${status}`)).data;
+  async listThreads(botId: string, status: "active" | "ended" | "all" | "pending" = "active", titles = true) {
+    return (
+      await this.request<{ data: Thread[] }>("GET", `/bots/${enc(botId)}/threads?status=${status}&titles=${titles}`)
+    ).data;
   }
 
   getThread(botId: string, threadId: string) {

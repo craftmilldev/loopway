@@ -1010,7 +1010,9 @@ export async function messageEvents(db: Db, ids: string[]): Promise<Map<string, 
   return new Map(rows.map((r) => [r.id, r]));
 }
 
-/** Each thread's newest `limit` messages (any state), newest first, for finding the thread's title. */
+/**
+ * Each thread's newest `limit` messages (any state), newest first (by id, which is time-ordered, so an index on
+ * thread_messages(thread_id, message_id) reads just those rows), for finding the thread's title. */
 export async function threadNewestEvents(
   db: Db,
   threadIds: string[],
@@ -1023,10 +1025,10 @@ export async function threadNewestEvents(
        SELECT m.id, m.received_at, m.seq, i.source_type, m.cloudevent
        FROM loopway.thread_messages tm JOIN loopway.messages m ON m.id = tm.message_id
        JOIN loopway.inboxes i ON i.id = m.inbox_id
-       WHERE tm.thread_id = t.id ORDER BY m.received_at DESC, m.seq DESC LIMIT $2
+       WHERE tm.thread_id = t.id ORDER BY tm.message_id DESC LIMIT $2
      ) n
      WHERE t.id IN (SELECT value::uuid FROM jsonb_array_elements_text($1::jsonb))
-     ORDER BY t.id, n.received_at DESC, n.seq DESC`,
+     ORDER BY t.id, n.id DESC`,
     [threadIds, limit],
   );
   const byThread = new Map<string, MessageEvent[]>();

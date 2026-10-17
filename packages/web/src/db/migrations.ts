@@ -604,6 +604,8 @@ CREATE INDEX messages_inbox_seq_idx ON loopway.messages (inbox_id, seq);
 
 CREATE INDEX thread_messages_message_idx ON loopway.thread_messages (message_id);
 
+CREATE INDEX thread_messages_thread_message_idx ON loopway.thread_messages (thread_id, message_id);
+
 CREATE INDEX thread_events_thread_idx ON loopway.thread_events (thread_id);
 
 CREATE INDEX threads_bot_created_idx ON loopway.threads (bot_id, created_at, id);

@@ -143,6 +143,9 @@ describe("thread assignment", () => {
     expect(await ids("pending")).toEqual([active, endedBusy].sort());
     expect(await ids("all")).toEqual([active, endedIdle, endedBusy].sort());
     expect(await ids("active")).toEqual([active]);
+    const bare = (await call("GET", `${base}/threads?status=all&titles=false`, { key })).body.data;
+    expect(bare).toHaveLength(3);
+    expect(bare[0]).not.toHaveProperty("title");
   });
 
   it("skips a message that is already assigned, and never moves the cursor back", async () => {
