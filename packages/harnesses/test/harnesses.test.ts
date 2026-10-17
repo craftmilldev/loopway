@@ -269,11 +269,14 @@ echo '{"type":"turn.completed"}'
     expect([harness.modelFits("gpt-6-sol"), harness.modelFits("sonnet")]).toEqual([true, false]);
     expect(await readFile(join(out, "stdin"), "utf8")).toBe("-hello-hello");
 
-    // A run with its own directory tells codex its working root.
+    // A new thread with its own directory tells codex its working root; a resumed one relies on the spawn's cwd.
     const repo = await temp();
+    await harness.run({ ...base, logPath: join(await temp(), "threads", "t2.log"), cwd: repo });
     await harness.run({ ...base, resume: true, cwd: repo });
-    const last = (await readFile(join(out, "args"), "utf8")).trim().split("\n").pop();
-    expect(last).toContain(`-m gpt-6-sol -C ${repo} `);
+    const [fresh, resumed] = (await readFile(join(out, "args"), "utf8")).trim().split("\n").slice(-2);
+    expect(fresh).toContain(`-m gpt-6-sol -C ${repo} `);
+    expect(resumed).toMatch(/^exec resume /);
+    expect(resumed).not.toContain(" -C ");
   });
 
   it("LimitWatch: sees our message echoed; a rejected rate_limit_event plus a usage_limit_reached result say when to retry", () => {
