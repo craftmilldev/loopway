@@ -21,6 +21,18 @@ describe("GET /", () => {
   });
 });
 
+describe("GET / on a self-hosted deploy", () => {
+  it("redirects to /login and records it", async () => {
+    const captured: string[] = [];
+    const app = createWeb({ selfHosted: true, metrics: { capture: async (event) => void captured.push(event) } });
+    const res = await app.request("/");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/login");
+    expect(captured).toEqual(["home_redirected_to_login"]);
+    expect((await app.request("/login")).status).toBe(200);
+  });
+});
+
 describe("the marketing home", () => {
   it("shows Log in to an anonymous visitor", () => {
     render(marketingPage("/"));

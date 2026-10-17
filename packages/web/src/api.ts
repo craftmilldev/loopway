@@ -23,6 +23,10 @@ export interface ApiOptions extends EeOptions {
   getDb: () => Promise<Db>;
   /** Base for webhook URLs. Defaults to the request origin. */
   publicBaseUrl?: string;
+  /** `CRAFTMILL_ENTERPRISE_LICENSE`. The routes under ee/ are commercially licensed and are mounted only when this is set. */
+  enterpriseLicense?: string;
+  /** `/` redirects to `/login` instead of serving the landing page. */
+  selfHosted?: boolean;
   /** Delivers login codes. Defaults to printing them to the console. */
   sendEmail?: SendEmail;
   /** PostHog cloud region the /api/ingest proxy forwards to. Defaults to "us". */
@@ -146,6 +150,8 @@ export function createApi(opts: ApiOptions) {
     "/",
     createWeb({
       metrics,
+      selfHosted: opts.selfHosted,
+      publicBaseUrl: opts.publicBaseUrl,
       posthogKey: opts.posthogKey,
       posthogUiHost:
         opts.posthogUiHost ?? (opts.posthogRegion === "eu" ? "https://eu.posthog.com" : "https://us.posthog.com"),
@@ -432,12 +438,16 @@ export function createApi(opts: ApiOptions) {
     return c.body(null, 204);
   });
 
+  // Routes under ee/ are the commercially licensed ones: without a license they aren't mounted, so they 404.
+  const ee = !!opts.enterpriseLicense;
   authed.get("/sources", (c) =>
-    c.json({ data: sources.describe(), can_request: !!opts.sourceRequests, schedule_options: scheduleOptions }),
+    c.json({
+      data: sources.describe(),
+      can_request: ee && !!opts.sourceRequests,
+      schedule_options: scheduleOptions,
+    }),
   );
-
-  // Routes under ee/ are the commercially licensed ones.
-  authed.route("/", eeRoutes(opts, metrics));
+  if (ee) authed.route("/", eeRoutes(opts, metrics));
 
   /** The org a create names: 400 without one, 404 (as for any foreign entity) if the user isn't a member. */
   async function createOrg(
