@@ -4,6 +4,7 @@ import { Marked, type Tokens } from "marked";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { BotsTable } from "./bots-table.js";
 import { SAMPLE_BOTS } from "./landing-bots.js";
+import { LedeTerminal } from "./lede-terminal.js";
 import { track } from "./metrics.js";
 import { ThreadFigure } from "./thread-figure.js";
 
@@ -125,11 +126,10 @@ export function parseHome(markdown: string, agents: readonly string[] = AGENTS):
 }
 
 /**
- * The figure for a section, by id: the terminal (top), a thread (threads) and the bots table (dashboard). The terminal
- * is still empty; the others are filled in.
+ * The figure for a section, by id: the terminal (top), a thread (threads) and the bots table (dashboard).
  */
 export const FIGURES: Record<string, () => ReactNode> = {
-  top: () => null,
+  top: () => <LedeTerminal />,
   threads: () => <ThreadFigure />,
   dashboard: () => <BotsTable rows={SAMPLE_BOTS} />,
 };

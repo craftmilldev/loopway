@@ -2262,3 +2262,98 @@ main.lp {
     padding-right: 16px;
   }
 }
+
+/* The lede's terminal (client/lede-terminal.tsx): a static picture of the runner's TUI. It scrolls sideways inside its
+   own box, so a narrow screen never scrolls the page. */
+.lt {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.lt-screen {
+  background: var(--ink-900);
+  color: var(--paper-100);
+  overflow-x: auto;
+  font-family: var(--font-type);
+}
+.lt-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 640px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #f2eede29;
+  font-size: 12px;
+  color: var(--ink-200);
+}
+.lt-body {
+  min-width: 640px;
+  padding: 18px 20px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.lt-title b {
+  letter-spacing: 0.06em;
+  font-weight: 400;
+}
+.lt-muted,
+.lt-meta,
+.lt-bot {
+  color: var(--ink-200);
+}
+.lt-heading {
+  display: flex;
+  gap: 8px;
+  color: var(--ink-200);
+  letter-spacing: 0.12em;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #f2eede29;
+}
+.lt-heading b {
+  font-weight: 400;
+  color: var(--paper-100);
+}
+.lt-row {
+  display: grid;
+  grid-template-columns: 14px 120px minmax(0, 1fr) 28px auto;
+  gap: 0 12px;
+  align-items: center;
+}
+.lt-row > * {
+  white-space: nowrap;
+}
+.lt-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lt-selected .lt-label {
+  background: #f2eede1f;
+  margin-left: -4px;
+  padding-left: 4px;
+}
+.lt-done > * {
+  color: var(--ink-300);
+}
+.lt-mark {
+  color: var(--ink-200);
+}
+.lt-status {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 10px;
+  border-top: 1px solid #f2eede29;
+  color: var(--ink-200);
+  font-size: 12px;
+}
+.lt-caption {
+  font-family: var(--font-type);
+  font-size: 12px;
+  color: var(--ink-500);
+}
