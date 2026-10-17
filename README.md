@@ -79,7 +79,7 @@ loopway bots run [--max 3] [--interval 5] [--ttl <seconds>] [--no-tui]   # run y
 loopway bots run [--max 3] [--interval 5] [--ttl <seconds>] [--no-tui]   # run your bots (q or Ctrl-C to stop)
 ```
 
-`loopway bots run` runs every bot on your account that has a prompt and rules, in the current directory. With no bots, it says how to create one and exits. One process runs all your bots, and `--max` is shared across them, since it caps the load on this machine.
+`loopway bots run` runs every bot on your account that has a prompt and rules, in the current directory or the directory `loopway.json` gives it (see **Working directories** below). With no bots, it says how to create one and exits. One process runs all your bots, and `--max` is shared across them, since it caps the load on this machine.
 
 **Org.** A runner belongs to one org and only runs that org's bots. `loopway bots run --org <slug>` picks it; without the flag your only org is used, or you're asked to choose between several (non-interactively it fails and lists the slugs). The choice is saved with the runner in `~/.loopway/runner.json`, so later runs in that directory don't ask. A runner never moves: `--org` with another org starts a new runner for it. A `runner.json` from before orgs has no org saved yet; if its runner belongs to a different org than the one chosen, `bots run` says which, and that deleting `runner.json` starts a new runner.
 
