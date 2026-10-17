@@ -2,13 +2,14 @@ import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Context } from "../src/context.js";
 import {
   availableUpdate,
   defaultDeps,
   installRelease,
   isNewer,
+  reexec,
   releaseVersion,
   updateCommand,
   updatesEnabled,
@@ -216,5 +217,28 @@ describe("updateCommand", () => {
     await expect(updateCommand(checkout.ctx, {}, { ...checkout.deps, installed: false })).rejects.toThrow(
       "git checkout",
     );
+  });
+});
+
+describe("reexec", () => {
+  it("replaces this process with the new version instead of waiting on a child", () => {
+    // The stub returns where the real call never does, so the child fallback runs too: point it at a no-op.
+    const argv = process.argv;
+    process.argv = [argv[0]!, "-e", "0"];
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("exited");
+    }) as never);
+    const execve = vi.fn();
+    try {
+      expect(() => reexec("1", { execve } as never)).toThrow("exited");
+    } finally {
+      exit.mockRestore();
+      process.argv = argv;
+    }
+    expect(execve).toHaveBeenCalledTimes(1);
+    const [file, args, env] = execve.mock.calls[0] as unknown as [string, string[], NodeJS.ProcessEnv];
+    expect(file).toBe(process.execPath);
+    expect(args[0]).toBe(process.execPath);
+    expect(env.LOOPWAY_UPDATED).toBe("1");
   });
 });
