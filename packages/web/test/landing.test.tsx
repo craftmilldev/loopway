@@ -197,3 +197,22 @@ describe("content/home.md", () => {
     expect(c.textContent).not.toMatch(/sandbox/i);
   });
 });
+
+describe("the threads figure", () => {
+  it("shows a deploy-medic thread asking a person a question, with none of our real bot names", () => {
+    const figure = draw(home).querySelector('[data-figure="threads"]')!;
+    expect(figure.textContent).toContain("deploy-medic · thread");
+    expect(figure.textContent).toContain("Roll back to eb83c73");
+    expect(figure.textContent).toContain("tail -f ~/.loopway/threads/");
+    for (const name of [
+      "loopway-dev",
+      "loopway-review",
+      "loopway-epic",
+      "loopway-requests",
+      "prod-deploy-errors",
+      "model-updater",
+      "call-learnings",
+    ])
+      expect(figure.textContent).not.toContain(name);
+  });
+});
