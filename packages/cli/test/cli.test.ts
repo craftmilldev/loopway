@@ -1817,6 +1817,55 @@ describe("threads", () => {
     expect((await client.leaseBot(bot.id)).lease.token).not.toBe(other.token);
   });
 
+  it("without bot leases, still delivers to its own threads while another runner routes to them", async () => {
+    const { inbox, bot, client, runs, out, d, finish } = await setup(3);
+    await send(inbox, "issues", issue("opened", 1));
+    await d.tick();
+    const mine = runs[0]!.sessionId;
+    await finish();
+
+    d.setLeaseBots(false);
+    await d.tick();
+    expect(out).toContain("bot dev1: lease given back");
+    expect(await d.state()).toMatchObject({
+      leaseBots: false,
+      bots: { held: [], skipped: [], unleased: [{ name: "dev1" }] },
+    });
+
+    // Another runner takes the bot and routes its messages, to this runner's thread too.
+    const second = await client.registerRunner({
+      org: (await client.listOrgs())[0]!.slug,
+      id: randomUUID(),
+      name: "other",
+    });
+    const theirs: AgentRun[] = [];
+    const other = await Dispatcher.start(
+      { ...ctxOf([]), runAgent: async (r) => (theirs.push(r), { code: 0, delivered: true }) },
+      client,
+      [bot],
+      { runnerId: second.id },
+    );
+    closers.push(() => other.close());
+    await send(inbox, "issue_comment", comment(1));
+    await send(inbox, "issues", issue("opened", 2));
+    await other.tick();
+    await other.idle();
+    expect(theirs.map((r) => r.resume)).toEqual([false]);
+    expect(theirs[0]!.sessionId).not.toBe(mine);
+
+    // This runner delivers the comment to its own thread, and leaves the new one alone.
+    await d.tick();
+    expect(runs.slice(1)).toMatchObject([{ sessionId: mine, resume: true }]);
+    await finish();
+    await d.tick();
+    expect(runs).toHaveLength(2);
+
+    // Back on, it waits for the other runner's lease like any runner.
+    d.setLeaseBots(true);
+    await d.tick();
+    expect((await d.state()).bots).toMatchObject({ held: [], skipped: [{ name: "dev1" }] });
+  });
+
   it("leases are short by default, and `bots release --force` drops one a dead runner left", async () => {
     expect(defaultTtl(5)).toBe(180);
     expect(defaultTtl(40)).toBe(240);
@@ -1918,6 +1967,20 @@ describe("threads", () => {
     await send(inbox, "issue_comment", comment(9));
     await d.tick();
     expect(runs[1]).toMatchObject({ sessionId: runs[0]!.sessionId, resume: true });
+  });
+
+  it("calls the session tools directly, for sessions that don't get them over MCP", async () => {
+    const { inbox, runs, d, finish } = await setup(3);
+    await send(inbox, "issues", issue("opened", 5));
+    await d.tick();
+    const id = runs[0]!.sessionId;
+    expect(await d.callTool(id, "link", { number: 9 })).toMatch(/Linked a\/b#9/);
+    await expect(d.callTool(id, "nope", {})).rejects.toThrow(/Unknown tool nope/);
+    expect(await d.callTool(id, "end", {})).toMatch(/Ended/);
+    await finish();
+    expect((await sessions())[id]).toMatchObject({ subjects: ["a/b#5", "a/b#9"], status: "ended" });
+    // Once the run is over, there's no run in flight for the tools to act on.
+    await expect(d.callTool(id, "end", {})).rejects.toThrow(/no run in flight/);
   });
 
   it("runs sessions as the GitHub bot when one is configured", async () => {
