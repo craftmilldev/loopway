@@ -2285,7 +2285,7 @@ main.lp {
 }
 
 /* The lede's terminal (client/lede-terminal.tsx): a static picture of the runner's TUI. It scrolls sideways inside its
-   own box, so a narrow screen never scrolls the page. */
+   own box, so a narrow screen never scrolls: labels truncate and the bars and status line wrap. */
 .lt {
   margin: 0;
   display: flex;
@@ -2296,21 +2296,20 @@ main.lp {
 .lt-screen {
   background: var(--ink-900);
   color: var(--paper-100);
-  overflow-x: auto;
+  overflow: hidden;
   font-family: var(--font-type);
 }
 .lt-bar {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 16px;
-  min-width: 640px;
+  gap: 0 16px;
   padding: 10px 16px;
   border-bottom: 1px solid #f2eede29;
   font-size: 12px;
   color: var(--ink-200);
 }
 .lt-body {
-  min-width: 640px;
   padding: 18px 20px 16px;
   font-size: 13px;
   line-height: 1.6;
@@ -2366,8 +2365,9 @@ main.lp {
 }
 .lt-status {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 16px;
+  gap: 0 16px;
   padding-top: 10px;
   border-top: 1px solid #f2eede29;
   color: var(--ink-200);
@@ -2377,4 +2377,20 @@ main.lp {
   font-family: var(--font-type);
   font-size: 12px;
   color: var(--ink-500);
+}
+
+@media (max-width: 560px) {
+  .lt-body {
+    padding: 14px 12px 12px;
+    font-size: 12px;
+  }
+  .lt-row {
+    grid-template-columns: 12px 88px minmax(0, 1fr) 24px;
+    gap: 0 8px;
+  }
+  /* The id and timing drop under the label, where the long ones ("asked you 13:14") have room. */
+  .lt-meta {
+    grid-column: 3 / -1;
+    padding-bottom: 6px;
+  }
 }
