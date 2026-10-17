@@ -18,7 +18,7 @@ How the page reads it:
 
 # Bots that run your process, and *ask* when they need you.
 
-loopway listens to the services you already use, keeps every event in an inbox, and hands them to bots running on your machines. A bot is a prompt and a few rules, run by the coding agent you pick: {agents}. We build loopway with seven of them.
+loopway listens to the services you already use, keeps every event in an inbox, and hands them to bots running on your machines. A bot is a prompt and a few rules, run by the coding agent you pick: {agents}.
 
 [Get started](/login)
 [Read the docs](https://github.com/craftmilldev/loopway)
@@ -53,33 +53,33 @@ loopway records the level of every thread. One a person starts is level 2. One a
 
 ## Bots {#bots}
 
-### The bots we build loopway with
+### Bots you could run
 
-Seven bots on two agents run most of our own process. A request someone sends from the dashboard can become a reviewed pull request without anyone starting the work.
+These are examples, not the bots we run ourselves. Each is a prompt and a few rules, on the agent that suits it. A request someone sends from the dashboard can become a reviewed pull request without anyone starting the work.
 
 A level 4 loop:
 
 1. **loopway inbox** — A request from the dashboard
-2. **loopway-requests** — Files a ready issue
-3. **loopway-dev** — Opens the pull request
-4. **loopway-review** — Reviews it, dev answers
+2. **intake** — Files a ready issue
+3. **issue-to-pr** — Opens the pull request
+4. **second-look** — Reviews it, issue-to-pr answers
 
 The bots:
 
-- **loopway-dev** — Works each ready issue through to a pull request, then follows its reviews and CI.
-  *Claude Code · GitHub, Vercel*
-- **loopway-review** — Reviews each pull request and talks its feedback through. It never changes the code.
-  *Claude Code · GitHub*
-- **loopway-epic** — Works out an epic with us on GitHub, then cuts it into issues another bot can build.
-  *Claude Code · GitHub*
-- **loopway-requests** — Checks each request people send from the dashboard and files the real ones as issues.
+- **intake** — Checks each request sent from the dashboard and files the real ones as issues.
   *Claude Code · loopway*
-- **prod-deploy-errors** — When a production deploy fails, finds out why and files an issue so it can be fixed quickly.
-  *Claude Code · Vercel*
-- **model-updater** — Checks each day which models every agent takes, and files an issue when that changes.
-  *Claude Code · a daily schedule*
-- **call-learnings** — When new call notes land in our knowledge base, adds what we learned to its running list.
-  *Cursor · GitHub*
+- **issue-to-pr** — Works each ready issue through to a pull request, then follows its reviews and CI.
+  *Claude Code · GitHub*
+- **second-look** — Reviews each pull request and talks its feedback through. It never changes the code.
+  *Codex · GitHub*
+- **deploy-medic** — When a production deploy fails, finds out why and files an issue so it gets fixed.
+  *Cursor · Vercel*
+- **backlog-sweep** — Each morning, closes stale issues and asks about the unclear ones.
+  *Codex · Linear, a daily schedule*
+- **notes-to-tasks** — When meeting notes land, files their action items as issues.
+  *Hermes · Granola*
+- **bounce-check** — When an email bounces, checks the address and flags the account.
+  *Hermes · Resend*
 - **Yours** — Start from a preset or from blank. A bot is a prompt and the rules that say which events it takes.
   *Your agent · your inboxes*
 
