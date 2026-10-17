@@ -15,8 +15,8 @@ import { HARNESS_LABELS } from "../src/labels.js";
 const temp = () => mkdtemp(join(tmpdir(), "lw-harness-"));
 
 describe("harnesses", () => {
-  it("knows claude, cursor, codex and hermes, and refuses others", () => {
-    expect(HARNESSES.map((h) => h.name)).toEqual(["claude", "cursor", "codex", "hermes"]);
+  it("knows claude, cursor, codex, hermes and script, and refuses others", () => {
+    expect(HARNESSES.map((h) => h.name)).toEqual(["claude", "cursor", "codex", "hermes", "script"]);
     expect(() => getHarness("gemini")).toThrow(/Unknown harness "gemini"/);
   });
 
@@ -331,5 +331,32 @@ echo '{"type":"turn.completed"}'
     const fine = new LimitWatch();
     fine.line(JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "done" }));
     expect(fine.apiError()).toBeUndefined();
+  });
+
+  it("ScriptHarness: runs the bot's command with the message on stdin; 0 ends, 255 waits, else fails", async () => {
+    const out = await temp();
+    const logPath = join(await temp(), "threads", "t1.log");
+    let started = 0;
+    const run = (script: string | undefined): AgentRun => ({
+      harness: "script",
+      sessionId: "t1",
+      resume: false,
+      message: "hello",
+      model: "none",
+      script,
+      logPath,
+      mcpUrl: "http://127.0.0.1:1/mcp/t1",
+      env: process.env,
+      onStarted: () => started++,
+    });
+    const harness = getHarness("script");
+    const record = `cat > "${out}/stdin"; echo "$LOOPWAY_SESSION_ID $LOOPWAY_MCP_URL" > "${out}/env"`;
+    expect(await harness.run(run(`${record}; exit 0`))).toMatchObject({ code: 0, ended: true, finished: true });
+    expect(await readFile(join(out, "stdin"), "utf8")).toBe("hello");
+    expect((await readFile(join(out, "env"), "utf8")).trim()).toBe("t1 http://127.0.0.1:1/mcp/t1");
+    expect(await harness.run(run("exit 255"))).toMatchObject({ code: 0, ended: false });
+    expect(await harness.run(run("exit 3"))).toMatchObject({ code: 3, ended: false });
+    expect(started).toBe(3);
+    await expect(harness.run(run(undefined))).rejects.toThrow(/no script is set/);
   });
 });

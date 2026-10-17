@@ -8,4 +8,5 @@ export const HARNESS_LABELS = {
   cursor: "Cursor",
   codex: "Codex",
   hermes: "Hermes",
+  script: "Script",
 } as const;

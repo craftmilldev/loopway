@@ -37,3 +37,27 @@ export async function loadWorkdirs(dir: string): Promise<Map<string, string>> {
   }
   return out;
 }
+
+/**
+ * Bot name → the shell command its sessions run, from the same file: `{"bots": {"<name>": {"cwd": "...", "script": "..."}}}`.
+ * Only bots on the `script` harness read it. A `script` that isn't a non-empty string is a usage error.
+ */
+export async function loadScripts(dir: string): Promise<Map<string, string>> {
+  const path = join(dir, WORKDIRS_FILE);
+  const out = new Map<string, string>();
+  let raw: unknown;
+  try {
+    raw = await readJson(path);
+  } catch (err) {
+    throw new UsageError(err instanceof Error ? err.message : String(err));
+  }
+  const bots = (raw as { bots?: Record<string, { script?: unknown }> } | undefined)?.bots;
+  if (!bots || typeof bots !== "object" || Array.isArray(bots)) return out;
+  for (const [name, entry] of Object.entries(bots)) {
+    if (entry?.script === undefined) continue;
+    if (typeof entry.script !== "string" || !entry.script)
+      throw new UsageError(`${path}: bot "${name}": "script" must be a non-empty string`);
+    out.set(name, entry.script);
+  }
+  return out;
+}

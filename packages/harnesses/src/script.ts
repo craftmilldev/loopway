@@ -1,0 +1,64 @@
+import type { AgentRun, RunOutcome, RunWatch } from "./agent.js";
+import { Harness, type Launch } from "./harness.js";
+import { HARNESS_LABELS } from "./labels.js";
+
+/** Exit code a script uses to say "not done, wake me on the next message" (-1, as a shell sees it). */
+export const SCRIPT_WAITING = 255;
+
+/** A script has no session protocol: it has the message once it is spawned, and its exit says how it went. */
+export class ScriptWatch implements RunWatch {
+  delivered = true;
+  finished = true;
+
+  constructor(onInit?: () => void) {
+    onInit?.();
+  }
+
+  line(raw: string): void {
+    void raw;
+  }
+
+  apiError(): undefined {
+    return undefined;
+  }
+
+  limitedUntil(): undefined {
+    return undefined;
+  }
+}
+
+/**
+ * A shell command instead of a coding agent, for bots that call an API and act on the answer themselves. The command
+ * comes from the bot's entry in the runner's loopway.json (`"script"`), runs in the bot's directory with the
+ * messages on stdin, and gets LOOPWAY_SESSION_ID and LOOPWAY_MCP_URL in its environment. Exit 0 ends the thread,
+ * 255 (-1) leaves it waiting for its next messages, and anything else is a failed run.
+ */
+export class ScriptHarness extends Harness {
+  readonly name = "script";
+  readonly label = HARNESS_LABELS.script;
+  readonly command = "sh";
+
+  /** There is no model to pick; the bot's `model` is not read. */
+  modelFits(model: string) {
+    return model.length > 0;
+  }
+
+  launch(run: AgentRun): Launch {
+    if (!run.script) throw new Error("This bot runs scripts, but no script is set for it in loopway.json.");
+    return {
+      args: ["-c", run.script],
+      stdin: run.message,
+      env: { LOOPWAY_SESSION_ID: run.sessionId, LOOPWAY_MCP_URL: run.mcpUrl },
+    };
+  }
+
+  watch(onStarted?: () => void) {
+    return new ScriptWatch(onStarted);
+  }
+
+  async run(run: AgentRun): Promise<RunOutcome> {
+    const outcome = await super.run(run);
+    if (outcome.code === SCRIPT_WAITING) return { ...outcome, code: 0, ended: false };
+    return { ...outcome, ended: outcome.code === 0 };
+  }
+}

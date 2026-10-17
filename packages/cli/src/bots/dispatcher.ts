@@ -38,6 +38,8 @@ interface StartOptions extends ThreadsOptions {
   seen?: string[];
   /** Bot name → the absolute directory its sessions run in (see loadWorkdirs); the others run in this process's. */
   workdirs?: Map<string, string>;
+  /** Bot name → the shell command a `script` bot runs (see loadScripts). */
+  scripts?: Map<string, string>;
 }
 
 /**
@@ -136,6 +138,7 @@ export class Dispatcher {
   private readonly runnerId: string;
   /** Bot name → the directory its sessions run in, for the bots loopway.json names. */
   private readonly workdirs: Map<string, string>;
+  private readonly scripts: Map<string, string>;
   /** This process's lease on its runner, so no other process uses the same runner id. Thread writes take its token. */
   private runnerLease?: Lease;
   private readonly runAgent: RunAgent;
@@ -205,6 +208,7 @@ export class Dispatcher {
     this.ttl = opts.ttl ?? DEFAULTS.ttl;
     this.runnerId = opts.runnerId;
     this.workdirs = opts.workdirs ?? new Map<string, string>();
+    this.scripts = opts.scripts ?? new Map<string, string>();
     this.runAgent = ctx.runAgent ?? runHarness;
     this.dir = ctx.configDir;
   }
@@ -619,6 +623,7 @@ export class Dispatcher {
         resume,
         message,
         model: bot.model,
+        script: this.scripts.get(bot.name),
         logPath: sessionLogPath(this.dir, id),
         mcpUrl: this.mcp.urlFor(id),
         env: this.env,
@@ -640,7 +645,7 @@ export class Dispatcher {
       this.ctx.out(`error: ${short} failed to start: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    const { code, delivered, limitedUntil, apiError } = outcome;
+    const { code, delivered, limitedUntil, apiError, ended: done } = outcome;
     // The usage limit has its own wait; an API error gets a backoff per thread, and a cap so a permanent one can't loop.
     const prior = this.errored.get(id)?.retries ?? 0;
     const retry = !limitedUntil && !!apiError && (isNetworkError(apiError) || prior < API_ERROR_RETRIES);
@@ -652,6 +657,7 @@ export class Dispatcher {
       await this.client.finishThread(thread.bot_id, id, this.token(), { requeue: requeue && !delivered });
       const patch: ThreadPatch = { started: true };
       if (requeue && delivered) patch[limitedUntil ? "limited" : "interrupted"] = true;
+      if (done) patch.status = "ended";
       ended = (await this.patchThread(id, patch)).status === "ended";
     } catch (err) {
       // The messages stay inflight; the next runner to start picks them up (see reconcile).
