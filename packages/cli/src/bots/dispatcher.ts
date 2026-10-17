@@ -601,14 +601,15 @@ export class Dispatcher {
     this.ctx.out(`${thread.started ? "resumed" : "started"} ${short} for ${what}`);
 
     const prompt = this.prompts.get(thread.bot_id)!;
+    const bot = this.bots.find((b) => b.id === thread.bot_id)!;
+    // A script bot's prompt is its command (see ScriptHarness), not text to put in front of the messages.
     const parts = [
-      !thread.started && prompt,
+      !thread.started && bot.harness !== "script" && prompt,
       thread.limited && RESUME_AFTER_LIMIT,
       thread.interrupted && RESUME_AFTER_INTERRUPT,
       messages.length > 0 && describeMessages(messages),
     ];
     const message = parts.filter((p): p is string => typeof p === "string").join("\n\n");
-    const bot = this.bots.find((b) => b.id === thread.bot_id)!;
     // A bot with its own directory runs there, and may still work in the runner's (the workspace it started from).
     const cwd = this.workdirs.get(bot.name);
     const own = cwd !== undefined && cwd !== process.cwd();
@@ -619,6 +620,7 @@ export class Dispatcher {
         resume,
         message,
         model: bot.model,
+        ...(bot.harness === "script" ? { script: prompt } : {}),
         logPath: sessionLogPath(this.dir, id),
         mcpUrl: this.mcp.urlFor(id),
         env: this.env,
@@ -640,7 +642,7 @@ export class Dispatcher {
       this.ctx.out(`error: ${short} failed to start: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    const { code, delivered, limitedUntil, apiError } = outcome;
+    const { code, delivered, limitedUntil, apiError, ended: done } = outcome;
     // The usage limit has its own wait; an API error gets a backoff per thread, and a cap so a permanent one can't loop.
     const prior = this.errored.get(id)?.retries ?? 0;
     const retry = !limitedUntil && !!apiError && (isNetworkError(apiError) || prior < API_ERROR_RETRIES);
@@ -652,6 +654,7 @@ export class Dispatcher {
       await this.client.finishThread(thread.bot_id, id, this.token(), { requeue: requeue && !delivered });
       const patch: ThreadPatch = { started: true };
       if (requeue && delivered) patch[limitedUntil ? "limited" : "interrupted"] = true;
+      if (done) patch.status = "ended";
       ended = (await this.patchThread(id, patch)).status === "ended";
     } catch (err) {
       // The messages stay inflight; the next runner to start picks them up (see reconcile).

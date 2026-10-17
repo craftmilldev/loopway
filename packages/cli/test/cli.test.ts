@@ -1983,6 +1983,19 @@ describe("threads", () => {
     await expect(d.callTool(id, "end", {})).rejects.toThrow(/no run in flight/);
   });
 
+  it("ends the thread when a run reports ended, and leaves it active when it doesn't", async () => {
+    const { inbox, runs, d, finish } = await setup(3);
+    await send(inbox, "issues", issue("opened", 5));
+    await d.tick();
+    const id = runs[0]!.sessionId;
+    await finish({ code: 0, delivered: true, ended: false });
+    expect((await sessions())[id]).toMatchObject({ status: "active" });
+    await send(inbox, "issue_comment", comment(5));
+    await d.tick();
+    await finish({ code: 0, delivered: true, ended: true });
+    expect((await sessions())[id]).toMatchObject({ status: "ended" });
+  });
+
   it("runs sessions as the GitHub bot when one is configured", async () => {
     const plain = await setup(3);
     await send(plain.inbox, "issues", issue("opened", 1));

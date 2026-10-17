@@ -15,6 +15,8 @@ export interface AgentRun {
   cwd?: string;
   /** Other directories the session may work in besides `cwd`, for harnesses that take them (`--add-dir`). */
   addDirs?: string[];
+  /** The shell command of a `script` bot (its prompt); other harnesses ignore it. */
+  script?: string;
   /** Called once Claude Code has created the session (its `system` `init` record), so later runs must resume it. */
   onStarted?: () => void;
 }
@@ -26,6 +28,8 @@ export interface RunOutcome {
   delivered: boolean;
   /** Whether the run ended with a `result` record rather than being cut off. */
   finished?: boolean;
+  /** Set by a harness that decides for itself whether the thread is finished (`script`: exit 0): end the thread. */
+  ended?: boolean;
   /** Set when the run stopped because the account hit its usage limit: when the limit resets, in ms since the epoch. */
   limitedUntil?: number;
   /** Set when the run ended on an API error (offline, asleep, overloaded) rather than finishing: the error text. */

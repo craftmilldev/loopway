@@ -213,6 +213,17 @@ describe("bots", () => {
     });
     expect(codex.body).toMatchObject({ harness: "codex", model: "gpt-6-sol" });
     await call("DELETE", `/bots/${codex.body.id}`, { key });
+    // A script bot needs no model; every other harness does.
+    const script = await call("POST", "/bots", {
+      key,
+      body: { name: "sc", harness: "script", prompt: "node merge.js", inbox_ids: [a.id] },
+    });
+    expect(script.body).toMatchObject({ harness: "script", model: "see-script" });
+    const swap = await call("PATCH", `/bots/${script.body.id}`, { key, body: { harness: "claude", model: "opus" } });
+    expect([swap.status, swap.body.error.code]).toEqual([409, "harness_not_swappable"]);
+    await call("DELETE", `/bots/${script.body.id}`, { key });
+    const noModel = await call("POST", "/bots", { key, body: { name: "nm", harness: "claude", inbox_ids: [a.id] } });
+    expect([noModel.status, noModel.body.error.code]).toEqual([400, "invalid_model"]);
     const gemini = await call("POST", "/bots", {
       key,
       body: { name: "z", model: "sonnet", harness: "gemini", inbox_ids: [a.id] },
