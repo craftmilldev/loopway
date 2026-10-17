@@ -150,6 +150,18 @@ describe("schedule inboxes", () => {
       });
     });
 
+    it("lets an inbox on a disabled option keep it while its messages change", async () => {
+      const key = await newUser();
+      const inbox = (await scheduleInbox(key)).body;
+      const messages = [{ type: "standup", message: "New text" }];
+      const patch = await dayOnly().request(`/api/inboxes/${inbox.id}`, {
+        method: "PATCH",
+        headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+        body: JSON.stringify({ config: { schedule: { every: "hour" }, messages } }),
+      });
+      expect(patch.status).toBe(200);
+    });
+
     it("accepts both options when both are on", async () => {
       const key = await newUser();
       expect((await scheduleInbox(key)).status).toBe(201);

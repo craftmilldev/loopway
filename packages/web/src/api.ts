@@ -68,10 +68,16 @@ export function createApi(opts: ApiOptions) {
   const metrics = opts.metrics ?? noopMetrics;
   const scheduleOptions = opts.scheduleOptions ?? [...SCHEDULE_OPTIONS];
 
-  /** Refuses a schedule config whose option this deploy has turned off. */
-  async function requireScheduleOption(c: Context<Env>, sourceType: string, config: unknown, action: string) {
+  /** Refuses a schedule config whose option this deploy has turned off. Keeping an inbox's current option is fine. */
+  async function requireScheduleOption(
+    c: Context<Env>,
+    sourceType: string,
+    config: unknown,
+    action: string,
+    before?: unknown,
+  ) {
     const every = sourceType === "schedule" ? everyOf(config) : undefined;
-    if (!every || scheduleOptions.includes(every)) return;
+    if (!every || scheduleOptions.includes(every) || every === everyOf(before)) return;
     await metrics.capture("schedule_option_rejected", c.get("user")?.id ?? ANONYMOUS, { option: every, action });
     throw new ApiError(
       400,
@@ -188,9 +194,9 @@ export function createApi(opts: ApiOptions) {
     return c.json({ id, duplicate }, duplicate ? 200 : 202);
   });
 
-  // Vercel Cron calls this on the schedule in vercel.json (daily by default; hourly where the plan allows) with `Authorization: Bearer $CRON_SECRET`. Every inbox whose
-  // source fills itself on a clock gets the messages due in the current window. Runs in the same window repeat the
-  // same CloudEvent ids, so they are stored once.
+  // Vercel Cron calls this on the schedule in vercel.json (daily by default; hourly where the plan allows) with
+  // `Authorization: Bearer $CRON_SECRET`. Every inbox whose source fills itself on a clock gets the messages due in
+  // the current window. Runs in the same window repeat the same CloudEvent ids, so they are stored once.
   api.get("/cron/schedules", async (c) => {
     const token = bearer(c);
     if (!opts.cronSecret || !token || !safeEqual(token, opts.cronSecret)) {
@@ -546,7 +552,7 @@ export function createApi(opts: ApiOptions) {
       .parse(await jsonBody(c));
     const source = sources.get(inbox.source_type)!;
     const config = input.config === undefined ? undefined : source.parseConfig(input.config, inbox.config);
-    if (config !== undefined) await requireScheduleOption(c, inbox.source_type, config, "update");
+    if (config !== undefined) await requireScheduleOption(c, inbox.source_type, config, "update", inbox.config);
     const updated = await store.updateInbox(c.var.db, inbox.id, { name: input.name, config });
     return c.json(serializeInbox(c, updated));
   });
