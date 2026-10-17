@@ -178,7 +178,11 @@ function Buttons({
           className={plain ? undefined : l.solid ? "btn" : "btn btn-quiet"}
           href={l.href}
           onClick={() =>
-            track("landing_link_clicked", { section, kind: plain ? "plain" : l.solid ? "solid" : "ghost", to: linkTarget(l.href) })
+            track("landing_link_clicked", {
+              section,
+              kind: plain ? "plain" : l.solid ? "solid" : "ghost",
+              to: linkTarget(l.href),
+            })
           }
           dangerouslySetInnerHTML={{ __html: l.html }}
         />
