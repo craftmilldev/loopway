@@ -225,9 +225,9 @@ describe("reexec", () => {
     // The stub returns where the real call never does, so the child fallback runs too: point it at a no-op.
     const argv = process.argv;
     process.argv = [argv[0]!, "-e", "0"];
-    const exit = vi.spyOn(process, "exit").mockImplementation((() => {
+    const exit = vi.spyOn(process, "exit").mockImplementation(() => {
       throw new Error("exited");
-    }));
+    });
     const execve = vi.fn();
     try {
       expect(() => reexec("1", { execve } as never)).toThrow("exited");
