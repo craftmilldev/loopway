@@ -11,6 +11,10 @@ export interface AgentRun {
   /** The dispatcher's MCP endpoint for this session (its `link` and `end` tools). */
   mcpUrl: string;
   env: NodeJS.ProcessEnv;
+  /** The directory the session runs in, absolute; the dispatcher's own when left out. */
+  cwd?: string;
+  /** Other directories the session may work in besides `cwd`, for harnesses that take them (`--add-dir`). */
+  addDirs?: string[];
   /** Called once Claude Code has created the session (its `system` `init` record), so later runs must resume it. */
   onStarted?: () => void;
 }

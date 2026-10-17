@@ -29,7 +29,9 @@ export class ClaudeHarness extends Harness {
   launch(run: AgentRun): Launch {
     const mcpConfig = JSON.stringify({ mcpServers: { loopway: { type: "http", url: run.mcpUrl } } });
     const args = ["-p", run.resume ? "--resume" : "--session-id", run.sessionId];
-    // --mcp-config and --allowedTools take several values, so each is followed by another flag.
+    // Directories the session may work in besides its cwd, such as the workspace a runner started from.
+    for (const dir of run.addDirs ?? []) args.push("--add-dir", dir);
+    // --add-dir, --mcp-config and --allowedTools take several values, so each is followed by another flag.
     args.push("--mcp-config", mcpConfig, "--allowedTools", "mcp__loopway__link", "mcp__loopway__end");
     // Resumed runs get it too: a session keeps its model only if the flag says so.
     args.push("--model", run.model, "--permission-mode", "auto", "--output-format", "stream-json", "--verbose");
