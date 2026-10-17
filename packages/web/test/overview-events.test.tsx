@@ -89,7 +89,7 @@ describe("ThreadEventsFeed", () => {
     await screen.findByText("acme/app#1");
     failing = true;
     fireEvent.click(screen.getByText("Older"));
-    await waitFor(() => expect((screen.getByText("Older") as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() => expect(screen.getByRole<HTMLButtonElement>("button", { name: "Older" }).disabled).toBe(false));
     expect(screen.queryByText("Newer")).toBeNull();
     expect(screen.getByText("acme/app#1")).toBeTruthy();
   });
