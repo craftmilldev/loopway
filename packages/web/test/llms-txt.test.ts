@@ -25,4 +25,15 @@ describe("GET /llms.txt", () => {
     for (const harness of HARNESSES) expect(concept("Bot")).toContain(`\`${harness.name}\``);
     for (const type of sources.types()) expect(concept("Inbox")).toContain(`\`${type}\``);
   });
+
+  it("names the request's origin, or PUBLIC_BASE_URL when set, never a hard-coded host", async () => {
+    const own = await (await createWeb().request("http://self.example:8080/llms.txt")).text();
+    expect(own).toContain("http://self.example:8080/install.sh");
+    expect(own).not.toContain("craftmill.dev");
+    expect(own).not.toContain("{{base_url}}");
+    const configured = createWeb({ publicBaseUrl: "https://lw.example.com/" });
+    const body = await (await configured.request("http://internal:3000/llms.txt")).text();
+    expect(body).toContain("https://lw.example.com/install.sh");
+    expect(body).not.toContain("internal:3000");
+  });
 });
