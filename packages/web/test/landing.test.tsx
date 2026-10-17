@@ -150,7 +150,7 @@ describe("the landing page from markdown", () => {
     expect(button.textContent).toBe("Copy");
   });
 
-  it("leaves an empty slot for the figures of top and threads", () => {
+  it("leaves an empty slot for the figures of top, threads and dashboard", () => {
     const c = draw(FIXTURE);
     expect(c.querySelector('#top .lp-figure[data-figure="top"]')?.childNodes.length).toBe(0);
     expect(c.querySelector("#how .lp-figure")).toBeNull();
@@ -196,6 +196,25 @@ describe("content/home.md", () => {
     const c = draw(home);
     expect(c.querySelector("#top")!.textContent).toContain(agentList(AGENTS));
     expect(c.textContent).not.toMatch(/sandbox/i);
+  });
+});
+
+describe("the threads figure", () => {
+  it("shows a deploy-medic thread asking a person a question, with none of our real bot names", () => {
+    const figure = draw(home).querySelector('[data-figure="threads"]')!;
+    expect(figure.textContent).toContain("deploy-medic · thread");
+    expect(figure.textContent).toContain("Roll back to eb83c73");
+    expect(figure.textContent).toContain("tail -f ~/.loopway/threads/");
+    for (const name of [
+      "loopway-dev",
+      "loopway-review",
+      "loopway-epic",
+      "loopway-requests",
+      "prod-deploy-errors",
+      "model-updater",
+      "call-learnings",
+    ])
+      expect(figure.textContent).not.toContain(name);
   });
 });
 

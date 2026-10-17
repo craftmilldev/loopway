@@ -13,7 +13,7 @@ import {
 import { loadGithubBot } from "../config.js";
 import { UsageError, type Context } from "../context.js";
 import { clock, dim } from "../format.js";
-import { startMcpServer, type McpServer } from "../mcp.js";
+import { startMcpServer, type McpServer, type McpTool } from "../mcp.js";
 import { runHarness, type RunAgent, type RunOutcome } from "@loopway/harnesses";
 import { botEnv } from "./github.js";
 import { checkRules, route, type BotRule } from "@loopway/rules";
@@ -25,6 +25,11 @@ export interface ThreadsOptions {
   interval?: number;
   /** How long each bot lease lasts; it's renewed every tick. */
   ttl?: number;
+  /**
+   * false runs without bot leases (see setLeaseBots): the runner only delivers to the threads it already owns.
+   * True unless this is false.
+   */
+  leaseBots?: boolean;
 }
 
 interface StartOptions extends ThreadsOptions {
@@ -69,8 +74,13 @@ export interface WaitingMessage extends ThreadMessage {
 
 /** What a dispatcher is doing right now, for the TUI. */
 export interface DispatcherState {
-  /** The bots this runner holds a lease on, and the ones it skipped because another runner holds theirs. */
-  bots: { held: Bot[]; skipped: SkippedBot[] };
+  /**
+   * The bots this runner holds a lease on, the ones it skipped because another runner holds theirs, and the rest:
+   * ones it hasn't tried to lease, as with bot leases off.
+   */
+  bots: { held: Bot[]; skipped: SkippedBot[]; unleased: Bot[] };
+  /** Whether this runner takes bot leases; without them it only delivers to its own threads. */
+  leaseBots: boolean;
   /** Messages assigned to this runner's threads but not delivered yet, oldest first. */
   waiting: WaitingMessage[];
   /** Every thread of the bots, this runner's and other runners', by id. */
@@ -110,7 +120,10 @@ export class Dispatcher {
   /** Bots skipped last tick because another runner holds their lease → when that lease expires, if known. */
   private readonly skipped = new Map<string, string | undefined>();
   /** Bots whose threads this runner has already checked for runs cut off by a previous runner. */
-  private readonly reconciled = new Set<string>();
+  private readonly repaired = new Set<string>();
+  /** Bots whose unclaimed threads this runner has already claimed, which it does once it holds their lease. */
+  private readonly claimed = new Set<string>();
+  private leaseBots: boolean;
   /** Ids of the bots not running that were already reported, so each is announced once. */
   private readonly seen = new Set<string>();
   private closing?: Promise<void>;
@@ -155,14 +168,12 @@ export class Dispatcher {
     const env = { ...(gh ? botEnv(ctx.env, gh) : ctx.env), LOOPWAY_NO_UPDATE: "1" };
     // The tools reach the dispatcher once it exists; no session calls one before then.
     const later: { dispatcher?: Dispatcher } = {};
-    const mcp = await startMcpServer(
-      "loopway",
-      sessionTools({
-        get: (id) => later.dispatcher!.getThread(id),
-        patch: (id, patch) => later.dispatcher!.patchThread(id, patch),
-      }),
-    );
-    const dispatcher = (later.dispatcher = new Dispatcher(ctx, client, bots, rules, prompts, opts, mcp, env));
+    const tools = sessionTools({
+      get: (id) => later.dispatcher!.getThread(id),
+      patch: (id, patch) => later.dispatcher!.patchThread(id, patch),
+    });
+    const mcp = await startMcpServer("loopway", tools);
+    const dispatcher = (later.dispatcher = new Dispatcher(ctx, client, bots, rules, prompts, opts, mcp, tools, env));
     try {
       await dispatcher.leaseRunner();
     } catch (err) {
@@ -180,11 +191,13 @@ export class Dispatcher {
     private readonly prompts: Map<string, string>,
     opts: StartOptions,
     private readonly mcp: McpServer,
+    private readonly tools: McpTool[],
     /** The environment each session runs with. */
     private readonly env: NodeJS.ProcessEnv,
   ) {
     for (const id of opts.seen ?? []) this.seen.add(id);
     this.max = opts.max ?? DEFAULTS.max;
+    this.leaseBots = opts.leaseBots !== false;
     this.ttl = opts.ttl ?? DEFAULTS.ttl;
     this.runnerId = opts.runnerId;
     this.runAgent = ctx.runAgent ?? runHarness;
@@ -194,6 +207,20 @@ export class Dispatcher {
   /** Stops taking on work: ticks only renew the leases, so the sessions in flight can finish. Not undone. */
   drain(): void {
     this.draining = true;
+  }
+
+  /**
+   * Turns bot leases off or on. Off, the next tick gives back the leases this runner holds and it stops taking
+   * them, so it no longer reads the bots' messages or starts threads: the runner that leases a bot next routes
+   * them, to this runner's threads too. This runner keeps delivering to its own threads, as delivery needs only
+   * its runner lease. On, it takes the leases again from the next tick.
+   */
+  setLeaseBots(on: boolean): void {
+    if (on === this.leaseBots) return;
+    this.leaseBots = on;
+    this.ctx.out(
+      on ? "taking bot leases again" : "giving back the bot leases: only delivering to this runner's threads now",
+    );
   }
 
   /** Whether any session is running. */
@@ -215,14 +242,19 @@ export class Dispatcher {
       );
     for (const bot of this.bots) {
       try {
-        if ((await this.lease(bot)) && !this.draining) {
-          await this.refreshVersion(bot);
-          if (!this.reconciled.has(bot.id)) {
-            await this.reconcile(bot);
-            this.reconciled.add(bot.id);
-          }
-          await this.poll(bot);
+        const leased = this.leaseBots ? await this.lease(bot) : (await this.release(bot), false);
+        if (this.draining) continue;
+        // This runner's own threads are repaired once whether or not it holds the bot; unclaimed ones are claimed
+        // only by the runner that holds it.
+        const repair = !this.repaired.has(bot.id);
+        const claim = leased && !this.claimed.has(bot.id);
+        if (leased) await this.refreshVersion(bot);
+        if (repair || claim) {
+          await this.reconcile(bot, { repair, claim });
+          if (repair) this.repaired.add(bot.id);
+          if (claim) this.claimed.add(bot.id);
         }
+        if (leased) await this.poll(bot);
       } catch (err) {
         // One bot's trouble (a flaky network, say) shouldn't stop the others; try again next tick.
         this.ctx.out(`error: bot ${bot.name}: ${err instanceof Error ? err.message : String(err)}`);
@@ -300,6 +332,7 @@ export class Dispatcher {
       .flatMap((t) => t.waiting.map((m) => ({ ...m, thread_id: t.id, bot_name: names.get(t.bot_id) ?? "" })))
       .sort((a, b) => a.id.localeCompare(b.id) || a.thread_id.localeCompare(b.thread_id));
     return {
+      leaseBots: this.leaseBots,
       bots: {
         held: this.bots.filter((b) => this.leases.has(b.id)),
         skipped: this.bots
@@ -309,6 +342,7 @@ export class Dispatcher {
             leased_until: this.skipped.get(b.id),
             held_by: all.find((r) => r.id !== this.runnerId && r.bots.some((x) => x.id === b.id))?.name,
           })),
+        unleased: this.bots.filter((b) => !this.leases.has(b.id) && !this.skipped.has(b.id)),
       },
       waiting,
       threads,
@@ -317,6 +351,16 @@ export class Dispatcher {
       offline: new Set(all.filter((r) => !r.leased_until).map((r) => r.id)),
       running: new Set(this.running.keys()),
     };
+  }
+
+  /**
+   * Calls one of the session tools (see tools.ts) for a run in flight, as its session does over MCP. For
+   * runAgent overrides whose sessions get their tools another way than the MCP URL.
+   */
+  callTool(threadId: string, name: string, args: Record<string, unknown>): Promise<string> {
+    const tool = this.tools.find((t) => t.name === name);
+    if (!tool) return Promise.reject(new Error(`Unknown tool ${name}`));
+    return tool.call(threadId, args);
   }
 
   /** A session's transcript so far, or "" if it hasn't written one. */
@@ -372,6 +416,17 @@ export class Dispatcher {
     }
   }
 
+  /** Gives back the bot's lease, if this runner holds it. */
+  private async release(bot: Bot): Promise<void> {
+    this.skipped.delete(bot.id);
+    const lease = this.leases.get(bot.id);
+    if (!lease) return;
+    this.leases.delete(bot.id);
+    // One that expired or was taken over is gone already.
+    await this.client.releaseBot(bot.id, lease.token).catch(() => {});
+    this.ctx.out(`bot ${bot.name}: lease given back`);
+  }
+
   /** Takes or renews the bot's lease. False, with a log line the first time, if another runner holds it. */
   private async lease(bot: Bot): Promise<boolean> {
     try {
@@ -400,18 +455,18 @@ export class Dispatcher {
    * Picks up the threads of this runner a previous runner left mid-run (it died, was restarted, or the machine
    * slept). The session exists in Claude Code once its log has an `init` record, so the thread is marked started;
    * the messages it was handed but never finished go back to waiting, or, for runs from before those were
-   * recorded, the session is told to carry on. Threads a runner created with `assign` but died before claiming
-   * are claimed too, if no session ever ran for them. Done once per bot, when this runner first leases it, so no
-   * run of this runner is in flight.
+   * recorded, the session is told to carry on (`repair`, done once per bot on this runner's first tick, so no run
+   * of this runner is in flight). Threads a runner created with `assign` but died before claiming are claimed
+   * too, if no session ever ran for them (`claim`, once per bot, when this runner first holds its lease).
    */
-  private async reconcile(bot: Bot): Promise<void> {
+  private async reconcile(bot: Bot, { repair, claim }: { repair: boolean; claim: boolean }): Promise<void> {
     let repaired = 0;
     for (const t of await this.client.listThreads(bot.id, "all")) {
       if (!t.runner_id && !t.started) {
-        await this.client.claimThread(bot.id, t.id, this.token());
+        if (claim) await this.client.claimThread(bot.id, t.id, this.token());
         continue;
       }
-      if (t.runner_id !== this.runnerId || t.status !== "active") continue;
+      if (!repair || t.runner_id !== this.runnerId || t.status !== "active") continue;
       const log = await this.readLog(t.id);
       if (!log) continue;
       const last = log.trimEnd().split("\n").at(-1) ?? "";

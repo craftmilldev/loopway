@@ -26,7 +26,12 @@ export async function savedRunnerOrg(dir: string): Promise<string | undefined> {
  * so asking for another org makes a new runner. A runner from before orgs were chosen has no org saved yet: if the
  * server says it belongs to another org, so does the error.
  */
-export async function ensureRunner(ctx: Context, client: LoopwayClient, org: string): Promise<Runner> {
+export async function ensureRunner(
+  ctx: Context,
+  client: LoopwayClient,
+  org: string,
+  name = hostname(),
+): Promise<Runner> {
   const saved = await readSaved(ctx.configDir);
   let id = saved.id;
   if (id && saved.org && saved.org !== org) {
@@ -35,7 +40,7 @@ export async function ensureRunner(ctx: Context, client: LoopwayClient, org: str
   }
   id ??= randomUUID();
   try {
-    const runner = await client.registerRunner({ org, id, name: hostname() });
+    const runner = await client.registerRunner({ org, id, name });
     await writeJson(runnerPath(ctx.configDir), { id, org });
     return runner;
   } catch (err) {

@@ -15,7 +15,8 @@
     "packages/palette",
     "packages/sources",
     "packages/web",
-    "packages/cli"
+    "packages/cli",
+    "packages/bb-plugin-loopway"
   ],
   "scripts": {
     "postinstall": "npm run build -w @loopway/sources -w @loopway/harnesses -w @loopway/rules -w @loopway/presets -w @loopway/palette",

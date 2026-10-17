@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { BotsTable } from "./bots-table.js";
 import { SAMPLE_BOTS } from "./landing-bots.js";
 import { track } from "./metrics.js";
+import { ThreadFigure } from "./thread-figure.js";
 
 // The landing page, built from content/home.md: its comment says how the markdown maps to the page. Parsing turns
 // the markdown into sections of blocks; the components below lay each section out by its id, and styles.css (the
@@ -124,12 +125,12 @@ export function parseHome(markdown: string, agents: readonly string[] = AGENTS):
 }
 
 /**
- * The figure for a section, by id: the terminal (top), a thread (threads) and the bots table (dashboard). Each figure
- * fills its slot here; the terminal and the thread are empty for now.
+ * The figure for a section, by id: the terminal (top), a thread (threads) and the bots table (dashboard). The terminal
+ * is still empty; the others are filled in.
  */
 export const FIGURES: Record<string, () => ReactNode> = {
   top: () => null,
-  threads: () => null,
+  threads: () => <ThreadFigure />,
   dashboard: () => <BotsTable rows={SAMPLE_BOTS} />,
 };
 
