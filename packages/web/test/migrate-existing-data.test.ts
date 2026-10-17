@@ -64,7 +64,19 @@ describe("the newest migration over existing data", () => {
         [id.message, id.inbox, { specversion: "1.0", id: "ce-1", source: "src", type: "com.example.t" }],
       );
 
+      // The columns every migration should leave alone, read before and after (a new column may be added, not these changed).
+      const snapshot = async () => ({
+        inboxes: await db.query(`SELECT id, created_by, org_id, name, source_type FROM loopway.inboxes ORDER BY id`),
+        bots: await db.query(`SELECT id, created_by, org_id, name, model, harness FROM loopway.bots ORDER BY id`),
+        threads: await db.query(`SELECT id, bot_id, created_by, org_id FROM loopway.threads ORDER BY id`),
+        runners: await db.query(`SELECT id, created_by, org_id, name FROM loopway.runners ORDER BY id`),
+        messages: await db.query(`SELECT id, inbox_id, ce_id, cloudevent FROM loopway.messages ORDER BY id`),
+      });
+      const before = await snapshot();
+
       await migrate(db);
+
+      expect(await snapshot()).toEqual(before);
 
       const count = async (table: string) =>
         Number((await db.query<{ n: string }>(`SELECT count(*) AS n FROM loopway.${table}`))[0]!.n);

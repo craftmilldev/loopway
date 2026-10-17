@@ -41,7 +41,8 @@ describe("tests use the real database", () => {
     const src = readFileSync(file, "utf8");
     const found = fakes.filter(([re]) => re.test(src)).map(([, why]) => why);
     expect(found).toEqual([]);
-    // An API under test gets its database from openTestDb() (directly or through helpers.ts).
-    if (/\bgetDb\s*:/.test(src)) expect(src).toMatch(/openTestDb|\.\/helpers\.js/);
+    // An API under test gets its database from openTestDb(), imported here or through helpers.ts, not from a comment.
+    if (/\bgetDb\s*:/.test(src))
+      expect(src).toMatch(/^import .*\b(openTestDb|db)\b.* from "[^"]*(db\/testing|helpers)(\.js)?";$/m);
   });
 });
