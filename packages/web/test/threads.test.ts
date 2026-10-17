@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { assignMessages } from "../src/store.js";
+import { assignMessages, endThread } from "../src/store.js";
 import { call, db, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
 
 /** A user with a leased bot over one inbox holding `count` messages. */
@@ -122,6 +122,27 @@ describe("thread assignment", () => {
     const list = (await call("GET", `${base}/threads`, { key })).body.data;
     expect(list.map((t: any) => t.id).sort()).toEqual([t1, t2].sort());
     expect(list[0].delivered_ids).toBeUndefined();
+  });
+
+  it("lists the pending threads: the active ones, and ended ones that still have a message waiting", async () => {
+    const { key, base, bot, messages, assign } = await setup();
+    const [active, endedIdle, endedBusy] = [randomUUID(), randomUUID(), randomUUID()];
+    await assign([
+      { message_id: messages[0]!.id, thread_id: active },
+      { message_id: messages[1]!.id, thread_id: endedIdle },
+      { message_id: messages[2]!.id, thread_id: endedBusy },
+    ]);
+    await db.query(
+      `UPDATE loopway.thread_messages SET state = 'delivered', delivered_at = now() WHERE thread_id = $1`,
+      [endedIdle],
+    );
+    await endThread(db, bot.id, endedIdle);
+    await endThread(db, bot.id, endedBusy);
+    const ids = async (status: string) =>
+      (await call("GET", `${base}/threads?status=${status}`, { key })).body.data.map((t: any) => t.id).sort();
+    expect(await ids("pending")).toEqual([active, endedBusy].sort());
+    expect(await ids("all")).toEqual([active, endedIdle, endedBusy].sort());
+    expect(await ids("active")).toEqual([active]);
   });
 
   it("skips a message that is already assigned, and never moves the cursor back", async () => {

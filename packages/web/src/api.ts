@@ -932,7 +932,9 @@ export function createApi(opts: ApiOptions) {
 
   authed.get("/bots/:botId/threads", async (c) => {
     const bot = await memberBot(c);
-    const q = z.object({ status: z.enum(["active", "ended", "all"]).default("active") }).parse(c.req.query());
+    const q = z
+      .object({ status: z.enum(["active", "ended", "all", "pending"]).default("active") })
+      .parse(c.req.query());
     const rows = await store.listThreads(c.var.db, bot.id, q.status);
     return c.json({ data: await serializeThreads(c.var.db, rows) });
   });
