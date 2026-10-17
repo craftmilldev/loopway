@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ThreadEventsFeed } from "../client/overview.js";
 
@@ -43,7 +43,7 @@ describe("ThreadEventsFeed", () => {
     pages = { first: { data: [], next: null } };
     render(<ThreadEventsFeed ready />);
     expect(await screen.findByText(/Nothing to show yet/)).toBeTruthy();
-    expect(screen.queryByText("Show earlier")).toBeNull();
+    expect(screen.queryByText("Older")).toBeNull();
   });
 
   it("lists today's events with a bot and a link to the thread", async () => {
@@ -59,21 +59,24 @@ describe("ThreadEventsFeed", () => {
     expect(screen.getByText(/ended a thread/)).toBeTruthy();
     expect(screen.getByText(/hit its usage limit/)).toBeTruthy();
     expect(screen.getByText("acme/app#1").getAttribute("href")).toBe("/acme/bots/b1/threads/t1");
-    expect(screen.queryByText("Show earlier")).toBeNull();
+    expect(screen.queryByText("Older")).toBeNull();
   });
 
-  it("hides earlier days until Show earlier, which loads the next page", async () => {
+  it("pages ten at a time with Older and Newer", async () => {
     pages = {
-      first: { data: [event("3"), event("2", { at: longAgo, subjects: ["acme/app#2"] })], next: "2" },
+      first: { data: [event("3"), event("2", { subjects: ["acme/app#2"] })], next: "2" },
       "2": { data: [event("1", { at: longAgo, subjects: ["acme/app#3"] })], next: null },
     };
     render(<ThreadEventsFeed ready />);
     await screen.findByText("acme/app#1");
-    expect(screen.queryByText("acme/app#2")).toBeNull();
-    fireEvent.click(screen.getByText("Show earlier"));
+    expect(screen.queryByText("Newer")).toBeNull();
+    fireEvent.click(screen.getByText("Older"));
     await screen.findByText("acme/app#3");
-    expect(screen.getByText("acme/app#2")).toBeTruthy();
-    expect(requests).toEqual(["/events?org=acme", "/events?before=2&org=acme"]);
-    await waitFor(() => expect(screen.queryByText("Show earlier")).toBeNull());
+    expect(screen.queryByText("acme/app#2")).toBeNull();
+    expect(screen.queryByText("Older")).toBeNull();
+    expect(requests.slice(0, 2)).toEqual(["/events?limit=10&org=acme", "/events?limit=10&before=2&org=acme"]);
+    fireEvent.click(screen.getByText("Newer"));
+    await screen.findByText("acme/app#2");
+    expect(screen.queryByText("Newer")).toBeNull();
   });
 });
