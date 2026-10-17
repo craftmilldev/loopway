@@ -111,9 +111,7 @@ export function ThreadEventsFeed({ ready }: { ready: boolean }) {
           return (
             <li key={e.id}>
               <time className="mono" dateTime={e.at} title={at.toLocaleString()}>
-                {at.getTime() < midnight
-                  ? at.toLocaleDateString([], { month: "short", day: "numeric" }) + " "
-                  : ""}
+                {at.getTime() < midnight ? at.toLocaleDateString([], { month: "short", day: "numeric" }) + " " : ""}
                 {at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
               </time>{" "}
               <a className="bot-link" href={lw.orgBase() + "/bots/" + e.bot_id}>
