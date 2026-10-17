@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import home from "../content/home.md";
 import { track } from "../client/metrics.js";
 import { agentList, AGENTS, LandingSections, parseHome } from "../client/landing.js";
+import { SAMPLE_BOTS } from "../client/landing-bots.js";
 
 vi.mock("../client/metrics.js", () => ({ track: vi.fn() }));
 
@@ -214,5 +215,51 @@ describe("the threads figure", () => {
       "call-learnings",
     ])
       expect(figure.textContent).not.toContain(name);
+  });
+});
+
+describe("the dashboard figure", () => {
+  const SAMPLE_NAMES = [
+    "intake",
+    "issue-to-pr",
+    "second-look",
+    "deploy-medic",
+    "backlog-sweep",
+    "notes-to-tasks",
+    "bounce-check",
+  ];
+  const figure = () => draw(home).querySelector<HTMLElement>('#dashboard .lp-figure[data-figure="dashboard"]')!;
+
+  it("lists the sample bots and none of ours", () => {
+    const c = figure();
+    const names = [...c.querySelectorAll("tbody tr .bot-link")].map((e) => e.textContent);
+    expect(names).toEqual(SAMPLE_NAMES);
+    for (const real of [
+      "loopway-dev",
+      "loopway-review",
+      "loopway-epic",
+      "loopway-requests",
+      "prod-deploy-errors",
+      "model-updater",
+      "call-learnings",
+    ])
+      expect(c.textContent).not.toContain(real);
+  });
+
+  it("shows every state with the dashboard's own badge", () => {
+    const states = [...figure().querySelectorAll("tbody .state")].map((e) => e.className.replace("state state-", ""));
+    expect(new Set(states)).toEqual(new Set(["working", "limited", "stranded", "waiting", "idle"]));
+  });
+
+  it("shows bars and a pie for every bot, and every level in the pies", () => {
+    const c = figure();
+    expect(c.querySelectorAll("tbody .bars")).toHaveLength(SAMPLE_BOTS.length);
+    const pies = [...c.querySelectorAll("tbody .level-pie svg")].map((e) => e.getAttribute("aria-label")!);
+    expect(pies).toHaveLength(SAMPLE_BOTS.length);
+    for (const level of [2, 3, 4]) expect(pies.some((p) => new RegExp(`[1-9]\\d*% level ${level}`).test(p))).toBe(true);
+  });
+
+  it("scrolls the table inside its own box", () => {
+    expect(figure().querySelector(".scroll > table.bots-ledger")).not.toBeNull();
   });
 });
