@@ -38,7 +38,7 @@ describe("tests use the real database", () => {
   });
 
   it.each(files.map((f) => [relative(packages, f), f]))("%s has no DB or store fake", (_name, file) => {
-    const src = readFileSync(file!, "utf8");
+    const src = readFileSync(file, "utf8");
     const found = fakes.filter(([re]) => re.test(src)).map(([, why]) => why);
     expect(found).toEqual([]);
     // An API under test gets its database from openTestDb() (directly or through helpers.ts).
