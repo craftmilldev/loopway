@@ -43,7 +43,12 @@ const LEASED_UNTIL = "2026-01-01T14:32:00Z";
 
 // A thread in each state (working, waiting, limited, stranded, done) and at each level, a/b#2 with none set.
 const snapshot: Snapshot = {
-  bots: { held: [bot("dev")], skipped: [{ ...bot("ci"), leased_until: LEASED_UNTIL, held_by: "laptop" }] },
+  bots: {
+    held: [bot("dev")],
+    skipped: [{ ...bot("ci"), leased_until: LEASED_UNTIL, held_by: "laptop" }],
+    unleased: [],
+  },
+  leaseBots: true,
   waiting: [
     { id: "e1", inbox_id: "in", type: "com.github.push", subject: "a/b#9", thread_id: "aaaaaaaa-1", bot_name: "dev" },
   ],
@@ -282,7 +287,8 @@ describe("ThreadsTui", () => {
       ]),
     );
     const { frame, selected, press } = await show({
-      bots: { held: [], skipped: [] },
+      bots: { held: [], skipped: [], unleased: [] },
+      leaseBots: true,
       waiting: [],
       threads,
       runnerId: "me",

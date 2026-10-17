@@ -1,0 +1,36 @@
+{
+  "name": "bb-plugin-loopway",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "bb": ">=0.46",
+    "bbPluginSdk": ">=0.6.49"
+  },
+  "bb": {
+    "name": "Loopway runner [Experimental]",
+    "description": "Run your loopway bots in bb: each loopway thread's messages go to a bb thread of its own.",
+    "branding": {
+      "icon": "Repeat"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@loopway/cli": "*",
+    "@loopway/harnesses": "*",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.6.49",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.3.0",
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.3"
+  }
+}
