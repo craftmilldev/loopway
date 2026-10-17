@@ -466,7 +466,7 @@ export class Dispatcher {
    */
   private async reconcile(bot: Bot, { repair, claim }: { repair: boolean; claim: boolean }): Promise<void> {
     let repaired = 0;
-    for (const t of await this.client.listThreads(bot.id, "all")) {
+    for (const t of await this.client.listThreads(bot.id, "pending", false)) {
       if (!t.runner_id && !t.started) {
         if (claim) await this.client.claimThread(bot.id, t.id, this.token());
         continue;
@@ -552,7 +552,7 @@ export class Dispatcher {
     // A thread the limit stopped is ready too, with nothing new to deliver; ordering puts it first.
     const ready: Thread[] = [];
     for (const bot of this.bots) {
-      for (const t of await this.client.listThreads(bot.id, "all")) {
+      for (const t of await this.client.listThreads(bot.id, "pending", false)) {
         if (t.runner_id !== this.runnerId || running.has(t.id)) continue;
         if (!(t.waiting.length || t.limited || t.interrupted)) continue;
         if ((this.errored.get(t.id)?.after ?? 0) > Date.now()) continue;

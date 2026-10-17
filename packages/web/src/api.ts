@@ -932,9 +932,14 @@ export function createApi(opts: ApiOptions) {
 
   authed.get("/bots/:botId/threads", async (c) => {
     const bot = await memberBot(c);
-    const q = z.object({ status: z.enum(["active", "ended", "all"]).default("active") }).parse(c.req.query());
+    const q = z
+      .object({
+        status: z.enum(["active", "ended", "all", "pending"]).default("active"),
+        titles: z.enum(["true", "false"]).default("true"),
+      })
+      .parse(c.req.query());
     const rows = await store.listThreads(c.var.db, bot.id, q.status);
-    return c.json({ data: await serializeThreads(c.var.db, rows) });
+    return c.json({ data: await serializeThreads(c.var.db, rows, q.titles === "true") });
   });
 
   authed.get("/bots/:botId/threads/:threadId", async (c) => {
@@ -1298,17 +1303,19 @@ async function serializeThread(db: Db, t: store.Thread) {
  * Summaries and titles are computed here from the stored CloudEvents, through the source registry, so a better
  * summary shows on old messages too. A thread's title is the newest title among its last TITLE_LOOKBACK messages.
  */
-async function serializeThreads(db: Db, threads: store.Thread[]) {
+async function serializeThreads(db: Db, threads: store.Thread[], titles = true) {
   const ids = new Set<string>();
   for (const t of threads)
     for (const m of [...t.waiting, ...t.inflight, ...(t.delivered_messages ?? [])]) ids.add(m.id);
   const [events, newest] = await Promise.all([
     store.messageEvents(db, [...ids]),
-    store.threadNewestEvents(
-      db,
-      threads.map((t) => t.id),
-      TITLE_LOOKBACK,
-    ),
+    titles
+      ? store.threadNewestEvents(
+          db,
+          threads.map((t) => t.id),
+          TITLE_LOOKBACK,
+        )
+      : new Map<string, store.MessageEvent[]>(),
   ]);
   const summary = (id: string) => {
     const e = events.get(id);
@@ -1316,8 +1323,14 @@ async function serializeThreads(db: Db, threads: store.Thread[]) {
   };
   return threads.map((t) => ({
     ...serializeThreadRow(t),
-    title:
-      (newest.get(t.id) ?? []).map((e) => sources.title(e.source_type, e.cloudevent)).find((title) => title) ?? null,
+    // Without titles the field is left out, as an older server would.
+    ...(titles
+      ? {
+          title:
+            (newest.get(t.id) ?? []).map((e) => sources.title(e.source_type, e.cloudevent)).find((title) => title) ??
+            null,
+        }
+      : {}),
     waiting: t.waiting.map((m) => ({ ...m, summary: summary(m.id) })),
     inflight: t.inflight.map((m) => ({ ...m, summary: summary(m.id) })),
     ...(t.delivered_messages

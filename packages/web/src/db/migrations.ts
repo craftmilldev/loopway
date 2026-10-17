@@ -592,4 +592,23 @@ ALTER TABLE loopway.bots ALTER COLUMN harness DROP DEFAULT;
 ALTER TABLE loopway.threads ADD COLUMN automation_level smallint CHECK (automation_level BETWEEN 2 AND 4);
 `,
   },
+  {
+    // Indexes for what the data has grown into: per-day inbox counts read an inbox's messages by time, bots read theirs
+    // after the cursor, deleting a message or a thread finds its thread_messages and events, and a bot lists its threads
+    // in creation order.
+    version: "028_query_indexes",
+    sql: `
+CREATE INDEX messages_inbox_received_idx ON loopway.messages (inbox_id, received_at);
+
+CREATE INDEX messages_inbox_seq_idx ON loopway.messages (inbox_id, seq);
+
+CREATE INDEX thread_messages_message_idx ON loopway.thread_messages (message_id);
+
+CREATE INDEX thread_messages_thread_message_idx ON loopway.thread_messages (thread_id, message_id);
+
+CREATE INDEX thread_events_thread_idx ON loopway.thread_events (thread_id);
+
+CREATE INDEX threads_bot_created_idx ON loopway.threads (bot_id, created_at, id);
+`,
+  },
 ];

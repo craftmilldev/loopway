@@ -608,14 +608,17 @@ export async function botActivity(
        GROUP BY 1, 2`,
       [userId, botId ?? null, orgId ?? null, since],
     ),
-    db.query<{ bot_id: string; last: Date; runs: number; median: number | null }>(
-      `SELECT tm.bot_id, max(tm.delivered_at) AS last,
-              count(DISTINCT (tm.thread_id, tm.delivered_at)) FILTER (WHERE tm.delivered_at >= $4::timestamptz)::int AS runs,
-              (percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM tm.delivered_at - tm.assigned_at))
-                 FILTER (WHERE tm.delivered_at >= $4::timestamptz))::float8 AS median
-       FROM loopway.thread_messages tm JOIN loopway.bots b ON b.id = tm.bot_id
-       WHERE ${scope} AND tm.delivered_at IS NOT NULL
-       GROUP BY 1`,
+    db.query<{ bot_id: string; last: Date | null; runs: number | null; median: number | null }>(
+      `SELECT b.id AS bot_id,
+              (SELECT max(tm.delivered_at) FROM loopway.thread_messages tm WHERE tm.bot_id = b.id) AS last,
+              w.runs, w.median
+       FROM loopway.bots b
+       LEFT JOIN LATERAL (
+         SELECT count(DISTINCT (tm.thread_id, tm.delivered_at))::int AS runs,
+                (percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM tm.delivered_at - tm.assigned_at)))::float8 AS median
+         FROM loopway.thread_messages tm WHERE tm.bot_id = b.id AND tm.delivered_at >= $4::timestamptz
+       ) w ON true
+       WHERE ${scope}`,
       [userId, botId ?? null, orgId ?? null, since],
     ),
     db.query<{ bot_id: string; level: 2 | 3 | 4; n: number }>(
@@ -953,10 +956,22 @@ const LEASED = `b.id = $1 AND b.deleted_at IS NULL AND b.lock_token = $2 AND b.l
 // Strings go in as a jsonb array, like inbox ids.
 const jsonStrings = (param: string) => `(SELECT value FROM jsonb_array_elements_text(${param}::jsonb))`;
 
-export async function listThreads(db: Db, botId: string, status: "active" | "ended" | "all"): Promise<Thread[]> {
+/**
+ * The bot's threads by status. `pending` is the threads a runner has work on: the active ones, and any ended one that
+ * still has a message waiting or in flight. A bot's ended threads pile up, so the runner's polls ask for these.
+ */
+export async function listThreads(
+  db: Db,
+  botId: string,
+  status: "active" | "ended" | "all" | "pending",
+): Promise<Thread[]> {
   return db.query<Thread>(
     `SELECT ${THREAD_COLS} FROM loopway.threads t
-     WHERE t.bot_id = $1 AND ($2 = 'all' OR t.status = $2) ORDER BY t.created_at, t.id`,
+     WHERE t.bot_id = $1 AND (
+       $2 = 'all' OR t.status = $2
+       OR ($2 = 'pending' AND (t.status = 'active' OR EXISTS (
+         SELECT 1 FROM loopway.thread_messages tm WHERE tm.thread_id = t.id AND tm.state <> 'delivered'))))
+     ORDER BY t.created_at, t.id`,
     [botId, status],
   );
 }
@@ -995,7 +1010,9 @@ export async function messageEvents(db: Db, ids: string[]): Promise<Map<string, 
   return new Map(rows.map((r) => [r.id, r]));
 }
 
-/** Each thread's newest `limit` messages (any state), newest first, for finding the thread's title. */
+/**
+ * Each thread's newest `limit` messages (any state), newest first (by id, which is time-ordered, so an index on
+ * thread_messages(thread_id, message_id) reads just those rows), for finding the thread's title. */
 export async function threadNewestEvents(
   db: Db,
   threadIds: string[],
@@ -1008,10 +1025,10 @@ export async function threadNewestEvents(
        SELECT m.id, m.received_at, m.seq, i.source_type, m.cloudevent
        FROM loopway.thread_messages tm JOIN loopway.messages m ON m.id = tm.message_id
        JOIN loopway.inboxes i ON i.id = m.inbox_id
-       WHERE tm.thread_id = t.id ORDER BY m.received_at DESC, m.seq DESC LIMIT $2
+       WHERE tm.thread_id = t.id ORDER BY tm.message_id DESC LIMIT $2
      ) n
      WHERE t.id IN (SELECT value::uuid FROM jsonb_array_elements_text($1::jsonb))
-     ORDER BY t.id, n.received_at DESC, n.seq DESC`,
+     ORDER BY t.id, n.id DESC`,
     [threadIds, limit],
   );
   const byThread = new Map<string, MessageEvent[]>();
