@@ -227,7 +227,7 @@ describe("reexec", () => {
     process.argv = [argv[0]!, "-e", "0"];
     const exit = vi.spyOn(process, "exit").mockImplementation((() => {
       throw new Error("exited");
-    }) as never);
+    }));
     const execve = vi.fn();
     try {
       expect(() => reexec("1", { execve } as never)).toThrow("exited");
