@@ -1,9 +1,10 @@
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AgentRun } from "../src/agent.js";
+import type { Launch } from "../src/harness.js";
 import { LIMIT_FALLBACK_MS, LimitWatch } from "../src/claude-watch.js";
 import { CodexWatch } from "../src/codex.js";
 import { CursorWatch } from "../src/cursor.js";
@@ -48,6 +49,7 @@ describe("harnesses", () => {
     const script = `#!/bin/sh
 if [ "$1" = create-chat ]; then echo chat-123; exit 0; fi
 echo "$@" >> "${out}/args"
+pwd >> "${out}/cwd"
 for a in "$@"; do if [ "$prev" = --workspace ]; then cat "$a/.cursor/mcp.json" >> "${out}/mcp"; fi; prev="$a"; done
 echo '{"type":"system","subtype":"init"}'
 echo '{"type":"user"}'
@@ -82,9 +84,51 @@ echo '{"type":"result","is_error":false,"result":"ok"}'
     expect(args).toHaveLength(3);
     for (const a of args) expect(a).toContain("--resume chat-123 --model auto");
     expect(args[0]).toMatch(/hello$/);
+    // Without a cwd of its own, the run works in the dispatcher's directory.
+    expect(args[0]).toContain(`--add-dir ${process.cwd()} hello`);
     expect(await readFile(join(out, "mcp"), "utf8")).toContain('"url":"http://127.0.0.1:1/mcp/t1"');
     expect(existsSync(`${logPath}.workspace`)).toBe(false);
     expect(await readFile(logPath, "utf8")).toContain('"subtype":"init"');
+
+    // A run with its own cwd starts there, and that directory plus the extra ones are the ones it may work in.
+    const repo = await temp();
+    const workspace = await temp();
+    await harness.run({ ...base, resume: true, cwd: repo, addDirs: [workspace] });
+    const last = (await readFile(join(out, "args"), "utf8")).trim().split("\n").pop();
+    expect(last).toContain(`--add-dir ${repo} --add-dir ${workspace} hello`);
+    expect(last).not.toContain(process.cwd());
+    const cwds = (await readFile(join(out, "cwd"), "utf8")).trim().split("\n");
+    expect(await realpath(cwds[cwds.length - 1]!)).toBe(await realpath(repo));
+  });
+
+  it("ClaudeHarness: extra directories go in as --add-dir, before the flags that take several values", () => {
+    const run: AgentRun = {
+      harness: "claude",
+      sessionId: "t1",
+      resume: false,
+      message: "hello",
+      model: "sonnet",
+      logPath: "/tmp/t1.log",
+      mcpUrl: "http://127.0.0.1:1/mcp/t1",
+      env: {},
+    };
+    const harness = getHarness("claude");
+    const plain = harness.launch(run) as Launch;
+    expect(plain.args).not.toContain("--add-dir");
+    const extra = harness.launch({ ...run, cwd: "/repo", addDirs: ["/workspace", "/other"] }) as Launch;
+    expect(extra.args.slice(0, 7)).toEqual([
+      "-p",
+      "--session-id",
+      "t1",
+      "--add-dir",
+      "/workspace",
+      "--add-dir",
+      "/other",
+    ]);
+    expect(extra.args[7]).toBe("--mcp-config");
+    // The cwd itself isn't a flag: the spawn runs in it.
+    expect(extra.args).not.toContain("/repo");
+    expect(extra.cwd).toBeUndefined();
   });
 
   it("HermesWatch: init starts the session and delivers; a result with an error or exit code is an API error", () => {
@@ -221,8 +265,15 @@ echo '{"type":"turn.completed"}'
     expect(args[1]).toMatch(/^exec resume --json /);
     expect(args[1]).toContain("--dangerously-bypass-approvals-and-sandbox");
     expect(args[1]).toMatch(/ th-123 -$/);
+    expect(args[0]).not.toContain(" -C ");
     expect([harness.modelFits("gpt-6-sol"), harness.modelFits("sonnet")]).toEqual([true, false]);
     expect(await readFile(join(out, "stdin"), "utf8")).toBe("-hello-hello");
+
+    // A run with its own directory tells codex its working root.
+    const repo = await temp();
+    await harness.run({ ...base, resume: true, cwd: repo });
+    const last = (await readFile(join(out, "args"), "utf8")).trim().split("\n").pop();
+    expect(last).toContain(`-m gpt-6-sol -C ${repo} `);
   });
 
   it("LimitWatch: sees our message echoed; a rejected rate_limit_event plus a usage_limit_reached result say when to retry", () => {

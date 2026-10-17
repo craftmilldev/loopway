@@ -89,6 +89,8 @@ export class CodexHarness extends Harness {
     // still goes in, but without the old conversation.
     const thread = run.resume ? (await readFile(this.threadFile(run), "utf8").catch(() => "")).trim() : "";
     const args = ["exec", ...(thread ? ["resume"] : []), "--json", "--skip-git-repo-check", "-m", run.model];
+    // Codex takes its working root as a flag; the spawn's cwd alone isn't enough for it.
+    if (run.cwd) args.push("-C", run.cwd);
     // The dispatcher's tools, with their calls approved up front: a headless run has nobody to ask.
     args.push("-c", `mcp_servers.loopway.url=${JSON.stringify(run.mcpUrl)}`);
     args.push("-c", 'mcp_servers.loopway.default_tools_approval_mode="approve"');

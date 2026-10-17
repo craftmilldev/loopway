@@ -4,6 +4,7 @@ import { applyUpdate, availableUpdate as availableUpdateNow } from "../update.js
 import { authedClient, type Context } from "../context.js";
 import { DEFAULTS, Dispatcher, MAX_POLL_INTERVAL, type ThreadsOptions } from "../bots/dispatcher.js";
 import { ensureRunner, savedRunnerOrg } from "../bots/runner.js";
+import { loadWorkdirs, WORKDIRS_FILE } from "../bots/workdirs.js";
 import { resolveOrg } from "./orgs.js";
 import { colorSupport } from "../bots/colors.js";
 import { showTui } from "../bots/tui.js";
@@ -34,14 +35,21 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     return;
   }
   const interval = opts.interval ?? DEFAULTS.interval;
+  // Bots the directory we run from gives their own working directory; checked now, so a bad file stops us here.
+  const workdirs = await loadWorkdirs(process.cwd());
+  if (workdirs.size) void ctx.metrics?.capture("bot_workdirs_loaded", { bots: workdirs.size });
   const dispatcherOpts = {
     ...opts,
     ttl: opts.ttl ?? defaultTtl(interval),
     runnerId: runner.id,
     seen: all.map((b) => b.id),
+    workdirs,
   };
   const names = bots.map((b) => b.name).join(", ");
-  const watching = `loopway ${CLI_VERSION}: running ${names} every ${interval}s, less when quiet (at most ${opts.max ?? DEFAULTS.max} sessions running at once).`;
+  const dirs = workdirs.size
+    ? ` Working directories from ${WORKDIRS_FILE} for ${workdirs.size} bot${workdirs.size === 1 ? "" : "s"}.`
+    : "";
+  const watching = `loopway ${CLI_VERSION}: running ${names} every ${interval}s, less when quiet (at most ${opts.max ?? DEFAULTS.max} sessions running at once).${dirs}`;
 
   if (opts.tui === false || !ctx.interactive) {
     const dispatcher = await Dispatcher.start(ctx, client, bots, dispatcherOpts);

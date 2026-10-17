@@ -85,7 +85,11 @@ export class CursorHarness extends Harness {
     const chat = (await readFile(this.chatFile(run), "utf8")).trim();
     const args = ["-p", "--resume", chat, "--model", run.model, "--output-format", "stream-json"];
     args.push("--force", "--trust", "--approve-mcps");
-    args.push("--workspace", this.workspace(run), "--add-dir", process.cwd(), run.message);
+    // The workspace is the session's own scratch directory, so the repo it works in, and any other directory
+    // the run allows, go in as extra directories.
+    args.push("--workspace", this.workspace(run));
+    for (const dir of [run.cwd ?? process.cwd(), ...(run.addDirs ?? [])]) args.push("--add-dir", dir);
+    args.push(run.message);
     return { args };
   }
 

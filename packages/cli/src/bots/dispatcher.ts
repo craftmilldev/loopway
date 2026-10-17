@@ -31,6 +31,8 @@ interface StartOptions extends ThreadsOptions {
   runnerId: string;
   /** Ids of bots already reported as not ready, so a new bot is announced only once. */
   seen?: string[];
+  /** Bot name → the absolute directory its sessions run in (see loadWorkdirs); the others run in this process's. */
+  workdirs?: Map<string, string>;
 }
 
 /**
@@ -119,6 +121,8 @@ export class Dispatcher {
   private readonly ttl: number;
   /** This machine's runner id (see ensureRunner), recorded on the bot leases it takes. */
   private readonly runnerId: string;
+  /** Bot name → the directory its sessions run in, for the bots loopway.json names. */
+  private readonly workdirs: Map<string, string>;
   /** This process's lease on its runner, so no other process uses the same runner id. Thread writes take its token. */
   private runnerLease?: Lease;
   private readonly runAgent: RunAgent;
@@ -187,6 +191,7 @@ export class Dispatcher {
     this.max = opts.max ?? DEFAULTS.max;
     this.ttl = opts.ttl ?? DEFAULTS.ttl;
     this.runnerId = opts.runnerId;
+    this.workdirs = opts.workdirs ?? new Map<string, string>();
     this.runAgent = ctx.runAgent ?? runHarness;
     this.dir = ctx.configDir;
   }
@@ -549,6 +554,9 @@ export class Dispatcher {
     ];
     const message = parts.filter((p): p is string => typeof p === "string").join("\n\n");
     const bot = this.bots.find((b) => b.id === thread.bot_id)!;
+    // A bot with its own directory runs there, and may still work in the runner's (the workspace it started from).
+    const cwd = this.workdirs.get(bot.name);
+    const own = cwd !== undefined && cwd !== process.cwd();
     const attempt = (resume: boolean) =>
       this.runAgent({
         harness: bot.harness,
@@ -559,6 +567,7 @@ export class Dispatcher {
         logPath: sessionLogPath(this.dir, id),
         mcpUrl: this.mcp.urlFor(id),
         env: this.env,
+        ...(own ? { cwd, addDirs: [process.cwd()] } : {}),
         // The session exists from here on, even if this run is cut off before it finishes.
         onStarted: () => {
           this.patchThread(id, { started: true }).catch(() => {});

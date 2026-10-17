@@ -11,7 +11,7 @@ export interface Launch {
   args: string[];
   /** Written to the process's stdin, then closed. Leave it off to pass the message in `args` instead. */
   stdin?: string;
-  /** The directory to run in (the dispatcher's by default). */
+  /** The directory to run in; `run.cwd` when left out, and the dispatcher's own when that is too. */
   cwd?: string;
   /** Environment variables added to the run's own. */
   env?: Record<string, string>;
@@ -59,7 +59,7 @@ export abstract class Harness {
       const launch = await this.launch(run);
       const child = spawn(this.command, launch.args, {
         env: launch.env ? { ...run.env, ...launch.env } : run.env,
-        cwd: launch.cwd,
+        cwd: launch.cwd ?? run.cwd,
         stdio: [launch.stdin === undefined ? "ignore" : "pipe", "pipe", errFd],
       });
       if (launch.stdin !== undefined) child.stdin!.end(launch.stdin);
