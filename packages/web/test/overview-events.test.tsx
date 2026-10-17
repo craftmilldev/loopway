@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ThreadEventsFeed } from "../client/overview.js";
 
@@ -78,5 +78,20 @@ describe("ThreadEventsFeed", () => {
     fireEvent.click(screen.getByText("Newer"));
     await screen.findByText("acme/app#2");
     expect(screen.queryByText("Newer")).toBeNull();
+  });
+
+  it("stays on the page when the next one fails to load", async () => {
+    pages = { first: { data: [event("2")], next: "2" } };
+    render(<ThreadEventsFeed ready />);
+    await screen.findByText("acme/app#1");
+    const ok = (fetch as ReturnType<typeof vi.fn>).getMockImplementation()!;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (u: string) => (u.includes("before=") ? new Response("{}", { status: 500 }) : ok(u))),
+    );
+    fireEvent.click(screen.getByText("Older"));
+    await waitFor(() => expect((screen.getByText("Older") as HTMLButtonElement).disabled).toBe(false));
+    expect(screen.queryByText("Newer")).toBeNull();
+    expect(screen.getByText("acme/app#1")).toBeTruthy();
   });
 });

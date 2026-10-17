@@ -50,10 +50,8 @@ export function ThreadEventsFeed({ ready }: { ready: boolean }) {
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [page, setPage] = useState<{ data: lw.ThreadEvent[]; next: string | null } | null>(null);
   const [loading, setLoading] = useState(false);
-  const cursor = cursors[cursors.length - 1]!;
-  // The page being shown, for the requests that finish after the reader has moved on.
-  const current = useRef(cursor);
-  current.current = cursor;
+  // The cursor of the page being shown, for the refreshes that finish after the reader has moved on.
+  const current = useRef<string | null>(null);
 
   const fetchPage = async (at: string | null) => {
     const r = await lw.api(lw.inOrg(`/events?limit=${EVENTS_PAGE}` + (at ? "&before=" + at : "")));
@@ -64,15 +62,21 @@ export function ThreadEventsFeed({ ready }: { ready: boolean }) {
     return (await r.json()) as { data: lw.ThreadEvent[]; next: string | null };
   };
 
-  useEffect(() => {
-    if (!ready) return;
+  // Moves to the page at `to` (the stack of cursors it ends with) once it has loaded, so a failed load leaves the page as it was.
+  const go = async (to: (string | null)[]) => {
+    const at = to[to.length - 1]!;
     setLoading(true);
-    void fetchPage(cursor).then((body) => {
-      if (current.current !== cursor) return;
-      setLoading(false);
-      if (body) setPage(body);
-    });
-  }, [ready, cursor]); // eslint-disable-line react-hooks/exhaustive-deps
+    const body = await fetchPage(at);
+    setLoading(false);
+    if (!body) return;
+    current.current = at;
+    setCursors(to);
+    setPage(body);
+  };
+
+  useEffect(() => {
+    if (ready) void go([null]);
+  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A refresh reloads the page being shown, and keeps it when the request fails or nothing changed.
   lw.usePoll(async () => {
@@ -86,11 +90,11 @@ export function ThreadEventsFeed({ ready }: { ready: boolean }) {
   const older = () => {
     if (!page?.next) return;
     track("overview_events_page_clicked", { direction: "older", page: cursors.length + 1 });
-    setCursors([...cursors, page.next]);
+    void go([...cursors, page.next]);
   };
   const newer = () => {
     track("overview_events_page_clicked", { direction: "newer", page: cursors.length - 1 });
-    setCursors(cursors.slice(0, -1));
+    void go(cursors.slice(0, -1));
   };
 
   const events = page?.data ?? [];
