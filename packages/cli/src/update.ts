@@ -148,12 +148,20 @@ export async function installRelease(
   }
 }
 
-/** Runs this same command again, on whatever is installed now, and exits with its status. `mark` is what the new process finds in LOOPWAY_UPDATED. */
-export function reexec(mark = "1"): never {
-  const res = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
-    stdio: "inherit",
-    env: { ...process.env, [UPDATED_ENV]: mark },
-  });
+/**
+ * Runs this same command again, on whatever is installed now. `mark` is what the new process finds in LOOPWAY_UPDATED.
+ * Where Node can (process.execve, 22.15+ and 23.11+, not on Windows) the new version takes over this process, so a
+ * runner that updates many times is still one process. Otherwise this one waits on a child and exits with its status.
+ */
+export function reexec(mark = "1", proc: Pick<typeof process, "execve"> = process): never {
+  const args = [...process.execArgv, ...process.argv.slice(1)];
+  const env = { ...process.env, [UPDATED_ENV]: mark };
+  try {
+    proc.execve?.(process.execPath, [process.execPath, ...args], env);
+  } catch {
+    // Not allowed here (a worker, an unsupported platform): wait on a child instead.
+  }
+  const res = spawnSync(process.execPath, args, { stdio: "inherit", env });
   process.exit(res.status ?? 1);
 }
 
@@ -174,7 +182,14 @@ export async function applyUpdate(
   log: (text: string) => void = console.error,
   deps: UpdateDeps = defaultDeps,
 ): Promise<never> {
-  reexec((await installRelease(ctx, version, deps, log)) ? "1" : "failed");
+  const installed = await installRelease(ctx, version, deps, log);
+  // Recorded before the hand-off, since an exec replaces this process. So `handoff` is what will be tried, not what
+  // happened: an exec that throws still falls back to a child.
+  await ctx.metrics?.capture("cli_self_update", {
+    outcome: installed ? "installed" : "install_failed",
+    handoff: typeof process.execve === "function" ? "exec_available" : "child_only",
+  });
+  reexec(installed ? "1" : "failed");
 }
 
 /** After the server turned this version away (`cli_outdated`): updates now, whatever the last lookup said, and runs the command again. */
