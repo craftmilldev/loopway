@@ -30,7 +30,11 @@ const REQUEST = "request:";
 export function CreateInbox({ onCreated }: { onCreated: (inbox: Inbox) => void }) {
   const orgs = lw.useOrgs(true);
   const org = orgs ? lw.startOrg(orgs) : "";
-  const { data: sources = [], can_request } = lw.useSources() ?? {};
+  const {
+    data: sources = [],
+    can_request,
+    schedule_options: scheduleOptions = ["hour", "day"],
+  } = lw.useSources() ?? {};
   const [name, setName] = useState("");
   const [type, setType] = useState("");
   const [all, setAll] = useState(false);
@@ -45,6 +49,9 @@ export function CreateInbox({ onCreated }: { onCreated: (inbox: Inbox) => void }
   const requesting = type === REQUEST;
   // The first source is picked until the user picks another.
   const source = requesting ? undefined : (sources.find((s) => s.type === type) ?? sources[0]);
+
+  // The chosen option, or the first this deploy offers when the chosen one is turned off.
+  const chosenEvery = scheduleOptions.includes(every) ? every : (scheduleOptions[0] ?? every);
 
   const minLength = source?.secret.from === "loopway" ? source.secret.min_length : undefined;
 
@@ -72,7 +79,10 @@ export function CreateInbox({ onCreated }: { onCreated: (inbox: Inbox) => void }
     if (!org) return setError("Choose an org.");
     // A schedule has no webhook: its config is a clock and the messages it sends.
     if (source.secret.from === "none") {
-      const config = { schedule: every === "hour" ? { every } : { every, hour }, messages };
+      const config = {
+        schedule: chosenEvery === "hour" ? { every: chosenEvery } : { every: chosenEvery, hour },
+        messages,
+      };
       return create(config);
     }
     const events = all ? ["*"] : source.events.filter((ev) => checked.has(ev));
@@ -133,11 +143,11 @@ export function CreateInbox({ onCreated }: { onCreated: (inbox: Inbox) => void }
           <div className="field">
             <label htmlFor="every">Runs</label>
             <div className="input-wrap">
-              <select id="every" value={every} onChange={(e) => setEvery(e.target.value as "hour" | "day")}>
-                <option value="hour">Every hour</option>
-                <option value="day">Every day</option>
+              <select id="every" value={chosenEvery} onChange={(e) => setEvery(e.target.value as "hour" | "day")}>
+                {scheduleOptions.includes("hour") && <option value="hour">Every hour</option>}
+                {scheduleOptions.includes("day") && <option value="day">Every day</option>}
               </select>
-              {every === "day" && (
+              {chosenEvery === "day" && (
                 <select aria-label="Hour (UTC)" value={hour} onChange={(e) => setHour(Number(e.target.value))}>
                   {Array.from({ length: 24 }, (_, h) => (
                     <option key={h} value={h}>

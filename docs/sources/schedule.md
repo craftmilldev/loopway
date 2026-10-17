@@ -33,11 +33,12 @@ With no flags in a terminal it asks for the schedule, then lets you add, edit an
 
 ## Delivery
 
-`GET /api/cron/schedules` is called by Vercel Cron every hour (`packages/web/vercel.json`) with `Authorization: Bearer $CRON_SECRET`. It stores the messages due in the current window for every schedule inbox. A run at 11:15 of an hourly inbox belongs to the 11:00 window; a daily inbox at hour 9 has windows from 09:00 to 09:00. Windows missed while the server or cron was down are not backfilled.
+`GET /api/cron/schedules` is called by Vercel Cron (`packages/web/vercel.json`, daily at 00:00 UTC by default; an hourly cron is `0 * * * *`) with `Authorization: Bearer $CRON_SECRET`. It stores the messages due in the current window for every schedule inbox. A run at 11:15 of an hourly inbox belongs to the 11:00 window; a daily inbox at hour 9 has windows from 09:00 to 09:00. Windows missed while the server or cron was down are not backfilled.
 
 Every message of a type in a window has the same id, so a repeated run is a duplicate that is stored once, like a webhook redelivery.
 
-Deploy: set `CRON_SECRET` (any random string; Vercel sends it as the bearer token). Without it the route answers `401`. Vercel's Hobby plan only runs crons once a day; hourly needs Pro.
+Deploy: set `CRON_SECRET` (any random string; Vercel sends it as the bearer token). Without it the route answers `401`. 
+Which options a deploy offers is set by `SCHEDULE_OPTIONS` (`hour`, `day` or `hour,day`; default `day`). Vercel's Hobby plan only runs crons once a day, so hourly needs Pro, an hourly cron in `vercel.json`, and `SCHEDULE_OPTIONS=hour,day`. A disabled option is not offered in the dashboard (`GET /api/sources` lists `schedule_options`), creating or updating a schedule with it answers `400 schedule_option_disabled`, and the cron skips inboxes already set to it (the response counts them as `disabled`). With only `day` on and a daily cron, a daily inbox gets its window's messages at the next tick, so up to a day after its hour.
 
 ## CloudEvent mapping
 

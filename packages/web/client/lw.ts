@@ -106,6 +106,8 @@ export interface Source {
 export interface Sources {
   data: Source[];
   can_request: boolean;
+  /** The schedule options this deploy offers. */
+  schedule_options?: ("hour" | "day")[];
 }
 
 export interface Org {
