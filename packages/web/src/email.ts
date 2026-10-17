@@ -23,3 +23,11 @@ export function resendSender(opts: { apiKey: string; from: string; fetch?: typeo
 export const consoleSender: SendEmail = async ({ to, subject, text }) => {
   console.log(`[email to ${to}] ${subject}\n${text}`);
 };
+
+/** Resend when RESEND_API_KEY is set (from EMAIL_FROM, which is then required), else the console. */
+export function senderFromEnv(env: NodeJS.ProcessEnv = process.env, fetchFn?: typeof fetch): SendEmail {
+  if (!env.RESEND_API_KEY) return consoleSender;
+  if (!env.EMAIL_FROM)
+    throw new Error("EMAIL_FROM is required when RESEND_API_KEY is set (the From address of login emails)");
+  return resendSender({ apiKey: env.RESEND_API_KEY, from: env.EMAIL_FROM, fetch: fetchFn });
+}

@@ -23,6 +23,8 @@ Root scripts forward to the workspaces (`lint` and `format` run once over the wh
 
 Create a user with `loopway login` (the CLI creates the user if the email is new).
 
+Login codes are emailed through Resend when `RESEND_API_KEY` is set, from the address in `EMAIL_FROM`, which is then required (e.g. `loopway <login@example.com>`; its domain must be verified in Resend). Without a key they are printed to the server's console. A failed send records a `login_email_failed` metric.
+
 To receive real GitHub webhooks locally, expose the port (e.g. `cloudflared tunnel --url localhost:3000`) and set `PUBLIC_BASE_URL` to the tunnel URL.
 
 ## Deploy (Vercel + Neon)
