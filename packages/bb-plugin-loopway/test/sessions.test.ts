@@ -94,7 +94,8 @@ describe("BbSessions", () => {
   it("starts a bb thread for a new loopway thread, maps them, and finishes when it goes idle", async () => {
     const onStarted = vi.fn();
     const outcome = sessions.run(run({ onStarted }));
-    await settleSoon();
+    // onStarted comes after the thread is mapped and the log written, which a fixed sleep can beat on a slow runner.
+    await vi.waitFor(() => expect(onStarted).toHaveBeenCalledOnce());
     expect(store.api.spawn).toHaveBeenCalledWith({
       projectId: "proj_1",
       environment: { type: "project-default" },
