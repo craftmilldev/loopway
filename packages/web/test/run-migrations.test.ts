@@ -78,6 +78,20 @@ describe("runMigrations", () => {
     expect(events.map((e) => e.event)).toEqual(["migrations_failed"]);
   });
 
+  it("lets two concurrent runs take turns, applying each migration once", async () => {
+    const root = await openDb({ databaseUrl: admin.toString() });
+    await root.query(`DROP DATABASE IF EXISTS ${dbName}_race WITH (FORCE)`);
+    await root.query(`CREATE DATABASE ${dbName}_race`);
+    try {
+      const env = { DATABASE_URL: urlFor(`${dbName}_race`) };
+      const [a, b] = await Promise.all([runMigrations({ env, metrics, log }), runMigrations({ env, metrics, log })]);
+      expect([...a!, ...b!].sort()).toEqual(migrations.map((m) => m.version).sort());
+    } finally {
+      await root.query(`DROP DATABASE IF EXISTS ${dbName}_race WITH (FORCE)`);
+      await root.close();
+    }
+  });
+
   it("skips when no URL is set", async () => {
     expect(await runMigrations({ env: {}, metrics, log })).toBeNull();
     expect(events).toEqual([]);

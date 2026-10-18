@@ -47,27 +47,35 @@ export async function openDb(opts: DbOptions): Promise<Db> {
   };
 }
 
+/** Arbitrary constant: the advisory lock that makes concurrent `migrate()` runs (two builds at once) take turns. */
+const MIGRATE_LOCK = 7_204_113;
+
 export async function migrate(db: Db): Promise<string[]> {
-  await db.query(`CREATE SCHEMA IF NOT EXISTS loopway`);
-  await db.query(
-    `CREATE TABLE IF NOT EXISTS loopway.schema_migrations (
-       version text PRIMARY KEY,
-       applied_at timestamptz NOT NULL DEFAULT now()
-     )`,
-  );
-  const done = new Set(
-    (await db.query<{ version: string }>(`SELECT version FROM loopway.schema_migrations`)).map((r) => r.version),
-  );
+  // Transaction-level locks (not session-level) so this holds through a pooler and releases itself on failure.
+  await db.transaction(async (tx) => {
+    await tx.query(`SELECT pg_advisory_xact_lock($1)`, [MIGRATE_LOCK]);
+    await tx.query(`CREATE SCHEMA IF NOT EXISTS loopway`);
+    await tx.query(
+      `CREATE TABLE IF NOT EXISTS loopway.schema_migrations (
+         version text PRIMARY KEY,
+         applied_at timestamptz NOT NULL DEFAULT now()
+       )`,
+    );
+  });
   const applied: string[] = [];
   for (const m of migrations) {
-    if (done.has(m.version)) continue;
     // Each statement separately: postgres.js unsafe() with params can't run multi-statement strings.
     // One transaction (Postgres DDL is transactional), so a failure leaves nothing half-applied and unrecorded.
-    await db.transaction(async (tx) => {
+    // Under the lock, re-check: a concurrent run may have applied it since we started.
+    const ran = await db.transaction(async (tx) => {
+      await tx.query(`SELECT pg_advisory_xact_lock($1)`, [MIGRATE_LOCK]);
+      const done = await tx.query(`SELECT 1 FROM loopway.schema_migrations WHERE version = $1`, [m.version]);
+      if (done.length) return false;
       for (const stmt of splitSql(m.sql)) await tx.query(stmt);
       await tx.query(`INSERT INTO loopway.schema_migrations (version) VALUES ($1)`, [m.version]);
+      return true;
     });
-    applied.push(m.version);
+    if (ran) applied.push(m.version);
   }
   return applied;
 }
