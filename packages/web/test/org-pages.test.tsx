@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OrgsContext } from "../client/layout.js";
 import * as lw from "../client/lw.js";
@@ -15,6 +15,7 @@ const team = { id: "o2", slug: "craftmill", name: "craftmill", personal: false }
 let replaced: string[];
 let requests: string[];
 let bots: object[] | null;
+let runners: object[];
 
 beforeEach(() => {
   localStorage.clear();
@@ -22,6 +23,7 @@ beforeEach(() => {
   replaced = [];
   requests = [];
   bots = [{ id: "b1" }];
+  runners = [];
   // A stand-in for location that reads the real one (history.replaceState moves it) and records replace().
   const real = window.location;
   vi.stubGlobal("location", {
@@ -44,6 +46,7 @@ beforeEach(() => {
       requests.push(path);
       const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
       if (path.startsWith("/bots?org=")) return bots ? json({ data: bots }) : new Response("{}", { status: 500 });
+      if (path.startsWith("/runners?org=")) return json({ data: runners });
       if (path === "/orgs") return json({ data: [mine, team] });
       if (path === "/bots/b1") return json({ id: "b1", org_id: "o2" });
       if (path === "/inboxes/i1") return json({ id: "i1", org_id: "o1" });
@@ -53,6 +56,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
@@ -103,6 +107,25 @@ describe("OrgGate with no bots", () => {
     );
     expect(track).toHaveBeenCalledWith("zero_state_viewed");
     expect(track).toHaveBeenCalledWith("runners_command_copied", { command: "install", from: "zero_state" });
+  });
+
+  it("moves on to the connected state when a runner shows up, without a refresh", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    window.history.replaceState(null, "", "/craftmill");
+    render(<OrgGate>the page</OrgGate>);
+    expect(await screen.findByText(/Get your runner going/)).toBeTruthy();
+    expect(screen.queryByText("Your runner is connected")).toBeNull();
+    runners = [{ id: "r0", org: "craftmill", name: "old", leased_until: null, bots: [], threads: 0 }];
+    await act(() => vi.advanceTimersByTimeAsync(lw.POLL_MS + 1000));
+    expect(screen.queryByText("Your runner is connected")).toBeNull();
+    runners = [
+      { id: "r1", org: "craftmill", name: "laptop", leased_until: "2099-01-01T00:00:00Z", bots: [], threads: 0 },
+    ];
+    await act(() => vi.advanceTimersByTimeAsync(lw.POLL_MS + 1000));
+    expect(await screen.findByText("Your runner is connected")).toBeTruthy();
+    expect(screen.queryByText(/Get your runner going/)).toBeNull();
+    expect(screen.getByText("New bot").getAttribute("href")).toBe("/craftmill/bots/new");
+    expect(track).toHaveBeenCalledWith("zero_state_runner_connected");
   });
 
   it("leaves the members page alone", async () => {
