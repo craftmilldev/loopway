@@ -12,10 +12,14 @@ vi.mock("../client/metrics.js", () => ({ track: vi.fn(), identify: vi.fn(), rese
 const mine = { id: "o1", slug: "mcwhittemore", name: "mcwhittemore", personal: true };
 const team = { id: "o2", slug: "craftmill", name: "craftmill", personal: false };
 
+const online = { id: "r1", org: "craftmill", name: "laptop", leased_until: "2099-01-01T00:00:00Z", bots: [], threads: 0 };
+const offline = { id: "r0", org: "craftmill", name: "old", leased_until: null, bots: [], threads: 0 };
+
 let replaced: string[];
 let requests: string[];
 let bots: object[] | null;
 let runners: object[];
+let activity: object[];
 
 beforeEach(() => {
   localStorage.clear();
@@ -23,7 +27,8 @@ beforeEach(() => {
   replaced = [];
   requests = [];
   bots = [{ id: "b1" }];
-  runners = [];
+  runners = [online];
+  activity = [{ bot_id: "b1", last_delivery_at: "2026-10-18T00:00:00Z" }];
   // A stand-in for location that reads the real one (history.replaceState moves it) and records replace().
   const real = window.location;
   vi.stubGlobal("location", {
@@ -47,6 +52,7 @@ beforeEach(() => {
       const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
       if (path.startsWith("/bots?org=")) return bots ? json({ data: bots }) : new Response("{}", { status: 500 });
       if (path.startsWith("/runners?org=")) return json({ data: runners });
+      if (path.startsWith("/bots/activity?")) return json({ data: activity });
       if (path === "/orgs") return json({ data: [mine, team] });
       if (path === "/bots/b1") return json({ id: "b1", org_id: "o2" });
       if (path === "/inboxes/i1") return json({ id: "i1", org_id: "o1" });
@@ -89,6 +95,8 @@ describe("OrgGate", () => {
 describe("OrgGate with no bots", () => {
   beforeEach(() => {
     bots = [];
+    runners = [];
+    activity = [];
   });
 
   it("shows only the zero state, with copyable steps and no nav", async () => {
@@ -115,12 +123,10 @@ describe("OrgGate with no bots", () => {
     render(<OrgGate>the page</OrgGate>);
     expect(await screen.findByText(/Get your runner going/)).toBeTruthy();
     expect(screen.queryByText("Your runner is connected")).toBeNull();
-    runners = [{ id: "r0", org: "craftmill", name: "old", leased_until: null, bots: [], threads: 0 }];
+    runners = [offline];
     await act(() => vi.advanceTimersByTimeAsync(lw.POLL_MS + 1000));
     expect(screen.queryByText("Your runner is connected")).toBeNull();
-    runners = [
-      { id: "r1", org: "craftmill", name: "laptop", leased_until: "2099-01-01T00:00:00Z", bots: [], threads: 0 },
-    ];
+    runners = [online];
     await act(() => vi.advanceTimersByTimeAsync(lw.POLL_MS + 1000));
     expect(await screen.findByText("Your runner is connected")).toBeTruthy();
     expect(screen.queryByText(/Get your runner going/)).toBeNull();
@@ -128,10 +134,62 @@ describe("OrgGate with no bots", () => {
     expect(track).toHaveBeenCalledWith("zero_state_runner_connected");
   });
 
+  it("walks the three steps live and ends the zero state at the third", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    window.history.replaceState(null, "", "/craftmill");
+    render(<OrgGate>the page</OrgGate>);
+    await screen.findByText(/Get your runner going/);
+    const steps = () => screen.getAllByRole("listitem").map((li) => li.getAttribute("aria-current") === "step");
+    expect(screen.getByText("Get loopway running")).toBeTruthy();
+    expect(screen.getByText("Make your first bot")).toBeTruthy();
+    expect(screen.getByText("See it run")).toBeTruthy();
+    expect(steps()).toEqual([true, false, false]);
+    runners = [online];
+    await act(() => vi.advanceTimersByTimeAsync(lw.POLL_MS + 1000));
+    expect(steps()).toEqual([false, true, false]);
+    bots = [{ id: "b1" }];
+    await act(() => vi.advanceTimersByTimeAsync(lw.POLL_MS + 1000));
+    expect(steps()).toEqual([false, false, true]);
+    expect(screen.getByText("Your bot is ready")).toBeTruthy();
+    expect(screen.queryByText("the page")).toBeNull();
+    activity = [{ bot_id: "b1", last_delivery_at: "2026-10-18T00:00:00Z" }];
+    await act(() => vi.advanceTimersByTimeAsync(lw.POLL_MS + 1000));
+    expect(await screen.findByText("the page")).toBeTruthy();
+    for (const e of ["runner_connected", "bot_created", "first_run", "completed"])
+      expect(track).toHaveBeenCalledWith("zero_state_" + e);
+  });
+
   it("leaves the members page alone", async () => {
     window.history.replaceState(null, "", "/craftmill/members");
     render(<OrgGate>the members</OrgGate>);
     expect(await screen.findByText("the members")).toBeTruthy();
+  });
+});
+
+describe("OrgGate for each combination of setup steps", () => {
+  const cases: [string, boolean, boolean, boolean][] = [
+    ["nothing done", false, false, false],
+    ["only a runner", true, false, false],
+    ["only a bot", false, true, false],
+    ["a runner and a bot that never ran", true, true, false],
+    ["a bot that ran, with the runner offline", false, true, true],
+    ["everything done", true, true, true],
+  ];
+  it.each(cases)("%s", async (_name, runner, bot, ran) => {
+    runners = runner ? [online] : [offline];
+    bots = bot ? [{ id: "b1" }] : [];
+    activity = ran ? [{ bot_id: "b1", last_delivery_at: "2026-10-18T00:00:00Z" }] : [];
+    window.history.replaceState(null, "", "/craftmill");
+    render(<OrgGate>the page</OrgGate>);
+    if (runner && bot && ran) {
+      expect(await screen.findByText("the page")).toBeTruthy();
+      expect(track).not.toHaveBeenCalledWith("zero_state_viewed");
+      return;
+    }
+    await screen.findByText("Get loopway running");
+    expect(screen.queryByText("the page")).toBeNull();
+    const current = screen.getAllByRole("listitem").findIndex((li) => li.getAttribute("aria-current") === "step");
+    expect(current).toBe(!runner ? 0 : !bot ? 1 : 2);
   });
 });
 

@@ -28,7 +28,7 @@ export function Layout({ title, nav, children }: { title: string; nav?: ReactNod
 /** The user's orgs, which the page's org gate (main.tsx) has loaded; null where there is no gate. */
 export const OrgsContext = createContext<Org[] | null>(null);
 
-/** True while the org has no bots, when its pages show only the zero state (org-pages.tsx) and the nav is hidden. */
+/** True while the org is still in the zero state (setup not finished), when its pages show only the zero state (org-pages.tsx) and the nav is hidden. */
 export const NoBotsContext = createContext(false);
 
 /** For an empty shared org's pages: teammates are added from the CLI. Nothing in a personal org, which has no members. */
