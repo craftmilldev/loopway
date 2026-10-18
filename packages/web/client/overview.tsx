@@ -42,81 +42,76 @@ const EVENT_TEXT: Record<lw.ThreadEvent["kind"], string> = {
   limit_cleared: "is clear of its usage limit",
 };
 
-const startOfToday = () => new Date(new Date().setHours(0, 0, 0, 0)).getTime();
+const EVENTS_PAGE = 10;
 
-/** "What the bots did": today's thread events, newest first, and a control for the days before. */
+/** "What the bots did": the thread events ten at a time, newest first, with Newer and Older to move between pages. */
 export function ThreadEventsFeed({ ready }: { ready: boolean }) {
-  const [events, setEvents] = useState<lw.ThreadEvent[] | null>(null);
-  const [next, setNext] = useState<string | null>(null);
-  const [earlier, setEarlier] = useState(false);
+  // The cursors of the pages walked through, the last being the one shown; null is the newest page.
+  const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const [page, setPage] = useState<{ data: lw.ThreadEvent[]; next: string | null } | null>(null);
   const [loading, setLoading] = useState(false);
-  // The list as last set, for the requests that finish after a render they started in.
-  const listed = useRef<lw.ThreadEvent[] | null>(null);
+  // The cursor of the page being shown, for the refreshes that finish after the reader has moved on.
+  const current = useRef<string | null>(null);
 
-  const load = async (before: string | null) => {
+  const fetchPage = async (at: string | null) => {
+    const r = await lw.api(lw.inOrg(`/events?limit=${EVENTS_PAGE}` + (at ? "&before=" + at : "")));
+    if (!r.ok) {
+      track("overview_load_failed", { resource: "events", status: r.status });
+      return null;
+    }
+    return (await r.json()) as { data: lw.ThreadEvent[]; next: string | null };
+  };
+
+  // Moves to the page at `to` (the stack of cursors it ends with) once it has loaded, so a failed load leaves the page as it was.
+  const go = async (to: (string | null)[]) => {
+    const at = to[to.length - 1]!;
     setLoading(true);
-    const r = await lw.api(lw.inOrg("/events" + (before ? "?before=" + before : "")));
+    const body = await fetchPage(at);
     setLoading(false);
-    if (!r.ok) return track("overview_load_failed", { resource: "events", status: r.status });
-    const body = (await r.json()) as { data: lw.ThreadEvent[]; next: string | null };
-    listed.current = [...(listed.current ?? []), ...body.data];
-    setEvents(listed.current);
-    setNext(body.next);
+    if (!body) return;
+    current.current = at;
+    setCursors(to);
+    setPage(body);
   };
 
   useEffect(() => {
-    if (ready) void load(null);
-  }, [ready]);
+    if (ready) void go([null]);
+  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // A refresh reads the newest page and adds only the events it hasn't got, so "Show earlier" and its place stay put.
-  // If the page shares nothing with the list, there may be events in between that it can't reach, so it starts over.
+  // A refresh reloads the page being shown, and keeps it when the request fails or nothing changed.
   lw.usePoll(async () => {
-    const r = await lw.api(lw.inOrg("/events"));
-    if (!r.ok) {
-      track("overview_load_failed", { resource: "events", status: r.status });
-      return false;
-    }
-    const body = (await r.json()) as { data: lw.ThreadEvent[]; next: string | null };
-    // Merges into the list as it is now, not as it was when this request started: a page may have loaded since.
-    const merged = lw.mergeNewest(listed.current, body.data, !!body.next);
-    if (merged.items !== listed.current) {
-      listed.current = merged.items;
-      setEvents(merged.items);
-    }
-    if (merged.replaced) setNext(body.next);
+    const at = current.current;
+    const body = await fetchPage(at);
+    if (!body) return false;
+    if (current.current === at) setPage((p) => (lw.same(p, body) ? p : body));
     return true;
   }, ready);
 
-  // A full page of today's events may not be all of them: keep reading until the page reaches back past midnight.
-  useEffect(() => {
-    const last = events?.[events.length - 1];
-    if (next && last && !earlier && !loading && new Date(last.at).getTime() >= startOfToday()) void load(next);
-  }, [events, next, earlier, loading]);
-
-  const midnight = startOfToday();
-  const shown = (events ?? []).filter((e) => earlier || new Date(e.at).getTime() >= midnight);
-  const hasEarlier = earlier ? !!next : !!events && (shown.length < events.length || !!next);
-
-  const showEarlier = () => {
-    track("overview_events_earlier_clicked", { loaded: events?.length ?? 0 });
-    setEarlier(true);
-    if (next) void load(next);
+  const older = () => {
+    if (!page?.next) return;
+    track("overview_events_page_clicked", { direction: "older", page: cursors.length + 1 });
+    void go([...cursors, page.next]);
   };
+  const newer = () => {
+    track("overview_events_page_clicked", { direction: "newer", page: cursors.length - 1 });
+    void go(cursors.slice(0, -1));
+  };
+
+  const events = page?.data ?? [];
+  const midnight = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
 
   return (
     <>
-      {events && shown.length === 0 && (
+      {page && events.length === 0 && (
         <p className="muted">Nothing to show yet. What the bots do will be listed here.</p>
       )}
       <ul className="feed">
-        {shown.map((e) => {
+        {events.map((e) => {
           const at = new Date(e.at);
           return (
             <li key={e.id}>
               <time className="mono" dateTime={e.at} title={at.toLocaleString()}>
-                {earlier && at.getTime() < midnight
-                  ? at.toLocaleDateString([], { month: "short", day: "numeric" }) + " "
-                  : ""}
+                {at.getTime() < midnight ? at.toLocaleDateString([], { month: "short", day: "numeric" }) + " " : ""}
                 {at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
               </time>{" "}
               <a className="bot-link" href={lw.orgBase() + "/bots/" + e.bot_id}>
@@ -130,10 +125,19 @@ export function ThreadEventsFeed({ ready }: { ready: boolean }) {
           );
         })}
       </ul>
-      {hasEarlier && (
-        <button type="button" className="btn btn-md btn-quiet" disabled={loading} onClick={showEarlier}>
-          Show earlier
-        </button>
+      {(cursors.length > 1 || page?.next) && (
+        <div className="feed-pager">
+          {cursors.length > 1 && (
+            <button type="button" className="btn btn-md btn-quiet" disabled={loading} onClick={newer}>
+              Newer
+            </button>
+          )}{" "}
+          {page?.next && (
+            <button type="button" className="btn btn-md btn-quiet" disabled={loading} onClick={older}>
+              Older
+            </button>
+          )}
+        </div>
       )}
     </>
   );
@@ -339,7 +343,7 @@ export function Overview() {
 
       <section className="ov-split">
         <div className="ov-main">
-          <span className="lbl">Today on the threads</span>
+          <span className="lbl">On the threads</span>
           <h2>What the bots did</h2>
           <ThreadEventsFeed ready={ready} />
         </div>
