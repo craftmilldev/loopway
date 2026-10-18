@@ -14,7 +14,7 @@ const FILTERS: { key: RunnerFilter; label: string }[] = [
   { key: "offline", label: "Offline" },
 ];
 
-const COMMANDS = [
+export const COMMANDS = [
   { key: "install", text: "npm i -g @loopway/cli" },
   { key: "login", text: "loopway login" },
   { key: "run", text: "cd ~/code/your-repo && loopway bots run" },
@@ -22,15 +22,15 @@ const COMMANDS = [
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : one + "s"}`;
 
-function CopyCommand({ command }: { command: (typeof COMMANDS)[number] }) {
+export function CopyCommand({ command, from = "runners" }: { command: (typeof COMMANDS)[number]; from?: string }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(command.text);
     } catch {
-      return track("runners_command_copy_failed", { command: command.key });
+      return track("runners_command_copy_failed", { command: command.key, from });
     }
-    track("runners_command_copied", { command: command.key });
+    track("runners_command_copied", { command: command.key, from });
     setCopied(true);
   };
   return (

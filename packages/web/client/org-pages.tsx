@@ -1,7 +1,8 @@
 import { useEffect, type ReactNode } from "react";
-import { Layout, OrgsContext } from "./layout.js";
+import { Layout, NoBotsContext, OrgsContext } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
+import { ZeroState } from "./zero-state.js";
 
 /** The page for a path nothing is at. An org the user isn't in gets this too, so it can't tell them the org exists. */
 export function NotFound() {
@@ -31,9 +32,19 @@ export function OrgGate({ children }: { children: ReactNode }) {
     if (member) lw.rememberOrg(slug);
     else track("org_page_not_found");
   }, [orgs, member, slug]);
+  const bots = lw.useList<lw.Bot>(lw.inOrg("/bots"), member);
   if (!orgs) return null;
   if (!member) return <NotFound />;
-  return <OrgsContext.Provider value={orgs}>{children}</OrgsContext.Provider>;
+  // An org's first bot is the point of the app until it exists, so its pages give way to the zero state. Members (to
+  // invite) and the new-bot form stay. A failed bots request shows the pages as usual.
+  if (!bots.data && !bots.missing) return null;
+  const noBots = bots.data?.length === 0;
+  const shown = !noBots || /^\/[^/]+\/(members|bots\/new)$/.test(location.pathname);
+  return (
+    <OrgsContext.Provider value={orgs}>
+      <NoBotsContext.Provider value={noBots}>{shown ? children : <ZeroState />}</NoBotsContext.Provider>
+    </OrgsContext.Provider>
+  );
 }
 
 /** The API path of the bot or inbox an old /dashboard page (`rest` is what follows /dashboard) is about, else null. */

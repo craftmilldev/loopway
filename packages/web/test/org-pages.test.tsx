@@ -14,12 +14,14 @@ const team = { id: "o2", slug: "craftmill", name: "craftmill", personal: false }
 
 let replaced: string[];
 let requests: string[];
+let bots: object[];
 
 beforeEach(() => {
   localStorage.clear();
   localStorage.setItem("loopway_token", "t");
   replaced = [];
   requests = [];
+  bots = [{ id: "b1" }];
   // A stand-in for location that reads the real one (history.replaceState moves it) and records replace().
   const real = window.location;
   vi.stubGlobal("location", {
@@ -41,6 +43,7 @@ beforeEach(() => {
       const path = apiPath.replace(/^\/api/, "");
       requests.push(path);
       const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+      if (path.startsWith("/bots?org=")) return json({ data: bots });
       if (path === "/orgs") return json({ data: [mine, team] });
       if (path === "/bots/b1") return json({ id: "b1", org_id: "o2" });
       if (path === "/inboxes/i1") return json({ id: "i1", org_id: "o1" });
@@ -76,6 +79,43 @@ describe("OrgGate", () => {
     expect(texts[0]).toBe(texts[1]);
     expect(localStorage.getItem("loopway_last_org")).toBeNull();
     expect(track).toHaveBeenCalledWith("org_page_not_found");
+  });
+});
+
+describe("OrgGate with no bots", () => {
+  beforeEach(() => {
+    bots = [];
+  });
+
+  it("shows only the zero state, with copyable steps and no nav", async () => {
+    const writeText = vi.fn(async () => {});
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    window.history.replaceState(null, "", "/craftmill");
+    render(<OrgGate>the page</OrgGate>);
+    expect(await screen.findByText(/Get your runner going/)).toBeTruthy();
+    expect(screen.queryByText("the page")).toBeNull();
+    expect(screen.queryByText("Bots")).toBeNull();
+    expect(screen.queryByText("New bot")).toBeNull();
+    expect(screen.getByText("Members")).toBeTruthy();
+    fireEvent.click(screen.getAllByText("Copy")[0]!);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("npm i -g @loopway/cli"));
+    expect(track).toHaveBeenCalledWith("zero_state_viewed");
+    expect(track).toHaveBeenCalledWith("runners_command_copied", { command: "install", from: "zero_state" });
+  });
+
+  it("leaves the members page alone", async () => {
+    window.history.replaceState(null, "", "/craftmill/members");
+    render(<OrgGate>the members</OrgGate>);
+    expect(await screen.findByText("the members")).toBeTruthy();
+  });
+});
+
+describe("OrgGate with a bot", () => {
+  it("shows the normal page", async () => {
+    window.history.replaceState(null, "", "/craftmill");
+    render(<OrgGate>the page</OrgGate>);
+    expect(await screen.findByText("the page")).toBeTruthy();
+    expect(track).not.toHaveBeenCalledWith("zero_state_viewed");
   });
 });
 
