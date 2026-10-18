@@ -106,7 +106,7 @@ A thread is an issue and the PRs linked to it, whose subjects are `owner/repo#nu
 
 Sessions talk back to the dispatcher over MCP: it serves a `loopway` server on 127.0.0.1 (one URL per session, passed with `--mcp-config`) with two tools:
 
-- `link` adds a PR to the session's thread (`PATCH` with `add_subjects`). Sessions call it right after opening a PR; a PR whose body says `Closes #N` also joins issue N's thread on its own.
+- `link` adds a subject to the session's thread (`PATCH` with `add_subjects`): any string the bot's rules produce, such as `owner/repo#9` or `linear/CRA-41`, or a `number` (and `repo`) for `owner/repo#number`. Sessions call it right after opening a PR; a PR whose body says `Closes #N` also joins issue N's thread on its own.
 - `end` marks the thread finished (`PATCH` with `status: "ended"`). The session decides when that is (a close event usually means it, but not always). A later message for the thread resumes it and makes it active again.
 
 Delivery doesn't touch the inbox's messages: they aren't locked or marked processed, and a session never marks them done. They're context for the thread, and `end` is what finishes it. A delivery lists each message's id, type, subject and the command that reads it, `loopway messages get <inbox> <message> --data` (a bot can read several inboxes). Each thread's transcript (stream-json) is appended to `~/.loopway/threads/<thread>.log` on the machine whose runner owns it. A runner that dies mid-run leaves the messages it was delivering inflight; the next `loopway bots run` on that machine puts them back to waiting and delivers them again.
