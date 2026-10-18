@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { Layout, NoBotsContext, OrgsContext } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
-import { setupDone, useSetupProgress, ZeroState, type SetupProgress } from "./zero-state.js";
+import { setupDone, useSetupProgress, ZeroState } from "./zero-state.js";
 
 /** The page for a path nothing is at. An org the user isn't in gets this too, so it can't tell them the org exists. */
 export function NotFound() {
@@ -43,7 +43,7 @@ export function OrgGate({ children }: { children: ReactNode }) {
   const shown = !zero || /^\/[^/]+\/(members|bots\/new)$/.test(location.pathname);
   return (
     <OrgsContext.Provider value={orgs}>
-      <NoBotsContext.Provider value={zero}>{shown ? children : <ZeroState progress={setup as SetupProgress} />}</NoBotsContext.Provider>
+      <NoBotsContext.Provider value={zero}>{shown ? children : <ZeroState progress={setup} />}</NoBotsContext.Provider>
     </OrgsContext.Provider>
   );
 }
