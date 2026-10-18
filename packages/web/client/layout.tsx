@@ -28,6 +28,9 @@ export function Layout({ title, nav, children }: { title: string; nav?: ReactNod
 /** The user's orgs, which the page's org gate (main.tsx) has loaded; null where there is no gate. */
 export const OrgsContext = createContext<Org[] | null>(null);
 
+/** True while the org has no bots, when its pages show only the zero state (org-pages.tsx) and the nav is hidden. */
+export const NoBotsContext = createContext(false);
+
 /** For an empty shared org's pages: teammates are added from the CLI. Nothing in a personal org, which has no members. */
 export function MembersHint() {
   const orgs = useContext(OrgsContext);
@@ -69,6 +72,7 @@ export function DashLayout({
     document.title = title;
   }, [title]);
   const orgs = useContext(OrgsContext);
+  const noBots = useContext(NoBotsContext);
   const slug = orgless ? (orgs ? startOrg(orgs) : null) : orgSlug();
   const base = !orgless ? orgBase() : !orgs ? lastOrgPath() : slug ? "/" + encodeURIComponent(slug) : "/dashboard";
   const out = (e: MouseEvent) => {
@@ -86,14 +90,14 @@ export function DashLayout({
             <a href="#" onClick={out}>
               Log out
             </a>
-            {(!orgless || slug !== "") && (
+            {(!orgless || slug !== "") && !noBots && (
               <a className="btn btn-md" href={base + "/bots/new"}>
                 New bot
               </a>
             )}
           </div>
         </div>
-        {(!orgless || slug !== "") && (
+        {(!orgless || slug !== "") && !noBots && (
           <nav className="dash-nav" aria-label="Main">
             {sections(base).map((s) => (
               <a key={s.label} href={s.href} className={!orgless && s.on(location.pathname) ? "on" : undefined}>
