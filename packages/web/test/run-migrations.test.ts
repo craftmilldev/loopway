@@ -1,17 +1,11 @@
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { openDb } from "../src/db/index.js";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { migrationUrl, runMigrations } from "../src/db/run-migrations.js";
-import { DEFAULT_TEST_DATABASE_URL } from "../src/db/testing.js";
+import { createTestDatabase } from "../src/db/testing.js";
 import { migrations } from "../src/db/migrations.js";
 import type { Metrics } from "../src/metrics.js";
 
-const admin = new URL(process.env.TEST_DATABASE_URL || DEFAULT_TEST_DATABASE_URL);
-const dbName = `run_migrations_${process.pid}`;
-const urlFor = (name: string) => {
-  const u = new URL(admin);
-  u.pathname = `/${name}`;
-  return u.toString();
-};
+let database: Awaited<ReturnType<typeof createTestDatabase>>;
+let raceDatabase: typeof database;
 
 const events: { event: string; properties?: Record<string, unknown> }[] = [];
 const metrics: Metrics = { capture: async (event, _id, properties) => void events.push({ event, properties }) };
@@ -19,15 +13,12 @@ const lines: string[] = [];
 const log = (l: string) => void lines.push(l);
 
 beforeAll(async () => {
-  const root = await openDb({ databaseUrl: admin.toString() });
-  await root.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
-  await root.query(`CREATE DATABASE ${dbName}`);
-  await root.close();
-  return async () => {
-    const r = await openDb({ databaseUrl: admin.toString() });
-    await r.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
-    await r.close();
-  };
+  database = await createTestDatabase();
+  raceDatabase = await createTestDatabase();
+});
+afterAll(async () => {
+  await database.drop();
+  await raceDatabase.drop();
 });
 afterEach(() => {
   events.length = 0;
@@ -45,7 +36,7 @@ describe("migrationUrl", () => {
 
 describe("runMigrations", () => {
   it("applies pending migrations, then is a no-op", async () => {
-    const env = { DATABASE_URL: urlFor(dbName) };
+    const env = { DATABASE_URL: database.url };
     const first = await runMigrations({ env, metrics, log });
     expect(first).toEqual(migrations.map((m) => m.version));
     expect(events).toEqual([{ event: "migrations_applied", properties: { count: migrations.length } }]);
@@ -57,7 +48,7 @@ describe("runMigrations", () => {
   });
 
   it("migrates the unpooled URL when DATABASE_URL is the pooled one (Neon's names)", async () => {
-    const env = { DATABASE_URL: "postgres://nobody@127.0.0.1:1/none", DATABASE_URL_UNPOOLED: urlFor(dbName) };
+    const env = { DATABASE_URL: "postgres://nobody@127.0.0.1:1/none", DATABASE_URL_UNPOOLED: database.url };
     expect(await runMigrations({ env, metrics, log })).toEqual([]);
   });
 
@@ -68,7 +59,7 @@ describe("runMigrations", () => {
   });
 
   it("records migrations_failed when a migration's SQL fails", async () => {
-    const env = { DATABASE_URL: urlFor(dbName) };
+    const env = { DATABASE_URL: database.url };
     migrations.push({ version: "999_broken", sql: "SELECT * FROM loopway.no_such_table" });
     try {
       await expect(runMigrations({ env, metrics, log })).rejects.toThrow();
@@ -79,17 +70,9 @@ describe("runMigrations", () => {
   });
 
   it("lets two concurrent runs take turns, applying each migration once", async () => {
-    const root = await openDb({ databaseUrl: admin.toString() });
-    await root.query(`DROP DATABASE IF EXISTS ${dbName}_race WITH (FORCE)`);
-    await root.query(`CREATE DATABASE ${dbName}_race`);
-    try {
-      const env = { DATABASE_URL: urlFor(`${dbName}_race`) };
-      const [a, b] = await Promise.all([runMigrations({ env, metrics, log }), runMigrations({ env, metrics, log })]);
-      expect([...a!, ...b!].sort()).toEqual(migrations.map((m) => m.version).sort());
-    } finally {
-      await root.query(`DROP DATABASE IF EXISTS ${dbName}_race WITH (FORCE)`);
-      await root.close();
-    }
+    const env = { DATABASE_URL: raceDatabase.url };
+    const [a, b] = await Promise.all([runMigrations({ env, metrics, log }), runMigrations({ env, metrics, log })]);
+    expect([...a!, ...b!].sort()).toEqual(migrations.map((m) => m.version).sort());
   });
 
   it("skips when no URL is set", async () => {

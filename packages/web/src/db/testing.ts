@@ -15,10 +15,10 @@ import { migrate, openDb, type Db } from "./index.js";
 export const DEFAULT_TEST_DATABASE_URL = "postgres://postgres:postgres@localhost:54329/postgres";
 
 /**
- * A migrated Db in its own throwaway database on the test Postgres server, so test files stay
- * isolated and can run in parallel. close() drops the database.
+ * An empty throwaway database on the test Postgres server: its URL, and drop() to remove it.
+ * For tests that need to connect by URL themselves; most want openTestDb().
  */
-export async function openTestDb(): Promise<Db> {
+export async function createTestDatabase(): Promise<{ url: string; drop(): Promise<void> }> {
   const admin = new URL(process.env.TEST_DATABASE_URL || DEFAULT_TEST_DATABASE_URL);
   const name = `loopway_test_${randomBytes(6).toString("hex")}`;
   const adminDb = await openDb({ databaseUrl: admin.toString() });
@@ -30,15 +30,29 @@ export async function openTestDb(): Promise<Db> {
   }
   const url = new URL(admin);
   url.pathname = `/${name}`;
-  const db = await openDb({ databaseUrl: url.toString() });
+  return {
+    url: url.toString(),
+    async drop() {
+      await adminDb.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+      await adminDb.close();
+    },
+  };
+}
+
+/**
+ * A migrated Db in its own throwaway database on the test Postgres server, so test files stay
+ * isolated and can run in parallel. close() drops the database.
+ */
+export async function openTestDb(): Promise<Db> {
+  const testDatabase = await createTestDatabase();
+  const db = await openDb({ databaseUrl: testDatabase.url });
   await migrate(db);
   return {
     query: (text, params) => db.query(text, params),
     transaction: (fn) => db.transaction(fn),
     async close() {
       await db.close();
-      await adminDb.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
-      await adminDb.close();
+      await testDatabase.drop();
     },
   };
 }
