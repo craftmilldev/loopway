@@ -101,12 +101,12 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
           if (!botId) throw new Error("unknown thread");
           try {
             await client.endThread(botId, threadId);
+            void ctx.metrics?.capture("thread_ended", { surface: "tui" });
           } catch (err) {
             const reason = err instanceof ApiError ? err.code : "error";
             void ctx.metrics?.capture("thread_end_failed", { surface: "tui", reason });
             throw err;
           }
-          void ctx.metrics?.capture("thread_ended", { surface: "tui" });
         },
       },
       closeTui.signal,
