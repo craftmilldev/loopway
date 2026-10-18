@@ -20,6 +20,8 @@ export interface TuiProps {
   readLog: (sessionId: string) => Promise<string>;
   /** Sends a message to a thread; rejects with the reason it couldn't. */
   send: (threadId: string, text: string) => Promise<void>;
+  /** Ends a thread; rejects with the reason it couldn't. */
+  end: (threadId: string) => Promise<void>;
   /** The slug of the org the runner runs bots for. */
   org?: string;
   refreshMs?: number;
@@ -56,7 +58,7 @@ export async function showTui(props: TuiProps, signal?: AbortSignal): Promise<vo
  * The threads TUI: waiting messages, then working, waiting and done sessions. ↑/↓ moves between
  * sessions (messages can't be opened), Tab jumps to the next list, Enter or → opens a session's transcript.
  */
-export function ThreadsTui({ load, readLog, send, org, refreshMs = 1000 }: TuiProps) {
+export function ThreadsTui({ load, readLog, send, end, org, refreshMs = 1000 }: TuiProps) {
   const [snap, setSnap] = useState<Snapshot>();
   const [selected, setSelected] = useState<string>();
   const [open, setOpen] = useState<string>();
@@ -70,6 +72,7 @@ export function ThreadsTui({ load, readLog, send, org, refreshMs = 1000 }: TuiPr
         snap={snap}
         readLog={readLog}
         send={send}
+        end={end}
         refreshMs={refreshMs}
         onBack={() => setOpen(undefined)}
       />
@@ -348,21 +351,24 @@ interface LogViewProps {
   snap: Snapshot;
   readLog: (sessionId: string) => Promise<string>;
   send: (threadId: string, text: string) => Promise<void>;
+  end: (threadId: string) => Promise<void>;
   refreshMs: number;
   onBack: () => void;
 }
 
 /**
  * A session's transcript. It follows new output until you scroll up, and again once you're back at the end. `m` writes
- * a message to the thread: Enter sends it, Esc drops it.
+ * a message to the thread: Enter sends it, Esc drops it. `e` then `y` ends the thread; `e` then any other key keeps it.
  */
-function LogView({ id, snap, readLog, send, refreshMs, onBack }: LogViewProps) {
+function LogView({ id, snap, readLog, send, end, refreshMs, onBack }: LogViewProps) {
   const { exit } = useApp();
   const { rows: height, columns } = useWindowSize();
   const [log, setLog] = useState<string>();
   // undefined: not writing a message.
   const [draft, setDraft] = useState<string>();
   const [sent, setSent] = useState<string>();
+  // Whether `e` is waiting for `y`.
+  const [ending, setEnding] = useState(false);
   // undefined: pinned to the end.
   const [top, setTop] = useState<number>();
   useEffect(() => poll(() => readLog(id), setLog, refreshMs), [id, readLog, refreshMs]);
@@ -386,8 +392,20 @@ function LogView({ id, snap, readLog, send, refreshMs, onBack }: LogViewProps) {
     );
   };
 
+  const endThread = () => {
+    setSent("ending…");
+    end(id).then(
+      () => setSent("thread ended"),
+      (err) => setSent(`not ended: ${err instanceof Error ? err.message : String(err)}`),
+    );
+  };
+
   useInput((input, key) => {
-    if (draft !== undefined) {
+    if (ending) {
+      setEnding(false);
+      if (input === "y") endThread();
+      else setSent("end canceled");
+    } else if (draft !== undefined) {
       if (key.escape) setDraft(undefined);
       else if (key.return) submit(draft);
       else if (key.backspace || key.delete) setDraft(draft.slice(0, -1));
@@ -396,6 +414,9 @@ function LogView({ id, snap, readLog, send, refreshMs, onBack }: LogViewProps) {
     else if (input === "m") {
       setSent(undefined);
       setDraft("");
+    } else if (input === "e") {
+      setSent(undefined);
+      setEnding(true);
     } else if (key.leftArrow) onBack();
     else if (key.upArrow) scroll(start - 1);
     else if (key.downArrow) scroll(start + 1);
@@ -440,11 +461,15 @@ function LogView({ id, snap, readLog, send, refreshMs, onBack }: LogViewProps) {
           <Text inverse> </Text>
           <Text color={muted}> enter send · esc cancel</Text>
         </Text>
+      ) : ending ? (
+        <Text color={muted} wrap="truncate-end">
+          end this thread? y end · any other key keeps it
+        </Text>
       ) : (
         <Text color={muted} wrap="truncate-end">
           {sent ? `${sent} · ` : ""}
           {lines.length ? `${start + 1}–${Math.min(start + body, lines.length)} of ${lines.length} · ` : ""}↑↓ PgUp/PgDn
-          scroll · m message · ← back · q quit
+          scroll · m message · e end · ← back · q quit
         </Text>
       )}
     </Box>

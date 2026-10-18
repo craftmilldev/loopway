@@ -96,6 +96,18 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
           }
           void ctx.metrics?.capture("thread_message_sent", { surface: "tui" });
         },
+        end: async (threadId) => {
+          const botId = (await dispatcher.state()).threads[threadId]?.bot_id;
+          if (!botId) throw new Error("unknown thread");
+          try {
+            await client.endThread(botId, threadId);
+            void ctx.metrics?.capture("thread_ended", { surface: "tui" });
+          } catch (err) {
+            const reason = err instanceof ApiError ? err.code : "error";
+            void ctx.metrics?.capture("thread_end_failed", { surface: "tui", reason });
+            throw err;
+          }
+        },
       },
       closeTui.signal,
     );
