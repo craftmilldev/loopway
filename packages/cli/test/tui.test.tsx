@@ -128,6 +128,7 @@ describe("ThreadsTui", () => {
 
   const sent: [string, string][] = [];
   const ended: string[] = [];
+  let endError: Error | undefined;
 
   async function show(snap = snapshot) {
     const app = render(
@@ -135,7 +136,10 @@ describe("ThreadsTui", () => {
         load={async () => snap}
         readLog={async (id) => (id === "bbbbbbbb-2" ? log : "")}
         send={async (id, text) => void sent.push([id, text])}
-        end={async (id) => void ended.push(id)}
+        end={async (id) => {
+          if (endError) throw endError;
+          ended.push(id);
+        }}
         org="acme"
       />,
     );
@@ -295,6 +299,21 @@ describe("ThreadsTui", () => {
     await press("y");
     expect(ended).toHaveLength(1);
     expect(frame()).toContain("thread ended");
+  });
+
+  it("says why a thread couldn't be ended", async () => {
+    endError = new Error("boom");
+    try {
+      const { frame, press } = await show();
+      await press(KEYS.down);
+      await press(KEYS.enter);
+      await press("e");
+      await press("y");
+      expect(frame()).toContain("not ended: boom");
+      expect(ended).toEqual([]);
+    } finally {
+      endError = undefined;
+    }
   });
 
   it("scrolls long lists inside the screen", async () => {
