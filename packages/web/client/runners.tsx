@@ -15,7 +15,7 @@ const FILTERS: { key: RunnerFilter; label: string }[] = [
 ];
 
 export const COMMANDS = [
-  { key: "install", text: "npm i -g @loopway/cli" },
+  { key: "install", text: "curl -fsSL https://loopway.craftmill.dev/install.sh | sh" },
   { key: "login", text: "loopway login" },
   { key: "run", text: "cd ~/code/your-repo && loopway bots run" },
 ];
