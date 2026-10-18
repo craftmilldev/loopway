@@ -127,6 +127,7 @@ describe("ThreadsTui", () => {
   });
 
   const sent: [string, string][] = [];
+  const ended: string[] = [];
 
   async function show(snap = snapshot) {
     const app = render(
@@ -134,6 +135,7 @@ describe("ThreadsTui", () => {
         load={async () => snap}
         readLog={async (id) => (id === "bbbbbbbb-2" ? log : "")}
         send={async (id, text) => void sent.push([id, text])}
+        end={async (id) => void ended.push(id)}
         org="acme"
       />,
     );
@@ -277,6 +279,22 @@ describe("ThreadsTui", () => {
     expect(sent.map(([, text]) => text)).toEqual(["ok"]);
     expect(frame()).toContain(sent[0]![0].slice(0, 8));
     expect(frame()).toContain("message sent");
+  });
+
+  it("ends an open thread with e then y, and keeps it on e then any other key", async () => {
+    const { frame, press } = await show();
+    await press(KEYS.down);
+    await press(KEYS.enter);
+    await press("e");
+    expect(frame()).toContain("end this thread?");
+    await press("n");
+    expect(frame()).toContain("end canceled");
+    expect(ended).toEqual([]);
+
+    await press("e");
+    await press("y");
+    expect(ended).toHaveLength(1);
+    expect(frame()).toContain("thread ended");
   });
 
   it("scrolls long lists inside the screen", async () => {
