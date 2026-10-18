@@ -115,7 +115,12 @@ describe("OrgGate with no bots", () => {
     render(<OrgGate>the page</OrgGate>);
     expect(await screen.findByText(/Get your runner going/)).toBeTruthy();
     expect(screen.queryByText("Your runner is connected")).toBeNull();
-    runners = [{ id: "r1", org: "craftmill", name: "laptop", bots: [], threads: 0 }];
+    runners = [{ id: "r0", org: "craftmill", name: "old", leased_until: null, bots: [], threads: 0 }];
+    await act(() => vi.advanceTimersByTimeAsync(lw.POLL_MS + 1000));
+    expect(screen.queryByText("Your runner is connected")).toBeNull();
+    runners = [
+      { id: "r1", org: "craftmill", name: "laptop", leased_until: "2099-01-01T00:00:00Z", bots: [], threads: 0 },
+    ];
     await act(() => vi.advanceTimersByTimeAsync(lw.POLL_MS + 1000));
     expect(await screen.findByText("Your runner is connected")).toBeTruthy();
     expect(screen.queryByText(/Get your runner going/)).toBeNull();

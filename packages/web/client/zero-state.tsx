@@ -7,11 +7,11 @@ import { track } from "./metrics.js";
 /** What an org with no bots sees in place of its dashboard: get a runner going, then the bots come from there. */
 export function ZeroState() {
   const me = lw.useMe();
-  // The runner registers itself on startup, so the org's first runner showing up means it is connected. Polled so the
-  // page moves on without a refresh; a failed poll leaves the install steps up.
+  // A runner is connected while it holds its lease (the same "online" as the runners page), so one that registered once
+  // and was closed doesn't count. Polled so the page moves on without a refresh; a failed poll leaves the install steps up.
   const runners = lw.useList<lw.Runner>(lw.inOrg("/runners"), true);
   lw.usePoll(runners.reload, true);
-  const connected = (runners.data?.length ?? 0) > 0;
+  const connected = !!runners.data?.some((r) => r.leased_until);
   useEffect(() => {
     track("zero_state_viewed");
   }, []);
