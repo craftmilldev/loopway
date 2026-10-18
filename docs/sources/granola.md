@@ -15,7 +15,7 @@ Granola webhooks need a Business or Enterprise plan. Granola generates the signi
 1. `loopway inbox create --name notes --source granola` and copy its `webhook_url`.
 2. In the Granola desktop app: Settings → Connectors → Webhooks → Set up a webhook (or a folder → Integrations → Webhooks for one folder). Paste the URL.
 3. Copy the `whsec_…` secret Granola shows (only once) and run `loopway inbox update notes --secret whsec_…`, or paste it on the inbox's dashboard page. Until then the inbox answers `401`, and Granola drops those deliveries without retrying.
-4. Record a meeting, or edit a note's summary, and check `loopway events list notes`.
+4. Record a meeting, or edit a note's summary, and check `loopway messages list notes`.
 
 Each event only carries `note_id`; fetch the note itself with a Granola API key (Settings → Connectors → API keys): `curl -H "Authorization: Bearer grn_…" <event source>`.
 

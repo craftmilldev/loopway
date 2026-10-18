@@ -41,7 +41,7 @@ Org memberships and pending invites record `created_by` too (the member who adde
 | `PATCH /api/inboxes/:id` `{name?, config?}`        | Update. Config merges onto existing (secret kept unless given).                                                                                                                                                             |
 | `DELETE /api/inboxes/:id`                          | Deletes the inbox and its messages.                                                                                                                                                                                           |
 
-Each source's `config`, how to connect it in the sender, and how its deliveries map to CloudEvents are in `docs/sources/`: [github](sources/github.md), [vercel](sources/vercel.md), [linear](sources/linear.md), [granola](sources/granola.md), [resend](sources/resend.md) and [loopway](sources/loopway.md).
+Each source's `config`, how to connect it in the sender, and how its deliveries map to CloudEvents are in `docs/sources/`: [github](sources/github.md), [vercel](sources/vercel.md), [linear](sources/linear.md), [granola](sources/granola.md), [resend](sources/resend.md), [loopway](sources/loopway.md) and [schedule](sources/schedule.md).
 
 ## Webhook ingestion
 

@@ -15,7 +15,7 @@ Resend generates the signing secret after it has the URL, so:
 1. `loopway inbox create --name mail --source resend` and copy its `webhook_url`.
 2. In Resend: Webhooks → Add Webhook. Paste the URL and pick the events you want.
 3. Copy the `whsec_…` signing secret from the webhook's page and run `loopway inbox update mail --secret whsec_…`, or paste it on the inbox's dashboard page. Until then the inbox answers `401`.
-4. Send an email, and check `loopway events list mail`.
+4. Send an email, and check `loopway messages list mail`.
 
 ## Delivery
 
