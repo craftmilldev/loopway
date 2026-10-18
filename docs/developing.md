@@ -39,6 +39,19 @@ Optionally set `SCHEDULE_OPTIONS` (`hour`, `day` or `hour,day`; default `day`) t
 
 Tables live in a `loopway` schema (not `public`) with RLS enabled and no policies, so a Data API (Neon's is opt-in) can't reach them.
 
+### Login email (Resend) on the one-click deploy
+
+Resend is a Vercel Marketplace integration (`vc i resend`; it sets `RESEND_API_KEY` and nothing else, not `EMAIL_FROM`). It is not something the clone button's `stores` parameter can add the way it adds Neon: that parameter is documented for storage products, Resend's `productSlug`/`protocol` aren't published, and the integration needs a domain bought through Vercel. So the button prompts for the two values instead (`env=RESEND_API_KEY,EMAIL_FROM`):
+
+| Env | `envDescription` | `envLink` |
+| --- | --- | --- |
+| `RESEND_API_KEY` | An API key with sending access, from Resend → API Keys. | `https://resend.com/api-keys` |
+| `EMAIL_FROM` | Sender of the login code, like `loopway <login@your-domain.com>`. Required when the key is set; its domain must be verified in Resend. | `https://resend.com/domains` |
+
+A deployer who already uses the Marketplace integration can skip the key prompt: it sets `RESEND_API_KEY` under the same name, and only `EMAIL_FROM` is left to set.
+
+**Verifying a sender domain:** in Resend → Domains, add the domain (or a subdomain such as `mail.your-domain.com`), add the SPF (`TXT`) and DKIM (`TXT`/`CNAME`) records it lists at your DNS host, and wait until the domain shows *Verified*. The address in `EMAIL_FROM` must be on that domain. Until then Resend rejects sends (recorded as `login_email_failed`), and without a verified domain Resend only delivers from `onboarding@resend.dev` to the account owner's own address.
+
 ## Releasing the CLI
 
 The CLI is released on its own, separately from the web deploy, and nobody has to cut releases by hand. When CI passes on a push to main, `.github/workflows/release-cli.yml` checks whether anything the CLI ships has changed since the last `cli-v*` tag: `packages/cli` or a `@loopway/*` package listed in its `dependencies`, not counting their `test/` folders and markdown. If something has, it releases the next version. A failed or skipped release is picked up by the next push, because it compares against the last tag, not the last commit.
