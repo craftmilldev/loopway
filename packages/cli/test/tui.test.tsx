@@ -302,6 +302,7 @@ describe("ThreadsTui", () => {
   });
 
   it("says why a thread couldn't be ended", async () => {
+    ended.length = 0;
     endError = new Error("boom");
     try {
       const { frame, press } = await show();
