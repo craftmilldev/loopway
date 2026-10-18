@@ -481,7 +481,7 @@ function Runner({
         Bots run on your own machine, in the repository they work on. Run this there and leave it open.
       </p>
       <div className="add-runner">
-        <code>$ npm i -g @loopway/cli &amp;&amp; loopway login</code>
+        <code>$ curl -fsSL https://loopway.craftmill.dev/install.sh | sh &amp;&amp; loopway login</code>
         <code>$ cd ~/code/your-repo &amp;&amp; loopway bots run</code>
         <span className="lbl" role="status">
           {leased ? "A runner took the lease. Your bot is running." : "Listening for a runner to take the lease…"}

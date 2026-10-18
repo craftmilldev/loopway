@@ -98,7 +98,9 @@ describe("OrgGate with no bots", () => {
     expect(screen.queryByText("New bot")).toBeNull();
     expect(screen.getByText("Members")).toBeTruthy();
     fireEvent.click(screen.getAllByText("Copy")[0]!);
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("npm i -g @loopway/cli"));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith("curl -fsSL https://loopway.craftmill.dev/install.sh | sh"),
+    );
     expect(track).toHaveBeenCalledWith("zero_state_viewed");
     expect(track).toHaveBeenCalledWith("runners_command_copied", { command: "install", from: "zero_state" });
   });
