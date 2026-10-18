@@ -88,11 +88,7 @@ export function ZeroState({ progress }: { progress: SetupProgress }) {
     <DashLayout title="Get started · loopway" me={me}>
       <ol className="setup-steps" aria-label="Setup progress">
         {STEPS.map((label, i) => (
-          <li
-            key={label}
-            className={done[i] ? "done" : undefined}
-            aria-current={i === current ? "step" : undefined}
-          >
+          <li key={label} className={done[i] ? "done" : undefined} aria-current={i === current ? "step" : undefined}>
             <span className="setup-circle" aria-label={done[i] ? "Done" : undefined}>
               {done[i] ? "✓" : i + 1}
             </span>

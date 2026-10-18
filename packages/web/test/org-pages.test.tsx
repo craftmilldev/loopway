@@ -12,7 +12,14 @@ vi.mock("../client/metrics.js", () => ({ track: vi.fn(), identify: vi.fn(), rese
 const mine = { id: "o1", slug: "mcwhittemore", name: "mcwhittemore", personal: true };
 const team = { id: "o2", slug: "craftmill", name: "craftmill", personal: false };
 
-const online = { id: "r1", org: "craftmill", name: "laptop", leased_until: "2099-01-01T00:00:00Z", bots: [], threads: 0 };
+const online = {
+  id: "r1",
+  org: "craftmill",
+  name: "laptop",
+  leased_until: "2099-01-01T00:00:00Z",
+  bots: [],
+  threads: 0,
+};
 const offline = { id: "r0", org: "craftmill", name: "old", leased_until: null, bots: [], threads: 0 };
 
 let replaced: string[];
@@ -172,7 +179,7 @@ describe("OrgGate for each combination of setup steps", () => {
     ["only a runner", true, false, false],
     ["only a bot", false, true, false],
     ["a runner and a bot that never ran", true, true, false],
-        ["everything done", true, true, true],
+    ["everything done", true, true, true],
   ];
   it.each(cases)("%s", async (_name, runner, bot, ran) => {
     runners = runner ? [online] : [offline];
