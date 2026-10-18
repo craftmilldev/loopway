@@ -14,7 +14,7 @@ const team = { id: "o2", slug: "craftmill", name: "craftmill", personal: false }
 
 let replaced: string[];
 let requests: string[];
-let bots: object[];
+let bots: object[] | null;
 
 beforeEach(() => {
   localStorage.clear();
@@ -43,7 +43,7 @@ beforeEach(() => {
       const path = apiPath.replace(/^\/api/, "");
       requests.push(path);
       const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
-      if (path.startsWith("/bots?org=")) return json({ data: bots });
+      if (path.startsWith("/bots?org=")) return bots ? json({ data: bots }) : new Response("{}", { status: 500 });
       if (path === "/orgs") return json({ data: [mine, team] });
       if (path === "/bots/b1") return json({ id: "b1", org_id: "o2" });
       if (path === "/inboxes/i1") return json({ id: "i1", org_id: "o1" });
@@ -107,6 +107,15 @@ describe("OrgGate with no bots", () => {
     window.history.replaceState(null, "", "/craftmill/members");
     render(<OrgGate>the members</OrgGate>);
     expect(await screen.findByText("the members")).toBeTruthy();
+  });
+});
+
+describe("OrgGate when the bots request fails", () => {
+  it("shows the normal page", async () => {
+    bots = null;
+    window.history.replaceState(null, "", "/craftmill");
+    render(<OrgGate>the page</OrgGate>);
+    expect(await screen.findByText("the page")).toBeTruthy();
   });
 });
 

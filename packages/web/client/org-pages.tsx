@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Layout, NoBotsContext, OrgsContext } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
@@ -32,13 +32,21 @@ export function OrgGate({ children }: { children: ReactNode }) {
     if (member) lw.rememberOrg(slug);
     else track("org_page_not_found");
   }, [orgs, member, slug]);
-  const bots = lw.useList<lw.Bot>(lw.inOrg("/bots"), member);
+  // Whether the org has no bots; null until the request settles, and false if it fails, so the pages show as usual.
+  const [noBots, setNoBots] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!member) return;
+    void (async () => {
+      const r = await lw.api(lw.inOrg("/bots")).catch(() => null);
+      const body = r?.ok ? ((await r.json().catch(() => null)) as { data?: unknown[] } | null) : null;
+      setNoBots(body?.data?.length === 0);
+    })();
+  }, [member, slug]);
   if (!orgs) return null;
   if (!member) return <NotFound />;
   // An org's first bot is the point of the app until it exists, so its pages give way to the zero state. Members (to
   // invite) and the new-bot form stay. A failed bots request shows the pages as usual.
-  if (!bots.data && !bots.missing) return null;
-  const noBots = bots.data?.length === 0;
+  if (noBots === null) return null;
   const shown = !noBots || /^\/[^/]+\/(members|bots\/new)$/.test(location.pathname);
   return (
     <OrgsContext.Provider value={orgs}>
