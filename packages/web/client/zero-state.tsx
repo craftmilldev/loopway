@@ -6,7 +6,7 @@ import { track } from "./metrics.js";
 
 /** The three steps of the zero state, each done once its condition holds. */
 export interface SetupProgress {
-  /** A runner is connected: it holds its lease (the same "online" as the runners page), so one that registered once and was closed doesn't count. */
+  /** A runner is connected (or a bot has run, which needs one): it holds its lease (the same "online" as the runners page), so one that registered once and was closed doesn't count. */
   runner: boolean;
   /** The org has a bot. */
   bot: boolean;
@@ -45,11 +45,9 @@ export function useSetupProgress(enabled: boolean): SetupProgress | false | null
       if (wasFirst) setProgress(false);
       return false;
     }
-    const next = {
-      runner: runners.some((r) => r.leased_until),
-      bot: bots.length > 0,
-      ran: activity.some((a) => a.last_delivery_at),
-    };
+    // A bot that has run proves a runner connected once, so an established org whose runner is closed isn't sent back.
+    const ran = activity.some((a) => a.last_delivery_at);
+    const next = { runner: ran || runners.some((r) => r.leased_until), bot: bots.length > 0, ran };
     const done = sent.current;
     if (wasFirst && setupDone(next)) Object.assign(done, { ...next, completed: true });
     for (const [step, event] of [

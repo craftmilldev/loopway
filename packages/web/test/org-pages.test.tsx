@@ -172,8 +172,7 @@ describe("OrgGate for each combination of setup steps", () => {
     ["only a runner", true, false, false],
     ["only a bot", false, true, false],
     ["a runner and a bot that never ran", true, true, false],
-    ["a bot that ran, with the runner offline", false, true, true],
-    ["everything done", true, true, true],
+        ["everything done", true, true, true],
   ];
   it.each(cases)("%s", async (_name, runner, bot, ran) => {
     runners = runner ? [online] : [offline];
@@ -190,6 +189,16 @@ describe("OrgGate for each combination of setup steps", () => {
     expect(screen.queryByText("the page")).toBeNull();
     const current = screen.getAllByRole("listitem").findIndex((li) => li.getAttribute("aria-current") === "step");
     expect(current).toBe(!runner ? 0 : !bot ? 1 : 2);
+  });
+});
+
+describe("OrgGate for an established org whose runner is offline", () => {
+  it("shows the normal page", async () => {
+    runners = [offline];
+    window.history.replaceState(null, "", "/craftmill");
+    render(<OrgGate>the page</OrgGate>);
+    expect(await screen.findByText("the page")).toBeTruthy();
+    expect(track).not.toHaveBeenCalledWith("zero_state_viewed");
   });
 });
 
