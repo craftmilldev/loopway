@@ -1970,18 +1970,14 @@ describe("threads", () => {
     expect(runs[1]).toMatchObject({ sessionId: runs[0]!.sessionId, resume: true });
   });
 
-  it("serves a reply tool that leaves text for loopway in the bot's inbox", async () => {
+  it("serves a reply tool, which only an org's setup bot can use", async () => {
     const { inbox, runs, d, list, finish } = await setup(3);
     await send(inbox, "issues", issue("opened", 5));
     await d.tick();
     const url = runs[0]!.mcpUrl;
-    expect((await mcp(url, "tools/call", { name: "reply", arguments: { text: "hello" } })).content[0].text).toMatch(
-      /Replied to loopway/,
-    );
     expect((await mcp(url, "tools/call", { name: "reply", arguments: { text: " " } })).isError).toBe(true);
-    const replies = (await list()).filter((m: any) => m.event.type === REPLY_TYPE);
-    expect(replies).toHaveLength(1);
-    expect(replies[0].event.data).toMatchObject({ text: "hello", thread_id: runs[0]!.sessionId });
+    expect((await mcp(url, "tools/call", { name: "reply", arguments: { text: "hello" } })).isError).toBe(true);
+    expect((await list()).filter((m: any) => m.event.type === REPLY_TYPE)).toHaveLength(0);
     await finish();
   });
 

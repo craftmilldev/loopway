@@ -571,6 +571,7 @@ export function createApi(opts: ApiOptions) {
 
   authed.patch("/inboxes/:inboxId", async (c) => {
     const inbox = await memberInbox(c);
+    await inboxNotHidden(c, inbox, "patch");
     const input = z
       .object({ name: z.string().min(1).max(200).optional(), config: z.unknown().optional() })
       .parse(await jsonBody(c));
@@ -583,6 +584,7 @@ export function createApi(opts: ApiOptions) {
 
   authed.delete("/inboxes/:inboxId", async (c) => {
     const inbox = await memberInbox(c);
+    await inboxNotHidden(c, inbox, "delete");
     await store.deleteInbox(c.var.db, inbox.id);
     return c.body(null, 204);
   });
@@ -906,6 +908,13 @@ export function createApi(opts: ApiOptions) {
     throw new ApiError(403, "bot_hidden", "This bot belongs to loopway; its settings aren't yours to change");
   }
 
+  /** The setup bot's inbox is loopway's, like the bot: changing or deleting it would break the setup chat. */
+  async function inboxNotHidden(c: Context<Env>, inbox: Inbox, action: "patch" | "delete") {
+    if (!inbox.hidden) return;
+    await metrics.capture("hidden_inbox_change_rejected", c.var.user.id, { action });
+    throw new ApiError(403, "inbox_hidden", "This inbox belongs to loopway; its settings aren't yours to change");
+  }
+
   const setupHarness = z
     .string()
     .refine((n) => n in SETUP_MODELS, `must be one of: ${Object.keys(SETUP_MODELS).join(", ")}`);
@@ -915,7 +924,7 @@ export function createApi(opts: ApiOptions) {
     const org = await createOrg(c, "bot", input.org);
     const model = SETUP_MODELS[input.harness]!;
     let bot = await store.getSetupBot(c.var.db, org.id);
-    const created = !bot;
+    let created = !bot;
     if (!bot) {
       const source = sources.get("loopway")!;
       const inbox = await store.createInbox(c.var.db, {
@@ -926,17 +935,25 @@ export function createApi(opts: ApiOptions) {
         config: source.parseConfig({ events: [SETUP_MESSAGE_TYPE, REPLY_TYPE] }),
         hidden: true,
       });
-      bot = await store.createBot(c.var.db, {
-        userId: c.var.user.id,
-        orgId: org.id,
-        name: SETUP_BOT_NAME,
-        model,
-        harness: input.harness,
-        inboxIds: [inbox.id],
-        prompt: SETUP_PROMPT,
-        rules: SETUP_RULES,
-        hidden: true,
-      });
+      try {
+        bot = await store.createBot(c.var.db, {
+          userId: c.var.user.id,
+          orgId: org.id,
+          name: SETUP_BOT_NAME,
+          model,
+          harness: input.harness,
+          inboxIds: [inbox.id],
+          prompt: SETUP_PROMPT,
+          rules: SETUP_RULES,
+          hidden: true,
+        });
+      } catch (err) {
+        // A concurrent first call won the one-hidden-bot-per-org index: drop our inbox and use its bot.
+        await store.deleteInbox(c.var.db, inbox.id);
+        bot = await store.getSetupBot(c.var.db, org.id);
+        if (!bot) throw err;
+        created = false;
+      }
     } else if (bot.harness !== input.harness) {
       const live = (await store.listThreads(c.var.db, bot.id, "active")).filter((t) => t.started).length;
       if (live > 0) {
@@ -1004,6 +1021,11 @@ export function createApi(opts: ApiOptions) {
       throw parsed.error;
     }
     await requireOwner(c, thread, parsed.data.lease_token);
+    // Only the setup bot's inbox is for replies; another bot's may be a GitHub or Linear inbox its rules read.
+    if (!bot.hidden) {
+      await metrics.capture("thread_reply_rejected", c.var.user.id, { reason: "not_hidden_bot" });
+      throw new ApiError(409, "reply_not_supported", "Only an org's setup bot can reply to loopway");
+    }
     const inboxId = bot.inbox_ids[0];
     if (!inboxId) {
       await metrics.capture("thread_reply_rejected", c.var.user.id, { reason: "no_inbox" });
@@ -1023,7 +1045,7 @@ export function createApi(opts: ApiOptions) {
         data: { thread_id: thread.id, bot_id: bot.id, text: parsed.data.text },
       }),
     );
-    await metrics.capture("thread_reply_sent", c.var.user.id, { hidden: bot.hidden });
+    await metrics.capture("thread_reply_sent", c.var.user.id, {});
     return c.json({ id: sent.id, inbox_id: inboxId }, 201);
   });
 

@@ -72,6 +72,26 @@ describe("the setup bot", () => {
     }
   });
 
+  it("keeps its inbox loopway's too, and a second first PUT at once makes one bot", async () => {
+    const key = await newUser();
+    const org = await orgOf(key);
+    const [a, b] = await Promise.all([
+      call("PUT", "/setup-bot", { key, body: { org, harness: "claude" } }),
+      call("PUT", "/setup-bot", { key, body: { org, harness: "claude" } }),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([200, 201]);
+    expect(a.body.bot_id).toBe(b.body.bot_id);
+    const { inbox_id } = a.body;
+    for (const [method, body] of [
+      ["PATCH", { name: "mine" }],
+      ["DELETE", undefined],
+    ] as const) {
+      const res = await call(method, `/inboxes/${inbox_id}`, { key, body });
+      expect(res.status, method).toBe(403);
+      expect(res.body.error.code).toBe("inbox_hidden");
+    }
+  });
+
   it("takes a message and keeps the reply a runner leaves", async () => {
     const key = await newUser();
     const org = await orgOf(key);
