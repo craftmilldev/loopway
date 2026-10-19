@@ -138,7 +138,7 @@ describe("OrgGate with no bots", () => {
     expect(await screen.findByText("Your runner is connected")).toBeTruthy();
     expect(screen.queryByText(/Get your runner going/)).toBeNull();
     expect(screen.queryByText("New bot")).toBeNull();
-    expect(screen.getByLabelText("Create your bot with your agent").textContent).toContain('--org craftmill');
+    expect(screen.getByLabelText("Create your bot with your agent").textContent).toContain("--org craftmill");
     expect(track).toHaveBeenCalledWith("zero_state_runner_connected");
   });
 
