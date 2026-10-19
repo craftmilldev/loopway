@@ -64,7 +64,7 @@ export function sessionTools(api: ThreadApi, metrics: Metrics = noopMetrics): Mc
     {
       name: "reply",
       description:
-        "Answer the message loopway itself sent this thread, such as one from loopway's setup chat. The text goes back to loopway and nowhere else: it is not a comment on GitHub or Linear and not a message to the user on any other channel, so use those tools' own commands for those.",
+        "Answer the message loopway itself sent this thread, such as one from loopway's setup chat. The text goes back to loopway and nowhere else. It is not a replacement for communicating with the user through the usual channels (a GitHub or Linear comment, say): use those first, and use this only when no other channel can carry the message and one must be sent.",
       inputSchema: {
         type: "object",
         properties: { text: { type: "string", description: "the reply, as plain text" } },
