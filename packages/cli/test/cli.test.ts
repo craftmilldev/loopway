@@ -134,6 +134,12 @@ async function migratedUser(name: string, email: string, username: string) {
 
 // ---------- tests ----------
 
+/**
+ * Every org starts with a hidden setup bot, which a runner runs. Most tests are about the user's own bots, so they take
+ * it away first; the "setup bot" tests are the ones that use it.
+ */
+const dropSetupBots = () => db.query(`UPDATE loopway.bots SET deleted_at = now() WHERE hidden`);
+
 describe("auth", () => {
   it("config writes the URL to ~/.loopway/config.json owner-only, and login then uses it", async () => {
     await expect(run("config", "update", "--url", API, "--key", "lw_x")).rejects.toThrow(/unknown option '--key'/);
@@ -1035,6 +1041,7 @@ describe("threads", () => {
 
   async function setup(max: number, env: NodeJS.ProcessEnv = {}, inboxes = 1) {
     const key = await configured();
+    await dropSetupBots();
     const bots: Bot[] = [];
     const boxes: { id: string; config: { secret: string } }[] = [];
     for (let i = 1; i <= inboxes; i++) {
@@ -2066,6 +2073,7 @@ describe("threads", () => {
 
   it("says how to create a bot when there is none to run", async () => {
     await configured();
+    await dropSetupBots();
     expect(await run("bots", "run", "--no-tui")).toMatch(/No bots to run.*loopway bots create/);
   });
 
@@ -2089,12 +2097,14 @@ describe("threads", () => {
 
     it("uses the only org, and remembers it", async () => {
       const key = await configured();
+      await dropSetupBots();
       expect(await run("bots", "run", "--no-tui")).toMatch(/No bots to run/);
       expect(await saved()).toEqual({ id: expect.any(String), org: await personalSlug(key) });
     });
 
     it("needs --org when there are several orgs and no terminal, then remembers the choice", async () => {
       const { client, personal, shared } = await inTwoOrgs();
+      await dropSetupBots();
       await expect(run("bots", "run", "--no-tui")).rejects.toThrow(new RegExp(`${personal}, ${shared}.*--org`));
       await run("bots", "run", "--no-tui", "--org", shared);
       const first = await saved();

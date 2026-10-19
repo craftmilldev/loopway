@@ -3,14 +3,7 @@ import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z, ZodError } from "zod";
 import { checkRules, THREAD_MESSAGE_TYPE } from "@loopway/rules";
-import {
-  REPLY_TYPE,
-  SETUP_BOT_NAME,
-  SETUP_MESSAGE_TYPE,
-  SETUP_MODELS,
-  SETUP_PROMPT,
-  SETUP_RULES,
-} from "./setup-bot.js";
+import { REPLY_TYPE, SETUP_MESSAGE_TYPE, SETUP_MODELS, SETUP_PROMPT, SETUP_RULES } from "./setup-bot.js";
 import { cliVersion, olderThan } from "./cli-version.js";
 import { eeRoutes, type EeOptions } from "../ee/routes.js";
 import type { Db } from "./db/index.js";

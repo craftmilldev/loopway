@@ -857,7 +857,7 @@ const RUNNER_COLS = `
   r.id, r.created_by, r.org_id, (SELECT o.slug FROM loopway.orgs o WHERE o.id = r.org_id) AS org_slug,
   r.name, r.lock_token, r.locked_until, r.created_at, r.last_seen_at,
   COALESCE((SELECT jsonb_agg(jsonb_build_object('id', b.id, 'name', b.name) ORDER BY b.id) FROM loopway.bots b
-            WHERE b.runner_id = r.id AND b.deleted_at IS NULL AND b.locked_until > now()), '[]'::jsonb) AS bots,
+            WHERE b.runner_id = r.id AND b.deleted_at IS NULL AND NOT b.hidden AND b.locked_until > now()), '[]'::jsonb) AS bots,
   (SELECT count(*)::int FROM loopway.threads t WHERE t.runner_id = r.id) AS threads`;
 
 /**
