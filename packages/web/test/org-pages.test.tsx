@@ -115,6 +115,7 @@ describe("OrgGate with no bots", () => {
     expect(screen.queryByText("the page")).toBeNull();
     expect(screen.queryByText("Bots")).toBeNull();
     expect(screen.queryByText("New bot")).toBeNull();
+    expect(screen.getByLabelText("Create your bot with your agent").textContent).toContain("--org craftmill");
     expect(screen.getByText("Members")).toBeTruthy();
     fireEvent.click(screen.getAllByText("Copy")[0]!);
     await waitFor(() =>
