@@ -3,6 +3,7 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect } from "vitest";
 import { createApi } from "../src/api.js";
+import { parseOrgFlag } from "../src/flags.js";
 import { type Db } from "../src/db/index.js";
 import { openTestDb } from "../src/db/testing.js";
 import { createLoginCode, createUser } from "../src/store.js";
@@ -16,7 +17,13 @@ export let app: ReturnType<typeof createApi>;
 // Each test file gets its own migrated database on the local Postgres (`npm run db:up`).
 beforeAll(async () => {
   db = await openTestDb();
-  app = createApi({ getDb: async () => db, publicBaseUrl: "https://loopway.test", tokenSecret: SECRET });
+  // First-bot-by-chat is on for every org here; flags.test.ts covers it off.
+  app = createApi({
+    getDb: async () => db,
+    publicBaseUrl: "https://loopway.test",
+    tokenSecret: SECRET,
+    firstBotByChat: parseOrgFlag("all"),
+  });
 });
 afterAll(() => db.close());
 
