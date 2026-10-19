@@ -1969,6 +1969,32 @@ describe("threads", () => {
     expect(runs[1]).toMatchObject({ sessionId: runs[0]!.sessionId, resume: true });
   });
 
+  it("links any subject as is, and refuses bad or taken ones", async () => {
+    const { inbox, runs, d, finish } = await setup(3);
+    await send(inbox, "issues", issue("opened", 5));
+    await send(inbox, "issues", issue("opened", 6));
+    await d.tick();
+    const id = runs[0]!.sessionId;
+    const call = async (args: object) =>
+      (await mcp(runs[0]!.mcpUrl, "tools/call", { name: "link", arguments: args })) as {
+        isError?: boolean;
+        content: { text: string }[];
+      };
+    expect((await call({ subject: "linear/CRA-41" })).content[0]!.text).toMatch(/Linked linear\/CRA-41/);
+    expect((await call({ subject: "a/b#9" })).isError).toBeUndefined();
+    for (const args of [{}, { subject: "" }, { subject: "x".repeat(501) }, { subject: "a/b#9", number: 9 }])
+      expect((await call(args)).isError, JSON.stringify(args).slice(0, 40)).toBe(true);
+    const taken = await call({ subject: "a/b#6" });
+    expect(taken.isError).toBe(true);
+    expect(taken.content[0]!.text).toContain("a/b#6");
+    await finish();
+    expect((await sessions())[id].subjects).toEqual(["a/b#5", "a/b#9", "linear/CRA-41"]);
+    // A message whose subject is the linked one resumes the session.
+    await send(inbox, "issue_comment", comment(9));
+    await d.tick();
+    expect(runs.at(-1)).toMatchObject({ sessionId: id, resume: true });
+  });
+
   it("calls the session tools directly, for sessions that don't get them over MCP", async () => {
     const { inbox, runs, d, finish } = await setup(3);
     await send(inbox, "issues", issue("opened", 5));
