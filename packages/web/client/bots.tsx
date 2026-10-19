@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { AgentPrompt } from "./agent-prompt.js";
 import { botState, countThreads, filterOf, stateReason, type BotFilter } from "./bot-state.js";
 import type { Inbox } from "./shared.js";
 import { BotsTable, type BotRow } from "./bots-table.js";
@@ -151,15 +152,19 @@ export function Bots() {
             rules.
           </p>
         </div>
-        <a className="btn btn-md" href={lw.orgBase() + "/bots/new"}>
-          New bot
+        <a
+          className="btn btn-md btn-quiet"
+          href={lw.orgBase() + "/bots/new"}
+          onClick={() => track("bots_create_by_hand_clicked")}
+        >
+          Create by hand
         </a>
       </section>
 
+      <AgentPrompt from="bots" />
+
       {loaded && !rows.length && (
-        <p className="ov-empty">
-          Nothing is running yet. <a href={lw.orgBase() + "/bots/new"}>Create your first bot</a> to start.
-        </p>
+        <p className="ov-empty">Nothing is running yet. Give the prompt above to your agent.</p>
       )}
 
       {rows.length > 0 && (
