@@ -154,5 +154,3 @@ Each org can have one hidden setup bot: loopway makes it (and the inbox it reads
 | --- | --- |
 | `PUT /api/setup-bot` `{org, harness}` | Makes the org's setup bot on the harness (`claude`, `cursor`, `codex` or `hermes`), or moves the existing one to it (`409 harness_in_use` while a started thread is active), and puts loopway's prompt in as its newest version. Returns `{bot_id, inbox_id, harness}` (201 when made, else 200). |
 | `POST /api/setup-bot/messages` `{org, text}` | Sends the bot a message (`dev.loopway.setup.message`, always the same thread). `409 no_setup_bot` before `PUT /api/setup-bot`. The bot answers with its `reply` tool; read the answer from the inbox: `GET /api/inboxes/:inbox_id/messages?type=dev.loopway.reply&cursor=<id of the sent message>`. |
-
-`loopway setup ask <message> --harness <h>` does both and prints the reply (it needs `loopway bots run` going for the org).

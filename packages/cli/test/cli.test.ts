@@ -13,7 +13,6 @@ import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, LoopwayClient, type Bot, type Message } from "../src/client.js";
 import { checkRules, REPLY_TYPE, route as routeWith, THREAD_MESSAGE_TYPE, type BotRule } from "@loopway/rules";
-import { setupAsk } from "../src/commands/setup.js";
 import { getHarness, type AgentRun, type RunOutcome } from "@loopway/harnesses";
 import { API_ERROR_BACKOFF_MS, Dispatcher, NETWORK_ERROR_MAX_BACKOFF_MS } from "../src/bots/dispatcher.js";
 import { defaultTtl, pollDelay, pollUntilUpdate } from "../src/commands/bots-run.js";
@@ -2135,7 +2134,7 @@ describe("threads", () => {
 });
 
 describe("setup bot", () => {
-  it("answers a message sent with `setup ask` from a runner of the org, without being listed", async () => {
+  it("answers a message sent to it from a runner of the org, without being listed", async () => {
     const key = await configured();
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
     const org = await personalSlug(key);
@@ -2158,13 +2157,7 @@ describe("setup bot", () => {
     const runner = await ensure(client);
     const d = await Dispatcher.start(ctx, client, bots, { max: 3, ttl: 60, runnerId: runner.id });
     try {
-      const out: string[] = [];
-      const asked = setupAsk({ ...ctx, out: (t) => out.push(t) }, "which harness?", {
-        org,
-        harness: "claude",
-        interval: 20,
-        timeout: 30,
-      });
+      const sent = await client.sendSetupMessage(org, "which harness?");
       // The message sits out the holdback window, then the runner starts a session for it; the session replies.
       await vi.waitFor(async () => {
         await db.query(`UPDATE loopway.messages SET received_at = received_at - interval '1 minute'`);
@@ -2175,19 +2168,11 @@ describe("setup bot", () => {
       expect(runs[0]!.message).toContain("setup assistant for loopway");
       expect(runs[0]!.message).toContain("dev.loopway.setup.message");
       await d.callTool(runs[0]!.sessionId, "reply", { text: "Claude Code, probably." });
-      await asked;
-      expect(out).toEqual(["Claude Code, probably."]);
+      const { data } = await client.listMessages(setupBot.inbox_id, { type: REPLY_TYPE, cursor: sent.id });
+      expect(data.map((m) => (m.event.data as { text: string }).text)).toEqual(["Claude Code, probably."]);
     } finally {
       await d.close();
     }
-  });
-
-  it("times out with a hint when no runner answers", async () => {
-    const key = await configured();
-    const ctx: Context = { configDir, env: {}, interactive: false, out: () => {}, fetch: apiFetch };
-    await expect(
-      setupAsk(ctx, "hello", { org: await personalSlug(key), harness: "claude", interval: 10, timeout: 0.05 }),
-    ).rejects.toThrow(/bots run/);
   });
 });
 

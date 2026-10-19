@@ -31,7 +31,6 @@ import {
   updateInbox,
 } from "./commands/inboxes.js";
 import { listRunners } from "./commands/runners.js";
-import { setupAsk } from "./commands/setup.js";
 import { runBots } from "./commands/bots-run.js";
 import { addOrgMember, createOrg, leaveOrg, listOrgs, orgMembers, removeOrgMember } from "./commands/orgs.js";
 import { HARNESSES } from "@loopway/harnesses";
@@ -263,25 +262,10 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .addOption(jsonOpt())
     .action((opts) => listRunners(ctx, opts));
 
-  // ---------- setup bot ----------
-
-  const harnessOpt = (desc: string) => new Option("--harness <harness>", desc).choices(HARNESSES.map((h) => h.name));
-
-  program
-    .command("setup")
-    .description("talk to your org's hidden setup bot, which a runner of the org answers as")
-    .command("ask")
-    .description("send the setup bot a message and print its reply (makes the bot on --harness first)")
-    .argument("<message>", "what to say to it")
-    .option("--org <slug>", "the org whose setup bot to ask")
-    .addOption(harnessOpt("the harness the setup bot runs on").makeOptionMandatory())
-    .option("--timeout <seconds>", "how long to wait for the reply", (v) => Number(v), 300)
-    .addOption(jsonOpt())
-    .action((message, opts) => setupAsk(ctx, message, opts));
-
   // ---------- bots ----------
 
   const bots = program.command("bots").alias("bot").description("create, list, update and run bots");
+  const harnessOpt = (desc: string) => new Option("--harness <harness>", desc).choices(HARNESSES.map((h) => h.name));
   const inboxesOpt = (desc: string) => new Option("--inbox <list>", desc).argParser(splitList);
 
   bots
