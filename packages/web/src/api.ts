@@ -1,7 +1,16 @@
+import { isDeepStrictEqual } from "node:util";
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z, ZodError } from "zod";
 import { checkRules, THREAD_MESSAGE_TYPE } from "@loopway/rules";
+import {
+  REPLY_TYPE,
+  SETUP_BOT_NAME,
+  SETUP_MESSAGE_TYPE,
+  SETUP_MODELS,
+  SETUP_PROMPT,
+  SETUP_RULES,
+} from "./setup-bot.js";
 import { cliVersion, olderThan } from "./cli-version.js";
 import { eeRoutes, type EeOptions } from "../ee/routes.js";
 import type { Db } from "./db/index.js";
@@ -714,8 +723,14 @@ export function createApi(opts: ApiOptions) {
     return rules;
   }
 
+  // Runners ask for the hidden bots too (`?hidden=include`), as they run them.
   authed.get("/bots", async (c) => {
-    const rows = await store.listBots(c.var.db, c.var.user.id, await listOrg(c, "bots"));
+    const rows = await store.listBots(
+      c.var.db,
+      c.var.user.id,
+      await listOrg(c, "bots"),
+      c.req.query("hidden") === "include",
+    );
     return c.json({ data: rows.map(serializeBot) });
   });
 
@@ -822,6 +837,7 @@ export function createApi(opts: ApiOptions) {
 
   authed.patch("/bots/:botId", async (c) => {
     const bot = await memberBot(c);
+    await notHidden(c, bot, "update");
     const input = z
       .object({
         name: z.string().min(1).max(200).optional(),
@@ -866,6 +882,7 @@ export function createApi(opts: ApiOptions) {
 
   authed.post("/bots/:botId/versions", async (c) => {
     const bot = await memberBot(c);
+    await notHidden(c, bot, "version");
     const input = z.object({ prompt: promptBody, rules: rulesBody.optional() }).parse(await jsonBody(c));
     const version = await store.addBotVersion(c.var.db, bot.id, input.prompt, await checked(c, input.rules, "version"));
     await metrics.capture("bot_version_saved", c.var.user.id, { with_rules: !!input.rules });
@@ -874,8 +891,140 @@ export function createApi(opts: ApiOptions) {
 
   authed.delete("/bots/:botId", async (c) => {
     const bot = await memberBot(c);
+    await notHidden(c, bot, "delete");
     await store.deleteBot(c.var.db, bot.id);
     return c.body(null, 204);
+  });
+
+  // The org's hidden setup bot. Loopway makes it (with its inbox) and owns its prompt; the user only picks the harness.
+  // Asking again with another harness moves the bot to it, once none of its started threads is still active.
+
+  /** A hidden bot is loopway's: its prompt, name and removal aren't the user's to change. */
+  async function notHidden(c: Context<Env>, bot: store.Bot, action: "update" | "version" | "delete") {
+    if (!bot.hidden) return;
+    await metrics.capture("hidden_bot_change_rejected", c.var.user.id, { action });
+    throw new ApiError(403, "bot_hidden", "This bot belongs to loopway; its settings aren't yours to change");
+  }
+
+  const setupHarness = z
+    .string()
+    .refine((n) => n in SETUP_MODELS, `must be one of: ${Object.keys(SETUP_MODELS).join(", ")}`);
+
+  authed.put("/setup-bot", async (c) => {
+    const input = z.object({ org: z.string().optional(), harness: setupHarness }).parse(await jsonBody(c));
+    const org = await createOrg(c, "bot", input.org);
+    const model = SETUP_MODELS[input.harness]!;
+    let bot = await store.getSetupBot(c.var.db, org.id);
+    const created = !bot;
+    if (!bot) {
+      const source = sources.get("loopway")!;
+      const inbox = await store.createInbox(c.var.db, {
+        userId: c.var.user.id,
+        orgId: org.id,
+        name: "setup",
+        sourceType: "loopway",
+        config: source.parseConfig({ events: [SETUP_MESSAGE_TYPE, REPLY_TYPE] }),
+        hidden: true,
+      });
+      bot = await store.createBot(c.var.db, {
+        userId: c.var.user.id,
+        orgId: org.id,
+        name: SETUP_BOT_NAME,
+        model,
+        harness: input.harness,
+        inboxIds: [inbox.id],
+        prompt: SETUP_PROMPT,
+        rules: SETUP_RULES,
+        hidden: true,
+      });
+    } else if (bot.harness !== input.harness) {
+      const live = (await store.listThreads(c.var.db, bot.id, "active")).filter((t) => t.started).length;
+      if (live > 0) {
+        await metrics.capture("setup_bot_harness_change_rejected", c.var.user.id, {
+          from: bot.harness,
+          to: input.harness,
+        });
+        throw new ApiError(409, "harness_in_use", `${live} started thread(s) are still active in ${bot.harness}`);
+      }
+      bot = await store.updateBot(c.var.db, bot, { harness: input.harness, model });
+    }
+    // Our prompt is the newest version, however the bot got here.
+    const version = bot.prompt_version;
+    if (!version || version.prompt !== SETUP_PROMPT || !isDeepStrictEqual(version.rules, SETUP_RULES)) {
+      await store.addBotVersion(c.var.db, bot.id, SETUP_PROMPT, SETUP_RULES);
+      bot = (await store.getBot(c.var.db, bot.id))!;
+    }
+    await metrics.capture("setup_bot_ready", c.var.user.id, { harness: bot.harness, created });
+    return c.json({ bot_id: bot.id, inbox_id: bot.inbox_ids[0], harness: bot.harness }, created ? 201 : 200);
+  });
+
+  // A message to the org's setup bot; it answers with the reply tool, into the same hidden inbox (REPLY_TYPE).
+  authed.post("/setup-bot/messages", async (c) => {
+    const parsed = z
+      .object({ org: z.string().optional(), text: z.string().trim().min(1).max(20_000) })
+      .safeParse(await jsonBody(c));
+    if (!parsed.success) {
+      await metrics.capture("setup_message_rejected", c.var.user.id, { reason: "invalid_body" });
+      throw parsed.error;
+    }
+    const org = await createOrg(c, "bot", parsed.data.org);
+    const bot = await store.getSetupBot(c.var.db, org.id);
+    if (!bot) {
+      await metrics.capture("setup_message_rejected", c.var.user.id, { reason: "no_setup_bot" });
+      throw new ApiError(409, "no_setup_bot", "This org has no setup bot yet; create it with PUT /setup-bot");
+    }
+    const sent = await store.insertMessage(
+      c.var.db,
+      bot.inbox_ids[0]!,
+      makeCloudEvent({
+        specversion: "1.0",
+        id: uuidv7(),
+        source: `loopway:setup-bot/${bot.id}`,
+        type: SETUP_MESSAGE_TYPE,
+        subject: "setup",
+        time: new Date().toISOString(),
+        datacontenttype: "application/json",
+        data: { text: parsed.data.text, user_id: c.var.user.id },
+      }),
+    );
+    await metrics.capture("setup_message_sent", c.var.user.id, { harness: bot.harness });
+    return c.json({ id: sent.id, inbox_id: bot.inbox_ids[0] }, 201);
+  });
+
+  // A session's `reply` tool: text for whoever messaged the thread through loopway. Written by the thread's runner
+  // (its lease is the credential), and it lands in the bot's inbox as REPLY_TYPE, where the sender reads it.
+  authed.post("/bots/:botId/threads/:threadId/replies", async (c) => {
+    const bot = await memberBot(c);
+    const thread = await existingThread(c, bot);
+    const parsed = z
+      .object({ lease_token: leaseToken, text: z.string().trim().min(1).max(20_000) })
+      .safeParse(await jsonBody(c));
+    if (!parsed.success) {
+      await metrics.capture("thread_reply_rejected", c.var.user.id, { reason: "invalid_body" });
+      throw parsed.error;
+    }
+    await requireOwner(c, thread, parsed.data.lease_token);
+    const inboxId = bot.inbox_ids[0];
+    if (!inboxId) {
+      await metrics.capture("thread_reply_rejected", c.var.user.id, { reason: "no_inbox" });
+      throw new ApiError(409, "no_inbox", "The bot has no inbox to leave the reply in");
+    }
+    const sent = await store.insertMessage(
+      c.var.db,
+      inboxId,
+      makeCloudEvent({
+        specversion: "1.0",
+        id: uuidv7(),
+        source: `loopway:threads/${thread.id}`,
+        type: REPLY_TYPE,
+        subject: thread.id,
+        time: new Date().toISOString(),
+        datacontenttype: "application/json",
+        data: { thread_id: thread.id, bot_id: bot.id, text: parsed.data.text },
+      }),
+    );
+    await metrics.capture("thread_reply_sent", c.var.user.id, { hidden: bot.hidden });
+    return c.json({ id: sent.id, inbox_id: inboxId }, 201);
   });
 
   authed.post("/bots/:botId/lease", async (c) => {

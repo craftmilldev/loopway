@@ -22,6 +22,12 @@ export interface BotRule {
  */
 export const THREAD_MESSAGE_TYPE = "dev.loopway.thread.message";
 
+/** The type of a message to an org's setup bot (see `PUT /setup-bot`), which the bot's rule attaches to one thread. */
+export const SETUP_MESSAGE_TYPE = "dev.loopway.setup.message";
+
+/** The type of a message a session leaves for loopway's caller with its `reply` tool: it lands in the bot's inbox. */
+export const REPLY_TYPE = "dev.loopway.reply";
+
 /** What `route` reads of a message: its CloudEvent's type and payload. */
 export interface RoutableMessage {
   event: { type: string; data?: unknown };

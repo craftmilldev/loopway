@@ -611,4 +611,16 @@ CREATE INDEX thread_events_thread_idx ON loopway.thread_events (thread_id);
 CREATE INDEX threads_bot_created_idx ON loopway.threads (bot_id, created_at, id);
 `,
   },
+  {
+    // The hidden setup bot of an org, and the inbox it reads, are made by loopway rather than by the user: lists leave
+    // them out, and the user can't change the bot's prompt.
+    version: "029_hidden",
+    sql: `
+ALTER TABLE loopway.bots ADD COLUMN hidden boolean NOT NULL DEFAULT false;
+
+ALTER TABLE loopway.inboxes ADD COLUMN hidden boolean NOT NULL DEFAULT false;
+
+CREATE UNIQUE INDEX bots_one_hidden_per_org_idx ON loopway.bots (org_id) WHERE hidden AND deleted_at IS NULL;
+`,
+  },
 ];

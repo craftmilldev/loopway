@@ -338,8 +338,9 @@ export class LoopwayClient {
 
   // ---------- bots ----------
 
-  async listBots() {
-    return (await this.request<{ data: Bot[] }>("GET", "/bots")).data;
+  /** Runners pass `hidden` to get the hidden bots too (an org's setup bot), as they run them. */
+  async listBots(opts: { hidden?: boolean } = {}) {
+    return (await this.request<{ data: Bot[] }>("GET", opts.hidden ? "/bots?hidden=include" : "/bots")).data;
   }
 
   createBot(input: {
@@ -463,6 +464,22 @@ export class LoopwayClient {
   sendThreadMessage(botId: string, threadId: string, text: string) {
     const path = `/bots/${enc(botId)}/threads/${enc(threadId)}/messages`;
     return this.request<{ id: string; inbox_id: string }>("POST", path, { text });
+  }
+
+  /** A session's `reply`: text for whoever messaged the thread through loopway. Needs the thread's runner lease. */
+  replyToThread(botId: string, threadId: string, text: string, leaseToken: string) {
+    const path = `/bots/${enc(botId)}/threads/${enc(threadId)}/replies`;
+    return this.request<{ id: string; inbox_id: string }>("POST", path, { text, lease_token: leaseToken });
+  }
+
+  /** Makes the org's hidden setup bot (or moves it to `harness`). */
+  putSetupBot(org: string, harness: string) {
+    return this.request<{ bot_id: string; inbox_id: string; harness: string }>("PUT", "/setup-bot", { org, harness });
+  }
+
+  /** A message to the org's setup bot; it replies into its inbox (see `listMessages`, type `dev.loopway.reply`). */
+  sendSetupMessage(org: string, text: string) {
+    return this.request<{ id: string; inbox_id: string }>("POST", "/setup-bot/messages", { org, text });
   }
 
   patchThread(botId: string, threadId: string, input: ThreadPatch & { lease_token: string }) {

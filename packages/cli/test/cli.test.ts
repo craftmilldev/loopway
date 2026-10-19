@@ -12,7 +12,8 @@ import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, LoopwayClient, type Bot, type Message } from "../src/client.js";
-import { checkRules, route as routeWith, THREAD_MESSAGE_TYPE, type BotRule } from "@loopway/rules";
+import { checkRules, REPLY_TYPE, route as routeWith, THREAD_MESSAGE_TYPE, type BotRule } from "@loopway/rules";
+import { setupAsk } from "../src/commands/setup.js";
 import { getHarness, type AgentRun, type RunOutcome } from "@loopway/harnesses";
 import { API_ERROR_BACKOFF_MS, Dispatcher, NETWORK_ERROR_MAX_BACKOFF_MS } from "../src/bots/dispatcher.js";
 import { defaultTtl, pollDelay, pollUntilUpdate } from "../src/commands/bots-run.js";
@@ -1954,7 +1955,7 @@ describe("threads", () => {
     const url = runs[0]!.mcpUrl;
     expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\//);
     expect((await mcp(url, "initialize", { protocolVersion: "2025-06-18" })).serverInfo.name).toBe("loopway");
-    expect((await mcp(url, "tools/list")).tools.map((t: any) => t.name)).toEqual(["link", "end"]);
+    expect((await mcp(url, "tools/list")).tools.map((t: any) => t.name)).toEqual(["link", "reply", "end"]);
     expect((await mcp(url, "tools/call", { name: "link", arguments: { number: 9 } })).content[0].text).toMatch(
       /Linked a\/b#9/,
     );
@@ -1967,6 +1968,21 @@ describe("threads", () => {
     await send(inbox, "issue_comment", comment(9));
     await d.tick();
     expect(runs[1]).toMatchObject({ sessionId: runs[0]!.sessionId, resume: true });
+  });
+
+  it("serves a reply tool that leaves text for loopway in the bot's inbox", async () => {
+    const { inbox, runs, d, list, finish } = await setup(3);
+    await send(inbox, "issues", issue("opened", 5));
+    await d.tick();
+    const url = runs[0]!.mcpUrl;
+    expect((await mcp(url, "tools/call", { name: "reply", arguments: { text: "hello" } })).content[0].text).toMatch(
+      /Replied to loopway/,
+    );
+    expect((await mcp(url, "tools/call", { name: "reply", arguments: { text: " " } })).isError).toBe(true);
+    const replies = (await list()).filter((m: any) => m.event.type === REPLY_TYPE);
+    expect(replies).toHaveLength(1);
+    expect(replies[0].event.data).toMatchObject({ text: "hello", thread_id: runs[0]!.sessionId });
+    await finish();
   });
 
   it("calls the session tools directly, for sessions that don't get them over MCP", async () => {
@@ -2093,6 +2109,63 @@ describe("threads", () => {
       await run("bots", "run", "--no-tui", "--org", shared);
       expect(await saved()).toEqual({ id, org: shared });
     });
+  });
+});
+
+describe("setup bot", () => {
+  it("answers a message sent with `setup ask` from a runner of the org, without being listed", async () => {
+    const key = await configured();
+    const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
+    const org = await personalSlug(key);
+    const setupBot = await client.putSetupBot(org, "claude");
+    expect(await client.putSetupBot(org, "claude")).toMatchObject({ bot_id: setupBot.bot_id });
+    expect(await client.listBots()).toEqual([]);
+    expect(await runJson("bots", "list")).toEqual([]);
+    const bots = await client.listBots({ hidden: true });
+    expect(bots.map((b) => b.id)).toEqual([setupBot.bot_id]);
+
+    const runs: AgentRun[] = [];
+    const ctx: Context = {
+      configDir,
+      env: {},
+      interactive: false,
+      out: () => {},
+      fetch: apiFetch,
+      runAgent: async (r) => (runs.push(r), { code: 0, delivered: true }),
+    };
+    const runner = await ensure(client);
+    const d = await Dispatcher.start(ctx, client, bots, { max: 3, ttl: 60, runnerId: runner.id });
+    try {
+      const out: string[] = [];
+      const asked = setupAsk({ ...ctx, out: (t) => out.push(t) }, "which harness?", {
+        org,
+        harness: "claude",
+        interval: 20,
+        timeout: 30,
+      });
+      // The message sits out the holdback window, then the runner starts a session for it; the session replies.
+      await vi.waitFor(async () => {
+        await db.query(`UPDATE loopway.messages SET received_at = received_at - interval '1 minute'`);
+        await d.tick();
+        expect(runs).toHaveLength(1);
+      });
+      expect(runs[0]).toMatchObject({ harness: "claude", model: "sonnet" });
+      expect(runs[0]!.message).toContain("setup assistant for loopway");
+      expect(runs[0]!.message).toContain("dev.loopway.setup.message");
+      await d.callTool(runs[0]!.sessionId, "reply", { text: "Claude Code, probably." });
+      await asked;
+      expect(out).toEqual(["Claude Code, probably."]);
+    } finally {
+      await d.close();
+    }
+  });
+
+  it("times out with a hint when no runner answers", async () => {
+    const key = await configured();
+    const ctx: Context = { configDir, env: {}, interactive: false, out: () => {}, fetch: apiFetch };
+    await expect(
+      setupAsk(ctx, "hello", { org: await personalSlug(key), harness: "claude", interval: 10, timeout: 0.05 }),
+    ).rejects.toThrow(/bots run/);
   });
 });
 

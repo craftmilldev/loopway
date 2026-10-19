@@ -1,8 +1,66 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { HARNESS_LABELS } from "@loopway/harnesses/labels";
 import { COMMANDS, CopyCommand } from "./runners.js";
 import { DashLayout, MembersHint } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
+
+/** The harnesses the setup bot can run on: every one that runs an agent. */
+const SETUP_HARNESSES = Object.entries(HARNESS_LABELS).filter(([name]) => name !== "script");
+
+/**
+ * Asks which coding agent the user uses and makes the org's hidden setup bot on it. Picking another one later moves the
+ * bot, so the choice isn't final.
+ */
+function HarnessPicker() {
+  const [picked, setPicked] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const pick = async (harness: string) => {
+    setSaving(true);
+    setError(null);
+    track("zero_state_harness_picked", { harness });
+    try {
+      const r = await lw.api("/setup-bot", { method: "PUT", body: { org: lw.orgSlug(), harness } });
+      if (!r.ok) {
+        track("zero_state_setup_bot_failed", { harness, reason: (await lw.errorCode(r)) ?? "http_" + r.status });
+        return setError(await lw.message(r));
+      }
+      setPicked(harness);
+    } catch {
+      track("zero_state_setup_bot_failed", { harness, reason: "network" });
+      setError("Couldn't reach loopway. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <section aria-label="Pick your coding agent" style={{ marginTop: 24 }}>
+      <h2>Which coding agent do you use?</h2>
+      <p className="muted">Your setup assistant runs on it, on your runner.</p>
+      <p style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {SETUP_HARNESSES.map(([name, label]) => (
+          <button
+            key={name}
+            type="button"
+            className={"btn btn-md" + (picked === name ? "" : " btn-quiet")}
+            aria-pressed={picked === name}
+            disabled={saving}
+            onClick={() => void pick(name)}
+          >
+            {label}
+          </button>
+        ))}
+      </p>
+      {picked && (
+        <p className="muted">
+          Your setup assistant is ready on {HARNESS_LABELS[picked as keyof typeof HARNESS_LABELS]}.
+        </p>
+      )}
+      {error && <p role="alert">{error}</p>}
+    </section>
+  );
+}
 
 /** What an org with no bots sees in place of its dashboard: get a runner going, then the bots come from there. */
 export function ZeroState() {
@@ -29,7 +87,10 @@ export function ZeroState() {
           <div className="page-head">
             <h1>Your runner is connected</h1>
           </div>
-          <p className="muted">Next, make a bot for it to run.</p>
+          <HarnessPicker />
+          <p className="muted" style={{ marginTop: 24 }}>
+            Or make a bot for it to run yourself.
+          </p>
           <p style={{ marginTop: 16 }}>
             <a
               className="btn btn-md"

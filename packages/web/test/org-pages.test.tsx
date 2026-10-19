@@ -128,6 +128,46 @@ describe("OrgGate with no bots", () => {
     expect(track).toHaveBeenCalledWith("zero_state_runner_connected");
   });
 
+  it("asks which coding agent they use and makes the setup bot on it", async () => {
+    runners = [
+      { id: "r1", org: "craftmill", name: "laptop", leased_until: "2099-01-01T00:00:00Z", bots: [], threads: 0 },
+    ];
+    const puts: unknown[] = [];
+    const base = fetch as unknown as (path: string, init?: RequestInit) => Promise<Response>;
+    let status = 200;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: string, init?: RequestInit) => {
+        if (path === "/api/setup-bot") {
+          puts.push(JSON.parse(init!.body as string));
+          return new Response(
+            JSON.stringify(status === 200 ? { bot_id: "b9" } : { error: { code: "x", message: "Nope." } }),
+            {
+              status,
+            },
+          );
+        }
+        return base(path, init);
+      }),
+    );
+    window.history.replaceState(null, "", "/craftmill");
+    render(<OrgGate>the page</OrgGate>);
+    expect(await screen.findByText("Which coding agent do you use?")).toBeTruthy();
+    expect(screen.queryByText("Script")).toBeNull();
+    status = 400;
+    fireEvent.click(screen.getByText("Codex"));
+    expect((await screen.findByRole("alert")).textContent).toBe("Nope.");
+    expect(track).toHaveBeenCalledWith("zero_state_setup_bot_failed", { harness: "codex", reason: "x" });
+    status = 200;
+    fireEvent.click(screen.getByText("Claude Code"));
+    expect(await screen.findByText(/setup assistant is ready on Claude Code/)).toBeTruthy();
+    expect(puts).toEqual([
+      { org: "craftmill", harness: "codex" },
+      { org: "craftmill", harness: "claude" },
+    ]);
+    expect(track).toHaveBeenCalledWith("zero_state_harness_picked", { harness: "claude" });
+  });
+
   it("leaves the members page alone", async () => {
     window.history.replaceState(null, "", "/craftmill/members");
     render(<OrgGate>the members</OrgGate>);

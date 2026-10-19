@@ -5,6 +5,7 @@ import type { McpTool } from "../mcp.js";
 export interface ThreadApi {
   get(threadId: string): Promise<Thread>;
   patch(threadId: string, patch: ThreadPatch): Promise<Thread>;
+  reply(threadId: string, text: string): Promise<unknown>;
 }
 
 /** The MCP tools each session gets for talking back to the dispatcher. */
@@ -31,6 +32,21 @@ export function sessionTools(api: ThreadApi): McpTool[] {
         const key = `${repo}#${n}`;
         await api.patch(sessionId, { add_subjects: [key] });
         return `Linked ${key}; its events will come to this session.`;
+      },
+    },
+    {
+      name: "reply",
+      description:
+        "Answer the message loopway itself sent this thread, such as one from loopway's setup chat. The text goes back to loopway and nowhere else: it is not a comment on GitHub or Linear and not a message to the user on any other channel, so use those tools' own commands for those.",
+      inputSchema: {
+        type: "object",
+        properties: { text: { type: "string", description: "the reply, as plain text" } },
+        required: ["text"],
+      },
+      call: async (sessionId, args) => {
+        if (typeof args.text !== "string" || !args.text.trim()) throw new Error("text must be a non-empty string.");
+        await api.reply(sessionId, args.text);
+        return "Replied to loopway.";
       },
     },
     {

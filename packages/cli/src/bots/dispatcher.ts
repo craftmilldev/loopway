@@ -175,6 +175,7 @@ export class Dispatcher {
     const tools = sessionTools({
       get: (id) => later.dispatcher!.getThread(id),
       patch: (id, patch) => later.dispatcher!.patchThread(id, patch),
+      reply: (id, text) => later.dispatcher!.replyToThread(id, text),
     });
     const mcp = await startMcpServer("loopway", tools);
     const dispatcher = (later.dispatcher = new Dispatcher(ctx, client, bots, rules, prompts, opts, mcp, tools, env));
@@ -273,7 +274,7 @@ export class Dispatcher {
    * rules yet is reported once and checked again each tick; one whose rules don't parse is reported once per version.
    */
   private async addNewBots(): Promise<void> {
-    for (const bot of await this.client.listBots()) {
+    for (const bot of await this.client.listBots({ hidden: true })) {
       if (this.rules.has(bot.id)) continue;
       const version = bot.prompt_version;
       if (!version?.rules) {
@@ -714,6 +715,10 @@ export class Dispatcher {
   }
 
   /** Changes the thread of a run in flight, for the MCP tools and the run itself. */
+  private replyToThread(id: string, text: string): Promise<unknown> {
+    return this.client.replyToThread(this.botOf(id), id, text, this.token());
+  }
+
   private patchThread(id: string, patch: ThreadPatch): Promise<Thread> {
     return this.client.patchThread(this.botOf(id), id, { ...patch, lease_token: this.token() });
   }

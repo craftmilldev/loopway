@@ -263,17 +263,19 @@ export interface Inbox {
   name: string;
   source_type: string;
   config: unknown;
+  /** The inbox of an org's setup bot: left out of lists. */
+  hidden: boolean;
   created_at: Date;
 }
 
 export async function createInbox(
   db: Db,
-  input: { userId: string; orgId: string; name: string; sourceType: string; config: unknown },
+  input: { userId: string; orgId: string; name: string; sourceType: string; config: unknown; hidden?: boolean },
 ): Promise<Inbox> {
   const [row] = await db.query<Inbox>(
-    `INSERT INTO loopway.inboxes (id, created_by, org_id, name, source_type, config)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING *`,
-    [uuidv7(), userActor(input.userId), input.orgId, input.name, input.sourceType, input.config],
+    `INSERT INTO loopway.inboxes (id, created_by, org_id, name, source_type, config, hidden)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7) RETURNING *`,
+    [uuidv7(), userActor(input.userId), input.orgId, input.name, input.sourceType, input.config, !!input.hidden],
   );
   return row!;
 }
@@ -285,7 +287,7 @@ const inOrgOf = (col: string, p: string) =>
 /** The user's inboxes, or only those of `orgId` (an org the caller has checked the user is a member of). */
 export async function listInboxes(db: Db, userId: string, orgId?: string): Promise<Inbox[]> {
   return db.query<Inbox>(
-    `SELECT * FROM loopway.inboxes WHERE ${inOrgOf("org_id", "$1")} AND ($2::uuid IS NULL OR org_id = $2::uuid) ORDER BY id`,
+    `SELECT * FROM loopway.inboxes WHERE ${inOrgOf("org_id", "$1")} AND ($2::uuid IS NULL OR org_id = $2::uuid) AND NOT hidden ORDER BY id`,
     [userId, orgId ?? null],
   );
 }
@@ -348,7 +350,7 @@ export async function inboxActivity(
 ): Promise<InboxActivity[]> {
   const dates = windowDates(days);
   const since = dates[0] + "T00:00:00Z";
-  const scope = `${inOrgOf("i.org_id", "$1")} AND ($2::uuid IS NULL OR i.id = $2::uuid) AND ($3::uuid IS NULL OR i.org_id = $3::uuid)`;
+  const scope = `${inOrgOf("i.org_id", "$1")} AND ($2::uuid IS NOT NULL OR NOT i.hidden) AND ($2::uuid IS NULL OR i.id = $2::uuid) AND ($3::uuid IS NULL OR i.org_id = $3::uuid)`;
   const [inboxes, perDay, totals] = await Promise.all([
     db.query<{ id: string }>(`SELECT i.id FROM loopway.inboxes i WHERE ${scope} ORDER BY i.id`, [
       userId,
@@ -475,6 +477,8 @@ export interface Bot {
   harness: string;
   /** bigint: the `seq` of the last message the bot has read past. */
   cursor: string | bigint;
+  /** An org's setup bot: made by loopway, left out of lists, its prompt not the user's to change. */
+  hidden: boolean;
   inbox_ids: string[];
   /** The bot's newest version of its prompt and assign rules; null for a bot that has none yet. */
   prompt_version: BotVersion | null;
@@ -486,7 +490,7 @@ export interface Bot {
 }
 
 const BOT_COLS = `
-  b.id, b.created_by, b.org_id, b.name, b.model, b.harness, b.cursor, b.lock_token, b.locked_until, b.runner_id, b.created_at,
+  b.id, b.created_by, b.org_id, b.name, b.model, b.harness, b.hidden, b.cursor, b.lock_token, b.locked_until, b.runner_id, b.created_at,
   COALESCE((SELECT jsonb_agg(bi.inbox_id ORDER BY bi.inbox_id) FROM loopway.bot_inboxes bi WHERE bi.bot_id = b.id),
            '[]'::jsonb) AS inbox_ids,
   (SELECT jsonb_build_object('version', v.version, 'prompt', v.prompt, 'rules', v.rules, 'created_at', v.created_at)
@@ -515,15 +519,25 @@ export async function createBot(
     inboxIds: string[];
     prompt?: string;
     rules?: BotRule[];
+    hidden?: boolean;
   },
 ): Promise<Bot> {
   const id = uuidv7();
   await db.transaction(async (tx) => {
     await tx.query(
-      `INSERT INTO loopway.bots (id, created_by, org_id, name, model, harness, cursor)
+      `INSERT INTO loopway.bots (id, created_by, org_id, name, model, harness, hidden, cursor)
        VALUES ($1, $2, $6::uuid,
-         $3, $5, $7, COALESCE((SELECT max(seq) FROM loopway.messages WHERE inbox_id IN ${inboxIds("$4")}), 0))`,
-      [id, userActor(input.userId), input.name, input.inboxIds, input.model, input.orgId, input.harness],
+         $3, $5, $7, $8, COALESCE((SELECT max(seq) FROM loopway.messages WHERE inbox_id IN ${inboxIds("$4")}), 0))`,
+      [
+        id,
+        userActor(input.userId),
+        input.name,
+        input.inboxIds,
+        input.model,
+        input.orgId,
+        input.harness,
+        !!input.hidden,
+      ],
     );
     await tx.query(
       `INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, org_id)
@@ -538,13 +552,26 @@ export async function createBot(
 
 // Deleted bots keep their row (deleted_at is set), and nothing reads them.
 
-/** The user's bots, or only those of `orgId` (an org the caller has checked the user is a member of). */
-export async function listBots(db: Db, userId: string, orgId?: string): Promise<Bot[]> {
+/**
+ * The user's bots, or only those of `orgId` (an org the caller has checked the user is a member of). Hidden bots are
+ * left out unless `includeHidden`, which is for runners: they run them.
+ */
+export async function listBots(db: Db, userId: string, orgId?: string, includeHidden = false): Promise<Bot[]> {
   return db.query<Bot>(
     `SELECT ${BOT_COLS} FROM loopway.bots b
-     WHERE ${inOrgOf("b.org_id", "$1")} AND ($2::uuid IS NULL OR b.org_id = $2::uuid) AND b.deleted_at IS NULL ORDER BY b.id`,
-    [userId, orgId ?? null],
+     WHERE ${inOrgOf("b.org_id", "$1")} AND ($2::uuid IS NULL OR b.org_id = $2::uuid) AND b.deleted_at IS NULL
+       AND ($3 OR NOT b.hidden) ORDER BY b.id`,
+    [userId, orgId ?? null, includeHidden],
   );
+}
+
+/** The org's hidden setup bot, if it has one. */
+export async function getSetupBot(db: Db, orgId: string): Promise<Bot | undefined> {
+  const [row] = await db.query<Bot>(
+    `SELECT ${BOT_COLS} FROM loopway.bots b WHERE b.org_id = $1 AND b.hidden AND b.deleted_at IS NULL`,
+    [orgId],
+  );
+  return row;
 }
 
 export async function getBot(db: Db, id: string, userId?: string): Promise<Bot | undefined> {
@@ -594,7 +621,7 @@ export async function botActivity(
 ): Promise<BotActivity[]> {
   const dates = windowDates(days);
   const since = dates[0] + "T00:00:00Z";
-  const scope = `${inOrgOf("b.org_id", "$1")} AND b.deleted_at IS NULL AND ($2::uuid IS NULL OR b.id = $2::uuid) AND ($3::uuid IS NULL OR b.org_id = $3::uuid)`;
+  const scope = `${inOrgOf("b.org_id", "$1")} AND b.deleted_at IS NULL AND ($2::uuid IS NOT NULL OR NOT b.hidden) AND ($2::uuid IS NULL OR b.id = $2::uuid) AND ($3::uuid IS NULL OR b.org_id = $3::uuid)`;
   const [bots, perDay, totals, levelRows] = await Promise.all([
     db.query<{ id: string }>(`SELECT b.id FROM loopway.bots b WHERE ${scope} ORDER BY b.id`, [
       userId,
