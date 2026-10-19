@@ -108,6 +108,7 @@ export function ZeroState({ progress }: { progress: SetupProgress }) {
               <CopyCommand key={c.key} command={c} from="zero_state" />
             ))}
           </section>
+          <AgentPrompt from="zero_state" />
         </>
       )}
       {current === 1 && (
