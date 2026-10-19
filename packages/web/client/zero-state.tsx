@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { HARNESS_LABELS } from "@loopway/harnesses/labels";
 import { AgentPrompt } from "./agent-prompt.js";
 import { COMMANDS, CopyCommand } from "./runners.js";
-import { DashLayout, MembersHint } from "./layout.js";
+import { DashLayout, MembersHint, OrgsContext } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
 
@@ -138,6 +138,7 @@ const STEPS = ["Get loopway running", "Make your first bot", "See it run"];
 /** What an org that hasn't finished setting up sees in place of its dashboard: three steps, then the app. */
 export function ZeroState({ progress }: { progress: SetupProgress }) {
   const me = lw.useMe();
+  const chat = !!useContext(OrgsContext)?.find((o) => o.slug === lw.orgSlug())?.first_bot_by_chat;
   useEffect(() => {
     track("zero_state_viewed");
   }, []);
@@ -173,7 +174,7 @@ export function ZeroState({ progress }: { progress: SetupProgress }) {
           <div className="page-head">
             <h1>Your runner is connected</h1>
           </div>
-          <HarnessPicker />
+          {chat && <HarnessPicker />}
           <AgentPrompt from="zero_state" />
         </>
       )}

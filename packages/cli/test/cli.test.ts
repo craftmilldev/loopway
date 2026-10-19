@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApi } from "@loopway/web/api";
+import { parseOrgFlag } from "@loopway/web/flags";
 import { PRESETS } from "@loopway/presets";
 import { type Db } from "@loopway/web/db";
 import { openTestDb } from "@loopway/web/db/testing";
@@ -42,6 +43,7 @@ beforeAll(async () => {
     getDb: async () => db,
     publicBaseUrl: API,
     tokenSecret: SECRET,
+    firstBotByChat: parseOrgFlag("all"),
     sendEmail: async (e) => void emails.push(e),
   });
 });

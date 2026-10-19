@@ -39,6 +39,12 @@ Optionally set `SCHEDULE_OPTIONS` (`hour`, `day` or `hour,day`; default `day`) t
 
 Tables live in a `loopway` schema (not `public`) with RLS enabled and no policies, so a Data API (Neon's is opt-in) can't reach them.
 
+### Feature flags
+
+Flags are plain environment variables, so they work without PostHog. A flag is off unless its variable names an org or turns it on for all of them.
+
+- `FIRST_BOT_BY_CHAT`: the hidden setup bot and the chat built on it (zero state's "which coding agent do you use?" picker, `PUT /setup-bot`, `POST /setup-bot/messages`). Off by default: with it off no org gets a setup bot, those endpoints answer 404 and the UI shows nothing of it. Set it to an org's slug to turn it on for that org (`FIRST_BOT_BY_CHAT=acme`; several are comma-separated, `acme,bob`), or to `all` (also `true` or `1`) for every org. Restart or redeploy after changing it. `GET /orgs` reports each org's value as `first_bot_by_chat`, which is how the web UI knows. Everything the chat work adds checks it through `createApi`'s `firstBotByChat(orgSlug)` option (`src/flags.ts`); `first_bot_by_chat_blocked` (by endpoint) counts the calls it turns away.
+
 ### Login email (Resend) on the one-click deploy
 
 Resend is a Vercel Marketplace integration (`vc i resend`; it sets `RESEND_API_KEY` and nothing else, not `EMAIL_FROM`). It is not something the clone button's `stores` parameter can add the way it adds Neon: that parameter is documented for storage products, Resend's `productSlug`/`protocol` aren't published, and the integration needs a domain bought through Vercel. So the button prompts for the two values instead (`env=RESEND_API_KEY,EMAIL_FROM`):

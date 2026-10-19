@@ -163,8 +163,8 @@ async function claimInvites(tx: Q, userId: string, email: string): Promise<numbe
 }
 
 /**
- * Gives an org its hidden setup bot and the hidden inbox it reads, on the default harness (the user picks theirs later,
- * see `PUT /setup-bot`). Every org gets one when it is made; migration 030 gave the existing ones theirs.
+ * Gives an org its hidden setup bot and the hidden inbox it reads. Only `PUT /setup-bot` calls it, for an org that has
+ * first-bot-by-chat on (see flags.ts), so orgs without it have none.
  */
 export async function createSetupBot(tx: Q, orgId: string, harness = "claude"): Promise<void> {
   const inboxId = uuidv7();
@@ -201,7 +201,6 @@ async function createPersonalOrg(tx: Q, userId: string, username: string) {
     userId,
     userActor(userId),
   ]);
-  await createSetupBot(tx, orgId);
 }
 
 /**
@@ -270,7 +269,6 @@ export async function createSharedOrg(
         userId,
         userActor(userId),
       ]);
-      await createSetupBot(tx, id);
       return { ok: true as const, org: { id, slug, name: name || slug, personal: false } };
     });
   } catch (err) {
