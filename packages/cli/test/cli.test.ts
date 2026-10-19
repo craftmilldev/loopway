@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { createApi } from "@loopway/web/api";
 import { PRESETS } from "@loopway/presets";
 import { type Db } from "@loopway/web/db";
-import { openTestDb } from "@loopway/web/db/testing";
+import { openTestDb, TEST_INBOX_KEY } from "@loopway/web/db/testing";
 import { createLoginCode, createUser, setUsername } from "@loopway/web/store";
 import { signSessionToken } from "@loopway/web/tokens";
 import type { Command } from "commander";
@@ -42,6 +42,7 @@ beforeAll(async () => {
     getDb: async () => db,
     publicBaseUrl: API,
     tokenSecret: SECRET,
+    inboxSecretKey: TEST_INBOX_KEY,
     sendEmail: async (e) => void emails.push(e),
   });
 });
@@ -491,10 +492,10 @@ describe("inboxes", () => {
       "--events",
       "deployment.error",
     );
-    expect(inbox.config).toEqual({ secret: null, events: ["deployment.error"] });
+    expect(inbox.config).toEqual({ events: ["deployment.error"], secret_set: false });
     await expect(run("inbox", "update", "vc")).rejects.toThrow(/Pass --name, --events, --secret or --schema/);
     const updated = await runJson("inbox", "update", "vc", "--secret", "from-vercel");
-    expect(updated.config).toEqual({ secret: "from-vercel", events: ["deployment.error"] });
+    expect(updated.config).toEqual({ events: ["deployment.error"], secret_set: true });
     expect(await run("inbox", "update", inbox.id, "--name", "vercel")).toMatch(/Updated inbox .*vercel/);
   });
 
@@ -613,10 +614,10 @@ describe("inboxes", () => {
   it("creates a granola inbox without a secret and sets it with update", async () => {
     await configured();
     const inbox = await runJson("inbox", "create", "--name", "notes", "--source", "granola");
-    expect(inbox.config).toEqual({ secret: null, events: ["*"] });
+    expect(inbox.config).toEqual({ events: ["*"], secret_set: false });
     const secret = "whsec_" + Buffer.from("granola-key").toString("base64");
     const updated = await runJson("inbox", "update", "notes", "--secret", secret);
-    expect(updated.config).toEqual({ secret, events: ["*"] });
+    expect(updated.config).toEqual({ events: ["*"], secret_set: true });
     expect(updated.setup.secret).toBe("set");
   });
 });
@@ -1081,7 +1082,7 @@ describe("threads", () => {
     const list = async () => (await runJson("messages", "list", boxes[0]!.id, "--all")).data;
     const cursor = async (bot = bots[0]!) => (await runJson("bots", "show", bot.id)).cursor;
     const newest = async () => Math.max(...(await list()).map((e: any) => e.seq));
-    return { inbox: boxes[0]!, bots, bot: bots[0]!, client, runner, runs, out, d, finish, list, cursor, newest };
+    return { boxes, inbox: boxes[0]!, bots, bot: bots[0]!, client, runner, runs, out, d, finish, list, cursor, newest };
   }
 
   /** Calls one of the dispatcher's MCP methods the way Claude Code would. */
@@ -1478,8 +1479,8 @@ describe("threads", () => {
   });
 
   it("runs every bot, sharing --max across them", async () => {
-    const { bots, runs, d, finish, cursor, out } = await setup(1, {}, 2);
-    const [a, b] = await Promise.all(bots.map((bot) => runJson("inbox", "show", bot.inbox_ids[0]!)));
+    const { boxes, bots, runs, d, finish, cursor, out } = await setup(1, {}, 2);
+    const [a, b] = boxes as [(typeof boxes)[number], (typeof boxes)[number]];
     await send(a, "issues", issue("opened", 1));
     await send(b, "issues", issue("opened", 1));
     await d.tick();

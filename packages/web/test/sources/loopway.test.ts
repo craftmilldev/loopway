@@ -133,6 +133,6 @@ describe("loopway webhooks", () => {
 
     const inbox = await loopwayInbox(key);
     const r = await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { schema: SCHEMA } } });
-    expect(r.body.config).toEqual({ secret: inbox.config.secret, events: ["*"], schema: SCHEMA });
+    expect(r.body.config).toEqual({ events: ["*"], schema: SCHEMA, secret_set: true });
   });
 });

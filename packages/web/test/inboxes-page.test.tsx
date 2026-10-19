@@ -10,7 +10,7 @@ const inbox = (over: object = {}) => ({
   name: "loopway-github",
   source_type: "github",
   webhook_url: "https://loopway.test/api/webhooks/i1",
-  config: { secret: "s3cret", events: ["issues", "push"] },
+  config: { secret_set: true, events: ["issues", "push"] },
   ...over,
 });
 const vercel = inbox({
@@ -18,7 +18,7 @@ const vercel = inbox({
   name: "vercel-prod",
   source_type: "vercel",
   webhook_url: "https://loopway.test/api/webhooks/i2",
-  config: { secret: null, events: ["*"] },
+  config: { secret_set: false, events: ["*"] },
 });
 const days = (n: number) =>
   Array.from({ length: n }, (_, i) => ({
@@ -199,7 +199,7 @@ describe("Inbox page", () => {
     expect(screen.getByText("Add it in Vercel under Settings › Webhooks.")).toBeTruthy();
     expect(screen.getByText("rejecting deliveries")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Signing secret"), { target: { value: "whsec_abc" } });
-    patchReply = { status: 200, body: { ...vercel, config: { secret: "whsec_abc", events: ["*"] } } };
+    patchReply = { status: 200, body: { ...vercel, config: { secret_set: true, events: ["*"] } } };
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.queryByText("Finish setting up this inbox")).toBeNull());
     expect(requests.find((r) => r.method === "PATCH")!.body).toEqual({ config: { secret: "whsec_abc" } });

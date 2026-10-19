@@ -10,7 +10,7 @@ export interface Inbox {
   source_type: string;
   webhook_url: string;
   config?: {
-    secret?: string | null;
+    secret_set?: boolean;
     events?: string[];
     schedule?: { every: "hour" } | { every: "day"; hour: number };
     messages?: { type: string; message: string }[];

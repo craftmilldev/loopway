@@ -81,7 +81,7 @@ export function Inbox({ id }: { id: string }) {
   }, !!inbox);
 
   // A source that makes the secret on its side leaves the inbox rejecting deliveries until it's pasted in.
-  const unfinished = !!inbox && !!source && source.secret.from !== "none" && !inbox.config?.secret;
+  const unfinished = !!inbox && !!source && source.secret.from !== "none" && !inbox.config?.secret_set;
   const loaded = !!inbox;
   useEffect(() => {
     if (loaded) track("inbox_viewed", { setup_unfinished: unfinished });
@@ -247,7 +247,7 @@ function SenderSecret({
 }) {
   const [secret, setSecret] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const isSet = !!inbox.config?.secret;
+  const isSet = !!inbox.config?.secret_set;
 
   async function submit(e: FormEvent) {
     e.preventDefault();

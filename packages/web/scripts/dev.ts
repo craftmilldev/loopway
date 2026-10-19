@@ -5,16 +5,25 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { context } from "esbuild";
 import { Hono } from "hono";
 import { getDb, migrate } from "../src/db/index.js";
+import { secretBox } from "../src/secrets.js";
+import { encryptInboxSecrets } from "../src/store.js";
 import { clientBuild } from "./client.js";
 
 if (!process.env.TOKEN_SECRET) {
   process.env.TOKEN_SECRET = randomBytes(32).toString("hex");
   console.warn("TOKEN_SECRET is unset: using a random one, so sessions end when this server restarts.");
 }
+if (!process.env.INBOX_SECRET_KEY) {
+  // Fixed, so inboxes made locally still open after a restart. Never a real deployment's key.
+  process.env.INBOX_SECRET_KEY = Buffer.alloc(32, "loopway-dev").toString("base64");
+  console.warn("INBOX_SECRET_KEY is unset: using a fixed local key.");
+}
 const { default: app } = await import("../src/index.js"); // after TOKEN_SECRET is settled
 
 // Open and migrate up front so the first request isn't slow and a fresh local database has its tables.
-await migrate(await getDb());
+const db = await getDb();
+await migrate(db);
+await encryptInboxSecrets(db, secretBox(process.env.INBOX_SECRET_KEY));
 
 // Rebuild the web UI bundle into public/ on change, and serve public/ the way Vercel's CDN serves the icons in
 // production.

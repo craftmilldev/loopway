@@ -1,4 +1,6 @@
 import { migrate, openDb } from "./index.js";
+import { secretBox } from "../secrets.js";
+import { encryptInboxSecrets } from "../store.js";
 import { ANONYMOUS, type Metrics } from "../metrics.js";
 
 /**
@@ -27,11 +29,14 @@ export async function runMigrations(opts: RunMigrationsOptions): Promise<string[
     log("No DATABASE_URL_UNPOOLED or DATABASE_URL set; skipping migrations.");
     return null;
   }
+  const key = (opts.env ?? process.env).INBOX_SECRET_KEY;
   let applied: string[];
+  let moved: number;
   try {
     const db = await openDb({ databaseUrl });
     try {
       applied = await migrate(db);
+      moved = await encryptInboxSecrets(db, key ? secretBox(key) : undefined);
     } finally {
       await db.close();
     }
@@ -42,6 +47,8 @@ export async function runMigrations(opts: RunMigrationsOptions): Promise<string[
     throw err;
   }
   await opts.metrics.capture("migrations_applied", ANONYMOUS, { count: applied.length });
+  if (moved) await opts.metrics.capture("inbox_secrets_encrypted", ANONYMOUS, { count: moved });
   log(applied.length ? `Applied: ${applied.join(", ")}` : "Migrations up to date.");
+  if (moved) log(`Encrypted ${moved} inbox secrets.`);
   return applied;
 }

@@ -1,3 +1,4 @@
+import { TEST_INBOX_KEY } from "../../src/db/testing.js";
 import { describe, expect, it } from "vitest";
 import { windowStart } from "../../../sources/src/schedule.js";
 import { createApi, parseScheduleOptions } from "../../src/api.js";
@@ -5,7 +6,8 @@ import type { Metrics } from "../../src/metrics.js";
 import { app, call, db, newUser, SECRET } from "../helpers.js";
 
 const CRON = "cron-secret";
-const cronApp = () => createApi({ getDb: async () => db, tokenSecret: "x", cronSecret: CRON });
+const cronApp = () =>
+  createApi({ getDb: async () => db, tokenSecret: "x", inboxSecretKey: TEST_INBOX_KEY, cronSecret: CRON });
 const tick = (token: string | null = CRON, a = cronApp()) =>
   a.request("/api/cron/schedules", { headers: token ? { authorization: `Bearer ${token}` } : {} });
 
@@ -86,7 +88,9 @@ describe("schedule inboxes", () => {
   it("refuses the cron route without the secret", async () => {
     expect((await tick(null)).status).toBe(401);
     expect((await tick("wrong")).status).toBe(401);
-    expect((await tick(CRON, createApi({ getDb: async () => db, tokenSecret: "x" }))).status).toBe(401);
+    expect(
+      (await tick(CRON, createApi({ getDb: async () => db, tokenSecret: "x", inboxSecretKey: TEST_INBOX_KEY }))).status,
+    ).toBe(401);
   });
 
   it("takes no webhooks", async () => {
@@ -100,7 +104,14 @@ describe("schedule inboxes", () => {
     const events: { event: string; properties?: Record<string, unknown> }[] = [];
     const metrics: Metrics = { capture: async (event, _id, properties) => void events.push({ event, properties }) };
     const dayOnly = () =>
-      createApi({ getDb: async () => db, tokenSecret: SECRET, cronSecret: CRON, scheduleOptions: ["day"], metrics });
+      createApi({
+        getDb: async () => db,
+        tokenSecret: SECRET,
+        inboxSecretKey: TEST_INBOX_KEY,
+        cronSecret: CRON,
+        scheduleOptions: ["day"],
+        metrics,
+      });
     const daily = { schedule: { every: "day", hour: 9 }, messages: [config.messages[0]] };
 
     it("reads SCHEDULE_OPTIONS, defaulting to day", () => {

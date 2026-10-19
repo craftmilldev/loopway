@@ -6,7 +6,7 @@ An inbox with `source_type: "linear"` receives a workspace's webhooks.
 
 `{ "secret"?: string, "events"?: ["issue.create", ...] (default ["*"]) }`
 
-Event names are `<type>.<action>`, lowercased. Linear makes the secret, so `config.secret` is `null` until you paste it in.
+Event names are `<type>.<action>`, lowercased. Linear makes the secret, so `config.secret_set` is `false` until you paste it in.
 
 ## Setup
 

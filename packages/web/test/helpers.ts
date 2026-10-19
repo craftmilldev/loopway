@@ -4,7 +4,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect } from "vitest";
 import { createApi } from "../src/api.js";
 import { type Db } from "../src/db/index.js";
-import { openTestDb } from "../src/db/testing.js";
+import { openTestDb, TEST_INBOX_KEY } from "../src/db/testing.js";
 import { createLoginCode, createUser } from "../src/store.js";
 import { signSessionToken } from "../src/tokens.js";
 
@@ -16,7 +16,12 @@ export let app: ReturnType<typeof createApi>;
 // Each test file gets its own migrated database on the local Postgres (`npm run db:up`).
 beforeAll(async () => {
   db = await openTestDb();
-  app = createApi({ getDb: async () => db, publicBaseUrl: "https://loopway.test", tokenSecret: SECRET });
+  app = createApi({
+    getDb: async () => db,
+    publicBaseUrl: "https://loopway.test",
+    tokenSecret: SECRET,
+    inboxSecretKey: TEST_INBOX_KEY,
+  });
 });
 afterAll(() => db.close());
 

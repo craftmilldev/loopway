@@ -6,7 +6,7 @@ An inbox with `source_type: "vercel"` receives a team's webhooks.
 
 `{ "secret"?: string, "events"?: ["deployment.error", ...] (default ["*"]) }`
 
-Vercel makes the secret, so `config.secret` is `null` until you paste it in.
+Vercel makes the secret, so `config.secret_set` is `false` until you paste it in.
 
 ## Setup
 

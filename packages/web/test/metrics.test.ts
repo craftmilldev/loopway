@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApi } from "../src/api.js";
 import { type Db } from "../src/db/index.js";
-import { openTestDb } from "../src/db/testing.js";
+import { openTestDb, TEST_INBOX_KEY } from "../src/db/testing.js";
 import { createMetrics, noopMetrics, type Metrics } from "../src/metrics.js";
 
 let db: Db;
@@ -13,7 +13,7 @@ const metrics: Metrics = {
 
 beforeAll(async () => {
   db = await openTestDb();
-  app = createApi({ getDb: async () => db, tokenSecret: "test-secret", metrics });
+  app = createApi({ getDb: async () => db, tokenSecret: "test-secret", inboxSecretKey: TEST_INBOX_KEY, metrics });
 });
 afterAll(() => db.close());
 
@@ -37,7 +37,12 @@ describe("metrics", () => {
   it("gives the browser the PostHog key only when one is set", async () => {
     const without = await (await app.request("/dashboard")).text();
     expect(without).not.toContain("posthog-key");
-    const keyed = createApi({ getDb: async () => db, tokenSecret: "test-secret", posthogKey: "phc_test" });
+    const keyed = createApi({
+      getDb: async () => db,
+      tokenSecret: "test-secret",
+      inboxSecretKey: TEST_INBOX_KEY,
+      posthogKey: "phc_test",
+    });
     expect(await (await keyed.request("/dashboard")).text()).toContain('<meta name="posthog-key" content="phc_test">');
     expect(await (await keyed.request("/dashboard")).text()).toContain('content="https://us.posthog.com"');
   });

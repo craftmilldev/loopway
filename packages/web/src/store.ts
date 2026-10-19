@@ -3,6 +3,7 @@ import { botActor, runnerActor, userActor } from "./actor.js";
 import type { CloudEvent } from "./cloudevents.js";
 import type { Db } from "./db/index.js";
 import { ApiError } from "./http.js";
+import type { SecretBox } from "./secrets.js";
 import { slugProblem, type SlugProblem } from "./slugs.js";
 import { newLockToken, newLoginCode, normalizeLoginCode, safeEqual, sha256, uuidv7 } from "./ids.js";
 
@@ -262,18 +263,38 @@ export interface Inbox {
   org_id: string;
   name: string;
   source_type: string;
+  /** Everything but the webhook secret, which is in `secret_enc`. */
   config: unknown;
+  /** The webhook secret, sealed by secrets.ts with the inbox id as context. Null for an inbox with none. */
+  secret_enc: string | null;
   created_at: Date;
 }
 
 export async function createInbox(
   db: Db,
-  input: { userId: string; orgId: string; name: string; sourceType: string; config: unknown },
+  input: {
+    /** Given when `secretEnc` was sealed against it. */
+    id?: string;
+    userId: string;
+    orgId: string;
+    name: string;
+    sourceType: string;
+    config: unknown;
+    secretEnc?: string | null;
+  },
 ): Promise<Inbox> {
   const [row] = await db.query<Inbox>(
-    `INSERT INTO loopway.inboxes (id, created_by, org_id, name, source_type, config)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING *`,
-    [uuidv7(), userActor(input.userId), input.orgId, input.name, input.sourceType, input.config],
+    `INSERT INTO loopway.inboxes (id, created_by, org_id, name, source_type, config, secret_enc)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7) RETURNING *`,
+    [
+      input.id ?? uuidv7(),
+      userActor(input.userId),
+      input.orgId,
+      input.name,
+      input.sourceType,
+      input.config,
+      input.secretEnc ?? null,
+    ],
   );
   return row!;
 }
@@ -303,15 +324,45 @@ export async function inboxesOfSource(db: Db, sourceType: string): Promise<Inbox
   return db.query<Inbox>(`SELECT * FROM loopway.inboxes WHERE source_type = $1 ORDER BY id`, [sourceType]);
 }
 
-export async function updateInbox(db: Db, id: string, patch: { name?: string; config?: unknown }): Promise<Inbox> {
+/** Leaves `secretEnc` alone unless it is given. */
+export async function updateInbox(
+  db: Db,
+  id: string,
+  patch: { name?: string; config?: unknown; secretEnc?: string },
+): Promise<Inbox> {
   const [row] = await db.query<Inbox>(
     `UPDATE loopway.inboxes SET
-       name   = COALESCE($2, name),
-       config = COALESCE($3::jsonb, config)
+       name       = COALESCE($2, name),
+       config     = COALESCE($3::jsonb, config),
+       secret_enc = COALESCE($4, secret_enc)
      WHERE id = $1 RETURNING *`,
-    [id, patch.name ?? null, patch.config ?? null],
+    [id, patch.name ?? null, patch.config ?? null, patch.secretEnc ?? null],
   );
   return row!;
+}
+
+/**
+ * Moves secrets still in plaintext in an inbox's config (from before `secret_enc`) into it, sealed. Safe to rerun: it
+ * only touches inboxes whose config still has a `secret`, and a crash leaves each one wholly moved or wholly not.
+ * Returns how many it moved.
+ */
+export async function encryptInboxSecrets(db: Db, box: SecretBox | undefined): Promise<number> {
+  const rows = await db.query<{ id: string; secret: unknown }>(
+    `SELECT id, config->'secret' AS secret FROM loopway.inboxes WHERE config ? 'secret'`,
+  );
+  if (rows.length && !box) {
+    throw new Error(
+      `${rows.length} inbox secrets are still in plaintext: set INBOX_SECRET_KEY so they can be encrypted`,
+    );
+  }
+  for (const { id, secret } of rows) {
+    // A null secret (Linear's "not set yet" kept as null) just goes away.
+    await db.query(
+      `UPDATE loopway.inboxes SET config = config - 'secret', secret_enc = COALESCE($2, secret_enc) WHERE id = $1`,
+      [id, typeof secret === "string" && secret ? box!.seal(secret, id) : null],
+    );
+  }
+  return rows.length;
 }
 
 export async function deleteInbox(db: Db, id: string): Promise<void> {

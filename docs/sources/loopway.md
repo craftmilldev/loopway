@@ -6,7 +6,7 @@ An inbox with `source_type: "loopway"` receives messages posted straight to it. 
 
 `{ "secret"?: string (≥16 chars, generated if omitted), "events"?: ["build.finished", ...] (default ["*"]), "schema"?: JSON Schema }`
 
-loopway makes the secret; it is the inbox token senders use as a bearer token.
+loopway makes the secret; it is the inbox token senders use as a bearer token. It is shown once, in the response that creates the inbox, and never returned again.
 
 `schema` is a JSON Schema (2020-12) every message must match. Its `required` must include `type`, `id` and `data`; the default, `{"type": "object", "required": ["type", "id", "data"]}`, accepts any values for them. Set it with `loopway inbox create --schema schema.json` or `loopway inbox update <inbox> --schema schema.json`.
 

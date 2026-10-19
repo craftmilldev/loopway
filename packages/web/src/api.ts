@@ -16,6 +16,7 @@ import { ORG_SLUG_PROBLEM_MESSAGES, USERNAME_PROBLEM_MESSAGES, type SlugProblem 
 import { sources } from "./sources.js";
 import * as store from "./store.js";
 import type { MessageRow, Inbox, User } from "./store.js";
+import { secretBox } from "./secrets.js";
 import { signSessionToken, verifyToken } from "./tokens.js";
 import { createWeb } from "./ui.js";
 
@@ -41,6 +42,8 @@ export interface ApiOptions extends EeOptions {
   scheduleOptions?: ScheduleOption[];
   /** Signs session tokens (JWTs). */
   tokenSecret: string;
+  /** Encrypts inbox webhook secrets at rest (`INBOX_SECRET_KEY`: 32 bytes, base64). Without it, inboxes with a secret can't be made or read. */
+  inboxSecretKey?: string;
   /** Product metrics. Defaults to recording nothing. */
   metrics?: Metrics;
   /** The oldest CLI version still served (e.g. "0.2.0"). Older ones get 426 `cli_outdated`. Unset, none is turned away. */
@@ -68,6 +71,7 @@ export function parseScheduleOptions(value: string | undefined): ScheduleOption[
 const everyOf = (config: unknown) => (config as { schedule?: { every?: ScheduleOption } } | null)?.schedule?.every;
 
 export function createApi(opts: ApiOptions) {
+  const box = opts.inboxSecretKey ? secretBox(opts.inboxSecretKey) : undefined;
   const app = new Hono<Env>();
   const metrics = opts.metrics ?? noopMetrics;
   const scheduleOptions = opts.scheduleOptions ?? [...SCHEDULE_OPTIONS];
@@ -178,6 +182,16 @@ export function createApi(opts: ApiOptions) {
         ...extra,
       });
 
+    let config: unknown;
+    try {
+      config = fullConfig(inbox);
+    } catch (err) {
+      // No key on this deploy, or one that doesn't open this secret: not the sender's fault, so not a 401.
+      console.error(err);
+      await received("failed", { reason: "secret_unreadable" });
+      throw new ApiError(500, "internal", "Internal server error");
+    }
+
     const result = await source.receive(
       {
         headers: c.req.raw.headers,
@@ -185,7 +199,7 @@ export function createApi(opts: ApiOptions) {
         receivedAt: new Date(),
         webhookUrl: webhookUrl(c, inbox.id),
       },
-      inbox.config,
+      config,
     );
     if (result.kind === "rejected") {
       await received("rejected", { status: result.status });
@@ -508,17 +522,22 @@ export function createApi(opts: ApiOptions) {
     if (!source) {
       throw new ApiError(400, "invalid_request", `Unknown source_type. Available: ${sources.types().join(", ")}`);
     }
-    const config = source.parseConfig(input.config);
-    await requireScheduleOption(c, source.type, config, "create");
+    const full = source.parseConfig(input.config);
+    await requireScheduleOption(c, source.type, full, "create");
+    const { secret, config } = splitSecret(full);
+    const id = uuidv7();
     const inbox = await store.createInbox(c.var.db, {
+      id,
       userId: c.var.user.id,
       orgId: org.id,
       name: input.name,
       sourceType: source.type,
       config,
+      secretEnc: secret === undefined ? null : await sealSecret(c, "create", secret, id),
     });
     await metrics.capture("inbox_created", c.var.user.id, { source_type: inbox.source_type });
-    return c.json(serializeInbox(c, inbox), 201);
+    // The one response that carries the secret: it has to be copied into the sender's settings now.
+    return c.json(serializeInbox(c, inbox, secret), 201);
   });
 
   const activityQuery = z.object({ days: z.coerce.number().int().min(1).max(30).default(14) });
@@ -566,9 +585,17 @@ export function createApi(opts: ApiOptions) {
       .object({ name: z.string().min(1).max(200).optional(), config: z.unknown().optional() })
       .parse(await jsonBody(c));
     const source = sources.get(inbox.source_type)!;
-    const config = input.config === undefined ? undefined : source.parseConfig(input.config, inbox.config);
-    if (config !== undefined) await requireScheduleOption(c, inbox.source_type, config, "update", inbox.config);
-    const updated = await store.updateInbox(c.var.db, inbox.id, { name: input.name, config });
+    const existing = await fullConfigOr500(c, inbox);
+    const full = input.config === undefined ? undefined : source.parseConfig(input.config, existing);
+    if (full !== undefined) await requireScheduleOption(c, inbox.source_type, full, "update", inbox.config);
+    const { secret, config } = full === undefined ? ({} as ReturnType<typeof splitSecret>) : splitSecret(full);
+    // A secret parseConfig kept is the stored one: only a new one is sealed.
+    const changed = secret !== undefined && secret !== (existing as { secret?: string }).secret;
+    const updated = await store.updateInbox(c.var.db, inbox.id, {
+      name: input.name,
+      config,
+      secretEnc: changed ? await sealSecret(c, "update", secret, inbox.id) : undefined,
+    });
     return c.json(serializeInbox(c, updated));
   });
 
@@ -1225,24 +1252,68 @@ export function createApi(opts: ApiOptions) {
     return `${baseUrl(c)}/api/webhooks/${inboxId}`;
   }
 
-  function serializeInbox(c: Context<Env>, inbox: Inbox) {
+  /** The inbox's config as its source adapter sees it, with the secret opened. Throws if the key can't open it. */
+  function fullConfig(inbox: Inbox): unknown {
+    if (!inbox.secret_enc) return inbox.config;
+    if (!box) throw new Error("INBOX_SECRET_KEY is not set");
+    return { ...(inbox.config as object), secret: box.open(inbox.secret_enc, inbox.id) };
+  }
+
+  async function fullConfigOr500(c: Context<Env>, inbox: Inbox) {
+    try {
+      return fullConfig(inbox) as never;
+    } catch (err) {
+      console.error(err);
+      await metrics.capture("inbox_secret_failed", c.var.user.id, { action: "open", reason: reasonOf(err) });
+      throw new ApiError(500, "internal", "Internal server error");
+    }
+  }
+
+  async function sealSecret(c: Context<Env>, action: "create" | "update", secret: string, inboxId: string) {
+    if (!box) {
+      await metrics.capture("inbox_secret_failed", c.var.user.id, { action, reason: "no_key" });
+      throw new ApiError(500, "internal", "Inbox secrets can't be stored: INBOX_SECRET_KEY is not set on this server");
+    }
+    return box.seal(secret, inboxId);
+  }
+
+  /**
+   * The inbox as the API shows it. The secret is never part of it, only whether one is set (`secret_set`), unless
+   * `revealed` (the one just made) is passed.
+   */
+  function serializeInbox(c: Context<Env>, inbox: Inbox, revealed?: string) {
     const source = sources.get(inbox.source_type);
     const url = webhookUrl(c, inbox.id);
+    const secret = revealed ?? (inbox.secret_enc ? HIDDEN : undefined);
+    const shown = secret === undefined ? inbox.config : { ...(inbox.config as object), secret };
+    const publicConfig = source ? (source.publicConfig(shown) as Record<string, unknown>) : { ...(shown as object) };
+    if (revealed === undefined) delete publicConfig.secret;
     return {
       id: inbox.id,
       org_id: inbox.org_id,
       created_by: inbox.created_by,
       name: inbox.name,
       source_type: inbox.source_type,
-      config: source ? source.publicConfig(inbox.config) : inbox.config,
+      config: { ...publicConfig, ...(source?.secret.from === "none" ? {} : { secret_set: !!inbox.secret_enc }) },
       webhook_url: url,
-      setup: source?.setup?.(inbox.config, url),
+      setup: source?.setup?.(shown, url),
       created_at: iso(inbox.created_at),
     };
   }
 }
 
 // ---------- module helpers ----------
+
+/** What setup instructions show in place of a secret that's already stored. */
+const HIDDEN = "(hidden: it was shown once, when the inbox was made)";
+
+/** The config without its webhook secret, which is kept apart and encrypted, and the secret if it had one. */
+function splitSecret(full: unknown): { secret?: string; config: Record<string, unknown> } {
+  const { secret, ...config } = (full ?? {}) as Record<string, unknown>;
+  return typeof secret === "string" ? { secret, config } : { config };
+}
+
+const reasonOf = (err: unknown) => (err instanceof Error && /key/i.test(err.message) ? "no_key" : "unreadable");
 
 function bearer(c: Context): string | undefined {
   const h = c.req.header("authorization");

@@ -19,11 +19,15 @@ const app = new Hono();
 const tokenSecret = process.env.TOKEN_SECRET;
 if (!tokenSecret) throw new Error("TOKEN_SECRET is required (it signs session tokens)");
 
+const inboxSecretKey = process.env.INBOX_SECRET_KEY;
+if (!inboxSecretKey) throw new Error("INBOX_SECRET_KEY is required (it encrypts inbox webhook secrets)");
+
 app.route(
   "/",
   createApi({
     getDb,
     tokenSecret,
+    inboxSecretKey,
     cronSecret: process.env.CRON_SECRET || undefined,
     scheduleOptions: parseScheduleOptions(process.env.SCHEDULE_OPTIONS),
     metrics: createMetrics(),

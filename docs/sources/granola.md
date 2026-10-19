@@ -6,7 +6,7 @@ An inbox with `source_type: "granola"` receives note events from a Granola works
 
 `{ "secret"?: "whsec_…", "events"?: ["note.generated", "note.edited", "note.access_granted"] (default ["*"]) }`
 
-Granola makes the secret, so `config.secret` is `null` until you paste it in.
+Granola makes the secret, so `config.secret_set` is `false` until you paste it in.
 
 ## Setup
 

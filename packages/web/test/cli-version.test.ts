@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApi } from "../src/api.js";
 import { olderThan } from "../src/cli-version.js";
 import { type Db } from "../src/db/index.js";
-import { openTestDb } from "../src/db/testing.js";
+import { openTestDb, TEST_INBOX_KEY } from "../src/db/testing.js";
 import { createWeb } from "../src/ui.js";
 import type { Metrics } from "../src/metrics.js";
 
@@ -27,6 +27,7 @@ describe("minimum CLI version", () => {
     app = createApi({
       getDb: async () => db,
       tokenSecret: "test-secret",
+      inboxSecretKey: TEST_INBOX_KEY,
       publicBaseUrl: "https://loopway.test",
       minCliVersion: "0.2.0",
       metrics,

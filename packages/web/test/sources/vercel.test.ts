@@ -43,13 +43,13 @@ describe("vercel webhooks", () => {
   it("creates without a secret and rejects deliveries until one is set", async () => {
     const key = await newUser();
     const inbox = await vercelInbox(key);
-    expect(inbox.config).toEqual({ secret: null, events: ["*"] });
+    expect(inbox.config).toEqual({ events: ["*"], secret_set: false });
     expect(inbox.setup.secret).toMatch(/not set yet/);
     const early = await sendVercel(inbox.id, deployment("deployment.created"));
     expect(early.status).toBe(401);
 
     const r = await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { secret: VERCEL_SECRET } } });
-    expect(r.body.config).toEqual({ secret: VERCEL_SECRET, events: ["*"] });
+    expect(r.body.config).toEqual({ events: ["*"], secret_set: true });
     expect(r.body.setup.secret).toBe("set");
     expect((await sendVercel(inbox.id, deployment("deployment.created"))).status).toBe(202);
   });

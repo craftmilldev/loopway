@@ -109,3 +109,6 @@ export async function seedFixtures(db: Db) {
     threadId,
   };
 }
+
+/** An `INBOX_SECRET_KEY` for tests that create inboxes. */
+export const TEST_INBOX_KEY = Buffer.alloc(32, "test").toString("base64");
