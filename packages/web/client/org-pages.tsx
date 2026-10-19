@@ -1,8 +1,8 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Layout, NoBotsContext, OrgsContext } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
-import { ZeroState } from "./zero-state.js";
+import { setupDone, useSetupProgress, ZeroState } from "./zero-state.js";
 
 /** The page for a path nothing is at. An org the user isn't in gets this too, so it can't tell them the org exists. */
 export function NotFound() {
@@ -32,25 +32,18 @@ export function OrgGate({ children }: { children: ReactNode }) {
     if (member) lw.rememberOrg(slug);
     else track("org_page_not_found");
   }, [orgs, member, slug]);
-  // Whether the org has no bots; null until the request settles, and false if it fails, so the pages show as usual.
-  const [noBots, setNoBots] = useState<boolean | null>(null);
-  useEffect(() => {
-    if (!member) return;
-    void (async () => {
-      const r = await lw.api(lw.inOrg("/bots")).catch(() => null);
-      const body = r?.ok ? ((await r.json().catch(() => null)) as { data?: unknown[] } | null) : null;
-      setNoBots(body?.data?.length === 0);
-    })();
-  }, [member, slug]);
+  // How far the org's setup is; null until the first load settles, and false if it fails, so the pages show as usual.
+  const setup = useSetupProgress(member);
   if (!orgs) return null;
   if (!member) return <NotFound />;
-  // An org's first bot is the point of the app until it exists, so its pages give way to the zero state. Members (to
-  // invite) and the new-bot form stay. A failed bots request shows the pages as usual.
-  if (noBots === null) return null;
-  const shown = !noBots || /^\/[^/]+\/(members|bots\/new)$/.test(location.pathname);
+  // Until all three setup steps are done, the org's pages give way to the zero state. Members (to invite) and the
+  // new-bot form stay. A failed request shows the pages as usual.
+  if (setup === null) return null;
+  const zero = !!setup && !setupDone(setup);
+  const shown = !zero || /^\/[^/]+\/(members|bots\/new)$/.test(location.pathname);
   return (
     <OrgsContext.Provider value={orgs}>
-      <NoBotsContext.Provider value={noBots}>{shown ? children : <ZeroState />}</NoBotsContext.Provider>
+      <NoBotsContext.Provider value={zero}>{shown ? children : <ZeroState progress={setup} />}</NoBotsContext.Provider>
     </OrgsContext.Provider>
   );
 }

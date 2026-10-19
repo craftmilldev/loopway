@@ -1432,6 +1432,46 @@ fieldset {
   margin: 32px 0 12px;
   font-size: 1.625rem;
 }
+.setup-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 32px;
+  margin: 8px 0 24px;
+  padding: 0;
+  list-style: none;
+}
+.setup-steps li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-500);
+}
+.setup-steps li.done {
+  color: var(--ink-600);
+}
+.setup-steps li[aria-current="step"] {
+  color: var(--ink-900);
+}
+.setup-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid var(--ink-500);
+  border-radius: 50%;
+  font-family: var(--font-type);
+  font-size: 0.8125rem;
+}
+.setup-steps li.done .setup-circle {
+  background: var(--ink-900);
+  border-color: var(--ink-900);
+  color: var(--paper-100);
+}
+.setup-steps li[aria-current="step"] .setup-circle {
+  border-color: var(--madder-600);
+  color: var(--madder-600);
+}
 .runner-setup {
   display: flex;
   flex-direction: column;
