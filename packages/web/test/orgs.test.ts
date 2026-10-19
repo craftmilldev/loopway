@@ -44,7 +44,9 @@ describe("choosing a username", () => {
     expect((await call("GET", "/me", { key })).body.username).toBe("fresh-one");
 
     const orgs = (await call("GET", "/orgs", { key })).body.data;
-    expect(orgs).toEqual([{ id: expect.any(String), slug: "fresh-one", name: "fresh-one", personal: true }]);
+    expect(orgs).toEqual([
+      { id: expect.any(String), slug: "fresh-one", name: "fresh-one", personal: true, first_bot_by_chat: true },
+    ]);
     const members = await rows(`SELECT user_id FROM loopway.org_members WHERE org_id = $1`, [orgs[0].id]);
     expect(members).toHaveLength(1);
   });
@@ -53,7 +55,9 @@ describe("choosing a username", () => {
     const key = await newUser("Signup");
     const me = (await call("GET", "/me", { key })).body;
     const orgs = (await call("GET", "/orgs", { key })).body.data;
-    expect(orgs).toEqual([{ id: expect.any(String), slug: me.username, name: me.username, personal: true }]);
+    expect(orgs).toEqual([
+      { id: expect.any(String), slug: me.username, name: me.username, personal: true, first_bot_by_chat: true },
+    ]);
     expect(await rows(`SELECT 1 FROM loopway.org_members WHERE org_id = $1`, [orgs[0].id])).toHaveLength(1);
   });
 

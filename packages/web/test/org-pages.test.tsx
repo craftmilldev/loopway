@@ -27,6 +27,7 @@ let requests: string[];
 let bots: object[] | null;
 let runners: object[];
 let activity: object[];
+let chat: boolean;
 
 beforeEach(() => {
   localStorage.clear();
@@ -36,6 +37,7 @@ beforeEach(() => {
   bots = [{ id: "b1" }];
   runners = [online];
   activity = [{ bot_id: "b1", last_delivery_at: "2026-10-18T00:00:00Z" }];
+  chat = false;
   // A stand-in for location that reads the real one (history.replaceState moves it) and records replace().
   const real = window.location;
   vi.stubGlobal("location", {
@@ -60,7 +62,7 @@ beforeEach(() => {
       if (path.startsWith("/bots?org=")) return bots ? json({ data: bots }) : new Response("{}", { status: 500 });
       if (path.startsWith("/runners?org=")) return json({ data: runners });
       if (path.startsWith("/bots/activity?")) return json({ data: activity });
-      if (path === "/orgs") return json({ data: [mine, team] });
+      if (path === "/orgs") return json({ data: [mine, { ...team, first_bot_by_chat: chat }] });
       if (path === "/bots/b1") return json({ id: "b1", org_id: "o2" });
       if (path === "/inboxes/i1") return json({ id: "i1", org_id: "o1" });
       return new Response("{}", { status: 404 });
@@ -166,7 +168,16 @@ describe("OrgGate with no bots", () => {
       expect(track).toHaveBeenCalledWith("zero_state_" + e);
   });
 
+  it("asks nothing about a coding agent while first-bot-by-chat is off", async () => {
+    runners = [online];
+    window.history.replaceState(null, "", "/craftmill");
+    render(<OrgGate>the page</OrgGate>);
+    expect(await screen.findByText("Next, make a bot for it to run.")).toBeTruthy();
+    expect(screen.queryByText("Which coding agent do you use?")).toBeNull();
+  });
+
   it("asks which coding agent they use and makes the setup bot on it", async () => {
+    chat = true;
     runners = [online];
     bots = [];
     activity = [];

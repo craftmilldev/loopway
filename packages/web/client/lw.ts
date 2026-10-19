@@ -115,6 +115,8 @@ export interface Org {
   slug: string;
   name: string;
   personal: boolean;
+  /** First-bot-by-chat is on for this org (`FIRST_BOT_BY_CHAT`). */
+  first_bot_by_chat?: boolean;
 }
 
 const ORG_KEY = "loopway_last_org";

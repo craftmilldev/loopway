@@ -5,6 +5,7 @@ import { z, ZodError } from "zod";
 import { checkRules, THREAD_MESSAGE_TYPE } from "@loopway/rules";
 import { REPLY_TYPE, SETUP_MESSAGE_TYPE, SETUP_MODELS, SETUP_PROMPT, SETUP_RULES } from "./setup-bot.js";
 import { cliVersion, olderThan } from "./cli-version.js";
+import { flagOff, type OrgFlag } from "./flags.js";
 import { eeRoutes, type EeOptions } from "../ee/routes.js";
 import type { Db } from "./db/index.js";
 import { consoleSender, type SendEmail } from "./email.js";
@@ -45,6 +46,8 @@ export interface ApiOptions extends EeOptions {
   tokenSecret: string;
   /** Product metrics. Defaults to recording nothing. */
   metrics?: Metrics;
+  /** Whether first-bot-by-chat (the hidden setup bot and its chat) is on for an org, by slug (`FIRST_BOT_BY_CHAT`). Defaults to off. */
+  firstBotByChat?: OrgFlag;
   /** The oldest CLI version still served (e.g. "0.2.0"). Older ones get 426 `cli_outdated`. Unset, none is turned away. */
   minCliVersion?: string;
 }
@@ -72,6 +75,7 @@ const everyOf = (config: unknown) => (config as { schedule?: { every?: ScheduleO
 export function createApi(opts: ApiOptions) {
   const app = new Hono<Env>();
   const metrics = opts.metrics ?? noopMetrics;
+  const firstBotByChat = opts.firstBotByChat ?? flagOff;
   const scheduleOptions = opts.scheduleOptions ?? [...SCHEDULE_OPTIONS];
 
   /** Refuses a schedule config whose option this deploy has turned off. Keeping an inbox's current option is fine. */
@@ -352,7 +356,10 @@ export function createApi(opts: ApiOptions) {
     return c.json(serializeUser({ ...c.var.user, username }));
   });
 
-  authed.get("/orgs", async (c) => c.json({ data: await store.listOrgs(c.var.db, c.var.user.id) }));
+  authed.get("/orgs", async (c) => {
+    const orgs = await store.listOrgs(c.var.db, c.var.user.id);
+    return c.json({ data: orgs.map((o) => ({ ...o, first_bot_by_chat: firstBotByChat(o.slug) })) });
+  });
 
   // Creates a shared org with the caller as its only member. Its slug follows the username rules and error codes.
   authed.post("/orgs", async (c) => {
@@ -908,6 +915,13 @@ export function createApi(opts: ApiOptions) {
     throw new ApiError(403, "inbox_hidden", "This inbox belongs to loopway; its settings aren't yours to change");
   }
 
+  /** The setup bot's endpoints don't exist for an org that doesn't have first-bot-by-chat on. */
+  async function requireFirstBotByChat(c: Context<Env>, org: store.Org, endpoint: string) {
+    if (firstBotByChat(org.slug)) return;
+    await metrics.capture("first_bot_by_chat_blocked", c.var.user.id, { endpoint });
+    throw new ApiError(404, "not_found", "Not found");
+  }
+
   const setupHarness = z
     .string()
     .refine((n) => n in SETUP_MODELS, `must be one of: ${Object.keys(SETUP_MODELS).join(", ")}`);
@@ -915,9 +929,10 @@ export function createApi(opts: ApiOptions) {
   authed.put("/setup-bot", async (c) => {
     const input = z.object({ org: z.string().optional(), harness: setupHarness }).parse(await jsonBody(c));
     const org = await createOrg(c, "bot", input.org);
+    await requireFirstBotByChat(c, org, "put_setup_bot");
     const model = SETUP_MODELS[input.harness]!;
     let bot = await store.getSetupBot(c.var.db, org.id);
-    // Orgs get theirs when they are made; this covers one made by a deploy that didn't have the setup bot yet.
+    // Made here, the first time an org with first-bot-by-chat on picks its harness: orgs without it never get one.
     let created = !bot;
     if (!bot) {
       try {
@@ -960,6 +975,7 @@ export function createApi(opts: ApiOptions) {
       throw parsed.error;
     }
     const org = await createOrg(c, "bot", parsed.data.org);
+    await requireFirstBotByChat(c, org, "post_setup_message");
     const bot = await store.getSetupBot(c.var.db, org.id);
     if (!bot) {
       await metrics.capture("setup_message_rejected", c.var.user.id, { reason: "no_setup_bot" });

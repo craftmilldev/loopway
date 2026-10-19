@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { createApi, parseScheduleOptions } from "./api.js";
 import { getDb } from "./db/index.js";
 import { senderFromEnv } from "./email.js";
+import { parseOrgFlag } from "./flags.js";
 import { createMetrics } from "./metrics.js";
 
 /** The /api/ingest proxy forwards to PostHog's EU cloud when POSTHOG_HOST is an EU host (eu.i.posthog.com), else US. */
@@ -27,6 +28,7 @@ app.route(
     cronSecret: process.env.CRON_SECRET || undefined,
     scheduleOptions: parseScheduleOptions(process.env.SCHEDULE_OPTIONS),
     metrics: createMetrics(),
+    firstBotByChat: parseOrgFlag(process.env.FIRST_BOT_BY_CHAT),
     posthogKey: process.env.POSTHOG_API_KEY || undefined,
     posthogRegion: posthogRegion(process.env.POSTHOG_HOST),
     publicBaseUrl: process.env.PUBLIC_BASE_URL || undefined,
