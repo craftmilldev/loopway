@@ -924,37 +924,19 @@ export function createApi(opts: ApiOptions) {
     const org = await createOrg(c, "bot", input.org);
     const model = SETUP_MODELS[input.harness]!;
     let bot = await store.getSetupBot(c.var.db, org.id);
+    // Orgs get theirs when they are made; this covers one made by a deploy that didn't have the setup bot yet.
     let created = !bot;
     if (!bot) {
-      const source = sources.get("loopway")!;
-      const inbox = await store.createInbox(c.var.db, {
-        userId: c.var.user.id,
-        orgId: org.id,
-        name: "setup",
-        sourceType: "loopway",
-        config: source.parseConfig({ events: [SETUP_MESSAGE_TYPE, REPLY_TYPE] }),
-        hidden: true,
-      });
       try {
-        bot = await store.createBot(c.var.db, {
-          userId: c.var.user.id,
-          orgId: org.id,
-          name: SETUP_BOT_NAME,
-          model,
-          harness: input.harness,
-          inboxIds: [inbox.id],
-          prompt: SETUP_PROMPT,
-          rules: SETUP_RULES,
-          hidden: true,
-        });
+        await c.var.db.transaction((tx) => store.createSetupBot(tx, org.id, input.harness));
       } catch (err) {
-        // A concurrent first call won the one-hidden-bot-per-org index: drop our inbox and use its bot.
-        await store.deleteInbox(c.var.db, inbox.id);
-        bot = await store.getSetupBot(c.var.db, org.id);
-        if (!bot) throw err;
+        // A concurrent call made it first (the one-hidden-bot-per-org index).
+        if ((err as { code?: string }).code !== "23505") throw err;
         created = false;
       }
-    } else if (bot.harness !== input.harness) {
+      bot = (await store.getSetupBot(c.var.db, org.id))!;
+    }
+    if (bot.harness !== input.harness) {
       const live = (await store.listThreads(c.var.db, bot.id, "active")).filter((t) => t.started).length;
       if (live > 0) {
         await metrics.capture("setup_bot_harness_change_rejected", c.var.user.id, {

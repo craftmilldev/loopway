@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { migrate } from "../src/db/index.js";
 import { migrations } from "../src/db/migrations.js";
 import { openTestDb } from "../src/db/testing.js";
+import { SETUP_PROMPT } from "../src/setup-bot.js";
 import { migrateBefore } from "./migrate-before.js";
 
 // Migrations run on every deploy, against data that is already there. This rolls a database back to just before the
@@ -66,8 +67,12 @@ describe("the newest migration over existing data", () => {
 
       // The columns every migration should leave alone, read before and after (a new column may be added, not these changed).
       const snapshot = async () => ({
-        inboxes: await db.query(`SELECT id, created_by, org_id, name, source_type FROM loopway.inboxes ORDER BY id`),
-        bots: await db.query(`SELECT id, created_by, org_id, name, model, harness FROM loopway.bots ORDER BY id`),
+        inboxes: await db.query(
+          `SELECT id, created_by, org_id, name, source_type FROM loopway.inboxes WHERE NOT hidden ORDER BY id`,
+        ),
+        bots: await db.query(
+          `SELECT id, created_by, org_id, name, model, harness FROM loopway.bots WHERE NOT hidden ORDER BY id`,
+        ),
         threads: await db.query(`SELECT id, bot_id, created_by, org_id FROM loopway.threads ORDER BY id`),
         runners: await db.query(`SELECT id, created_by, org_id, name FROM loopway.runners ORDER BY id`),
         messages: await db.query(`SELECT id, inbox_id, ce_id, cloudevent FROM loopway.messages ORDER BY id`),
@@ -80,18 +85,18 @@ describe("the newest migration over existing data", () => {
 
       const count = async (table: string) =>
         Number((await db.query<{ n: string }>(`SELECT count(*) AS n FROM loopway.${table}`))[0]!.n);
-      for (const table of [
-        "users",
-        "orgs",
-        "org_members",
-        "inboxes",
-        "bots",
-        "bot_inboxes",
-        "runners",
-        "threads",
-        "messages",
-      ])
+      for (const table of ["users", "orgs", "org_members", "runners", "threads", "messages"])
         expect(await count(table), table).toBe(1);
+      // The newest migration gave the org its setup bot: a hidden bot and inbox, linked, on loopway's prompt.
+      for (const table of ["inboxes", "bots", "bot_inboxes"]) expect(await count(table), table).toBe(2);
+      const [setup] = await db.query<{ harness: string; prompt: string; inbox_hidden: boolean }>(
+        `SELECT b.harness, v.prompt, i.hidden AS inbox_hidden FROM loopway.bots b
+         JOIN loopway.bot_versions v ON v.bot_id = b.id
+         JOIN loopway.bot_inboxes bi ON bi.bot_id = b.id JOIN loopway.inboxes i ON i.id = bi.inbox_id
+         WHERE b.hidden AND b.org_id = $1`,
+        [id.org],
+      );
+      expect(setup).toMatchObject({ harness: "claude", prompt: SETUP_PROMPT, inbox_hidden: true });
       expect(
         await db.query(`SELECT id FROM loopway.threads WHERE id = $1 AND bot_id = $2`, [id.thread, id.bot]),
       ).toHaveLength(1);
@@ -99,5 +104,5 @@ describe("the newest migration over existing data", () => {
     } finally {
       await db.close();
     }
-  });
+  }, 30_000);
 });

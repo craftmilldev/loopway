@@ -1,9 +1,12 @@
 import type { BotRule } from "@loopway/rules";
-import { botActor, runnerActor, userActor } from "./actor.js";
+import { botActor, formatActor, runnerActor, userActor } from "./actor.js";
 import type { CloudEvent } from "./cloudevents.js";
 import type { Db } from "./db/index.js";
 import { ApiError } from "./http.js";
 import { slugProblem, type SlugProblem } from "./slugs.js";
+import { REPLY_TYPE, SETUP_MESSAGE_TYPE } from "@loopway/rules";
+import { SETUP_BOT_NAME, SETUP_MODELS, SETUP_PROMPT, SETUP_RULES } from "./setup-bot.js";
+import { sources } from "./sources.js";
 import { newLockToken, newLoginCode, normalizeLoginCode, safeEqual, sha256, uuidv7 } from "./ids.js";
 
 /** What a transaction body gets: just `query`, bound to the transaction's connection. */
@@ -159,6 +162,33 @@ async function claimInvites(tx: Q, userId: string, email: string): Promise<numbe
   return joined.length;
 }
 
+/**
+ * Gives an org its hidden setup bot and the hidden inbox it reads, on the default harness (the user picks theirs later,
+ * see `PUT /setup-bot`). Every org gets one when it is made; migration 030 gave the existing ones theirs.
+ */
+export async function createSetupBot(tx: Q, orgId: string, harness = "claude"): Promise<void> {
+  const inboxId = uuidv7();
+  const botId = uuidv7();
+  const by = formatActor("bot", "loopway");
+  const config = sources.get("loopway")!.parseConfig({ events: [SETUP_MESSAGE_TYPE, REPLY_TYPE] });
+  await tx.query(
+    `INSERT INTO loopway.inboxes (id, created_by, org_id, name, source_type, config, hidden)
+     VALUES ($1, $2, $3, $4, 'loopway', $5::jsonb, true)`,
+    [inboxId, by, orgId, SETUP_BOT_NAME, config],
+  );
+  await tx.query(
+    `INSERT INTO loopway.bots (id, created_by, org_id, name, model, harness, hidden, cursor)
+     VALUES ($1, $2, $3, $4, $5, $6, true, 0)`,
+    [botId, by, orgId, SETUP_BOT_NAME, SETUP_MODELS[harness]!, harness],
+  );
+  await tx.query(`INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, org_id) VALUES ($1, $2, $3)`, [
+    botId,
+    inboxId,
+    orgId,
+  ]);
+  await addBotVersion(tx, botId, SETUP_PROMPT, SETUP_RULES);
+}
+
 async function createPersonalOrg(tx: Q, userId: string, username: string) {
   const orgId = uuidv7();
   await tx.query(`INSERT INTO loopway.orgs (id, slug, name, personal_user_id) VALUES ($1, $2, $2, $3)`, [
@@ -171,6 +201,7 @@ async function createPersonalOrg(tx: Q, userId: string, username: string) {
     userId,
     userActor(userId),
   ]);
+  await createSetupBot(tx, orgId);
 }
 
 /**
@@ -239,6 +270,7 @@ export async function createSharedOrg(
         userId,
         userActor(userId),
       ]);
+      await createSetupBot(tx, id);
       return { ok: true as const, org: { id, slug, name: name || slug, personal: false } };
     });
   } catch (err) {

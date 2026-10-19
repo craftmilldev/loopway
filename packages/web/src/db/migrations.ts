@@ -1,3 +1,6 @@
+import { REPLY_TYPE, SETUP_MESSAGE_TYPE } from "@loopway/rules";
+import { SETUP_PROMPT, SETUP_RULES } from "../setup-bot.js";
+
 /**
  * Migrations live in TS (not .sql files) so they're bundled into the Vercel function.
  * Append new entries; never edit an applied one.
@@ -623,4 +626,40 @@ ALTER TABLE loopway.inboxes ADD COLUMN hidden boolean NOT NULL DEFAULT false;
 CREATE UNIQUE INDEX bots_one_hidden_per_org_idx ON loopway.bots (org_id) WHERE hidden AND deleted_at IS NULL;
 `,
   },
+  {
+    // Every org has a setup bot (see store.createSetupBot): this gives the existing ones theirs, on the default harness.
+    version: "030_setup_bots",
+    sql: `
+WITH todo AS (
+  SELECT o.id AS org_id, gen_random_uuid() AS inbox_id, gen_random_uuid() AS bot_id,
+         encode(sha256(convert_to(gen_random_uuid()::text || gen_random_uuid()::text, 'UTF8')), 'hex') AS secret
+  FROM loopway.orgs o
+  WHERE NOT EXISTS (SELECT 1 FROM loopway.bots b WHERE b.org_id = o.id AND b.hidden AND b.deleted_at IS NULL)
+), new_inboxes AS (
+  INSERT INTO loopway.inboxes (id, created_by, org_id, name, source_type, config, hidden)
+  SELECT inbox_id, 'bot:loopway', org_id, 'setup', 'loopway',
+         jsonb_build_object('secret', secret, 'events', ${sqlJson([SETUP_MESSAGE_TYPE, REPLY_TYPE])},
+                            'schema', '{"type": "object", "required": ["type", "id", "data"]}'::jsonb),
+         true
+  FROM todo
+), new_bots AS (
+  INSERT INTO loopway.bots (id, created_by, org_id, name, model, harness, hidden, cursor)
+  SELECT bot_id, 'bot:loopway', org_id, 'setup', 'sonnet', 'claude', true, 0 FROM todo
+), new_links AS (
+  INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, org_id) SELECT bot_id, inbox_id, org_id FROM todo
+)
+INSERT INTO loopway.bot_versions (bot_id, version, prompt, rules)
+SELECT bot_id, 1, ${sqlText(SETUP_PROMPT)}, ${sqlJson(SETUP_RULES)} FROM todo;
+`,
+  },
 ];
+
+/** A SQL string literal. */
+function sqlText(text: string): string {
+  return `'${text.replaceAll("'", "''")}'`;
+}
+
+/** A jsonb literal. */
+function sqlJson(value: unknown): string {
+  return `${sqlText(JSON.stringify(value))}::jsonb`;
+}

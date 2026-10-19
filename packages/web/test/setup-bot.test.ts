@@ -10,11 +10,24 @@ async function orgOf(key: string) {
 }
 
 describe("the setup bot", () => {
-  it("is made on the harness picked, with loopway's prompt, and left out of the lists", async () => {
+  it("exists as soon as the org does, hidden, on the default harness with loopway's prompt", async () => {
+    const key = await newUser();
+    const org = await orgOf(key);
+    const shared = (await call("POST", "/orgs", { key, body: { slug: `team-${randomUUID().slice(0, 8)}` } })).body.slug;
+    for (const slug of [org, shared]) {
+      const hidden = (await call("GET", `/bots?org=${slug}&hidden=include`, { key })).body.data;
+      expect(hidden).toHaveLength(1);
+      expect(hidden[0]).toMatchObject({ harness: "claude", model: "sonnet" });
+      expect(hidden[0].prompt_version.prompt).toBe(SETUP_PROMPT);
+      expect((await call("GET", `/bots?org=${slug}`, { key })).body.data).toEqual([]);
+    }
+  });
+
+  it("moves to the harness picked, and is left out of the lists", async () => {
     const key = await newUser();
     const org = await orgOf(key);
     const made = await call("PUT", "/setup-bot", { key, body: { org, harness: "codex" } });
-    expect(made.status).toBe(201);
+    expect(made.status).toBe(200);
     expect(made.body.harness).toBe("codex");
 
     const bot = (await call("GET", `/bots/${made.body.bot_id}`, { key })).body;
@@ -31,7 +44,7 @@ describe("the setup bot", () => {
     ]);
   });
 
-  it("is made once per org: asking again moves it to another harness", async () => {
+  it("is one per org: asking again moves it to another harness", async () => {
     const key = await newUser();
     const org = await orgOf(key);
     const first = await call("PUT", "/setup-bot", { key, body: { org, harness: "claude" } });
@@ -72,16 +85,10 @@ describe("the setup bot", () => {
     }
   });
 
-  it("keeps its inbox loopway's too, and a second first PUT at once makes one bot", async () => {
+  it("keeps its inbox loopway's too", async () => {
     const key = await newUser();
     const org = await orgOf(key);
-    const [a, b] = await Promise.all([
-      call("PUT", "/setup-bot", { key, body: { org, harness: "claude" } }),
-      call("PUT", "/setup-bot", { key, body: { org, harness: "claude" } }),
-    ]);
-    expect([a.status, b.status].sort()).toEqual([200, 201]);
-    expect(a.body.bot_id).toBe(b.body.bot_id);
-    const { inbox_id } = a.body;
+    const { inbox_id } = (await call("PUT", "/setup-bot", { key, body: { org, harness: "claude" } })).body;
     for (const [method, body] of [
       ["PATCH", { name: "mine" }],
       ["DELETE", undefined],
@@ -95,7 +102,6 @@ describe("the setup bot", () => {
   it("takes a message and keeps the reply a runner leaves", async () => {
     const key = await newUser();
     const org = await orgOf(key);
-    expect((await call("POST", "/setup-bot/messages", { key, body: { org, text: "hi" } })).status).toBe(409);
     const { bot_id, inbox_id } = (await call("PUT", "/setup-bot", { key, body: { org, harness: "claude" } })).body;
     expect((await call("POST", "/setup-bot/messages", { key, body: { org, text: "  " } })).status).toBe(400);
     const sent = await call("POST", "/setup-bot/messages", { key, body: { org, text: "which harness?" } });

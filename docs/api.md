@@ -148,9 +148,9 @@ Thread shape: `{id, bot_id, created_by, status, started, interrupted, limited, r
 
 ## Setup bot
 
-Each org can have one hidden setup bot: loopway makes it (and the inbox it reads), runs it on a runner of the org, and owns its prompt. It is left out of `GET /api/bots`, the bot and inbox activity lists and `GET /api/inboxes`; runners get it with `GET /api/bots?hidden=include`. `POST /api/bots/:id/versions`, `PATCH` and `DELETE` on it are `403 bot_hidden`.
+Every org has one hidden setup bot: loopway makes it (and the inbox it reads) when the org is made, on `claude`, runs it on a runner of the org, and owns its prompt. It is left out of `GET /api/bots`, the bot and inbox activity lists and `GET /api/inboxes`; runners get it with `GET /api/bots?hidden=include`. The bot and its inbox can't be changed or deleted by the user (`403 bot_hidden`, `403 inbox_hidden`).
 
 | Route | What it does |
 | --- | --- |
-| `PUT /api/setup-bot` `{org, harness}` | Makes the org's setup bot on the harness (`claude`, `cursor`, `codex` or `hermes`), or moves the existing one to it (`409 harness_in_use` while a started thread is active), and puts loopway's prompt in as its newest version. Returns `{bot_id, inbox_id, harness}` (201 when made, else 200). |
-| `POST /api/setup-bot/messages` `{org, text}` | Sends the bot a message (`dev.loopway.setup.message`, always the same thread). `409 no_setup_bot` before `PUT /api/setup-bot`. The bot answers with its `reply` tool; read the answer from the inbox: `GET /api/inboxes/:inbox_id/messages?type=dev.loopway.reply&cursor=<id of the sent message>`. |
+| `PUT /api/setup-bot` `{org, harness}` | Moves the org's setup bot to the harness (`claude`, `cursor`, `codex` or `hermes`; `409 harness_in_use` while a started thread is active) and puts loopway's current prompt in as its newest version if it differs. Returns `{bot_id, inbox_id, harness}`. |
+| `POST /api/setup-bot/messages` `{org, text}` | Sends the bot a message (`dev.loopway.setup.message`, always the same thread). `409 no_setup_bot` for an org made before the setup bot existed, until `PUT /api/setup-bot` makes it. The bot answers with its `reply` tool; read the answer from the inbox: `GET /api/inboxes/:inbox_id/messages?type=dev.loopway.reply&cursor=<id of the sent message>`. |
