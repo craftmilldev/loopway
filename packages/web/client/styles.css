@@ -1478,6 +1478,21 @@ fieldset {
   gap: 8px;
   margin-top: 28px;
 }
+.agent-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 20px 0;
+}
+.agent-prompt pre {
+  align-self: stretch;
+  margin: 0;
+  padding: 12px;
+  background: var(--paper-100);
+  white-space: pre-wrap;
+  font-size: 0.8125rem;
+}
 .runners-ledger {
   min-width: 860px;
 }

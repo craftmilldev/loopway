@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HARNESS_LABELS } from "@loopway/harnesses/labels";
+import { AgentPrompt } from "./agent-prompt.js";
 import { COMMANDS, CopyCommand } from "./runners.js";
 import { DashLayout, MembersHint } from "./layout.js";
 import * as lw from "./lw.js";
@@ -173,18 +174,7 @@ export function ZeroState({ progress }: { progress: SetupProgress }) {
             <h1>Your runner is connected</h1>
           </div>
           <HarnessPicker />
-          <p className="muted" style={{ marginTop: 24 }}>
-            Or make a bot for it to run yourself.
-          </p>
-          <p style={{ marginTop: 16 }}>
-            <a
-              className="btn btn-md"
-              href={lw.orgBase() + "/bots/new"}
-              onClick={() => track("zero_state_new_bot_clicked")}
-            >
-              New bot
-            </a>
-          </p>
+          <AgentPrompt from="zero_state" />
         </>
       )}
       {current === 2 && (
