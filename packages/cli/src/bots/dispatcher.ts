@@ -172,11 +172,14 @@ export class Dispatcher {
     const env = { ...(gh ? botEnv(ctx.env, gh) : ctx.env), LOOPWAY_NO_UPDATE: "1" };
     // The tools reach the dispatcher once it exists; no session calls one before then.
     const later: { dispatcher?: Dispatcher } = {};
-    const tools = sessionTools({
-      get: (id) => later.dispatcher!.getThread(id),
-      patch: (id, patch) => later.dispatcher!.patchThread(id, patch),
-      reply: (id, text) => later.dispatcher!.replyToThread(id, text),
-    });
+    const tools = sessionTools(
+      {
+        get: (id) => later.dispatcher!.getThread(id),
+        patch: (id, patch) => later.dispatcher!.patchThread(id, patch),
+        reply: (id, text) => later.dispatcher!.replyToThread(id, text),
+      },
+      ctx.metrics,
+    );
     const mcp = await startMcpServer("loopway", tools);
     const dispatcher = (later.dispatcher = new Dispatcher(ctx, client, bots, rules, prompts, opts, mcp, tools, env));
     try {

@@ -1,5 +1,6 @@
-import type { Thread, ThreadPatch } from "../client.js";
+import { ApiError, type Thread, type ThreadPatch } from "../client.js";
 import type { McpTool } from "../mcp.js";
+import { noopMetrics, type Metrics } from "../metrics.js";
 
 /** What the tools do to a session's thread: the dispatcher answers with its runner's lease token. */
 export interface ThreadApi {
@@ -9,28 +10,54 @@ export interface ThreadApi {
 }
 
 /** The MCP tools each session gets for talking back to the dispatcher. */
-export function sessionTools(api: ThreadApi): McpTool[] {
+export function sessionTools(api: ThreadApi, metrics: Metrics = noopMetrics): McpTool[] {
   return [
     {
       name: "link",
       description:
-        "Have this thread track one more subject, so its events come to this session. A subject another thread already holds can't be linked.",
+        "Have this thread track one more subject, so its events come to this session. Pass `subject`, any subject string the bot's rules produce (`owner/repo#9`, `linear/CRA-41`): a rule that yields it for a message routes that message to this thread. Or pass `number` (and optionally `repo`) for the issue or PR `owner/repo#number`. Exactly one of `subject` or `number` is required. A subject another thread already holds can't be linked.",
       inputSchema: {
         type: "object",
         properties: {
-          number: { type: "integer", description: "the issue or PR number" },
-          repo: { type: "string", description: "owner/repo; defaults to this thread's repo" },
+          subject: { type: "string", description: "the subject to track, as is, up to 500 characters" },
+          number: { type: "integer", description: "the issue or PR number, instead of subject" },
+          repo: { type: "string", description: "owner/repo for number; defaults to this thread's repo" },
         },
-        required: ["number"],
       },
       call: async (sessionId, args) => {
-        const n = args.number;
-        if (typeof n !== "number" || !Number.isInteger(n) || n < 1)
-          throw new Error("number must be a positive integer.");
-        const repo = typeof args.repo === "string" ? args.repo : (await api.get(sessionId)).subjects[0]?.split("#")[0];
-        if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error("Pass repo as owner/repo.");
-        const key = `${repo}#${n}`;
-        await api.patch(sessionId, { add_subjects: [key] });
+        const reject = async (reason: string, message: string): Promise<never> => {
+          await metrics.capture("link_rejected", { reason });
+          throw new Error(message);
+        };
+        const hasSubject = args.subject !== undefined;
+        const hasNumber = args.number !== undefined;
+        if (hasSubject === hasNumber) return reject("subject_or_number", "Pass exactly one of subject or number.");
+        let key: string;
+        if (hasSubject) {
+          const s = args.subject;
+          if (typeof s !== "string" || !s) return reject("empty_subject", "subject must be a non-empty string.");
+          if (s.length > 500) return reject("subject_too_long", "subject must be at most 500 characters.");
+          key = s;
+        } else {
+          const n = args.number;
+          if (typeof n !== "number" || !Number.isInteger(n) || n < 1)
+            return reject("invalid_number", "number must be a positive integer.");
+          const repo =
+            typeof args.repo === "string" ? args.repo : (await api.get(sessionId)).subjects[0]?.split("#")[0];
+          if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) return reject("invalid_repo", "Pass repo as owner/repo.");
+          key = `${repo}#${n}`;
+        }
+        try {
+          await api.patch(sessionId, { add_subjects: [key] });
+        } catch (err) {
+          if (err instanceof ApiError && err.code === "subject_taken") {
+            await metrics.capture("link_rejected", { reason: "subject_taken" });
+            throw new Error(`Subject ${key} already belongs to another thread, so it can't be linked.`, { cause: err });
+          }
+          await metrics.capture("link_rejected", { reason: "error" });
+          throw err;
+        }
+        await metrics.capture("link_added", { kind: hasSubject ? "subject" : "number" });
         return `Linked ${key}; its events will come to this session.`;
       },
     },
