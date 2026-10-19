@@ -585,12 +585,15 @@ export function createApi(opts: ApiOptions) {
       .object({ name: z.string().min(1).max(200).optional(), config: z.unknown().optional() })
       .parse(await jsonBody(c));
     const source = sources.get(inbox.source_type)!;
-    const existing = await fullConfigOr500(c, inbox);
+    // The stored secret is opened only when parseConfig may keep it: a rename needs nothing, and a new secret
+    // replaces one that can't be opened any more (a lost key), which is how that gets recovered.
+    const sent = typeof (input.config as { secret?: unknown } | null | undefined)?.secret === "string";
+    const existing = input.config === undefined || sent ? inbox.config : await fullConfigOr500(c, inbox);
     const full = input.config === undefined ? undefined : source.parseConfig(input.config, existing);
     if (full !== undefined) await requireScheduleOption(c, inbox.source_type, full, "update", inbox.config);
     const { secret, config } = full === undefined ? ({} as ReturnType<typeof splitSecret>) : splitSecret(full);
     // A secret parseConfig kept is the stored one: only a new one is sealed.
-    const changed = secret !== undefined && secret !== (existing as { secret?: string }).secret;
+    const changed = secret !== undefined && (sent || secret !== (existing as { secret?: string }).secret);
     const updated = await store.updateInbox(c.var.db, inbox.id, {
       name: input.name,
       config,

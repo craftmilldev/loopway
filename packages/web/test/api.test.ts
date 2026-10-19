@@ -91,6 +91,18 @@ describe("inboxes", () => {
     expect(row!.secret_enc).toMatch(/^v1\./);
     expect(row!.secret_enc).not.toContain(inbox.config.secret);
   });
+  it("can still rename, and set a new secret, when the stored one can't be opened", async () => {
+    const key = await newUser();
+    const inbox = await newInbox(key);
+    await db.query(`UPDATE loopway.inboxes SET secret_enc = 'v1.bad.bad.bad' WHERE id = $1`, [inbox.id]);
+    expect((await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { name: "renamed" } })).status).toBe(200);
+    expect((await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { events: ["push"] } } })).status).toBe(
+      500,
+    );
+    const next = "n".repeat(20);
+    expect((await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { secret: next } } })).status).toBe(200);
+    expect((await sendGithub(inbox, "push", {}, { secret: next })).status).not.toBe(401);
+  });
   it("replaces the secret when one is sent", async () => {
     const key = await newUser();
     const inbox = await newInbox(key);
