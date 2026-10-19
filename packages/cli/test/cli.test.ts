@@ -1717,6 +1717,39 @@ describe("threads", () => {
     expect((await d.state()).bots.held.map((b) => b.id).sort()).toEqual([bot.id, fresh.id].sort());
   });
 
+  it("stops running a bot deleted while the runner runs, and still delivers to the others", async () => {
+    const { inbox, bots, client, runs, out, d } = await setup(3, {}, 2);
+    // The dispatcher shares the array and removes the bot from it.
+    const [keep, gone] = bots.map((b) => b.id);
+    await d.tick();
+    await client.deleteBot(gone!);
+    await send(inbox, "issues", issue("opened", 1));
+    await d.tick();
+    await d.tick();
+    expect(out.filter((l) => l === "bot dev2: deleted, no longer running it")).toHaveLength(1);
+    expect(out.filter((l) => l.startsWith("error:"))).toEqual([]);
+    expect(runs).toHaveLength(1);
+    const state = await d.state();
+    expect(state.bots.held.map((b) => b.id)).toEqual([keep!]);
+  });
+
+  it("drops a bot the server answers not_found for mid-tick, without stopping delivery to the others", async () => {
+    const { inbox, bots, client, runs, out, d } = await setup(3, {}, 2);
+    // The dispatcher shares the array and removes the bot from it.
+    const [keep, gone] = bots.map((b) => b.id);
+    const listThreads = client.listThreads.bind(client);
+    vi.spyOn(client, "listThreads").mockImplementation((botId, ...rest) =>
+      botId === gone! ? Promise.reject(new ApiError(404, "not_found", "Bot not found")) : listThreads(botId, ...rest),
+    );
+    await send(inbox, "issues", issue("opened", 1));
+    await d.tick();
+    expect(runs).toHaveLength(1);
+    expect(out.filter((l) => l === "bot dev2: deleted, no longer running it")).toHaveLength(1);
+    expect(out.some((l) => l.includes("Bot not found"))).toBe(false);
+    vi.restoreAllMocks();
+    expect((await d.state()).bots.held.map((b) => b.id)).toEqual([keep!]);
+  });
+
   it("reports a new bot whose rules don't parse once, and runs it when a valid version arrives", async () => {
     const { inbox, client, out, d } = await setup(3);
     const fresh = await client.createBot({

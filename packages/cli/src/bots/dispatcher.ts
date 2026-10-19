@@ -246,10 +246,11 @@ export class Dispatcher {
     this.freed = false;
     await this.leaseRunner();
     if (!this.draining)
-      await this.addNewBots().catch((err) =>
+      await this.syncBots().catch((err) =>
         this.ctx.out(`error: looking for new bots: ${err instanceof Error ? err.message : String(err)}`),
       );
-    for (const bot of this.bots) {
+    // A copy, as a bot the server no longer knows is dropped from `this.bots` as it goes.
+    for (const bot of [...this.bots]) {
       try {
         const leased = this.leaseBots ? await this.lease(bot) : (await this.release(bot), false);
         if (this.draining) continue;
@@ -265,6 +266,7 @@ export class Dispatcher {
         }
         if (leased) await this.poll(bot);
       } catch (err) {
+        if (this.dropIfGone(bot, err)) continue;
         // One bot's trouble (a flaky network, say) shouldn't stop the others; try again next tick.
         this.ctx.out(`error: bot ${bot.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -273,11 +275,15 @@ export class Dispatcher {
   }
 
   /**
-   * Starts running the bots created since the last tick, so a new bot needs no restart. One without a prompt and
-   * rules yet is reported once and checked again each tick; one whose rules don't parse is reported once per version.
+   * Starts running the bots created since the last tick, so a new bot needs no restart, and stops running the ones
+   * deleted since. One without a prompt and rules yet is reported once and checked again each tick; one whose rules
+   * don't parse is reported once per version. Sessions already running for a deleted bot's threads are left to finish.
    */
-  private async addNewBots(): Promise<void> {
-    for (const bot of await this.client.listBots({ hidden: true })) {
+  private async syncBots(): Promise<void> {
+    const listed = await this.client.listBots({ hidden: true });
+    const ids = new Set(listed.map((b) => b.id));
+    for (const bot of [...this.bots]) if (!ids.has(bot.id)) this.dropBot(bot, "deleted");
+    for (const bot of listed) {
       if (this.rules.has(bot.id)) continue;
       const version = bot.prompt_version;
       if (!version?.rules) {
@@ -302,6 +308,24 @@ export class Dispatcher {
       this.ctx.out(`bot ${bot.name}: found, now running it`);
       void this.ctx.metrics?.capture("bot_picked_up");
     }
+  }
+
+  /** Stops running a bot the server no longer has, forgetting everything the runner kept about it. */
+  private dropBot(bot: Bot, reason: "deleted" | "not_found"): void {
+    const i = this.bots.indexOf(bot);
+    if (i < 0) return;
+    this.bots.splice(i, 1);
+    for (const m of [this.rules, this.prompts, this.leases, this.skipped, this.rejected]) m.delete(bot.id);
+    for (const set of [this.repaired, this.claimed, this.seen]) set.delete(bot.id);
+    this.ctx.out(`bot ${bot.name}: deleted, no longer running it`);
+    void this.ctx.metrics?.capture("bot_removed", { reason });
+  }
+
+  /** Drops the bot when `err` says the server doesn't have it (anymore); returns whether it did. */
+  private dropIfGone(bot: Bot, err: unknown): boolean {
+    if (!(err instanceof ApiError && err.code === "not_found")) return false;
+    this.dropBot(bot, "not_found");
+    return true;
   }
 
   /**
@@ -555,12 +579,18 @@ export class Dispatcher {
     const running = new Set(this.running.keys());
     // A thread the limit stopped is ready too, with nothing new to deliver; ordering puts it first.
     const ready: Thread[] = [];
-    for (const bot of this.bots) {
-      for (const t of await this.client.listThreads(bot.id, "pending", false)) {
-        if (t.runner_id !== this.runnerId || running.has(t.id)) continue;
-        if (!(t.waiting.length || t.limited || t.interrupted)) continue;
-        if ((this.errored.get(t.id)?.after ?? 0) > Date.now()) continue;
-        ready.push(t);
+    for (const bot of [...this.bots]) {
+      try {
+        for (const t of await this.client.listThreads(bot.id, "pending", false)) {
+          if (t.runner_id !== this.runnerId || running.has(t.id)) continue;
+          if (!(t.waiting.length || t.limited || t.interrupted)) continue;
+          if ((this.errored.get(t.id)?.after ?? 0) > Date.now()) continue;
+          ready.push(t);
+        }
+      } catch (err) {
+        // One bot's trouble shouldn't stop delivery to the others.
+        if (this.dropIfGone(bot, err)) continue;
+        this.ctx.out(`error: bot ${bot.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
     ready.sort((a, b) => (a.waiting[0]?.id ?? "").localeCompare(b.waiting[0]?.id ?? ""));
