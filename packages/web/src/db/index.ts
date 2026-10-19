@@ -91,7 +91,7 @@ let shared: Promise<Db> | undefined;
 
 /**
  * Process-wide DB, configured from env. Reused across requests (and across invocations on warm Vercel functions).
- * Prefers Neon's pooled URL for serving; scripts (migrate) use the direct DATABASE_URL.
+ * Serves from DATABASE_URL_POOLED, else DATABASE_URL. Migrations pick their own URL in run-migrations.ts.
  */
 export function getDb(): Promise<Db> {
   if (!shared) {

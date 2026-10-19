@@ -76,7 +76,7 @@ The pages are a React app in `packages/web/client/`. The homepage copy is markdo
 
 ```
 packages/sources/
-  src/                  one file per source (github.ts, granola.ts, linear.ts, vercel.ts): its webhook adapter, a function of the
+  src/                  one file per source (github.ts, linear.ts, ...): its webhook adapter, a function of the
                         SourceDeps (ids, secrets, CloudEvent validation) the host injects, and optionally its rule helpers;
                         index.ts registers them (createSources)
 packages/web/
@@ -84,26 +84,38 @@ packages/web/
   src/cloudevents.ts    CloudEvent validation
   src/index.ts          Vercel entry (default-exports the Hono app)
   src/api.ts            routes, auth, serialization
-  src/ui.ts             web UI: home, /login, /<org> (HTML + vanilla JS + styles)
+  src/ui.ts             the HTML shell, the bundle, /llms.txt and /install.sh
+  client/               the React UI (pages, components, styles)
+  content/              home.md, llms.txt, install.sh
+  ee/                   enterprise-licensed routes and client code (source and harness requests)
   src/store.ts          all SQL
-  src/db/               postgres.js adapter + migrations; testing.ts opens a throwaway test database
-  scripts/              dev server, migrate
+  src/db/               postgres.js adapter + migrations; run-migrations.ts runs them (the Vercel build); testing.ts opens a
+                        throwaway test database
+  scripts/              dev.ts (dev server), build.ts (migrate, then bundle), client.ts (the esbuild bundle), env.ts, migrate.ts
   test/api.test.ts      end-to-end tests (TEST_DATABASE_URL points at a different Postgres server)
   test/sources/         one webhook test file per source
 packages/cli/
   src/index.ts          `loopway` entry: error handling + exit codes
   src/program.ts        commands and flags (commander)
-  src/commands/         auth, inboxes (incl. the create TUI, @clack/prompts), messages, bots, bots-run (`loopway bots run`)
+  src/commands/         auth, orgs, inboxes (incl. the create TUI, @clack/prompts), messages, bots, botThreads, runners, bots-run (`loopway bots run`)
   src/client.ts         typed API client
   src/config.ts         ~/.loopway/config.json
   src/mcp.ts            minimal MCP server (HTTP, localhost) the bots dispatcher serves to its sessions
-  src/bots/             `loopway bots run`: dispatcher.ts (lease, read, assign, deliver),
-                        rules.ts (CEL assign rules: message → thread, with the sources' rule helpers),
-                        tools.ts (MCP link/end), agent.ts (claude -p),
-                        tui.tsx (the Ink TUI), transcript.ts (stream-json log → readable lines)
-  (bot presets live in packages/presets/src: github-threads has its prompt and starting rules)
+  src/bots/             `loopway bots run`: dispatcher.ts (lease, read, assign, deliver), runner.ts (runs the sessions),
+                        workdirs.ts (the loopway.json working directories), github.ts, tools.ts (MCP link/end),
+                        tui.tsx (the Ink TUI), colors.ts, transcript.ts (stream-json log → readable lines)
   test/cli.test.ts      runs commands against the real API app in-process
   test/tui.test.tsx     renders the threads TUI with ink-testing-library
+packages/harnesses/
+  src/                  one file per harness a bot can run on (claude.ts, codex.ts, cursor.ts, hermes.ts, script.ts); index.ts lists them
+packages/rules/
+  src/index.ts          CEL assign rules: message → thread, with the sources' rule helpers
+packages/presets/
+  src/                  bot presets: github-threads has its prompt and starting rules
+packages/palette/
+  src/index.ts          the brand colors, each in its paper (light) and ink (dark) tone
+packages/bb-plugin-loopway/
+                        `loopway bots run` as a bb plugin: server.ts, the Loopway page (app.tsx), status.ts
 ```
 
 ### Adding a source
