@@ -384,7 +384,7 @@ function Settings({ inbox, onSaved }: { inbox: InboxInfo; onSaved: (inbox: Inbox
       return setError(await lw.message(r));
     }
     track("inbox_deleted");
-    location.assign(lw.orgBase() + "/inboxes");
+    location.assign(lw.orgBase() + "/bots");
   }
 
   return (
