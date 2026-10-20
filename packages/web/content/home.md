@@ -18,7 +18,7 @@ How the page reads it:
 
 ## A runner for bots {#top}
 
-# Bots that run your process, and *ask* when they need you.
+# A notification system for your bots.
 
 loopway listens to the services you already use, keeps every event in an inbox, and hands them to bots running on your machines. A bot is a prompt and a few rules, run by the coding agent you pick: {agents}.
 
