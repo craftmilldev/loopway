@@ -42,8 +42,8 @@ export interface ApiOptions extends EeOptions {
   scheduleOptions?: ScheduleOption[];
   /** Signs session tokens (JWTs). */
   tokenSecret: string;
-  /** Encrypts inbox webhook secrets at rest (`INBOX_SECRET_KEY`: 32 bytes, base64). Without it, inboxes with a secret can't be made or read. */
-  inboxSecretKey?: string;
+  /** Encrypts inbox webhook secrets at rest (`INBOX_SECRET_KEY`: 32 bytes, base64). */
+  inboxSecretKey: string;
   /** Product metrics. Defaults to recording nothing. */
   metrics?: Metrics;
   /** The oldest CLI version still served (e.g. "0.2.0"). Older ones get 426 `cli_outdated`. Unset, none is turned away. */
@@ -71,7 +71,7 @@ export function parseScheduleOptions(value: string | undefined): ScheduleOption[
 const everyOf = (config: unknown) => (config as { schedule?: { every?: ScheduleOption } } | null)?.schedule?.every;
 
 export function createApi(opts: ApiOptions) {
-  const box = opts.inboxSecretKey ? secretBox(opts.inboxSecretKey) : undefined;
+  const box = secretBox(opts.inboxSecretKey);
   const app = new Hono<Env>();
   const metrics = opts.metrics ?? noopMetrics;
   const scheduleOptions = opts.scheduleOptions ?? [...SCHEDULE_OPTIONS];
@@ -533,7 +533,7 @@ export function createApi(opts: ApiOptions) {
       name: input.name,
       sourceType: source.type,
       config,
-      secretEnc: secret === undefined ? null : await sealSecret(c, "create", secret, id),
+      secretEnc: secret === undefined ? null : box.seal(secret, id),
     });
     await metrics.capture("inbox_created", c.var.user.id, { source_type: inbox.source_type });
     // The one response that carries the secret: it has to be copied into the sender's settings now.
@@ -597,7 +597,7 @@ export function createApi(opts: ApiOptions) {
     const updated = await store.updateInbox(c.var.db, inbox.id, {
       name: input.name,
       config,
-      secretEnc: changed ? await sealSecret(c, "update", secret, inbox.id) : undefined,
+      secretEnc: changed ? box.seal(secret, inbox.id) : undefined,
     });
     return c.json(serializeInbox(c, updated));
   });
@@ -1258,7 +1258,6 @@ export function createApi(opts: ApiOptions) {
   /** The inbox's config as its source adapter sees it, with the secret opened. Throws if the key can't open it. */
   function fullConfig(inbox: Inbox): unknown {
     if (!inbox.secret_enc) return inbox.config;
-    if (!box) throw new Error("INBOX_SECRET_KEY is not set");
     return { ...(inbox.config as object), secret: box.open(inbox.secret_enc, inbox.id) };
   }
 
@@ -1267,17 +1266,9 @@ export function createApi(opts: ApiOptions) {
       return fullConfig(inbox) as never;
     } catch (err) {
       console.error(err);
-      await metrics.capture("inbox_secret_failed", c.var.user.id, { action: "open", reason: reasonOf(err) });
+      await metrics.capture("inbox_secret_failed", c.var.user.id, { action: "open" });
       throw new ApiError(500, "internal", "Internal server error");
     }
-  }
-
-  async function sealSecret(c: Context<Env>, action: "create" | "update", secret: string, inboxId: string) {
-    if (!box) {
-      await metrics.capture("inbox_secret_failed", c.var.user.id, { action, reason: "no_key" });
-      throw new ApiError(500, "internal", "Inbox secrets can't be stored: INBOX_SECRET_KEY is not set on this server");
-    }
-    return box.seal(secret, inboxId);
   }
 
   /**
@@ -1315,8 +1306,6 @@ function splitSecret(full: unknown): { secret?: string; config: Record<string, u
   const { secret, ...config } = (full ?? {}) as Record<string, unknown>;
   return typeof secret === "string" ? { secret, config } : { config };
 }
-
-const reasonOf = (err: unknown) => (err instanceof Error && /key/i.test(err.message) ? "no_key" : "unreadable");
 
 function bearer(c: Context): string | undefined {
   const h = c.req.header("authorization");
