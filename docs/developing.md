@@ -55,13 +55,13 @@ The Neon product is the `stores` parameter of the link (`integrationSlug` and `p
 The CLI talks to `https://loopway.craftmill.dev` until told otherwise. For your own deploy:
 
 ```bash
-curl -fsSL https://<your-deploy>/install.sh | sh   # installs the CLI (needs Node 22+)
+curl -fsSL https://raw.githubusercontent.com/craftmilldev/loopway/main/packages/web/content/install.sh | sh   # the CLI, from the craftmilldev/loopway release (needs Node 22+)
 loopway config update --url https://<your-deploy>  # saved in ~/.loopway/config.json
 loopway login                                      # emails a one-time code to the deploy's login page
 loopway config                                     # shows the URL the CLI now uses
 ```
 
-`install.sh` is served by your deploy but installs the same CLI release from GitHub, so a self-hosted deploy and the hosted one share one CLI. Without `--url` the command prompts for it. `loopway config update` only changes the settings you pass (`--posthog-host`, `--auto-update` and the GitHub bot flags are the others), and `loopway clear-config` goes back to the defaults. The URL lives in `~/.loopway/config.json`, so each machine running `loopway bots run` needs the same `config update` first.
+`install.sh` installs the latest `craftmilldev/loopway` CLI release from GitHub, the same one the hosted service uses; your deploy serves a copy of the script at `/install.sh` too. Without `--url` the command prompts for it. `loopway config update` only changes the settings you pass (`--posthog-host`, `--auto-update` and the GitHub bot flags are the others), and `loopway clear-config` goes back to the defaults. The URL lives in `~/.loopway/config.json`, so each machine running `loopway bots run` needs the same `config update` first.
 
 `/llms.txt` is how a coding agent learns about the deploy. Every command in it names the deploy: it fills in `PUBLIC_BASE_URL` when that is set, else the origin the request came to. So an agent given `https://<your-deploy>/llms.txt` installs the CLI from your deploy and, once `config update --url` has been run, talks to it. The dashboard's "Create your bot with your agent" prompt links to the same file. Set `PUBLIC_BASE_URL` if the deploy answers on more than one address (a Vercel `*.vercel.app` URL and a custom domain, say), so the file always names the one you want people to use.
 
