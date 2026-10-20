@@ -620,13 +620,10 @@ ALTER TABLE loopway.inboxes ADD COLUMN secret_enc text;
 `,
   },
   {
-    // When an org was shown the celebration for finishing setup (its three zero-state steps). Orgs whose bots have
-    // already run have finished, so they never see it.
+    // When an org was shown the celebration for finishing setup (its three zero-state steps). Null until then.
     version: "030_org_celebrated",
     sql: `
 ALTER TABLE loopway.orgs ADD COLUMN celebrated_at timestamptz;
-
-UPDATE loopway.orgs o SET celebrated_at = now() WHERE EXISTS (SELECT 1 FROM loopway.threads t WHERE t.org_id = o.id);
 `,
   },
 ];
