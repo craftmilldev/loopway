@@ -26,7 +26,7 @@ describe("secretBox", () => {
 });
 
 describe("encryptInboxSecrets", () => {
-  it("moves plaintext secrets out of config, and is safe to rerun", async () => {
+  it("moves plaintext secrets out of config, once", async () => {
     const db = await openTestDb();
     try {
       const { user } = await createUser(db, { name: "M", email: "m@example.com" });
@@ -41,7 +41,7 @@ describe("encryptInboxSecrets", () => {
       const none = await make({ events: ["*"] });
 
       expect(await encryptInboxSecrets(db, box)).toBe(2);
-      expect(await encryptInboxSecrets(db, box)).toBe(0);
+      expect(await encryptInboxSecrets(db, box)).toBeNull();
 
       const rows = await db.query<{ id: string; config: object; secret_enc: string | null }>(
         `SELECT id, config, secret_enc FROM loopway.inboxes`,
@@ -52,6 +52,14 @@ describe("encryptInboxSecrets", () => {
       expect(by(unset.id).secret_enc).toBeNull();
       expect(by(unset.id).config).toEqual({ events: ["*"] });
       expect(by(none.id).secret_enc).toBeNull();
+
+      // Done once: a `secret` that shows up in a config afterwards is left alone, not sealed over the real one.
+      const later = await make({ secret: "x".repeat(20), events: ["*"] });
+      expect(await encryptInboxSecrets(db, box)).toBeNull();
+      const [after] = await db.query<{ config: object }>(`SELECT config FROM loopway.inboxes WHERE id = $1`, [
+        later.id,
+      ]);
+      expect(after!.config).toHaveProperty("secret");
     } finally {
       await db.close();
     }

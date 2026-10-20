@@ -48,7 +48,7 @@ export async function openDb(opts: DbOptions): Promise<Db> {
 }
 
 /** Arbitrary constant: the advisory lock that makes concurrent `migrate()` runs (two builds at once) take turns. */
-const MIGRATE_LOCK = 7_204_113;
+export const MIGRATE_LOCK = 7_204_113;
 
 export async function migrate(db: Db): Promise<string[]> {
   // Transaction-level locks (not session-level) so this holds through a pooler and releases itself on failure.

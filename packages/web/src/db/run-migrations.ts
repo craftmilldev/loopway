@@ -31,7 +31,7 @@ export async function runMigrations(opts: RunMigrationsOptions): Promise<string[
   }
   const key = (opts.env ?? process.env).INBOX_SECRET_KEY;
   let applied: string[];
-  let moved: number;
+  let moved: number | null;
   try {
     const db = await openDb({ databaseUrl });
     try {
