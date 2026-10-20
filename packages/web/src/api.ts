@@ -666,6 +666,8 @@ export function createApi(opts: ApiOptions) {
         });
       throw new ApiError(409, "runner_exists", "That runner id is already in use by a runner you can't use");
     }
+    if (runner.firstSeconds !== undefined)
+      await metrics.capture("org_first_runner_connected", org.id, { seconds: runner.firstSeconds });
     return c.json(serializeRunner(runner));
   });
 
@@ -682,6 +684,7 @@ export function createApi(opts: ApiOptions) {
     );
     if (!row) {
       const until = iso(runner.locked_until);
+      await metrics.capture("runner_lease_rejected", runner.org_id, { reason: "leased" });
       throw new ApiError(409, "runner_leased", `Runner is leased until ${until} by another process`, {
         expires_at: until,
       });
@@ -1143,6 +1146,8 @@ export function createApi(opts: ApiOptions) {
     await requireOwner(c, thread, lease_token);
     const done = await store.finishThread(c.var.db, bot.id, lease_token, thread.id, requeue ?? false);
     if (!done) throw runnerNotLeased();
+    if (done.firstRun)
+      await metrics.capture("org_first_bot_ran", done.firstRun.orgId, { seconds: done.firstRun.seconds });
     return c.json({ moved: done.moved });
   });
 

@@ -12,6 +12,8 @@ export const SECRET = "test-secret";
 
 export let db: Db;
 export let app: ReturnType<typeof createApi>;
+/** The metrics events the API has recorded in this file's tests. */
+export const events: { event: string; distinctId: string; properties?: Record<string, unknown> }[] = [];
 
 // Each test file gets its own migrated database on the local Postgres (`npm run db:up`).
 beforeAll(async () => {
@@ -21,6 +23,7 @@ beforeAll(async () => {
     publicBaseUrl: "https://loopway.test",
     tokenSecret: SECRET,
     inboxSecretKey: TEST_INBOX_KEY,
+    metrics: { capture: async (event, distinctId, properties) => void events.push({ event, distinctId, properties }) },
   });
 });
 afterAll(() => db.close());
