@@ -27,7 +27,30 @@ Login codes are emailed through Resend when `RESEND_API_KEY` is set, from the ad
 
 To receive real GitHub webhooks locally, expose the port (e.g. `cloudflared tunnel --url localhost:3000`) and set `PUBLIC_BASE_URL` to the tunnel URL.
 
+## Deploy with the Vercel button
+
+The Deploy with Vercel button in the [README](../README.md) clones the repo into your GitHub account, sets **Root Directory** to `packages/web`, adds a Neon database from the Vercel Marketplace and asks for the variables below. Vercel installs from the repo root even with that Root Directory, so the `@loopway/*` workspace packages resolve and the root `postinstall` builds them before the web build runs. The build then applies the migrations. On a fresh deploy `/` redirects to `/login`, where the code arrives by email, or is printed to the function logs when no Resend key is set.
+
+| Env | Set by | What |
+| --- | --- | --- |
+| `DATABASE_URL`, `DATABASE_URL_UNPOOLED` | the Neon product | pooled URL the server uses; direct URL the build migrates |
+| `TOKEN_SECRET` | prompt | signs session tokens; `openssl rand -hex 32` |
+| `CRON_SECRET` | prompt | Vercel Cron's bearer token for the schedule route; `openssl rand -hex 32` |
+| `INBOX_SECRET_KEY` | prompt | encrypts inbox webhook secrets at rest; `openssl rand -base64 32`; keep a copy, losing it loses the secrets |
+| `SELF_HOSTED` | prompt | enter `1`, so `/` redirects to `/login` instead of the landing page |
+| `RESEND_API_KEY`, `EMAIL_FROM` | prompt | login emails (see [Login email](#login-email-resend-on-the-one-click-deploy)) |
+
+Vercel's clone link has no way to preset a value, so `SELF_HOSTED` is a prompt you answer with `1`. The schedule needs nothing: `SCHEDULE_OPTIONS` defaults to `day`, which is all a Hobby account's daily cron can run. Everything else under [Deploy (Vercel + Neon)](#deploy-vercel--neon) is optional (`PUBLIC_BASE_URL`, `POSTHOG_API_KEY`, `MIN_CLI_VERSION`).
+
+The Neon product is the `stores` parameter of the link (`integrationSlug` and `productSlug` `neon`, `protocol` `storage`). Vercel's docs call the parameter `stores`; the same JSON is described as `products` elsewhere.
+
+**Without Resend:** drop `RESEND_API_KEY,EMAIL_FROM` from the `env=` list in the README's button link (and from `envDescription`). Vercel makes every prompted variable required, so a placeholder key would make sends fail. Login codes are then printed to the function logs.
+
+**Bring your own Postgres:** drop the `stores=` parameter from the button link, then set `DATABASE_URL` (the pooled URL, or the only URL if you have no pooler) and `DATABASE_URL_UNPOOLED` (a direct connection; what the build migrates) yourself in Vercel → Settings → Environment Variables before the first deploy, or use the manual steps below. Any Postgres the build and the functions can reach works (17 is what it is tested on); the tables live in a `loopway` schema.
+
 ## Deploy (Vercel + Neon)
+
+The same thing by hand:
 
 1. In Neon → Connect, copy both connection strings: the **direct** one and the **pooled** one (host contains `-pooler`).
 2. Nothing to run by hand: the Vercel build applies pending migrations before it bundles (see step 4). To migrate from your machine instead, `DATABASE_URL='postgresql://...' npm run db:migrate` against the direct URL, or put it in `packages/web/.env.production` (gitignored; `db:migrate` reads it ahead of `.env`), which also makes `npm run update` migrate prod.
