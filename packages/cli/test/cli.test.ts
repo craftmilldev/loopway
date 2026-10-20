@@ -1654,7 +1654,7 @@ describe("threads", () => {
   });
 
   it("starts new threads on the bot's new harness and model, and resumes a running one on the one it started with", async () => {
-    const { inbox, bot, client, runs, out, d, finish } = await setup(3);
+    const { inbox, client, runs, out, d, finish } = await setup(3);
     await send(inbox, "issues", issue("opened", 1));
     await d.tick();
     expect(runs[0]).toMatchObject({ harness: "claude", model: "sonnet", resume: false });
