@@ -55,7 +55,7 @@ The Neon product is the `stores` parameter of the link (`integrationSlug` and `p
 The CLI talks to `https://loopway.craftmill.dev` until told otherwise. For your own deploy:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/craftmilldev/loopway/main/packages/web/content/install.sh | sh   # the CLI, from the craftmilldev/loopway release (needs Node 22+)
+curl -fsSL https://loopway.craftmill.dev/install.sh | sh   # installs the CLI (needs Node 22+)
 loopway config update --url https://<your-deploy>  # saved in ~/.loopway/config.json
 loopway login                                      # emails a one-time code to the deploy's login page
 loopway config                                     # shows the URL the CLI now uses
