@@ -146,7 +146,10 @@ describe("New bot flow", () => {
   it("asks for an inbox before continuing", async () => {
     at("");
     render(<NewBot />);
-    fireEvent.click(await screen.findByText("Continue"));
+    const github = await screen.findByLabelText<HTMLInputElement>(/github/);
+    await waitFor(() => expect(github.checked).toBe(true));
+    fireEvent.click(github);
+    fireEvent.click(screen.getByText("Continue"));
     expect(await screen.findByText("Pick or create at least one inbox.")).toBeTruthy();
   });
 
