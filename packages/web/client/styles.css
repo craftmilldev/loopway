@@ -92,53 +92,6 @@ img {
   color: var(--madder-600);
 }
 
-/* Masthead */
-.masthead {
-  max-width: var(--measure-page);
-  margin: 0 auto;
-  padding: 24px 24px 16px;
-  text-align: center;
-}
-.masthead-row {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-}
-.masthead-rule {
-  flex: 1;
-  height: 0;
-  min-width: 0;
-  border-top: 3px double var(--ink-900);
-}
-.masthead-word {
-  font-size: clamp(1.375rem, 8.5vw, 3.75rem);
-  letter-spacing: 0.15em;
-  line-height: 1;
-  color: var(--ink-900);
-  text-indent: 0.15em;
-  white-space: nowrap;
-}
-.masthead-word-sm {
-  font-size: clamp(1.125rem, 5.5vw, 2.25rem);
-}
-.masthead-tag {
-  font-family: var(--font-type);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-400);
-  padding-top: 8px;
-}
-@media (max-width: 480px) {
-  .masthead-rule {
-    display: none;
-  }
-  .masthead-tag {
-    font-size: 9px;
-    letter-spacing: 0.1em;
-  }
-}
-
 /* Nav */
 .nav {
   display: flex;

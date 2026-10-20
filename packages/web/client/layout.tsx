@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, type MouseEvent, type ReactNode } from "react";
-import { lastOrgPath, logout, orgBase, orgSlug, startOrg, useMe, type Me, type Org } from "./lw.js";
+import { lastOrgPath, logout, orgBase, orgSlug, startOrg, type Me, type Org } from "./lw.js";
 import { OrgSwitcher } from "./org-switcher.js";
 import wordmark from "./wordmark.svg";
 
@@ -112,20 +112,5 @@ export function DashLayout({
         {children}
       </main>
     </>
-  );
-}
-
-/** Stands in for a dashboard page that isn't built yet. */
-export function Placeholder({ title }: { title: string }) {
-  const me = useMe();
-  return (
-    <DashLayout title={title + " · loopway"} me={me}>
-      <div className="page-head">
-        <h1>{title}</h1>
-      </div>
-      <p className="muted" style={{ marginTop: 24 }}>
-        Coming soon.
-      </p>
-    </DashLayout>
   );
 }
