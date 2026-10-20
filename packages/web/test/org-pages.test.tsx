@@ -116,7 +116,7 @@ describe("OrgGate with no bots", () => {
     expect(screen.queryByText("Bots")).toBeNull();
     expect(screen.queryByText("New bot")).toBeNull();
     expect(screen.getByLabelText("Create your bot with your agent").textContent).toContain("--org craftmill");
-    expect(screen.getByText("Members")).toBeTruthy();
+    expect(screen.getByText("Members").getAttribute("href")).toBe("/craftmill/members");
     fireEvent.click(screen.getAllByText("Copy")[0]!);
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith("curl -fsSL https://loopway.craftmill.dev/install.sh | sh"),
@@ -172,6 +172,13 @@ describe("OrgGate with no bots", () => {
     window.history.replaceState(null, "", "/craftmill/members");
     render(<OrgGate>the members</OrgGate>);
     expect(await screen.findByText("the members")).toBeTruthy();
+  });
+
+  it("links to the members page from the zero state and counts the click", async () => {
+    window.history.replaceState(null, "", "/craftmill");
+    render(<OrgGate>the page</OrgGate>);
+    fireEvent.click(await screen.findByText("Members"));
+    expect(track).toHaveBeenCalledWith("zero_state_members_link_clicked");
   });
 });
 
