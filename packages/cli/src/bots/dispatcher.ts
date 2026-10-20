@@ -134,6 +134,8 @@ export class Dispatcher {
   private readonly ttl: number;
   /** This machine's runner id (see ensureRunner), recorded on the bot leases it takes. */
   private readonly runnerId: string;
+  /** Thread id → the harness and model its session started on, which a resume keeps even if the bot has moved on. */
+  private readonly sessions = new Map<string, { harness: Bot["harness"]; model: Bot["model"] }>();
   /** Bot name → the directory its sessions run in, for the bots loopway.json names. */
   private readonly workdirs: Map<string, string>;
   /** This process's lease on its runner, so no other process uses the same runner id. Thread writes take its token. */
@@ -333,7 +335,14 @@ export class Dispatcher {
    * so the previous one keeps running.
    */
   private async refreshVersion(bot: Bot): Promise<void> {
-    const version = (await this.client.getBot(bot.id)).prompt_version;
+    const fresh = await this.client.getBot(bot.id);
+    // Threads that start from now on use the new harness and model; ones already running keep theirs (see run).
+    if (fresh.harness !== bot.harness || fresh.model !== bot.model) {
+      bot.harness = fresh.harness;
+      bot.model = fresh.model;
+      this.ctx.out(`bot ${bot.name}: now on harness ${bot.harness} / model ${bot.model}`);
+    }
+    const version = fresh.prompt_version;
     if (!version || version.version === bot.prompt_version?.version || version.version === this.rejected.get(bot.id))
       return;
     try {
@@ -634,7 +643,12 @@ export class Dispatcher {
     this.ctx.out(`${thread.started ? "resumed" : "started"} ${short} for ${what}`);
 
     const prompt = this.prompts.get(thread.bot_id)!;
-    const bot = this.bots.find((b) => b.id === thread.bot_id)!;
+    const current = this.bots.find((b) => b.id === thread.bot_id)!;
+    // A session can't move between harnesses: a thread this runner already ran keeps the one it started on.
+    const pinned = thread.started ? this.sessions.get(id) : undefined;
+    // The model goes with the harness it was picked for; on the same harness the bot's current model applies.
+    const bot = pinned && pinned.harness !== current.harness ? { ...current, ...pinned } : current;
+    this.sessions.set(id, { harness: bot.harness, model: bot.model });
     // A script bot's prompt is its command (see ScriptHarness), not text to put in front of the messages.
     const parts = [
       !thread.started && bot.harness !== "script" && prompt,

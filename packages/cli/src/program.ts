@@ -322,8 +322,8 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .description("rename a bot, change its model, or replace its inboxes")
     .argument("<bot>", "bot id or name")
     .option("--name <name>", "new name")
-    .option("--model <model>", "new model; applies to runs that start after `loopway bots run` is restarted")
-    .addOption(harnessOpt("new harness; applies to runs that start after `loopway bots run` is restarted"))
+    .option("--model <model>", "new model")
+    .addOption(harnessOpt("new harness"))
     .addOption(inboxesOpt("comma-separated inbox ids or names; replaces the bot's inboxes"))
     .addOption(jsonOpt())
     .action((ref, opts) => updateBot(ctx, ref, opts));
