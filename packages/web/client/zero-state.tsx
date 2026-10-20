@@ -77,6 +77,57 @@ export function useSetupProgress(enabled: boolean): SetupProgress | false | null
 
 const STEPS = ["Get loopway running", "Make your first bot", "See it run"];
 
+/** The three step circles: done ones filled, the first one not done highlighted. */
+function SetupSteps({ progress }: { progress: SetupProgress }) {
+  const current = currentStep(progress);
+  const done = [progress.runner, progress.bot, progress.ran];
+  return (
+    <ol className="setup-steps" aria-label="Setup progress">
+      {STEPS.map((label, i) => (
+        <li key={label} className={done[i] ? "done" : undefined} aria-current={i === current ? "step" : undefined}>
+          <span className="setup-circle" aria-label={done[i] ? "Done" : undefined}>
+            {done[i] ? "✓" : i + 1}
+          </span>
+          {label}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/**
+ * Shown once per org when its three steps are done, in place of the app: every step filled, what the user just did,
+ * and a button on to the app. `onContinue` is called once the org has been marked as having seen it.
+ */
+export function Celebration({ slug, onContinue }: { slug: string; onContinue: () => void }) {
+  const me = lw.useMe();
+  const [busy, setBusy] = useState(false);
+  const proceed = async () => {
+    setBusy(true);
+    // If this fails the app still opens; the celebration comes back on the next visit.
+    await lw.api("/orgs/" + encodeURIComponent(slug) + "/celebrated", { method: "POST" }).catch(() => null);
+    onContinue();
+  };
+  return (
+    <DashLayout title="You did it · loopway" me={me}>
+      <SetupSteps progress={{ runner: true, bot: true, ran: true }} />
+      <section className="celebration" aria-label="Setup complete">
+        <p className="celebration-mark" aria-hidden="true">
+          ✓
+        </p>
+        <h1>You did it</h1>
+        <p className="muted">
+          You connected a runner, made your first bot and watched it handle its first message. loopway is working for
+          you now.
+        </p>
+        <button className="btn btn-md" type="button" disabled={busy} onClick={() => void proceed()}>
+          Continue to loopway
+        </button>
+      </section>
+    </DashLayout>
+  );
+}
+
 /** What an org that hasn't finished setting up sees in place of its dashboard: three steps, then the app. */
 export function ZeroState({ progress }: { progress: SetupProgress }) {
   const me = lw.useMe();
@@ -84,19 +135,9 @@ export function ZeroState({ progress }: { progress: SetupProgress }) {
     track("zero_state_viewed");
   }, []);
   const current = currentStep(progress);
-  const done = [progress.runner, progress.bot, progress.ran];
   return (
     <DashLayout title="Get started · loopway" me={me}>
-      <ol className="setup-steps" aria-label="Setup progress">
-        {STEPS.map((label, i) => (
-          <li key={label} className={done[i] ? "done" : undefined} aria-current={i === current ? "step" : undefined}>
-            <span className="setup-circle" aria-label={done[i] ? "Done" : undefined}>
-              {done[i] ? "✓" : i + 1}
-            </span>
-            {label}
-          </li>
-        ))}
-      </ol>
+      <SetupSteps progress={progress} />
       {current === 0 && (
         <>
           <div className="page-head">

@@ -619,4 +619,11 @@ CREATE INDEX threads_bot_created_idx ON loopway.threads (bot_id, created_at, id)
 ALTER TABLE loopway.inboxes ADD COLUMN secret_enc text;
 `,
   },
+  {
+    // When an org was shown the celebration for finishing setup (its three zero-state steps). Null until then.
+    version: "030_org_celebrated",
+    sql: `
+ALTER TABLE loopway.orgs ADD COLUMN celebrated_at timestamptz;
+`,
+  },
 ];

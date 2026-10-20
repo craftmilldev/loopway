@@ -9,8 +9,9 @@ import { OrgSwitcher } from "../client/org-switcher.js";
 
 vi.mock("../client/metrics.js", () => ({ track: vi.fn(), identify: vi.fn(), reset: vi.fn() }));
 
-const mine = { id: "o1", slug: "mcwhittemore", name: "mcwhittemore", personal: true };
-const team = { id: "o2", slug: "craftmill", name: "craftmill", personal: false };
+const mine = { id: "o1", slug: "mcwhittemore", name: "mcwhittemore", personal: true, celebrated: true };
+const team = { id: "o2", slug: "craftmill", name: "craftmill", personal: false, celebrated: true };
+let celebrated: boolean;
 
 const online = {
   id: "r1",
@@ -36,6 +37,7 @@ beforeEach(() => {
   bots = [{ id: "b1" }];
   runners = [online];
   activity = [{ bot_id: "b1", last_delivery_at: "2026-10-18T00:00:00Z" }];
+  celebrated = true;
   // A stand-in for location that reads the real one (history.replaceState moves it) and records replace().
   const real = window.location;
   vi.stubGlobal("location", {
@@ -60,7 +62,11 @@ beforeEach(() => {
       if (path.startsWith("/bots?org=")) return bots ? json({ data: bots }) : new Response("{}", { status: 500 });
       if (path.startsWith("/runners?org=")) return json({ data: runners });
       if (path.startsWith("/bots/activity?")) return json({ data: activity });
-      if (path === "/orgs") return json({ data: [mine, team] });
+      if (path === "/orgs") return json({ data: [mine, { ...team, celebrated }] });
+      if (path === "/orgs/craftmill/celebrated") {
+        celebrated = true;
+        return new Response(null, { status: 204 });
+      }
       if (path === "/bots/b1") return json({ id: "b1", org_id: "o2" });
       if (path === "/inboxes/i1") return json({ id: "i1", org_id: "o1" });
       return new Response("{}", { status: 404 });
@@ -166,6 +172,38 @@ describe("OrgGate with no bots", () => {
     expect(await screen.findByText("the page")).toBeTruthy();
     for (const e of ["runner_connected", "bot_created", "first_run", "completed"])
       expect(track).toHaveBeenCalledWith("zero_state_" + e);
+  });
+
+  it("celebrates once the third step is done, then opens the app and doesn't come back", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    bots = [{ id: "b1" }];
+    runners = [online];
+    celebrated = false;
+    window.history.replaceState(null, "", "/craftmill");
+    const { unmount } = render(<OrgGate>the page</OrgGate>);
+    await screen.findByText("Your bot is ready");
+    activity = [{ bot_id: "b1", last_delivery_at: "2026-10-18T00:00:00Z" }];
+    await act(() => vi.advanceTimersByTimeAsync(lw.POLL_MS + 1000));
+    await screen.findByText("You did it");
+    expect(screen.getAllByRole("listitem").map((li) => li.className)).toEqual(["done", "done", "done"]);
+    expect(screen.queryByText("the page")).toBeNull();
+    fireEvent.click(screen.getByText("Continue to loopway"));
+    expect(await screen.findByText("the page")).toBeTruthy();
+    expect(celebrated).toBe(true);
+    unmount();
+    render(<OrgGate>the page</OrgGate>);
+    expect(await screen.findByText("the page")).toBeTruthy();
+    expect(screen.queryByText("You did it")).toBeNull();
+  });
+
+  it("celebrates on the next visit when the user was away for the third step", async () => {
+    bots = [{ id: "b1" }];
+    runners = [online];
+    activity = [{ bot_id: "b1", last_delivery_at: "2026-10-18T00:00:00Z" }];
+    celebrated = false;
+    window.history.replaceState(null, "", "/craftmill");
+    render(<OrgGate>the page</OrgGate>);
+    expect(await screen.findByText("You did it")).toBeTruthy();
   });
 
   it("leaves the members page alone", async () => {

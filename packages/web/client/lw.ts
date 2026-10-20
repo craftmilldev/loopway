@@ -115,6 +115,7 @@ export interface Org {
   slug: string;
   name: string;
   personal: boolean;
+  celebrated: boolean;
 }
 
 const ORG_KEY = "loopway_last_org";

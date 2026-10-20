@@ -44,7 +44,9 @@ describe("choosing a username", () => {
     expect((await call("GET", "/me", { key })).body.username).toBe("fresh-one");
 
     const orgs = (await call("GET", "/orgs", { key })).body.data;
-    expect(orgs).toEqual([{ id: expect.any(String), slug: "fresh-one", name: "fresh-one", personal: true }]);
+    expect(orgs).toEqual([
+      { id: expect.any(String), slug: "fresh-one", name: "fresh-one", personal: true, celebrated: false },
+    ]);
     const members = await rows(`SELECT user_id FROM loopway.org_members WHERE org_id = $1`, [orgs[0].id]);
     expect(members).toHaveLength(1);
   });
@@ -53,7 +55,9 @@ describe("choosing a username", () => {
     const key = await newUser("Signup");
     const me = (await call("GET", "/me", { key })).body;
     const orgs = (await call("GET", "/orgs", { key })).body.data;
-    expect(orgs).toEqual([{ id: expect.any(String), slug: me.username, name: me.username, personal: true }]);
+    expect(orgs).toEqual([
+      { id: expect.any(String), slug: me.username, name: me.username, personal: true, celebrated: false },
+    ]);
     expect(await rows(`SELECT 1 FROM loopway.org_members WHERE org_id = $1`, [orgs[0].id])).toHaveLength(1);
   });
 
@@ -235,5 +239,23 @@ describe("POST /orgs", () => {
     expect(await check("login")).toMatchObject({ available: false, reason: "reserved" });
     expect(await check("x")).toMatchObject({ available: false, reason: "too_short" });
     expect((await call("GET", "/orgs/avail-free/available")).status).toBe(401);
+  });
+});
+
+describe("POST /orgs/:slug/celebrated", () => {
+  it("marks the org as celebrated for its members, and 404s for anyone else", async () => {
+    const a = await newUser();
+    const b = await newUser();
+    await call("PATCH", "/me/username", { key: a, body: { username: "celebrate-a" } });
+    await call("PATCH", "/me/username", { key: b, body: { username: "celebrate-b" } });
+    const celebrated = async () =>
+      (await call("GET", "/orgs", { key: a })).body.data.find((o: { slug: string }) => o.slug === "celebrate-a")
+        .celebrated;
+    expect(await celebrated()).toBe(false);
+    expect((await call("POST", "/orgs/celebrate-a/celebrated", { key: b })).status).toBe(404);
+    expect(await celebrated()).toBe(false);
+    expect((await call("POST", "/orgs/celebrate-a/celebrated", { key: a })).status).toBe(204);
+    expect((await call("POST", "/orgs/celebrate-a/celebrated", { key: a })).status).toBe(204);
+    expect(await celebrated()).toBe(true);
   });
 });

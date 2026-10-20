@@ -1425,6 +1425,44 @@ fieldset {
   border-color: var(--madder-600);
   color: var(--madder-600);
 }
+.celebration {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  max-width: 36rem;
+  margin-top: 40px;
+}
+.celebration-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--madder-600);
+  color: var(--paper-100);
+  font-size: 1.75rem;
+  animation: celebrate-pop 0.5s ease-out;
+}
+@keyframes celebrate-pop {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.15);
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .celebration-mark {
+    animation: none;
+  }
+}
 .runner-setup {
   display: flex;
   flex-direction: column;
