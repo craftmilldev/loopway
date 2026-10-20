@@ -666,6 +666,8 @@ export function createApi(opts: ApiOptions) {
         });
       throw new ApiError(409, "runner_exists", "That runner id is already in use by a runner you can't use");
     }
+    if (runner.firstSeconds !== undefined)
+      await metrics.capture("org_first_runner_connected", org.id, { seconds: runner.firstSeconds });
     return c.json(serializeRunner(runner));
   });
 
@@ -687,8 +689,6 @@ export function createApi(opts: ApiOptions) {
         expires_at: until,
       });
     }
-    const seconds = await store.noteFirstRunner(c.var.db, row.org_id);
-    if (seconds !== undefined) await metrics.capture("org_first_runner_connected", row.org_id, { seconds });
     return c.json({ lease: { token: row.lock_token, expires_at: iso(row.locked_until) } });
   });
 

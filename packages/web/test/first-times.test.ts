@@ -29,21 +29,21 @@ describe("time to runner and time to first bot", () => {
     await db.query(`UPDATE loopway.orgs SET created_at = now() - interval '100 seconds' WHERE id = $1`, [org]);
 
     const runner = randomUUID();
-    await call("POST", "/runners", { key, body: { id: runner, name: "laptop" } });
-    expect(named("org_first_runner_connected").filter((e) => e.distinctId === org)).toHaveLength(0);
-
-    const lease = await call("POST", `/runners/${runner}/lease`, { key, body: { ttl_seconds: 60 } });
-    const token = lease.body.lease.token;
+    const register = (id: string) => call("POST", "/runners", { key, body: { id, name: "laptop" } });
+    await register(runner);
     const first = named("org_first_runner_connected").filter((e) => e.distinctId === org);
     expect(first).toHaveLength(1);
     expect(first[0]!.properties!.seconds).toBeGreaterThanOrEqual(100);
     expect(first[0]!.properties!.seconds).toBeLessThan(160);
 
-    // Extending the lease, or another process failing to take it, records nothing more.
-    await call("POST", `/runners/${runner}/lease`, { key, body: { ttl_seconds: 60, lease_token: token } });
+    // Registering again, or a second runner, records nothing more.
+    await register(runner);
+    await register(randomUUID());
+    expect(named("org_first_runner_connected").filter((e) => e.distinctId === org)).toHaveLength(1);
+
+    const token = (await call("POST", `/runners/${runner}/lease`, { key, body: { ttl_seconds: 60 } })).body.lease.token;
     const other = await call("POST", `/runners/${runner}/lease`, { key, body: { ttl_seconds: 60 } });
     expect(other.status).toBe(409);
-    expect(named("org_first_runner_connected").filter((e) => e.distinctId === org)).toHaveLength(1);
     expect(named("runner_lease_rejected")).toMatchObject([{ distinctId: org, properties: { reason: "leased" } }]);
 
     // A bot has only run once a message is delivered, not when it's merely picked up or put back.
@@ -58,14 +58,6 @@ describe("time to runner and time to first bot", () => {
     const ran = named("org_first_bot_ran").filter((e) => e.distinctId === org);
     expect(ran).toHaveLength(1);
     expect(ran[0]!.properties!.seconds).toBeGreaterThanOrEqual(100);
-
-    // Queryable per org from the table too.
-    const [row] = await db.query<{ first_runner_at: Date | null; first_bot_run_at: Date | null }>(
-      `SELECT first_runner_at, first_bot_run_at FROM loopway.orgs WHERE id = $1`,
-      [org],
-    );
-    expect(row!.first_runner_at).toBeTruthy();
-    expect(row!.first_bot_run_at).toBeTruthy();
 
     // Later deliveries add nothing.
     await post("deliver");

@@ -859,7 +859,8 @@ const RUNNER_COLS = `
 
 /**
  * Registers the runner in the org, or renames it and notes it was seen. A runner keeps its org: undefined if the id
- * is already in use by a runner of another org (or one the user can't see).
+ * is already in use by a runner of another org (or one the user can't see). `firstSeconds` is set when this call made
+ * the org's first runner: the seconds since the org was created.
  */
 export async function upsertRunner(
   db: Db,
@@ -867,15 +868,24 @@ export async function upsertRunner(
   orgId: string,
   id: string,
   name: string,
-): Promise<Runner | undefined> {
-  const rows = await db.query<{ id: string }>(
+): Promise<(Runner & { firstSeconds?: number }) | undefined> {
+  const rows = await db.query<{ id: string; inserted: boolean }>(
     `INSERT INTO loopway.runners (id, created_by, org_id, name) VALUES ($1, $5, $4, $3)
      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, last_seen_at = now()
      WHERE loopway.runners.org_id = EXCLUDED.org_id AND ${inOrgOf("loopway.runners.org_id", "$2")}
-     RETURNING id`,
+     RETURNING id, (xmax = 0) AS inserted`,
     [id, userId, name, orgId, userActor(userId)],
   );
-  return rows.length ? getRunner(db, userId, id) : undefined;
+  if (!rows.length) return undefined;
+  const runner = (await getRunner(db, userId, id))!;
+  if (!rows[0]!.inserted) return runner;
+  const [first] = await db.query<{ seconds: number | null }>(
+    `SELECT CASE WHEN (SELECT count(*) FROM loopway.runners WHERE org_id = o.id) = 1
+                 THEN extract(epoch FROM now() - o.created_at)::float8 END AS seconds
+     FROM loopway.orgs o WHERE o.id = $1`,
+    [orgId],
+  );
+  return { ...runner, firstSeconds: first?.seconds ?? undefined };
 }
 
 export async function getRunner(db: Db, userId: string, id: string): Promise<Runner | undefined> {
@@ -920,19 +930,6 @@ export async function leaseRunner(
     [id, userId, newLockToken(), currentToken, ttlSeconds],
   );
   return rows.length ? getRunner(db, userId, id) : undefined;
-}
-
-/**
- * Notes that the org's first runner connected. The seconds since the org was created, the first time only; undefined
- * after that.
- */
-export async function noteFirstRunner(db: Db, orgId: string): Promise<number | undefined> {
-  const rows = await db.query<{ seconds: number }>(
-    `UPDATE loopway.orgs SET first_runner_at = now() WHERE id = $1 AND first_runner_at IS NULL
-     RETURNING extract(epoch FROM now() - created_at)::float8 AS seconds`,
-    [orgId],
-  );
-  return rows[0]?.seconds;
 }
 
 /** Drops the runner's lease, if `token` is the one held; or whoever's, with `token` null (a process that died). */
@@ -1441,12 +1438,14 @@ export async function finishThread(
       [id, requeue],
     );
     if (requeue || !moved.length) return { moved: moved.length };
-    // The org's first delivered message: the seconds since the org was created, the first time only.
+    // The org's first delivered messages: all of its bots' delivered messages are the ones just moved.
     const [first] = await tx.query<{ id: string; seconds: number }>(
-      `UPDATE loopway.orgs o SET first_bot_run_at = now()
-       FROM loopway.bots b WHERE b.id = $1 AND o.id = b.org_id AND o.first_bot_run_at IS NULL
-       RETURNING o.id, extract(epoch FROM now() - o.created_at)::float8 AS seconds`,
-      [botId],
+      `SELECT o.id, extract(epoch FROM now() - o.created_at)::float8 AS seconds
+       FROM loopway.bots b JOIN loopway.orgs o ON o.id = b.org_id
+       WHERE b.id = $1 AND NOT EXISTS (
+         SELECT 1 FROM loopway.thread_messages tm JOIN loopway.bots ob ON ob.id = tm.bot_id
+         WHERE ob.org_id = o.id AND tm.state = 'delivered' AND NOT (tm.thread_id = $2::uuid AND tm.delivered_at = now()))`,
+      [botId, id],
     );
     return { moved: moved.length, firstRun: first && { orgId: first.id, seconds: first.seconds } };
   });

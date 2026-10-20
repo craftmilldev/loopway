@@ -619,17 +619,4 @@ CREATE INDEX threads_bot_created_idx ON loopway.threads (bot_id, created_at, id)
 ALTER TABLE loopway.inboxes ADD COLUMN secret_enc text;
 `,
   },
-  {
-    // When an org first got a runner connected and when its first bot first handled a message, kept so each is
-    // recorded once. Orgs that already have either get the real time, from the data.
-    version: "030_org_first_times",
-    sql: `
-ALTER TABLE loopway.orgs ADD COLUMN first_runner_at timestamptz, ADD COLUMN first_bot_run_at timestamptz;
-
-UPDATE loopway.orgs o SET first_runner_at = (SELECT min(r.created_at) FROM loopway.runners r WHERE r.org_id = o.id);
-
-UPDATE loopway.orgs o SET first_bot_run_at = (
-  SELECT min(tm.delivered_at) FROM loopway.thread_messages tm JOIN loopway.bots b ON b.id = tm.bot_id WHERE b.org_id = o.id);
-`,
-  },
 ];
