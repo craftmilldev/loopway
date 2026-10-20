@@ -23,13 +23,30 @@ interface LogRecord {
   subtype?: string;
   /** Set on a subagent's messages; only the session's own turns are shown. */
   parent_tool_use_id?: string | null;
-  message?: { content?: string | Block[] };
+  /** Claude's turn (an object), or Codex's `error` text. */
+  message?: { content?: string | Block[] } | string;
   duration_ms?: number;
   total_cost_usd?: number;
+  /** Hermes' `result`: the run's exit code and, when it failed, why. */
+  exit_code?: number;
+  error?: unknown;
+  item?: CodexItem;
+  /** Cursor's tool call: one key (`shellToolCall`, `readToolCall`, ...) holding its args. */
+  tool_call?: Record<string, { args?: Record<string, unknown> }>;
+}
+
+interface CodexItem {
+  type?: string;
+  text?: string;
+  command?: string;
+  exit_code?: number | null;
+  server?: string;
+  tool?: string;
+  error?: unknown;
 }
 
 /**
- * Turns a session log (Claude Code's stream-json, plus anything it wrote to stderr) into readable
+ * Turns a session log (the stream-json of Claude Code, Cursor and Hermes, Codex's JSONL, plus anything it wrote to stderr) into readable
  * lines: assistant text, one line per tool call, the start of each tool result, and a line per run.
  */
 export function transcriptLines(log: string): TranscriptLine[] {
@@ -45,13 +62,64 @@ export function transcriptLines(log: string): TranscriptLine[] {
     }
     if (r.parent_tool_use_id) continue;
     if (r.type === "system" && r.subtype === "init") lines.push({ text: "── run started ──", kind: "meta" });
-    else if (r.type === "result")
-      lines.push({ text: `── run ${r.subtype === "success" ? "finished" : r.subtype} ${runStats(r)}──`, kind: "meta" });
+    else if (r.type === "result") lines.push({ text: runResult(r), kind: "meta" });
+    else if (r.type === "thread.started") lines.push({ text: "── run started ──", kind: "meta" });
+    else if (r.type === "turn.completed") lines.push({ text: "── run finished ──", kind: "meta" });
+    else if (r.type === "turn.failed") lines.push({ text: `── run failed: ${errorMessage(r.error)} ──`, kind: "meta" });
+    else if (r.type === "error") lines.push({ text: errorMessage(r.message), kind: "error" });
+    else if (r.type === "item.completed" && r.item) lines.push(...codexItemLines(r.item));
+    else if (r.type === "tool_call" && r.subtype === "started") lines.push(...cursorToolLines(r.tool_call));
     else if (r.type === "assistant" || r.type === "user") {
-      for (const b of blocks(r.message?.content)) lines.push(...blockLines(r.type, b));
+      for (const b of blocks(typeof r.message === "object" ? r.message.content : undefined))
+        lines.push(...blockLines(r.type, b));
     }
   }
   return lines;
+}
+
+/** The end of a run: Claude's and Cursor's `result` carry a subtype, Hermes' an exit code. */
+function runResult(r: LogRecord): string {
+  const failed = r.subtype ? r.subtype !== "success" : Boolean(r.exit_code) || Boolean(r.error);
+  const why = typeof r.error === "string" && r.error ? `: ${oneLine(r.error)}` : "";
+  const how = r.subtype && r.subtype !== "success" ? r.subtype : "failed";
+  return `── run ${failed ? how : "finished"}${why} ${runStats(r)}──`;
+}
+
+function errorMessage(e: unknown): string {
+  const m = typeof e === "string" ? e : (e as { message?: unknown } | undefined)?.message;
+  return typeof m === "string" && m ? oneLine(m) : "the run ended in an error";
+}
+
+/** What Codex finished: the agent's messages, each command with its exit code, each MCP call. */
+function codexItemLines(item: CodexItem): TranscriptLine[] {
+  if (item.type === "agent_message" && item.text?.trim()) return [{ text: item.text.trim(), kind: "text" }];
+  if (item.type === "command_execution") {
+    const failed = item.exit_code != null && item.exit_code !== 0;
+    return [
+      { text: `● ${oneLine(item.command ?? "")}`, kind: "tool" },
+      { text: `  ⎿ exit ${item.exit_code ?? "?"}`, kind: failed ? "error" : "result" },
+    ];
+  }
+  if (item.type === "mcp_tool_call") {
+    const failed = Boolean(item.error);
+    return [
+      { text: `● ${item.server}.${item.tool}()`, kind: "tool" },
+      ...(failed ? [{ text: `  ⎿ ${errorMessage(item.error)}`, kind: "error" as const }] : []),
+    ];
+  }
+  return [];
+}
+
+/** One line per Cursor tool call, when it starts (its `completed` record repeats it with the result). */
+function cursorToolLines(call: LogRecord["tool_call"]): TranscriptLine[] {
+  const [key, value] = Object.entries(call ?? {})[0] ?? [];
+  if (!key) return [];
+  const args = value?.args ?? {};
+  const name = key.replace(/ToolCall$/, "");
+  for (const k of ["command", "path", "pattern", "name", "server"]) {
+    if (typeof args[k] === "string" && args[k]) return [{ text: `● ${name}(${oneLine(args[k])})`, kind: "tool" }];
+  }
+  return [{ text: `● ${name}()`, kind: "tool" }];
 }
 
 function blockLines(role: string, b: Block): TranscriptLine[] {
