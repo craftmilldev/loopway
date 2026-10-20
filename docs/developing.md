@@ -29,9 +29,7 @@ To receive real GitHub webhooks locally, expose the port (e.g. `cloudflared tunn
 
 ## Deploy with the Vercel button
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fcraftmilldev%2Floopway&root-directory=packages%2Fweb&project-name=loopway&repository-name=loopway&env=TOKEN_SECRET%2CCRON_SECRET%2CINBOX_SECRET_KEY%2CSELF_HOSTED%2CRESEND_API_KEY%2CEMAIL_FROM&envDescription=Generate%20TOKEN_SECRET%20and%20CRON_SECRET%20with%20openssl%20rand%20-hex%2032%2C%20INBOX_SECRET_KEY%20with%20openssl%20rand%20-base64%2032%20%28keep%20a%20copy%29%3B%20SELF_HOSTED%3D1%3B%20RESEND_API_KEY%20and%20EMAIL_FROM%20for%20login%20emails&envLink=https%3A%2F%2Fgithub.com%2Fcraftmilldev%2Floopway%2Fblob%2Fmain%2Fdocs%2Fdeveloping.md%23deploy-with-the-vercel-button&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%2C%22protocol%22%3A%22storage%22%7D%5D)
-
-The button clones the repo into your GitHub account, sets **Root Directory** to `packages/web`, adds a Neon database from the Vercel Marketplace and asks for the variables below. Vercel installs from the repo root even with that Root Directory, so the `@loopway/*` workspace packages resolve and the root `postinstall` builds them before the web build runs. The build then applies the migrations. On a fresh deploy `/` redirects to `/login`, where the code arrives by email, or is printed to the function logs when no Resend key is set.
+The Deploy with Vercel button in the [README](../README.md) clones the repo into your GitHub account, sets **Root Directory** to `packages/web`, adds a Neon database from the Vercel Marketplace and asks for the variables below. Vercel installs from the repo root even with that Root Directory, so the `@loopway/*` workspace packages resolve and the root `postinstall` builds them before the web build runs. The build then applies the migrations. On a fresh deploy `/` redirects to `/login`, where the code arrives by email, or is printed to the function logs when no Resend key is set.
 
 | Env | Set by | What |
 | --- | --- | --- |
@@ -46,9 +44,9 @@ Vercel's clone link has no way to preset a value, so `SELF_HOSTED` is a prompt y
 
 The Neon product is the `stores` parameter of the link (`integrationSlug` and `productSlug` `neon`, `protocol` `storage`). Vercel's docs call the parameter `stores`; the same JSON is described as `products` elsewhere.
 
-**Without Resend:** drop `RESEND_API_KEY,EMAIL_FROM` from the `env=` list in the link (and from `envDescription`). Vercel makes every prompted variable required, so a placeholder key would make sends fail. Login codes are then printed to the function logs.
+**Without Resend:** drop `RESEND_API_KEY,EMAIL_FROM` from the `env=` list in the README's button link (and from `envDescription`). Vercel makes every prompted variable required, so a placeholder key would make sends fail. Login codes are then printed to the function logs.
 
-**Bring your own Postgres:** drop the `stores=` parameter from the link, then set `DATABASE_URL` (the pooled URL, or the only URL if you have no pooler) and `DATABASE_URL_UNPOOLED` (a direct connection; what the build migrates) yourself in Vercel → Settings → Environment Variables before the first deploy, or use the manual steps below. Any Postgres the build and the functions can reach works (17 is what it is tested on); the tables live in a `loopway` schema.
+**Bring your own Postgres:** drop the `stores=` parameter from the button link, then set `DATABASE_URL` (the pooled URL, or the only URL if you have no pooler) and `DATABASE_URL_UNPOOLED` (a direct connection; what the build migrates) yourself in Vercel → Settings → Environment Variables before the first deploy, or use the manual steps below. Any Postgres the build and the functions can reach works (17 is what it is tested on); the tables live in a `loopway` schema.
 
 ## Deploy (Vercel + Neon)
 
