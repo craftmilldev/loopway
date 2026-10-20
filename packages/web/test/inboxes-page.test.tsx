@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Inbox } from "../client/inbox.js";
 import { CreateInbox } from "../client/shared.js";
-import { eventsText, Inboxes } from "../client/inboxes.js";
+import { eventsText, InboxesSection } from "../client/inboxes.js";
 
 const inbox = (over: object = {}) => ({
   id: "i1",
@@ -111,9 +111,24 @@ describe("eventsText", () => {
   });
 });
 
-describe("Inboxes list", () => {
+/** The inboxes section of the bots page, opened the way a click on its summary does. */
+async function openSection(list: object[] = inboxes) {
+  const { container } = render(<InboxesSection inboxes={list as any} bots={bots as any} orgs={null} />);
+  const details = container.querySelector("details")!;
+  details.open = true;
+  fireEvent(details, new Event("toggle"));
+}
+
+describe("Inboxes section", () => {
+  it("stays folded, with the count and the inboxes missing a secret in its summary", () => {
+    const { container } = render(<InboxesSection inboxes={inboxes as any} bots={bots as any} orgs={null} />);
+    expect(container.querySelector("details")!.open).toBe(false);
+    expect(screen.getByText(/Inboxes · 2/)).toBeTruthy();
+    expect(screen.getByText(/1 need a secret/)).toBeTruthy();
+  });
+
   it("shows name, counts, source, readers and last message from real data", async () => {
-    render(<Inboxes />);
+    await openSection();
     await screen.findByText("loopway-github");
     const rows = (await screen.findAllByRole("row")).slice(1);
     expect(rows).toHaveLength(2);
@@ -131,21 +146,19 @@ describe("Inboxes list", () => {
     expect(vercelRow!.getByText("never")).toBeTruthy();
   });
 
-  it("links Connect a source to the new-bot flow and each name to its page", async () => {
-    render(<Inboxes />);
-    expect((await screen.findByRole("link", { name: "Connect a source" })).getAttribute("href")).toBe("/acme/bots/new");
+  it("links each name to its page", async () => {
+    await openSection();
     expect((await screen.findByRole("link", { name: "loopway-github" })).getAttribute("href")).toBe("/acme/inboxes/i1");
   });
 
   it("scrolls the wide table in its own box", async () => {
-    render(<Inboxes />);
+    await openSection();
     const table = await screen.findByRole("table");
     expect(table.parentElement!.className).toBe("scroll");
   });
 
   it("says so when there are no inboxes", async () => {
-    inboxes = [];
-    render(<Inboxes />);
+    await openSection([]);
     expect(await screen.findByText(/No inboxes yet/)).toBeTruthy();
   });
 });
@@ -230,7 +243,7 @@ describe("Inbox page", () => {
     vi.stubGlobal("location", { ...window.location, assign });
     render(<Inbox id="i1" />);
     fireEvent.click(await screen.findByRole("button", { name: "Delete inbox" }));
-    await waitFor(() => expect(assign).toHaveBeenCalledWith("/acme/inboxes"));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith("/acme/bots"));
     expect(requests.some((r) => r.method === "DELETE" && r.path === "/inboxes/i1")).toBe(true);
   });
 });

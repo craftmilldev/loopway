@@ -53,7 +53,8 @@ describe("New bot flow", () => {
   it("walks the five steps and creates one bot with the chosen preset", async () => {
     at("");
     render(<NewBot />);
-    fireEvent.click(await screen.findByLabelText(/github/));
+    const github = await screen.findByLabelText<HTMLInputElement>(/github/);
+    await waitFor(() => expect(github.checked).toBe(true));
     expect(screen.getByText("https://lw.test/in/i1")).toBeTruthy();
     fireEvent.click(screen.getByText("Continue"));
 
@@ -100,7 +101,8 @@ describe("New bot flow", () => {
   it("makes you write a prompt and a rule before a blank bot can be created", async () => {
     at("");
     render(<NewBot />);
-    fireEvent.click(await screen.findByLabelText(/github/));
+    const github = await screen.findByLabelText<HTMLInputElement>(/github/);
+    await waitFor(() => expect(github.checked).toBe(true));
     fireEvent.click(screen.getByText("Continue"));
     fireEvent.click(await screen.findByRole("radio", { name: /^Blank/ }));
 
@@ -144,7 +146,10 @@ describe("New bot flow", () => {
   it("asks for an inbox before continuing", async () => {
     at("");
     render(<NewBot />);
-    fireEvent.click(await screen.findByText("Continue"));
+    const github = await screen.findByLabelText<HTMLInputElement>(/github/);
+    await waitFor(() => expect(github.checked).toBe(true));
+    fireEvent.click(github);
+    fireEvent.click(screen.getByText("Continue"));
     expect(await screen.findByText("Pick or create at least one inbox.")).toBeTruthy();
   });
 

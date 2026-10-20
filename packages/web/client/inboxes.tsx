@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { CreateInbox, type Inbox } from "./shared.js";
+import type { Inbox } from "./shared.js";
 import { BAR_DAYS, DeliveryBars } from "./delivery-bars.js";
-import { DashLayout, MembersHint } from "./layout.js";
+import { MembersHint } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
 
@@ -18,20 +18,16 @@ export function eventsText(events: string[] | undefined) {
   return !events || events.includes("*") ? "every event" : plural(events.length, "event type");
 }
 
-/** `/<org>/inboxes`: what each inbox receives, who reads it, and a way to its page. */
-export function Inboxes() {
-  const me = lw.useMe();
-  const ready = !!me;
-  const inboxes = lw.useList<Inbox>(lw.inOrg("/inboxes"), ready);
-  const bots = lw.useList<lw.Bot>(lw.inOrg("/bots"), ready);
-  lw.usePoll(inboxes.reload, ready);
-  lw.usePoll(bots.reload, ready);
+/**
+ * The advanced part of the bots page: what each inbox receives, who reads it, and a way to its page. Inboxes are made
+ * for the user when they connect a source for a bot, so this stays folded away until they want it.
+ */
+export function InboxesSection({ inboxes, bots, orgs }: { inboxes: Inbox[]; bots: lw.Bot[]; orgs: lw.Org[] | null }) {
   const sources = lw.useSources();
-  const orgs = lw.useOrgs(ready);
   const [activity, setActivity] = useState<Record<string, lw.InboxActivity> | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [open, setOpen] = useState(false);
 
-  // Every inbox's messages, in one call.
+  // Every inbox's messages, in one call, once the section is opened.
   const loadActivity = async () => {
     const r = await lw.api(lw.inOrg("/inboxes/activity?days=" + BAR_DAYS));
     if (!r.ok) {
@@ -44,58 +40,41 @@ export function Inboxes() {
     return true;
   };
   useEffect(() => {
-    if (ready) void loadActivity();
-  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
-  lw.usePoll(loadActivity, ready);
+    if (open) void loadActivity();
+  }, [open]);
+  lw.usePoll(loadActivity, open);
 
-  const rows = inboxes.data;
+  const rows = inboxes;
   const needsSecret = (i: Inbox) =>
     !i.config?.secret_set && sources?.data.find((s) => s.type === i.source_type)?.secret.from !== "none";
-  const missing = rows?.filter(needsSecret).length ?? 0;
-  useEffect(() => {
-    if (rows) track("inboxes_viewed", { count: rows.length, missing_secret: missing });
-  }, [rows, missing]);
+  const missing = rows.filter(needsSecret).length;
 
   const label = (type: string) => sources?.data.find((s) => s.type === type)?.label ?? type;
 
   return (
-    <DashLayout title="Inboxes · loopway" me={me}>
-      <section className="ov-top">
-        <div>
-          <span className="lbl">Inboxes</span>
-          <h1 className="ov-headline">Where the messages come in</h1>
-          <p className="muted">
-            Each inbox listens to one source's webhook, checks its signature, and keeps what arrives in order. Bots read
-            from as many as they need.
-          </p>
-        </div>
-        <div className="thread-actions">
-          <button className="btn btn-md btn-quiet" type="button" onClick={() => setCreating(!creating)}>
-            New inbox
-          </button>
-          <a className="btn btn-md" href={lw.orgBase() + "/bots/new"} onClick={() => track("inboxes_connect_clicked")}>
-            Connect a source
-          </a>
-        </div>
-      </section>
-
-      {creating && (
-        <CreateInbox
-          onCreated={() => {
-            setCreating(false);
-            void inboxes.reload();
-          }}
-        />
-      )}
-
-      {rows?.length === 0 && (
+    <details
+      className="inboxes-section"
+      onToggle={(e) => {
+        const now = e.currentTarget.open;
+        setOpen(now);
+        if (now) track("inboxes_viewed", { count: rows.length, missing_secret: missing });
+      }}
+    >
+      <summary>
+        Inboxes · {rows.length}
+        {missing > 0 && <span className="why missing"> · {missing} need a secret</span>}
+      </summary>
+      <p className="muted">
+        Each inbox listens to one source's webhook, checks its signature, and keeps what arrives in order. They are made
+        when you connect a source for a bot; open one to change its events or secret.
+      </p>
+      {rows.length === 0 && (
         <p className="ov-empty">
-          No inboxes yet. <a href={lw.orgBase() + "/bots/new"}>Connect a source</a> to start.
+          No inboxes yet. <a href={lw.orgBase() + "/bots/new"}>Create a bot</a> to connect a source.
           <MembersHint />
         </p>
       )}
-
-      {rows && rows.length > 0 && (
+      {rows.length > 0 && (
         <div className="scroll">
           <table className="ledger inboxes-ledger">
             <thead>
@@ -112,7 +91,7 @@ export function Inboxes() {
             <tbody>
               {rows.map((i) => {
                 const a = activity?.[i.id];
-                const readers = bots.data?.filter((b) => b.inbox_ids.includes(i.id));
+                const readers = bots.filter((b) => b.inbox_ids.includes(i.id));
                 return (
                   <tr key={i.id}>
                     <td>
@@ -154,6 +133,6 @@ export function Inboxes() {
           </table>
         </div>
       )}
-    </DashLayout>
+    </details>
   );
 }

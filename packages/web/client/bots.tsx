@@ -7,6 +7,7 @@ import { BAR_DAYS } from "./delivery-bars.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
+import { InboxesSection } from "./inboxes.js";
 import { Updated } from "./updated.js";
 
 const FILTERS: { key: BotFilter; label: string }[] = [
@@ -207,6 +208,8 @@ export function Bots() {
           </section>
         </>
       )}
+
+      {loaded && <InboxesSection inboxes={inboxes.data!} bots={bots.data!} orgs={orgs} />}
     </DashLayout>
   );
 }
