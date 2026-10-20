@@ -127,6 +127,7 @@ describe("migration 022_created_by", () => {
         "027_automation_level",
         "028_query_indexes",
         "029_inbox_secret_enc",
+        "030_org_first_times",
       ]);
 
       const by = async (table: string, id: string) =>
