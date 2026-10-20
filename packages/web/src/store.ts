@@ -127,6 +127,8 @@ export interface Org {
   slug: string;
   name: string;
   personal: boolean;
+  /** The org has been shown the celebration for finishing setup. */
+  celebrated: boolean;
 }
 
 /** Undefined when `username` is free to use. `userId` is excluded from the "taken" check, so keeping your own name is fine. */
@@ -215,7 +217,8 @@ export async function personalOrgId(db: Q, userId: string): Promise<string> {
 
 export async function listOrgs(db: Q, userId: string): Promise<Org[]> {
   return db.query<Org>(
-    `SELECT o.id, o.slug, o.name, (o.personal_user_id IS NOT NULL) AS personal
+    `SELECT o.id, o.slug, o.name, (o.personal_user_id IS NOT NULL) AS personal,
+       (o.celebrated_at IS NOT NULL) AS celebrated
      FROM loopway.orgs o JOIN loopway.org_members m ON m.org_id = o.id
      WHERE m.user_id = $1 ORDER BY personal DESC, o.slug`,
     [userId],
@@ -240,13 +243,18 @@ export async function createSharedOrg(
         userId,
         userActor(userId),
       ]);
-      return { ok: true as const, org: { id, slug, name: name || slug, personal: false } };
+      return { ok: true as const, org: { id, slug, name: name || slug, personal: false, celebrated: false } };
     });
   } catch (err) {
     // Someone took the slug between the check and the insert.
     if ((err as { code?: string }).code === "23505") return { ok: false, problem: "taken" };
     throw err;
   }
+}
+
+/** Records that the org has been shown the celebration for finishing setup. Keeps the first time if called again. */
+export async function markOrgCelebrated(db: Q, orgId: string): Promise<void> {
+  await db.query(`UPDATE loopway.orgs SET celebrated_at = coalesce(celebrated_at, now()) WHERE id = $1`, [orgId]);
 }
 
 /** The org with this slug, if the user is a member of it. */

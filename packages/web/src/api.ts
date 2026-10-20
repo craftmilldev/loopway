@@ -409,6 +409,13 @@ export function createApi(opts: ApiOptions) {
     return c.json(await store.listOrgMembers(c.var.db, org.id));
   });
 
+  // The org's members have seen the celebration for finishing setup; it isn't shown again.
+  authed.post("/orgs/:slug/celebrated", async (c) => {
+    const org = await memberOrgParam(c, "celebrated");
+    await store.markOrgCelebrated(c.var.db, org.id);
+    return c.body(null, 204);
+  });
+
   authed.post("/orgs/:slug/members", async (c) => {
     const org = await memberOrgParam(c, "add");
     const { email } = z.object({ email: z.string().trim().email().max(320) }).parse(await jsonBody(c));

@@ -1,8 +1,8 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Layout, NoBotsContext, OrgsContext } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
-import { setupDone, useSetupProgress, ZeroState } from "./zero-state.js";
+import { Celebration, setupDone, useSetupProgress, ZeroState } from "./zero-state.js";
 
 /** The page for a path nothing is at. An org the user isn't in gets this too, so it can't tell them the org exists. */
 export function NotFound() {
@@ -34,12 +34,22 @@ export function OrgGate({ children }: { children: ReactNode }) {
   }, [orgs, member, slug]);
   // How far the org's setup is; null until the first load settles, and false if it fails, so the pages show as usual.
   const setup = useSetupProgress(member);
+  // Orgs whose celebration was dismissed here, until the org list loads again.
+  const [dismissed, setDismissed] = useState<string[]>([]);
   if (!orgs) return null;
   if (!member) return <NotFound />;
   // Until all three setup steps are done, the org's pages give way to the zero state. Members (to invite) and the
   // new-bot form stay. A failed request shows the pages as usual.
   if (setup === null) return null;
   const zero = !!setup && !setupDone(setup);
+  // Done but not yet celebrated: the celebration comes before the app, whether the user watched the last step or came back later.
+  const org = orgs.find((o) => o.slug === slug)!;
+  if (!zero && setup && !org.celebrated && !dismissed.includes(slug))
+    return (
+      <OrgsContext.Provider value={orgs}>
+        <Celebration slug={slug} onContinue={() => setDismissed((d) => [...d, slug])} />
+      </OrgsContext.Provider>
+    );
   const shown = !zero || /^\/[^/]+\/(members|bots\/new)$/.test(location.pathname);
   return (
     <OrgsContext.Provider value={orgs}>
