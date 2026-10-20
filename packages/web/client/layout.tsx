@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, type MouseEvent, type ReactNode } from "react";
 import { lastOrgPath, logout, orgBase, orgSlug, startOrg, type Me, type Org } from "./lw.js";
+import { track } from "./metrics.js";
 import { OrgSwitcher } from "./org-switcher.js";
 import wordmark from "./wordmark.svg";
 
@@ -90,6 +91,11 @@ export function DashLayout({
             <a href="#" onClick={out}>
               Log out
             </a>
+            {noBots && !orgless && (
+              <a href={base + "/members"} onClick={() => track("zero_state_members_link_clicked")}>
+                Members
+              </a>
+            )}
             {(!orgless || slug !== "") && !noBots && (
               <a className="btn btn-md" href={base + "/bots/new"}>
                 New bot

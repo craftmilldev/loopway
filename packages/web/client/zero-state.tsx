@@ -130,7 +130,6 @@ export function ZeroState({ progress }: { progress: SetupProgress }) {
         </>
       )}
       <p className="muted" style={{ marginTop: 24 }}>
-        <a href={lw.orgBase() + "/members"}>Members</a>
         <MembersHint />
       </p>
     </DashLayout>
