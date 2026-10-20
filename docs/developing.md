@@ -48,6 +48,45 @@ The Neon product is the `stores` parameter of the link (`integrationSlug` and `p
 
 **Bring your own Postgres:** drop the `stores=` parameter from the button link, then set `DATABASE_URL` (the pooled URL, or the only URL if you have no pooler) and `DATABASE_URL_UNPOOLED` (a direct connection; what the build migrates) yourself in Vercel → Settings → Environment Variables before the first deploy, or use the manual steps below. Any Postgres the build and the functions can reach works (17 is what it is tested on); the tables live in a `loopway` schema.
 
+## Point the CLI at a self-hosted deploy
+
+> **Untested:** the commands in this section and the next were written from the code and the Vercel/GitHub docs, not run against a real self-hosted deploy. Run through them once on a fresh deploy and drop this note.
+
+The CLI talks to `https://loopway.craftmill.dev` until told otherwise. For your own deploy:
+
+```bash
+curl -fsSL https://<your-deploy>/install.sh | sh   # installs the CLI (needs Node 22+)
+loopway config update --url https://<your-deploy>  # saved in ~/.loopway/config.json
+loopway login                                      # emails a one-time code to the deploy's login page
+loopway config                                     # shows the URL the CLI now uses
+```
+
+`install.sh` is served by your deploy but installs the same CLI release from GitHub, so a self-hosted deploy and the hosted one share one CLI. Without `--url` the command prompts for it. `loopway config update` only changes the settings you pass (`--posthog-host`, `--auto-update` and the GitHub bot flags are the others), and `loopway clear-config` goes back to the defaults. The URL lives in `~/.loopway/config.json`, so each machine running `loopway bots run` needs the same `config update` first.
+
+`/llms.txt` is how a coding agent learns about the deploy. Every command in it names the deploy: it fills in `PUBLIC_BASE_URL` when that is set, else the origin the request came to. So an agent given `https://<your-deploy>/llms.txt` installs the CLI from your deploy and, once `config update --url` has been run, talks to it. The dashboard's "Create your bot with your agent" prompt links to the same file. Set `PUBLIC_BASE_URL` if the deploy answers on more than one address (a Vercel `*.vercel.app` URL and a custom domain, say), so the file always names the one you want people to use.
+
+The CLI updates itself to the newest release on GitHub (see [Releasing the CLI](#releasing-the-cli)), and your deploy only changes when you update it. A newer CLI can therefore talk to an older deploy; keep the deploy current (below), or turn the CLI's self-update off with `loopway config update --auto-update off` if you want to hold both back together.
+
+## Updating a self-hosted deploy
+
+A deploy made with the Vercel button is a copy of the repo in your GitHub account, not a fork: it has no link to craftmilldev/loopway, so nothing tells you when `main` moves and nothing pulls it in. Updating means getting upstream's commits into your copy's `main` branch. Vercel redeploys on every push to `main`, and the build applies pending database migrations before it bundles (a failure fails the build).
+
+**A copy made by the button** (what the button creates): add this repo as a second remote once, then merge and push.
+
+```bash
+git clone https://github.com/<you>/loopway && cd loopway
+git remote add upstream https://github.com/craftmilldev/loopway.git   # once
+git fetch upstream
+git merge upstream/main    # resolve conflicts if you changed files
+git push origin main       # Vercel builds, migrates the database and deploys
+```
+
+**A fork** (if you forked craftmilldev/loopway on GitHub first and pointed Vercel at the fork): open the fork on GitHub and click **Sync fork** → **Update branch**. The push it makes triggers the build the same way. Fork first if you can: it is the easier path to keep updating. One thing to know before you do: a fork of a public repo is public, and a free GitHub account can't make it private. That is fine for loopway's code, since your secrets are Vercel environment variables, never files in the repo. If you want your copy private, use the button's copy (it can be private) and the `upstream` steps above.
+
+**When the build fails:** if a migration fails, or any step of the build does, Vercel doesn't promote it, so the previous deployment keeps serving and no half-migrated app goes live. Open the failed deployment's build log in Vercel for the error. Each migration runs in its own transaction, so a failing one leaves nothing half-applied; migrations before it stay applied, and the next build picks up from there. Fix the cause (usually a missing env var or a database the build can't reach) and push again, or **Redeploy** from Vercel once it is fixed. A `migrations_failed` metric is recorded when `POSTHOG_API_KEY` is set.
+
+**Breaking changes:** a change that adds a required environment variable or needs a manual step is called out in its pull request's title and description with `[deploy]`, and the env table in [Deploy with the Vercel button](#deploy-with-the-vercel-button) is updated in the same PR. Before updating, look at what is coming with `git log --oneline HEAD..upstream/main` (or the compare view on GitHub) and look for `[deploy]`. Migrations themselves are run for you, so the case to watch is a new env var: add it in Vercel → Settings → Environment Variables before pushing the merge, or the build or the first requests fail.
+
 ## Deploy (Vercel + Neon)
 
 The same thing by hand:
