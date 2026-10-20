@@ -62,7 +62,13 @@ export abstract class Harness {
         cwd: launch.cwd ?? run.cwd,
         stdio: [launch.stdin === undefined ? "ignore" : "pipe", "pipe", errFd],
       });
-      if (launch.stdin !== undefined) child.stdin!.end(launch.stdin);
+      if (launch.stdin !== undefined) {
+        // A process that exits without reading its stdin closes the pipe: that is its call, not an error here.
+        child.stdin!.on("error", (e: NodeJS.ErrnoException) => {
+          if (e.code !== "EPIPE") child.emit("error", e);
+        });
+        child.stdin!.end(launch.stdin);
+      }
       // stdout goes to the log as before, and through the watch on the way.
       const watch = this.watch(run.onStarted);
       createInterface({ input: child.stdout! }).on("line", (l) => watch.line(l));
