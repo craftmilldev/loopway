@@ -64,13 +64,13 @@ describe("resend webhooks", () => {
   it("starts without a secret and rejects deliveries until one is set", async () => {
     const key = await newUser();
     const inbox = await resendInbox(key, {});
-    expect(inbox.config).toEqual({ secret: null, events: ["*"] });
+    expect(inbox.config).toEqual({ events: ["*"], secret_set: false });
     expect(inbox.setup.secret).toMatch(/not set yet/);
     expect((await sendResend(inbox.id, email())).status).toBe(401);
     const bad = await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { secret: "not-a-whsec" } } });
     expect(bad.status).toBe(400);
     const r = await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { secret: RESEND_SECRET } } });
-    expect(r.body.config).toEqual({ secret: RESEND_SECRET, events: ["*"] });
+    expect(r.body.config).toEqual({ events: ["*"], secret_set: true });
     expect((await sendResend(inbox.id, email())).status).toBe(202);
   });
 

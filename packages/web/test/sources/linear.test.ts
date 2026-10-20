@@ -40,7 +40,7 @@ describe("linear webhooks", () => {
   it("rejects deliveries until a secret is set", async () => {
     const key = await newUser();
     const inbox = await linearInbox(key);
-    expect(inbox.config).toEqual({ secret: null, events: ["*"] });
+    expect(inbox.config).toEqual({ events: ["*"], secret_set: false });
     expect((await sendLinear(inbox.id, issue("create"))).status).toBe(401);
     await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { secret: SECRET } } });
     expect((await sendLinear(inbox.id, issue("create"))).status).toBe(202);

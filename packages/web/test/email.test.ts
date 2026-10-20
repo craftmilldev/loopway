@@ -1,3 +1,4 @@
+import { TEST_INBOX_KEY } from "../src/db/testing.js";
 import { describe, expect, it, vi } from "vitest";
 import { createApi } from "../src/api.js";
 import { consoleSender, senderFromEnv } from "../src/email.js";
@@ -28,6 +29,7 @@ describe("login email failure", () => {
     const a = createApi({
       getDb: async () => db,
       tokenSecret: SECRET,
+      inboxSecretKey: TEST_INBOX_KEY,
       metrics: { capture: async (event) => void events.push(event) },
       sendEmail: async () => {
         throw new Error("Resend responded 500");

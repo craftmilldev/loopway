@@ -50,7 +50,7 @@ export function Inboxes() {
 
   const rows = inboxes.data;
   const needsSecret = (i: Inbox) =>
-    !i.config?.secret && sources?.data.find((s) => s.type === i.source_type)?.secret.from !== "none";
+    !i.config?.secret_set && sources?.data.find((s) => s.type === i.source_type)?.secret.from !== "none";
   const missing = rows?.filter(needsSecret).length ?? 0;
   useEffect(() => {
     if (rows) track("inboxes_viewed", { count: rows.length, missing_secret: missing });

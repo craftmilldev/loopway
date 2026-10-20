@@ -6,7 +6,7 @@ An inbox with `source_type: "resend"` receives what happens to the emails you se
 
 `{ "secret"?: "whsec_…", "events"?: ["email.sent", "email.delivered", "email.delivery_delayed", "email.complained", "email.bounced", "email.opened", "email.clicked", "email.failed", "email.scheduled", "email.suppressed", "email.received", "contact.created", "contact.updated", "contact.deleted", "domain.created", "domain.updated", "domain.deleted"] (default ["*"]) }`
 
-Resend makes the secret, so `config.secret` is `null` until you paste it in.
+Resend makes the secret, so `config.secret_set` is `false` until you paste it in.
 
 ## Setup
 

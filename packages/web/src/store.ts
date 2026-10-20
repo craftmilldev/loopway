@@ -1,8 +1,9 @@
 import type { BotRule } from "@loopway/rules";
 import { botActor, runnerActor, userActor } from "./actor.js";
 import type { CloudEvent } from "./cloudevents.js";
-import type { Db } from "./db/index.js";
+import { MIGRATE_LOCK, type Db } from "./db/index.js";
 import { ApiError } from "./http.js";
+import type { SecretBox } from "./secrets.js";
 import { slugProblem, type SlugProblem } from "./slugs.js";
 import { newLockToken, newLoginCode, normalizeLoginCode, safeEqual, sha256, uuidv7 } from "./ids.js";
 
@@ -262,18 +263,38 @@ export interface Inbox {
   org_id: string;
   name: string;
   source_type: string;
+  /** Everything but the webhook secret, which is in `secret_enc`. */
   config: unknown;
+  /** The webhook secret, sealed by secrets.ts with the inbox id as context. Null for an inbox with none. */
+  secret_enc: string | null;
   created_at: Date;
 }
 
 export async function createInbox(
   db: Db,
-  input: { userId: string; orgId: string; name: string; sourceType: string; config: unknown },
+  input: {
+    /** Given when `secretEnc` was sealed against it. */
+    id?: string;
+    userId: string;
+    orgId: string;
+    name: string;
+    sourceType: string;
+    config: unknown;
+    secretEnc?: string | null;
+  },
 ): Promise<Inbox> {
   const [row] = await db.query<Inbox>(
-    `INSERT INTO loopway.inboxes (id, created_by, org_id, name, source_type, config)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING *`,
-    [uuidv7(), userActor(input.userId), input.orgId, input.name, input.sourceType, input.config],
+    `INSERT INTO loopway.inboxes (id, created_by, org_id, name, source_type, config, secret_enc)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7) RETURNING *`,
+    [
+      input.id ?? uuidv7(),
+      userActor(input.userId),
+      input.orgId,
+      input.name,
+      input.sourceType,
+      input.config,
+      input.secretEnc ?? null,
+    ],
   );
   return row!;
 }
@@ -303,15 +324,50 @@ export async function inboxesOfSource(db: Db, sourceType: string): Promise<Inbox
   return db.query<Inbox>(`SELECT * FROM loopway.inboxes WHERE source_type = $1 ORDER BY id`, [sourceType]);
 }
 
-export async function updateInbox(db: Db, id: string, patch: { name?: string; config?: unknown }): Promise<Inbox> {
+/** Leaves `secretEnc` alone unless it is given. */
+export async function updateInbox(
+  db: Db,
+  id: string,
+  patch: { name?: string; config?: unknown; secretEnc?: string },
+): Promise<Inbox> {
   const [row] = await db.query<Inbox>(
     `UPDATE loopway.inboxes SET
-       name   = COALESCE($2, name),
-       config = COALESCE($3::jsonb, config)
+       name       = COALESCE($2, name),
+       config     = COALESCE($3::jsonb, config),
+       secret_enc = COALESCE($4, secret_enc)
      WHERE id = $1 RETURNING *`,
-    [id, patch.name ?? null, patch.config ?? null],
+    [id, patch.name ?? null, patch.config ?? null, patch.secretEnc ?? null],
   );
   return row!;
+}
+
+/** Recorded in schema_migrations once the plaintext secrets have been moved, so it is done once and never again. */
+const SECRETS_MOVED = "029_inbox_secret_enc:data";
+
+/**
+ * The data half of migration 029, once: moves the secrets that are in plaintext in an inbox's config (from before
+ * `secret_enc`) into it, sealed, and records that it is done, in one transaction under the migration lock. It runs
+ * on a database that has the plaintext secrets and no other, never overwrites a `secret_enc`, and does nothing on
+ * every run after the first. Returns how many it moved, or null if it had already run.
+ */
+export async function encryptInboxSecrets(db: Db, box: SecretBox): Promise<number | null> {
+  return db.transaction(async (tx) => {
+    await tx.query(`SELECT pg_advisory_xact_lock($1)`, [MIGRATE_LOCK]);
+    const done = await tx.query(`SELECT 1 FROM loopway.schema_migrations WHERE version = $1`, [SECRETS_MOVED]);
+    if (done.length) return null;
+    const rows = await tx.query<{ id: string; secret: unknown }>(
+      `SELECT id, config->'secret' AS secret FROM loopway.inboxes WHERE config ? 'secret'`,
+    );
+    for (const { id, secret } of rows) {
+      // A null secret (Linear's "not set yet" kept as null) just goes away.
+      await tx.query(
+        `UPDATE loopway.inboxes SET config = config - 'secret', secret_enc = COALESCE(secret_enc, $2) WHERE id = $1`,
+        [id, typeof secret === "string" && secret ? box.seal(secret, id) : null],
+      );
+    }
+    await tx.query(`INSERT INTO loopway.schema_migrations (version) VALUES ($1)`, [SECRETS_MOVED]);
+    return rows.length;
+  });
 }
 
 export async function deleteInbox(db: Db, id: string): Promise<void> {

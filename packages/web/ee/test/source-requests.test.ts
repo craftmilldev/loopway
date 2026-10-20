@@ -1,3 +1,4 @@
+import { TEST_INBOX_KEY } from "../../src/db/testing.js";
 import { describe, expect, it } from "vitest";
 import { createApi } from "../../src/api.js";
 import { createUser } from "../../src/store.js";
@@ -16,6 +17,7 @@ describe("source requests", () => {
     const a = createApi({
       getDb: async () => db,
       tokenSecret: SECRET,
+      inboxSecretKey: TEST_INBOX_KEY,
       enterpriseLicense: "test-license",
       sourceRequests: { url: inbox.webhook_url, token: inbox.config.secret },
       fetch: viaApp,
@@ -57,6 +59,7 @@ describe("source requests", () => {
     const unlicensed = createApi({
       getDb: async () => db,
       tokenSecret: SECRET,
+      inboxSecretKey: TEST_INBOX_KEY,
       sourceRequests: { url: "https://loopway.test/api/webhooks/x", token: "t" },
       fetch: viaApp,
     });
@@ -79,6 +82,7 @@ describe("source requests", () => {
     const broken = createApi({
       getDb: async () => db,
       tokenSecret: SECRET,
+      inboxSecretKey: TEST_INBOX_KEY,
       enterpriseLicense: "test-license",
       sourceRequests: { url: "https://loopway.test/api/webhooks/nope", token: "wrong" },
       fetch: viaApp,

@@ -611,4 +611,12 @@ CREATE INDEX thread_events_thread_idx ON loopway.thread_events (thread_id);
 CREATE INDEX threads_bot_created_idx ON loopway.threads (bot_id, created_at, id);
 `,
   },
+  {
+    // An inbox's webhook secret leaves its config for a column of its own, holding it encrypted (see secrets.ts).
+    // Existing plaintext secrets are moved, once, by encryptInboxSecrets, which needs the key and so runs after the migrations.
+    version: "029_inbox_secret_enc",
+    sql: `
+ALTER TABLE loopway.inboxes ADD COLUMN secret_enc text;
+`,
+  },
 ];

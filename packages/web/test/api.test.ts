@@ -1,3 +1,4 @@
+import { TEST_INBOX_KEY } from "../src/db/testing.js";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { build } from "esbuild";
@@ -69,7 +70,46 @@ describe("inboxes", () => {
     const key = await newUser();
     const inbox = await newInbox(key);
     const r = await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { events: ["push"] } } });
-    expect(r.body.config).toEqual({ secret: inbox.config.secret, events: ["push"] });
+    expect(r.body.config).toEqual({ events: ["push"], secret_set: true });
+    expect((await sendGithub(inbox, "push", {})).status).not.toBe(401);
+  });
+  it("shows the secret once, on create, and stores it encrypted", async () => {
+    const key = await newUser();
+    const inbox = await newInbox(key);
+    expect(inbox.config.secret).toBeTruthy();
+    const got = await call("GET", `/inboxes/${inbox.id}`, { key });
+    expect(got.body.config.secret).toBeUndefined();
+    expect(got.body.config.secret_set).toBe(true);
+    expect(JSON.stringify(got.body)).not.toContain(inbox.config.secret);
+    const listed = await call("GET", "/inboxes", { key });
+    expect(JSON.stringify(listed.body)).not.toContain(inbox.config.secret);
+    const [row] = await db.query<{ config: object; secret_enc: string }>(
+      `SELECT config, secret_enc FROM loopway.inboxes WHERE id = $1`,
+      [inbox.id],
+    );
+    expect(row!.config).not.toHaveProperty("secret");
+    expect(row!.secret_enc).toMatch(/^v1\./);
+    expect(row!.secret_enc).not.toContain(inbox.config.secret);
+  });
+  it("can still rename, and set a new secret, when the stored one can't be opened", async () => {
+    const key = await newUser();
+    const inbox = await newInbox(key);
+    await db.query(`UPDATE loopway.inboxes SET secret_enc = 'v1.bad.bad.bad' WHERE id = $1`, [inbox.id]);
+    expect((await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { name: "renamed" } })).status).toBe(200);
+    expect((await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { events: ["push"] } } })).status).toBe(
+      500,
+    );
+    const next = "n".repeat(20);
+    expect((await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { secret: next } } })).status).toBe(200);
+    expect((await sendGithub(inbox, "push", {}, { secret: next })).status).not.toBe(401);
+  });
+  it("replaces the secret when one is sent", async () => {
+    const key = await newUser();
+    const inbox = await newInbox(key);
+    const next = "n".repeat(20);
+    await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { secret: next } } });
+    expect((await sendGithub(inbox, "push", {})).status).toBe(401);
+    expect((await sendGithub(inbox, "push", {}, { secret: next })).status).not.toBe(401);
   });
 });
 
@@ -471,7 +511,12 @@ describe("session tokens", () => {
 describe("login", () => {
   const sent: { to: string; subject: string; text: string }[] = [];
   const loginApp = () =>
-    createApi({ getDb: async () => db, tokenSecret: SECRET, sendEmail: async (e) => void sent.push(e) });
+    createApi({
+      getDb: async () => db,
+      tokenSecret: SECRET,
+      inboxSecretKey: TEST_INBOX_KEY,
+      sendEmail: async (e) => void sent.push(e),
+    });
   const post = (a: ReturnType<typeof createApi>, path: string, body: unknown) =>
     a.request("/api" + path, {
       method: "POST",
