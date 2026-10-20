@@ -47,7 +47,11 @@ export function MembersHint() {
 /** The tabs of an org's pages: where each goes, and whether the path `p` is on it. */
 const sections = (base: string) => [
   { label: "Overview", href: base, on: (p: string) => p === base },
-  { label: "Bots", href: base + "/bots", on: (p: string) => p.startsWith(base + "/bots") || p.startsWith(base + "/inboxes") },
+  {
+    label: "Bots",
+    href: base + "/bots",
+    on: (p: string) => p.startsWith(base + "/bots") || p.startsWith(base + "/inboxes"),
+  },
   { label: "Members", href: base + "/members", on: (p: string) => p === base + "/members" },
   { label: "Runners", href: base + "/runners", on: (p: string) => p === base + "/runners" },
 ];

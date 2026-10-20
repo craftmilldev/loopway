@@ -22,15 +22,7 @@ export function eventsText(events: string[] | undefined) {
  * The advanced part of the bots page: what each inbox receives, who reads it, and a way to its page. Inboxes are made
  * for the user when they connect a source for a bot, so this stays folded away until they want it.
  */
-export function InboxesSection({
-  inboxes,
-  bots,
-  orgs,
-}: {
-  inboxes: Inbox[];
-  bots: lw.Bot[];
-  orgs: lw.Org[] | null;
-}) {
+export function InboxesSection({ inboxes, bots, orgs }: { inboxes: Inbox[]; bots: lw.Bot[]; orgs: lw.Org[] | null }) {
   const sources = lw.useSources();
   const [activity, setActivity] = useState<Record<string, lw.InboxActivity> | null>(null);
   const [open, setOpen] = useState(false);
