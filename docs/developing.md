@@ -61,7 +61,7 @@ loopway login                                      # emails a one-time code to t
 loopway config                                     # shows the URL the CLI now uses
 ```
 
-`install.sh` installs the latest `craftmilldev/loopway` CLI release from GitHub, the same one the hosted service uses; your deploy serves a copy of the script at `/install.sh` too. Without `--url` the command prompts for it. `loopway config update` only changes the settings you pass (`--posthog-host`, `--auto-update` and the GitHub bot flags are the others), and `loopway clear-config` goes back to the defaults. The URL lives in `~/.loopway/config.json`, so each machine running `loopway bots run` needs the same `config update` first.
+Without `--url` the command prompts for it. `loopway config update` only changes the settings you pass (`--posthog-host`, `--auto-update` and the GitHub bot flags are the others), and `loopway clear-config` goes back to the defaults. The URL lives in `~/.loopway/config.json`, so each machine running `loopway bots run` needs the same `config update` first.
 
 `/llms.txt` is how a coding agent learns about the deploy. Every command in it names the deploy: it fills in `PUBLIC_BASE_URL` when that is set, else the origin the request came to. So an agent given `https://<your-deploy>/llms.txt` installs the CLI (your deploy's copy of `install.sh`, which fetches the `craftmilldev/loopway` release) and, once `config update --url` has been run, talks to it. The dashboard's "Create your bot with your agent" prompt links to the same file. Set `PUBLIC_BASE_URL` if the deploy answers on more than one address (a Vercel `*.vercel.app` URL and a custom domain, say), so the file always names the one you want people to use.
 
