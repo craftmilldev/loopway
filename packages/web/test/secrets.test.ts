@@ -40,7 +40,6 @@ describe("encryptInboxSecrets", () => {
       const unset = await make({ secret: null, events: ["*"] });
       const none = await make({ events: ["*"] });
 
-      expect(await encryptInboxSecrets(db, undefined).catch((e: Error) => e.message)).toMatch(/INBOX_SECRET_KEY/);
       expect(await encryptInboxSecrets(db, box)).toBe(2);
       expect(await encryptInboxSecrets(db, box)).toBe(0);
 

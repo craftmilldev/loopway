@@ -346,20 +346,15 @@ export async function updateInbox(
  * only touches inboxes whose config still has a `secret`, and a crash leaves each one wholly moved or wholly not.
  * Returns how many it moved.
  */
-export async function encryptInboxSecrets(db: Db, box: SecretBox | undefined): Promise<number> {
+export async function encryptInboxSecrets(db: Db, box: SecretBox): Promise<number> {
   const rows = await db.query<{ id: string; secret: unknown }>(
     `SELECT id, config->'secret' AS secret FROM loopway.inboxes WHERE config ? 'secret'`,
   );
-  if (rows.length && !box) {
-    throw new Error(
-      `${rows.length} inbox secrets are still in plaintext: set INBOX_SECRET_KEY so they can be encrypted`,
-    );
-  }
   for (const { id, secret } of rows) {
     // A null secret (Linear's "not set yet" kept as null) just goes away.
     await db.query(
       `UPDATE loopway.inboxes SET config = config - 'secret', secret_enc = COALESCE($2, secret_enc) WHERE id = $1`,
-      [id, typeof secret === "string" && secret ? box!.seal(secret, id) : null],
+      [id, typeof secret === "string" && secret ? box.seal(secret, id) : null],
     );
   }
   return rows.length;

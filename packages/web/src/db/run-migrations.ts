@@ -36,7 +36,7 @@ export async function runMigrations(opts: RunMigrationsOptions): Promise<string[
     const db = await openDb({ databaseUrl });
     try {
       applied = await migrate(db);
-      moved = await encryptInboxSecrets(db, key ? secretBox(key) : undefined);
+      moved = await encryptInboxSecrets(db, secretBox(key));
     } finally {
       await db.close();
     }

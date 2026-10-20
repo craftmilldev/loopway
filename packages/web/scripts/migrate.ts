@@ -18,9 +18,6 @@ if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is not set.");
 const db = await openDb({ databaseUrl: process.env.DATABASE_URL });
 const applied = await migrate(db);
 console.log(applied.length ? `Applied: ${applied.join(", ")}` : "Up to date.");
-const moved = await encryptInboxSecrets(
-  db,
-  process.env.INBOX_SECRET_KEY ? secretBox(process.env.INBOX_SECRET_KEY) : undefined,
-);
+const moved = await encryptInboxSecrets(db, secretBox(process.env.INBOX_SECRET_KEY)); // throws if it is unset
 if (moved) console.log(`Encrypted ${moved} inbox secrets.`);
 await db.close();
