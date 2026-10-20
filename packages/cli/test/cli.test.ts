@@ -1653,6 +1653,26 @@ describe("threads", () => {
     expect(() => checkRules([rule("a")])).not.toThrow();
   });
 
+  it("starts new threads on the bot's new harness and model, and resumes a running one on the one it started with", async () => {
+    const { inbox, client, runs, out, d, finish } = await setup(3);
+    await send(inbox, "issues", issue("opened", 1));
+    await d.tick();
+    expect(runs[0]).toMatchObject({ harness: "claude", model: "sonnet", resume: false });
+    await finish();
+
+    // The server refuses a harness change while a started thread is active, so the runner is shown one directly.
+    const getBot = client.getBot.bind(client);
+    client.getBot = async (id) => ({ ...(await getBot(id)), harness: "codex", model: "gpt-6-sol" });
+    await send(inbox, "issues", issue("opened", 2));
+    await send(inbox, "issue_comment", comment(1));
+    await d.tick();
+    expect(out).toContain("bot dev1: now on harness codex / model gpt-6-sol");
+    expect(runs).toHaveLength(3);
+    const fresh = runs.find((r) => !r.resume && r.harness === "codex");
+    expect(fresh).toMatchObject({ harness: "codex", model: "gpt-6-sol" });
+    expect(runs.find((r) => r.resume)).toMatchObject({ harness: "claude", model: "sonnet" });
+  });
+
   it("picks up a new version of the bot's prompt and rules, and ignores one whose rules don't parse", async () => {
     const { inbox, bot, client, runs, out, d, finish } = await setup(3);
     const current = await client.getBot(bot.id);
