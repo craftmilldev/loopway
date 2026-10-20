@@ -682,10 +682,13 @@ export function createApi(opts: ApiOptions) {
     );
     if (!row) {
       const until = iso(runner.locked_until);
+      await metrics.capture("runner_lease_rejected", runner.org_id, { reason: "leased" });
       throw new ApiError(409, "runner_leased", `Runner is leased until ${until} by another process`, {
         expires_at: until,
       });
     }
+    const seconds = await store.noteFirstRunner(c.var.db, row.org_id);
+    if (seconds !== undefined) await metrics.capture("org_first_runner_connected", row.org_id, { seconds });
     return c.json({ lease: { token: row.lock_token, expires_at: iso(row.locked_until) } });
   });
 
@@ -1143,6 +1146,8 @@ export function createApi(opts: ApiOptions) {
     await requireOwner(c, thread, lease_token);
     const done = await store.finishThread(c.var.db, bot.id, lease_token, thread.id, requeue ?? false);
     if (!done) throw runnerNotLeased();
+    if (done.firstRun)
+      await metrics.capture("org_first_bot_ran", done.firstRun.orgId, { seconds: done.firstRun.seconds });
     return c.json({ moved: done.moved });
   });
 

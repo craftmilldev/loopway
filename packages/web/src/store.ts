@@ -922,6 +922,19 @@ export async function leaseRunner(
   return rows.length ? getRunner(db, userId, id) : undefined;
 }
 
+/**
+ * Notes that the org's first runner connected. The seconds since the org was created, the first time only; undefined
+ * after that.
+ */
+export async function noteFirstRunner(db: Db, orgId: string): Promise<number | undefined> {
+  const rows = await db.query<{ seconds: number }>(
+    `UPDATE loopway.orgs SET first_runner_at = now() WHERE id = $1 AND first_runner_at IS NULL
+     RETURNING extract(epoch FROM now() - created_at)::float8 AS seconds`,
+    [orgId],
+  );
+  return rows[0]?.seconds;
+}
+
 /** Drops the runner's lease, if `token` is the one held; or whoever's, with `token` null (a process that died). */
 export async function releaseRunner(db: Db, userId: string, id: string, token: string | null): Promise<boolean> {
   const rows = await db.query<{ id: string }>(
@@ -1413,7 +1426,7 @@ export async function finishThread(
   token: string,
   id: string,
   requeue: boolean,
-): Promise<{ moved: number } | undefined> {
+): Promise<{ moved: number; firstRun?: { orgId: string; seconds: number } } | undefined> {
   return db.transaction(async (tx) => {
     const owned = await tx.query(
       `UPDATE loopway.threads t SET updated_at = now() WHERE ${THREAD_OWNED} RETURNING t.id`,
@@ -1427,7 +1440,15 @@ export async function finishThread(
        WHERE thread_id = $1::uuid AND state = 'inflight' RETURNING message_id`,
       [id, requeue],
     );
-    return { moved: moved.length };
+    if (requeue || !moved.length) return { moved: moved.length };
+    // The org's first delivered message: the seconds since the org was created, the first time only.
+    const [first] = await tx.query<{ id: string; seconds: number }>(
+      `UPDATE loopway.orgs o SET first_bot_run_at = now()
+       FROM loopway.bots b WHERE b.id = $1 AND o.id = b.org_id AND o.first_bot_run_at IS NULL
+       RETURNING o.id, extract(epoch FROM now() - o.created_at)::float8 AS seconds`,
+      [botId],
+    );
+    return { moved: moved.length, firstRun: first && { orgId: first.id, seconds: first.seconds } };
   });
 }
 
