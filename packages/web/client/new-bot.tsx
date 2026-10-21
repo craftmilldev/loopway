@@ -158,11 +158,6 @@ function Source({
   const [creating, setCreating] = useState(inOrg.length === 0);
   const [error, setError] = useState<string | null>(null);
 
-  // With a single source connected there is nothing to choose, so it's already picked.
-  useEffect(() => {
-    if (inOrg.length === 1 && !picked.size) setPicked(new Set([inOrg[0]!.id]));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   function toggle(id: string, on: boolean) {
     const s = new Set(picked);
     if (on) s.add(id);
@@ -205,7 +200,7 @@ function Source({
         />
       ) : (
         <button className="btn btn-sm btn-quiet" type="button" onClick={() => setCreating(true)}>
-          Connect another source
+          Create a new inbox
         </button>
       )}
       {inOrg
