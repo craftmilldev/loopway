@@ -185,8 +185,8 @@ describe("ThreadsTui", () => {
       expect(frame()).toContain("c chat · q quit");
       await press("c");
       expect(frame()).toContain("CHAT");
-      expect(frame()).toContain("esc lists");
-      await press("\u001B");
+      expect(frame()).toContain("← lists");
+      await press(KEYS.left);
       await sleep(30);
       expect(frame()).toContain("WAITING MESSAGES");
       expect(events).toEqual([["chat_view_opened", { via: "key" }]]);
@@ -208,10 +208,18 @@ describe("ThreadsTui", () => {
         ["chat_message_sent", {}],
         ["chat_message_ignored", { reason: "empty" }],
       ]);
-      await press("\u001B");
+      await press(KEYS.left);
       await sleep(30);
       await press("c");
       expect(frame()).toContain("manager ❯ No agent is connected yet.");
+    });
+
+    it("goes back with esc too", async () => {
+      const { frame, press } = await show(snapshot, { chat: true });
+      await press("c");
+      await press("\u001B");
+      await sleep(30);
+      expect(frame()).toContain("WAITING MESSAGES");
     });
 
     it("opens in chat when started there", async () => {

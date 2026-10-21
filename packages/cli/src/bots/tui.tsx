@@ -551,7 +551,7 @@ interface ChatViewProps {
 
 /**
  * The chat with the manager: a transcript that follows new messages until you scroll up (↑/↓, PgUp/PgDn, Home/End),
- * and a one-line input that is always live, so keys type. Enter sends, Esc goes back to the lists, Ctrl-C quits.
+ * and a one-line input that is always live, so keys type. Enter sends, ← (or Esc) goes back to the lists, Ctrl-C quits.
  */
 function ChatView({ chat, onSubmit, onBack }: ChatViewProps) {
   const { rows: height, columns } = useWindowSize();
@@ -568,7 +568,7 @@ function ChatView({ chat, onSubmit, onBack }: ChatViewProps) {
   const scroll = (to: number) => setTop(to >= bottom ? undefined : Math.max(0, to));
 
   useInput((input, key) => {
-    if (key.escape) onBack();
+    if (key.escape || key.leftArrow) onBack();
     else if (key.return) {
       onSubmit(draft);
       setDraft("");
@@ -605,7 +605,7 @@ function ChatView({ chat, onSubmit, onBack }: ChatViewProps) {
         <Text color={termColor(INDIGO.ink)}>you ❯ </Text>
         {draft}
         <Text inverse> </Text>
-        <Text color={muted}> enter send · esc lists · ctrl-c quit</Text>
+        <Text color={muted}> enter send · ← lists · ctrl-c quit</Text>
       </Text>
     </Box>
   );
