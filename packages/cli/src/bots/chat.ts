@@ -90,6 +90,8 @@ interface Turn {
   error?: string;
   /** Shown instead of the user's words when the turn is the chat reporting back on a change; `text` then goes only to the manager. */
   report?: ChatMessage[];
+  /** What the manager was told ahead of `text`; put back if the run fails, so the next message repeats it. */
+  notes?: string[];
   /** Notes shown after the reply, such as a proposal that was refused. */
   after?: ChatMessage[];
 }
@@ -231,7 +233,8 @@ export class ManagerChat implements ChatBackend {
   private readLog = () => readFile(this.logPath, "utf8").catch(() => "");
 
   private async turn(turn: Turn): Promise<void> {
-    const text = [...this.notes.splice(0), turn.text].join("\n\n");
+    turn.notes = this.notes.splice(0);
+    const text = [...turn.notes, turn.text].join("\n\n");
     turn.from = (await this.readLog()).length;
     // Only Claude Code holds the manager to its tool list; say so, once, where the user is looking.
     if (!this.started && !getHarness(this.opts.harness).enforcesTools) {
@@ -288,6 +291,7 @@ export class ManagerChat implements ChatBackend {
 
   private fail(turn: Turn, reason: string, text: string) {
     turn.error = text;
+    this.notes.unshift(...(turn.notes ?? []));
     // A session that never got going can't be resumed, and its id may be taken: the next message starts a new one.
     if (!this.started) this.sessionId = randomUUID();
     this.opts.capture?.("manager_run_failed", { harness: this.opts.harness, reason });

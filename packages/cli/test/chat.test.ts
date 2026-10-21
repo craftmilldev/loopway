@@ -369,6 +369,24 @@ describe("chat", () => {
       expect(runs[1]!.message).toContain("Only your first proposal");
     });
 
+    it("names the bot only when it follows the verb, not an option's value", () => {
+      expect(parsed("loopway bots update --name new-name triage").name).toBeUndefined();
+      expect(parsed("loopway bots edit --prompt-file @prompt triage\n@prompt\nhi").name).toBeUndefined();
+      expect(parsed("loopway bots update triage --name new-name").name).toBe("triage");
+    });
+
+    it("tells the manager about a refused proposal on the next message even if that run fails", async () => {
+      const { runs, runAgent } = fake((_run, n) =>
+        n === 1 ? propose("loopway bots release a") : n === 2 ? { code: 2 } : "ok",
+      );
+      const { chat } = await manager(runAgent);
+      await chat.send("one").done;
+      await chat.send("two").done;
+      await chat.send("three").done;
+      expect(runs[1]!.message).toContain("was refused");
+      expect(runs[2]!.message).toContain("was refused");
+    });
+
     it("tokenizes quotes without expanding anything", () => {
       expect(tokenize(`loopway bots create --name "my bot" --model 'a b'`)).toEqual([
         "loopway",

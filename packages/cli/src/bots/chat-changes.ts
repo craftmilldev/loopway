@@ -99,8 +99,13 @@ export function parseProposal(block: string): Parsed {
   const [group, verb] = spec;
   const target = group === "bots" ? "bot" : "inbox";
   const kind: ChangeKind = verb === "create" ? "create" : verb === "delete" ? "delete" : "update";
+  // The bot is the word right after the verb; anywhere else a non-dash word could be an option's value.
   const name =
-    group === "bots" && verb !== "create" ? args.slice(2).find((a) => !a.startsWith("-")) : optionValue(args, "--name");
+    group === "bots" && verb !== "create"
+      ? args[2]?.startsWith("-")
+        ? undefined
+        : args[2]
+      : optionValue(args, "--name");
   const label = name ? ` "${name}"` : "";
   const effect =
     kind === "create"
