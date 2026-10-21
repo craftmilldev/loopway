@@ -15,7 +15,19 @@ export interface Config {
   github?: GithubBot;
   /** Whether the CLI updates itself from GitHub releases. On unless this is false (or LOOPWAY_NO_UPDATE is set). */
   auto_update?: boolean;
+  /** The opt-in manager bot. Off unless `enabled` is true. */
+  manager?: ManagerSettings;
 }
+
+/** What the manager bot runs on; the harness defaults to DEFAULT_MANAGER_HARNESS. */
+export interface ManagerSettings {
+  enabled?: boolean;
+  harness?: string;
+  model?: string;
+}
+
+/** The harness the manager uses unless told otherwise (a name from `@loopway/harnesses`). */
+export const DEFAULT_MANAGER_HARNESS = "claude";
 
 /** A GitHub user account, and its token, for sessions to comment, push and commit as. */
 export interface GithubBot {
@@ -37,7 +49,15 @@ export const configPath = (dir: string) => join(dir, "config.json");
 export async function loadConfig(
   dir: string,
   env: NodeJS.ProcessEnv = process.env,
-): Promise<{ api_url: string; api_key?: string; posthog_host: string; auto_update: boolean }> {
+): Promise<{
+  api_url: string;
+  api_key?: string;
+  posthog_host: string;
+  auto_update: boolean;
+  manager_enabled: boolean;
+  manager_harness: string;
+  manager_model?: string;
+}> {
   const file = await readConfig(dir);
   const api_url = env.LOOPWAY_API_URL || file?.api_url || DEFAULTS.api_url;
   return {
@@ -46,6 +66,11 @@ export async function loadConfig(
     // Metrics go through the API's PostHog reverse proxy unless pointed elsewhere.
     posthog_host: env.POSTHOG_HOST || file?.posthog_host || `${api_url}/api/ingest`,
     auto_update: !(env.LOOPWAY_NO_UPDATE && env.LOOPWAY_NO_UPDATE !== "0") && file?.auto_update !== false,
+    // LOOPWAY_MANAGER=1/0 beats the file; any other value (or empty) falls through to it.
+    manager_enabled:
+      env.LOOPWAY_MANAGER === "1" ? true : env.LOOPWAY_MANAGER === "0" ? false : file?.manager?.enabled === true,
+    manager_harness: env.LOOPWAY_MANAGER_HARNESS || file?.manager?.harness || DEFAULT_MANAGER_HARNESS,
+    manager_model: env.LOOPWAY_MANAGER_MODEL || file?.manager?.model,
   };
 }
 
@@ -86,13 +111,27 @@ export async function readGithubBot(dir: string): Promise<Partial<GithubBot>> {
 async function readConfig(dir: string): Promise<Partial<Config> | undefined> {
   const raw = await readJson(configPath(dir));
   if (!raw || typeof raw !== "object") return undefined;
-  const { api_url, api_key, posthog_host, auto_update } = raw as Partial<Config>;
+  const { api_url, api_key, posthog_host, auto_update, manager } = raw as Partial<Config>;
   return {
     api_url: typeof api_url === "string" ? api_url : undefined,
     api_key: typeof api_key === "string" ? api_key : undefined,
     posthog_host: typeof posthog_host === "string" && posthog_host ? posthog_host : undefined,
     auto_update: typeof auto_update === "boolean" ? auto_update : undefined,
+    manager: manager && typeof manager === "object" ? readManager(manager) : undefined,
   };
+}
+
+function readManager(raw: ManagerSettings): ManagerSettings {
+  return {
+    enabled: typeof raw.enabled === "boolean" ? raw.enabled : undefined,
+    harness: typeof raw.harness === "string" && raw.harness ? raw.harness : undefined,
+    model: typeof raw.model === "string" && raw.model ? raw.model : undefined,
+  };
+}
+
+/** Just config.json's `manager`, without env or defaults. */
+export async function readManagerSettings(dir: string): Promise<ManagerSettings> {
+  return (await readConfig(dir))?.manager ?? {};
 }
 
 /**
@@ -101,7 +140,14 @@ async function readConfig(dir: string): Promise<Partial<Config> | undefined> {
  */
 export async function writeConfig(
   dir: string,
-  config: { api_url: string; api_key?: string; posthog_host?: string; github?: GithubBot; auto_update?: boolean },
+  config: {
+    api_url: string;
+    api_key?: string;
+    posthog_host?: string;
+    github?: GithubBot;
+    auto_update?: boolean;
+    manager?: ManagerSettings;
+  },
 ): Promise<void> {
   const existing = await readJson(configPath(dir));
   const rest = existing && typeof existing === "object" ? existing : {};

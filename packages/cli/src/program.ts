@@ -86,7 +86,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
   config
     .command("update")
     .description(
-      "set the API URL, metrics host, self-update and the GitHub bot for `loopway bots run` in ~/.loopway/config.json; run `loopway login` after",
+      "set the API URL, metrics host, self-update, the manager bot and the GitHub bot for `loopway bots run` in ~/.loopway/config.json; run `loopway login` after",
     )
     .option("--url <url>", "API base URL, e.g. https://loopway.example.com (prompted for if omitted)")
     .option("--posthog-host <url>", "where product metrics go (default: the API's /api/ingest proxy)")
@@ -98,6 +98,10 @@ A CLI installed from a release updates itself to the newest one; turn that off w
         ["on", "off"],
       ),
     )
+    .option("--manager", "turn the manager bot on")
+    .option("--no-manager", "turn the manager bot off")
+    .option("--manager-harness <name>", "the harness the manager runs on (default claude)")
+    .option("--manager-model <name>", "the model the manager uses (default: the harness's)")
     .action((opts) => configure(ctx, opts));
 
   program
