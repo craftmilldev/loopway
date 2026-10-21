@@ -2,6 +2,7 @@ import type { AgentRun } from "./agent.js";
 import { LimitWatch } from "./claude-watch.js";
 import { Harness, type Launch } from "./harness.js";
 import { HARNESS_LABELS } from "./labels.js";
+import { streamJsonLines, transcribe } from "./transcript.js";
 
 /** Claude Code, run as `claude -p`. */
 export class ClaudeHarness extends Harness {
@@ -38,6 +39,10 @@ export class ClaudeHarness extends Harness {
     // The message goes in as stream-json so Claude Code can echo it back once it's in the session.
     args.push("--input-format", "stream-json", "--replay-user-messages");
     return { args, stdin: JSON.stringify({ type: "user", message: { role: "user", content: run.message } }) + "\n" };
+  }
+
+  transcript(log: string) {
+    return transcribe(log, streamJsonLines);
   }
 
   watch(onStarted?: () => void) {

@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import type { AgentRun, RunWatch } from "./agent.js";
 import { Harness, type Launch } from "./harness.js";
 import { HARNESS_LABELS } from "./labels.js";
+import { oneLine, streamJsonLines, transcribe, type StreamRecord, type TranscriptLine } from "./transcript.js";
 
 const exec = promisify(execFile);
 
@@ -93,7 +94,26 @@ export class CursorHarness extends Harness {
     return { args };
   }
 
+  /** Claude's stream-json, plus a line per tool call when it starts (its `completed` record repeats it). */
+  transcript(log: string) {
+    return transcribe(log, (r) =>
+      r.type === "tool_call" && r.subtype === "started" ? toolLines(r) : streamJsonLines(r),
+    );
+  }
+
   watch(onStarted?: () => void) {
     return new CursorWatch(onStarted);
   }
+}
+
+/** A tool call is one key (`shellToolCall`, ...) holding its args. */
+function toolLines(r: StreamRecord): TranscriptLine[] {
+  const [key, value] = Object.entries(r.tool_call ?? {})[0] ?? [];
+  if (!key) return [];
+  const args = value?.args ?? {};
+  const name = key.replace(/ToolCall$/, "");
+  for (const k of ["command", "path", "pattern", "name", "server"]) {
+    if (typeof args[k] === "string" && args[k]) return [{ text: `● ${name}(${oneLine(args[k])})`, kind: "tool" }];
+  }
+  return [{ text: `● ${name}()`, kind: "tool" }];
 }

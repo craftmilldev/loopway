@@ -373,9 +373,15 @@ function LogView({ id, snap, readLog, send, end, refreshMs, onBack }: LogViewPro
   const [top, setTop] = useState<number>();
   useEffect(() => poll(() => readLog(id), setLog, refreshMs), [id, readLog, refreshMs]);
 
+  // The harness of the thread's bot; a thread whose bot isn't in the snapshot reads as Claude Code's.
+  const botId = snap.threads[id]?.bot_id;
+  const harness = [...snap.bots.held, ...snap.bots.skipped, ...snap.bots.unleased].find((b) => b.id === botId)?.harness;
   const lines = useMemo(
-    () => transcriptLines(log ?? "").flatMap((l) => wrap(l.text, columns).map((text) => ({ text, kind: l.kind }))),
-    [log, columns],
+    () =>
+      transcriptLines(log ?? "", harness ?? "claude").flatMap((l) =>
+        wrap(l.text, columns).map((text) => ({ text, kind: l.kind })),
+      ),
+    [log, harness, columns],
   );
   const body = Math.max(1, height - 2);
   const bottom = Math.max(0, lines.length - body);

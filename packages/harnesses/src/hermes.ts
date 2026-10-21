@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { AgentRun, RunWatch } from "./agent.js";
 import { Harness, type Launch } from "./harness.js";
 import { HARNESS_LABELS } from "./labels.js";
+import { errorMessage, runStats, streamJsonLines, transcribe } from "./transcript.js";
 
 /**
  * Reads the JSONL `hermes chat --format stream-json` prints: a `system` `init` record first, then `text` and tool
@@ -99,6 +100,16 @@ export class HermesHarness extends Harness {
     const args = ["chat", "--query-file", "-", "--format", "stream-json", "--yolo", "--model", run.model];
     if (resume) args.push("--resume", "latest");
     return { args, stdin: run.message, env: { HERMES_HOME: this.home(run) } };
+  }
+
+  /** Claude's stream-json, except that the `result` has an exit code and an error instead of a subtype. */
+  transcript(log: string) {
+    return transcribe(log, (r) => {
+      if (r.type !== "result") return streamJsonLines(r);
+      const failed = Boolean(r.exit_code) || Boolean(r.error);
+      const text = failed ? `failed: ${errorMessage(r.error ?? `exit code ${r.exit_code}`)}` : "finished";
+      return [{ text: `── run ${text} ${runStats(r)}──`, kind: "meta" }];
+    });
   }
 
   watch(onStarted?: () => void) {

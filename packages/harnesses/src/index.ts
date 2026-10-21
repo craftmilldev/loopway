@@ -27,4 +27,5 @@ export const runHarness: RunAgent = (run: AgentRun) => getHarness(run.harness).r
 export { Harness } from "./harness.js";
 export { HARNESS_LABELS } from "./labels.js";
 export type { Launch } from "./harness.js";
+export type { TranscriptLine } from "./transcript.js";
 export type { AgentRun, RunAgent, RunOutcome, RunWatch } from "./agent.js";

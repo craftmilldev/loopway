@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import type { AgentRun, RunWatch } from "./agent.js";
 import { Harness, type Launch } from "./harness.js";
 import { HARNESS_LABELS } from "./labels.js";
+import { errorMessage, oneLine, transcribe, type StreamRecord, type TranscriptLine } from "./transcript.js";
 
 /**
  * Reads the JSONL `codex exec --json` prints. It has no usage-limit signal and doesn't echo the prompt, so a turn
@@ -101,7 +102,38 @@ export class CodexHarness extends Harness {
     return { args, stdin: run.message };
   }
 
+  /** A line when the run starts and ends, the agent's messages, and each command with its exit code. */
+  transcript(log: string) {
+    return transcribe(log, (r) => {
+      if (r.type === "thread.started") return [{ text: "── run started ──", kind: "meta" }];
+      if (r.type === "turn.completed") return [{ text: "── run finished ──", kind: "meta" }];
+      if (r.type === "turn.failed") return [{ text: `── run failed: ${errorMessage(r.error)} ──`, kind: "meta" }];
+      if (r.type === "error") return [{ text: errorMessage(r.message), kind: "error" }];
+      return r.type === "item.completed" && r.item ? itemLines(r.item) : [];
+    });
+  }
+
   watch(onStarted?: () => void) {
     return new CodexWatch(onStarted);
   }
+}
+
+type Item = NonNullable<StreamRecord["item"]>;
+
+function itemLines(item: Item): TranscriptLine[] {
+  if (item.type === "agent_message" && item.text?.trim()) return [{ text: item.text.trim(), kind: "text" }];
+  if (item.type === "command_execution") {
+    const failed = item.exit_code != null && item.exit_code !== 0;
+    return [
+      { text: `● ${oneLine(item.command ?? "")}`, kind: "tool" },
+      { text: `  ⎿ exit ${item.exit_code ?? "?"}`, kind: failed ? "error" : "result" },
+    ];
+  }
+  if (item.type === "mcp_tool_call") {
+    return [
+      { text: `● ${item.server}.${item.tool}()`, kind: "tool" },
+      ...(item.error ? [{ text: `  ⎿ ${errorMessage(item.error)}`, kind: "error" as const }] : []),
+    ];
+  }
+  return [];
 }
