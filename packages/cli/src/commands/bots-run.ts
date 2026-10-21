@@ -1,6 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { ApiError, type LoopwayClient } from "../client.js";
 import { applyUpdate, availableUpdate as availableUpdateNow } from "../update.js";
+import { loadConfig } from "../config.js";
 import { authedClient, type Context } from "../context.js";
 import { DEFAULTS, Dispatcher, MAX_POLL_INTERVAL, type ThreadsOptions } from "../bots/dispatcher.js";
 import { ensureRunner, savedRunnerOrg } from "../bots/runner.js";
@@ -28,7 +29,9 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
       ctx.out(`Skipping bot ${b.name}: it has no prompt and rules yet. Set them with \`loopway bots edit\`.`);
       void ctx.metrics?.capture("bot_skipped", { reason: "no_version" });
     }
-  if (!bots.length) {
+  // The opt-in manager gives the TUI a Chat view, which is also what an empty runner opens in.
+  const chat = (await loadConfig(ctx.configDir, ctx.env)).manager_enabled && opts.tui !== false && ctx.interactive;
+  if (!bots.length && !chat) {
     ctx.out(
       `No bots to run. Create one with \`loopway bots create --name <name> --preset <preset> --model <model> --inbox <inbox>\`.`,
     );
@@ -45,7 +48,7 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     seen: all.map((b) => b.id),
     workdirs,
   };
-  const names = bots.map((b) => b.name).join(", ");
+  const names = bots.map((b) => b.name).join(", ") || "no bots";
   const dirs = workdirs.size
     ? ` Working directories from ${WORKDIRS_FILE} for ${workdirs.size} bot${workdirs.size === 1 ? "" : "s"}.`
     : "";
@@ -82,6 +85,9 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     await showTui(
       {
         org: runner.org,
+        chat,
+        startInChat: !bots.length,
+        capture: (event, properties) => void ctx.metrics?.capture(event, properties),
         load: async () => ({ ...(await dispatcher.state()), message }),
         readLog: (id) => dispatcher.readLog(id),
         send: async (threadId, text) => {
