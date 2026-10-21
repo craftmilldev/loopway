@@ -14,7 +14,18 @@ An inbox with `source_type: "schedule"` fills itself on a clock: each hour, or e
 - `schedule`: `{ "every": "hour" }` or `{ "every": "day", "hour": 0-23 }` (UTC).
 - `messages`: 1–20 of `{ type, message }`. `type` is lowercase letters, digits, `.`, `_` or `-` and unique within the inbox; `message` is the text (up to 10,000 characters).
 
-The config is required, and an update replaces it whole. The inbox has no secret and no events list, and `POST /api/webhooks/<inbox>` answers `404`. Create it in the dashboard (New inbox → Schedule) or with `POST /api/inboxes`; `loopway inbox create` does not offer it yet.
+The config is required, and an update replaces it whole. The inbox has no secret and no events list, and `POST /api/webhooks/<inbox>` answers `404`. Create it in the dashboard (New inbox → Schedule), with `loopway inbox create --source schedule` (below), or with `POST /api/inboxes`.
+
+## Creating it from the CLI
+
+`loopway inbox create --source schedule` takes the same schedule flags as `update`, and checks the same limits. With no terminal it needs a schedule and at least one message, and refuses `--events`, `--secret` and `--schema`:
+
+```sh
+loopway inbox create --name clock --source schedule --every day --hour 9 --message standup="Write the standup"
+loopway inbox create --name clock --source schedule --config schedule.json
+```
+
+In a terminal, pick Schedule as the source and it asks for the schedule, then the messages.
 
 ## Changing it from the CLI
 

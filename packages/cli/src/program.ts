@@ -186,6 +186,15 @@ A CLI installed from a release updates itself to the newest one; turn that off w
       "webhook secret (generated if omitted, or for senders that make their own, the one they show)",
     )
     .option("--schema <file>", "JSON Schema file messages must match (loopway source)", readSchema)
+    .option("--every <hour|day>", "schedule inbox: how often it sends")
+    .option("--hour <0-23>", "schedule inbox: the UTC hour of a daily schedule", parseHour)
+    .option("--message <type=text>", "schedule inbox: a message type to send (repeatable)", collect)
+    .option("--message-file <type=path>", "schedule inbox: a message type read from a file (repeatable)", collect)
+    .option(
+      "--config <file>",
+      "schedule inbox: the whole {schedule, messages} config from a JSON file",
+      readScheduleConfig,
+    )
     .addOption(jsonOpt())
     .action((opts) => createInbox(ctx, opts));
 
