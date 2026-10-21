@@ -58,15 +58,6 @@ export function OrgGate({ children }: { children: ReactNode }) {
   );
 }
 
-/** `/<org>/inboxes`, the page that folded into the bots page: sends old links and bookmarks there. */
-export function InboxesRedirect() {
-  useEffect(() => {
-    track("inboxes_page_redirected");
-    location.replace(lw.orgBase() + "/bots");
-  }, []);
-  return null;
-}
-
 /** The API path of the bot or inbox an old /dashboard page (`rest` is what follows /dashboard) is about, else null. */
 function entityPath(rest: string) {
   const bot = rest.match(/^\/bots\/([^/]+)(?:\/|$)/);
