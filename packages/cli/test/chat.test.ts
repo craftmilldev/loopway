@@ -79,6 +79,8 @@ describe("chat", () => {
     expect(run.allowedTools).toContain("Bash(loopway bots list:*)");
     expect(run.allowedTools!.join(" ")).not.toMatch(/Bash\(loopway bots (create|update|edit|delete)/);
     expect(run.deniedTools).toContain("Bash(loopway bots threads end:*)");
+    // Claude Code's own read-only tools are denied too, so the runner's directory stays out of reach.
+    for (const t of ["Read", "Grep", "Glob", "WebFetch", "Bash(cat:*)"]) expect(run.deniedTools).toContain(t);
     // The transcript is kept under the config dir, like a thread's.
     expect(run.logPath.startsWith(join(dir, "chats"))).toBe(true);
     expect(await readFile(run.logPath, "utf8")).toContain("You have 2 bots.");
@@ -107,6 +109,20 @@ describe("chat", () => {
     const { chat: second } = await manager(other.runAgent, { harness: "cursor" });
     await second.send("hi").done;
     expect(other.runs[0]).toMatchObject({ harness: "cursor", model: "" });
+  });
+
+  it("warns once, in the chat, when the harness can't enforce the read-only tool list", async () => {
+    const { runAgent } = fake(() => "ok");
+    const { chat, events } = await manager(runAgent, { harness: "codex" });
+    await chat.send("one").done;
+    await chat.send("two").done;
+    const notices = (await chat.read()).messages.filter((m) => m.text.includes("can't enforce"));
+    expect(notices).toHaveLength(1);
+    expect(events).toContainEqual(["manager_unenforced_harness", { harness: "codex" }]);
+
+    const claude = await manager(fake(() => "ok").runAgent);
+    await claude.chat.send("one").done;
+    expect((await claude.chat.read()).messages.some((m) => m.text.includes("can't enforce"))).toBe(false);
   });
 
   it("ignores empty messages and messages sent while a run is in flight", async () => {

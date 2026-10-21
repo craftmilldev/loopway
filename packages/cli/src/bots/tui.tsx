@@ -83,8 +83,9 @@ export function ThreadsTui({
   // Kept here so the transcript is still there when you come back from the lists.
   const [chat, setChat] = useState<Chat>(emptyChat);
   useEffect(
-    () => (chatOn ? poll(() => chatOn.read(), setChat, Math.min(refreshMs, 500)) : undefined),
-    [chatOn, refreshMs],
+    // Only while a run is in flight: a reply reads and parses the whole chat log, so an idle chat is left alone.
+    () => (chatOn && chat.thinking ? poll(() => chatOn.read(), setChat, Math.min(refreshMs, 500)) : undefined),
+    [chatOn, chat.thinking, refreshMs],
   );
   useEffect(() => poll(load, setSnap, refreshMs), [load, refreshMs]);
   // Only the view it opens in counts as the default, so this reports once.

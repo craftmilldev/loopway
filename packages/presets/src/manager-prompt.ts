@@ -19,6 +19,21 @@ export const MANAGER_DENIED_TOOLS = [
   "Edit",
   "Write",
   "NotebookEdit",
+  // Claude Code approves its read-only tools on its own in headless mode; the manager has no use for them, and the
+  // runner's directory can hold secrets (and message payloads it reads are untrusted).
+  "Read",
+  "Grep",
+  "Glob",
+  "WebFetch",
+  "WebSearch",
+  "Task",
+  "Agent",
+  "Bash(cat:*)",
+  "Bash(ls:*)",
+  "Bash(head:*)",
+  "Bash(tail:*)",
+  "Bash(grep:*)",
+  "Bash(find:*)",
 ];
 
 /** What the org's manager bot is told when a chat starts. */

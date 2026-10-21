@@ -51,6 +51,8 @@ interface Turn {
   /** Where this turn's output starts in the log (once the run is about to start), and where it ends once it is over. */
   from?: number;
   to?: number;
+  /** A warning shown before the reply. */
+  notice?: string;
   /** Why the run failed, if it did. */
   error?: string;
 }
@@ -91,6 +93,7 @@ export class ManagerChat implements ChatBackend {
       const lines = t.from === undefined ? [] : getHarness(this.opts.harness).transcript(log.slice(t.from, t.to));
       return [
         { from: "you", text: t.text },
+        ...(t.notice ? [{ from: "manager" as const, text: t.notice, kind: "error" as const }] : []),
         ...lines.flatMap(managerLine),
         ...(t.error ? [{ from: "manager" as const, text: t.error, kind: "error" as const }] : []),
       ];
@@ -103,6 +106,11 @@ export class ManagerChat implements ChatBackend {
   private async turn(turn: Turn): Promise<void> {
     const { text } = turn;
     turn.from = (await this.readLog()).length;
+    // Only Claude Code holds the manager to its tool list; say so, once, where the user is looking.
+    if (!this.started && !getHarness(this.opts.harness).enforcesTools) {
+      turn.notice = `${getHarness(this.opts.harness).label} can't enforce the manager's read-only tool list, so only its prompt keeps it from changing things. Use the claude harness to enforce it.`;
+      this.opts.capture?.("manager_unenforced_harness", { harness: this.opts.harness });
+    }
     const harness = this.opts.harness;
     try {
       const outcome = await this.opts.runAgent({

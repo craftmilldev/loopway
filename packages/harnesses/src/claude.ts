@@ -9,6 +9,7 @@ export class ClaudeHarness extends Harness {
   readonly name = "claude";
   readonly label = HARNESS_LABELS.claude;
   readonly command = "claude";
+  readonly enforcesTools = true;
 
   /** Aliases for the latest of a family, and full ids to pin a version. Add new models here and drop deprecated ones. */
   readonly models = [

@@ -31,6 +31,8 @@ export abstract class Harness {
   abstract readonly label: string;
   /** The binary to spawn. */
   abstract readonly command: string;
+  /** Whether a run's `allowedTools` / `deniedTools` are enforced; false means a prompt is the only limit. */
+  readonly enforcesTools: boolean = false;
 
   /** Whether `model` is one this harness takes (a bot's model is checked against its harness). */
   abstract modelFits(model: string): boolean;
