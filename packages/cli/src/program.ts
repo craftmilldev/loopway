@@ -6,6 +6,7 @@ import {
   moveBotSubject,
   releaseBotThread,
   sendBotThreadMessage,
+  showBotThread,
 } from "./commands/botThreads.js";
 import {
   botMessages,
@@ -370,6 +371,16 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .addOption(new Option("--status <status>", "which threads (default active)").choices(["active", "ended", "all"]))
     .addOption(jsonOpt())
     .action((ref, opts) => listBotThreads(ctx, ref, opts));
+
+  botThreads
+    .command("show")
+    .description("show one thread, with the metadata its session recorded")
+    .argument("<bot>", "bot id or name")
+    .argument("<thread>", "id of the thread (the start of it is enough)")
+    .addOption(jsonOpt())
+    .action((ref: string, thread: string, _opts: unknown, cmd: Command) =>
+      showBotThread(ctx, ref, thread, cmd.optsWithGlobals()),
+    );
 
   botThreads
     .command("release")

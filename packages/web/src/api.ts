@@ -1107,6 +1107,8 @@ export function createApi(opts: ApiOptions) {
         interrupted: z.boolean().optional(),
         limited: z.boolean().optional(),
         add_subjects: threadSubjects.optional(),
+        metadata_set: z.record(z.string().min(1).max(200), z.json()).optional(),
+        metadata_unset: z.array(z.string().min(1).max(200)).max(100).optional(),
       })
       .parse(await jsonBody(c));
     await requireOwner(c, thread, input.lease_token);
@@ -1116,9 +1118,27 @@ export function createApi(opts: ApiOptions) {
       (input.add_subjects ?? []).map((subject) => ({ subject, threadId: thread.id })),
     );
 
-    const { lease_token, add_subjects, ...fields } = input;
-    if (!(await store.patchThread(c.var.db, bot.id, lease_token, thread.id, { ...fields, addSubjects: add_subjects })))
-      throw runnerNotLeased();
+    const { lease_token, add_subjects, metadata_set, metadata_unset, ...fields } = input;
+    const touched = Object.keys(metadata_set ?? {}).length + (metadata_unset?.length ?? 0);
+    let patched: boolean;
+    try {
+      patched = await store.patchThread(c.var.db, bot.id, lease_token, thread.id, {
+        ...fields,
+        addSubjects: add_subjects,
+        metadataSet: metadata_set,
+        metadataUnset: metadata_unset,
+      });
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "metadata_too_large")
+        await metrics.capture("thread_metadata_rejected", c.var.user.id, { reason: "too_large" });
+      throw err;
+    }
+    if (!patched) throw runnerNotLeased();
+    if (touched)
+      await metrics.capture("thread_metadata_changed", c.var.user.id, {
+        set: Object.keys(metadata_set ?? {}).length > 0,
+        unset: (metadata_unset?.length ?? 0) > 0,
+      });
     return c.json(await serializeThread(c.var.db, (await store.getThread(c.var.db, bot.id, thread.id))!));
   });
 
@@ -1425,6 +1445,7 @@ function serializeThreadRow(t: store.Thread) {
     limited: t.limited,
     runner_id: t.runner_id,
     automation_level: t.automation_level,
+    metadata: t.metadata,
     subjects: t.subjects,
     delivered: t.delivered,
     ...(t.delivered_ids ? { delivered_ids: t.delivered_ids } : {}),

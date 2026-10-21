@@ -153,6 +153,8 @@ export interface Thread {
   title?: string | null;
   /** 2 if a person started it, 3 if a bot did and a person took part, 4 if no one did; null or omitted counts as 2. */
   automation_level?: 2 | 3 | 4 | null;
+  /** What the thread's session recorded about itself with the `record` tool; older servers omit it. */
+  metadata?: Record<string, unknown>;
   waiting: ThreadMessage[];
   inflight: ThreadMessage[];
   delivered: number;
@@ -176,6 +178,9 @@ export interface ThreadPatch {
   interrupted?: boolean;
   limited?: boolean;
   add_subjects?: string[];
+  /** Keys to set, merged into the thread's metadata, and keys to remove. */
+  metadata_set?: Record<string, unknown>;
+  metadata_unset?: string[];
 }
 
 export interface Lease {

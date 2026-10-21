@@ -27,6 +27,23 @@ export async function listBotThreads(ctx: Context, ref: string, opts: { status?:
   );
 }
 
+/** `loopway bots threads show <bot> <thread>`: one thread, with the metadata its session recorded. */
+export async function showBotThread(ctx: Context, ref: string, thread: string, opts: { json?: boolean }) {
+  const client = await authedClient(ctx);
+  const botId = await resolveBot(client, ref);
+  const t = await client.getThread(botId, (await threadFinder(client, botId))(thread));
+  if (opts.json) return ctx.out(json(t));
+  const metadata = Object.entries(t.metadata ?? {});
+  ctx.out(
+    [
+      `Thread ${t.id} (${t.status})`,
+      `Subjects: ${t.subjects.join(", ") || dim("none")}`,
+      `Metadata:${metadata.length ? "" : ` ${dim("none")}`}`,
+      ...metadata.map(([k, v]) => `  ${k}: ${JSON.stringify(v)}`),
+    ].join("\n"),
+  );
+}
+
 /**
  * `loopway bots threads release <bot> <thread>`: the manual move for a thread whose runner is gone. The thread has
  * no owner afterwards, so a runner can claim it.
