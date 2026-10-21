@@ -1,4 +1,5 @@
 import * as p from "@clack/prompts";
+import { HARNESSES } from "@loopway/harnesses";
 import { ApiError, LoopwayClient } from "../client.js";
 import {
   clearConfig as removeConfig,
@@ -6,6 +7,7 @@ import {
   loadConfig,
   loadGithubBot,
   readGithubBot,
+  readManagerSettings,
   resolveAuth,
   writeConfig,
   type GithubBot,
@@ -26,8 +28,17 @@ export async function configure(
     githubName?: string;
     githubEmail?: string;
     autoUpdate?: "on" | "off";
+    manager?: boolean;
+    managerHarness?: string;
+    managerModel?: string;
   },
 ) {
+  if (opts.managerHarness && !HARNESSES.some((h) => h.name === opts.managerHarness)) {
+    await ctx.metrics?.capture("config_update_rejected", { reason: "unknown_manager_harness" });
+    throw new UsageError(
+      `Unknown harness "${opts.managerHarness}" (known: ${HARNESSES.map((h) => h.name).join(", ")})`,
+    );
+  }
   const current = await loadConfig(ctx.configDir, ctx.env);
   const url = opts.url ?? (ctx.interactive ? await promptUrl(current.api_url) : current.api_url);
   let github: GithubBot | undefined;
@@ -37,15 +48,26 @@ export async function configure(
     await ctx.metrics?.capture("config_update_rejected", { reason: "github_bot_incomplete" });
     throw err;
   }
+  const setManager = opts.manager !== undefined || !!opts.managerHarness || !!opts.managerModel;
+  const manager = setManager
+    ? {
+        ...(await readManagerSettings(ctx.configDir)),
+        ...(opts.manager !== undefined && { enabled: opts.manager }),
+        ...(opts.managerHarness && { harness: opts.managerHarness }),
+        ...(opts.managerModel && { model: opts.managerModel }),
+      }
+    : undefined;
   await writeConfig(ctx.configDir, {
     api_url: url,
     ...(opts.posthogHost && { posthog_host: opts.posthogHost }),
     ...(github && { github }),
     ...(opts.autoUpdate && { auto_update: opts.autoUpdate === "on" }),
+    ...(manager && { manager }),
   });
   ctx.out(`Configured ${url}. Run \`loopway login\` next.`);
   if (github) ctx.out(`GitHub bot: ${bold(github.name)} <${github.email}>`);
   if (opts.autoUpdate) ctx.out(`Self-update: ${bold(opts.autoUpdate)}`);
+  if (manager) ctx.out(`Manager: ${bold(manager.enabled ? "on" : "off")}`);
   if (opts.posthogHost) ctx.out(`Metrics host: ${bold(opts.posthogHost)}`);
   ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
   await ctx.metrics?.capture("config_updated", {
@@ -53,6 +75,9 @@ export async function configure(
     posthog_host: !!opts.posthogHost,
     github_bot: !!(opts.githubToken || opts.githubName || opts.githubEmail),
     auto_update: opts.autoUpdate ?? "unchanged",
+    manager: opts.manager === undefined ? "unchanged" : opts.manager ? "on" : "off",
+    manager_harness: !!opts.managerHarness,
+    manager_model: !!opts.managerModel,
   });
 }
 
@@ -74,6 +99,9 @@ export async function showConfig(ctx: Context) {
       ["api_key", config.api_key ? MASK : "(not logged in)"],
       ["posthog_host", config.posthog_host],
       ["auto_update", config.auto_update ? "on" : "off"],
+      ["manager", config.manager_enabled ? "on" : "off"],
+      ["manager_harness", config.manager_harness],
+      ["manager_model", config.manager_model ?? "(default)"],
       ["github_token", bot ? MASK : botError ? "(incomplete)" : "(not set)"],
       ["github_name", bot?.name],
       ["github_email", bot?.email],
@@ -85,6 +113,7 @@ export async function showConfig(ctx: Context) {
     logged_in: !!config.api_key,
     github_bot: !!bot,
     bot_incomplete: !!botError,
+    manager: config.manager_enabled,
   });
 }
 

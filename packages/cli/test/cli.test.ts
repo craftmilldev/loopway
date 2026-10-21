@@ -216,6 +216,9 @@ describe("auth", () => {
       api_key: undefined,
       posthog_host: "https://loopway.craftmill.dev/api/ingest",
       auto_update: true,
+      manager_enabled: false,
+      manager_harness: "claude",
+      manager_model: undefined,
     });
     await writeConfig(configDir, { api_url: "https://file.test/", api_key: "lw_file" });
     expect(await loadConfig(configDir, {})).toEqual({
@@ -223,12 +226,18 @@ describe("auth", () => {
       api_key: "lw_file",
       posthog_host: "https://file.test/api/ingest",
       auto_update: true,
+      manager_enabled: false,
+      manager_harness: "claude",
+      manager_model: undefined,
     });
     expect(await loadConfig(configDir, { LOOPWAY_API_URL: "https://env.test", LOOPWAY_API_KEY: "lw_env" })).toEqual({
       api_url: "https://env.test",
       api_key: "lw_env",
       posthog_host: "https://env.test/api/ingest",
       auto_update: true,
+      manager_enabled: false,
+      manager_harness: "claude",
+      manager_model: undefined,
     });
     // Self-update is on unless config.json or LOOPWAY_NO_UPDATE turns it off, and `login` keeps the setting.
     await writeConfig(configDir, { api_url: "https://file.test", auto_update: false });
@@ -302,6 +311,44 @@ describe("auth", () => {
     expect(out).toMatch(/auto_update\s+off/);
     expect(out).not.toContain(key);
     expect(out).not.toContain("ghp_secret");
+  });
+
+  it("config sets the manager: off and claude by default, flags persist, env overrides, login keeps it", async () => {
+    const key = await configured();
+    expect(await run("config")).toMatch(/manager\s+off[\s\S]*manager_harness\s+claude/);
+
+    await run("config", "update", "--manager", "--manager-model", "opus");
+    expect(await savedConfig()).toEqual({ api_url: API, api_key: key, manager: { enabled: true, model: "opus" } });
+    await run("config", "update", "--manager-harness", "codex");
+    expect(await savedConfig()).toEqual({
+      api_url: API,
+      api_key: key,
+      manager: { enabled: true, model: "opus", harness: "codex" },
+    });
+    const out = await run("config");
+    expect(out).toMatch(/manager\s+on/);
+    expect(out).toMatch(/manager_harness\s+codex/);
+    expect(out).toMatch(/manager_model\s+opus/);
+
+    const env = { LOOPWAY_MANAGER: "0", LOOPWAY_MANAGER_HARNESS: "cursor", LOOPWAY_MANAGER_MODEL: "m" };
+    expect(await loadConfig(configDir, env)).toMatchObject({
+      manager_enabled: false,
+      manager_harness: "cursor",
+      manager_model: "m",
+    });
+    expect(await loadConfig(configDir, { LOOPWAY_MANAGER: "1" })).toMatchObject({ manager_enabled: true });
+
+    await run("config", "update", "--no-manager");
+    expect((await savedConfig()).manager).toEqual({ enabled: false, model: "opus", harness: "codex" });
+    expect((await loadConfig(configDir, {})).manager_enabled).toBe(false);
+  });
+
+  it("config rejects an unknown manager harness, listing the valid ones", async () => {
+    const key = await configured();
+    await expect(run("config", "update", "--manager-harness", "nope")).rejects.toThrow(
+      /Unknown harness "nope".*claude/,
+    );
+    expect(await savedConfig()).toEqual({ api_url: API, api_key: key });
   });
 
   it("botEnv: git commits as the bot and gets its token for github.com, SSH remotes included", () => {
