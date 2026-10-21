@@ -185,6 +185,7 @@ describe("ThreadsTui", () => {
           else chat.messages.push({ from: "manager", text: "pong", kind: "text" });
           return { result: "sent", done: Promise.resolve() };
         },
+        answer: () => ({ result: "none", done: Promise.resolve() }),
         read: async () => ({ messages: [...chat.messages], thinking: chat.thinking }),
       };
     };
@@ -257,6 +258,53 @@ describe("ThreadsTui", () => {
       await sleep(100);
       expect(manager.sent).toEqual(["one"]);
       expect(events).toContainEqual(["chat_message_ignored", { reason: "busy" }]);
+    });
+
+    it("shows a proposed change and takes y or n, nothing else, until it is answered", async () => {
+      events.length = 0;
+      const chat: Chat = {
+        messages: [{ from: "you", text: "make a bot" }],
+        thinking: false,
+        pending: {
+          command: "loopway bots delete triage",
+          args: ["bots", "delete", "triage"],
+          files: {},
+          kind: "delete",
+          target: "bot",
+          name: "triage",
+          effect: 'Deletes the bot "triage". This cannot be undone.',
+        },
+      };
+      const answers: boolean[] = [];
+      const manager: ChatBackend = {
+        send: () => ({ result: "busy", done: Promise.resolve() }),
+        answer: (approved) => {
+          answers.push(approved);
+          delete chat.pending;
+          return { result: "answered", done: Promise.resolve() };
+        },
+        read: async () => ({ ...chat, messages: [...chat.messages] }),
+      };
+      const { frame, press } = await show(snapshot, { chat: manager, startInChat: true, capture });
+      await shows(frame, "CHAT");
+      await sleep(150);
+      // The view reads the chat when a message goes (and while a run is in flight).
+      await press("go");
+      await press("\r");
+      await shows(frame, "loopway bots delete triage");
+      expect(frame()).toContain("This cannot be undone.");
+      expect(frame()).toContain("run this?");
+      await sleep(150);
+      // Typing and Enter do nothing while a change waits.
+      await press("hello");
+      await press("\r");
+      await sleep(100);
+      expect(answers).toEqual([]);
+      expect(frame()).not.toContain("hello");
+      await press("n");
+      await shows(frame, "you ❯");
+      expect(answers).toEqual([false]);
+      expect(events).toContainEqual(["chat_change_denied", {}]);
     });
 
     it("goes back with esc too", async () => {
