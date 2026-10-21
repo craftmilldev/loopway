@@ -264,6 +264,15 @@ describe("ThreadsTui", () => {
     expect(frame()).toContain("eeeeeeee · limited");
   });
 
+  it("reads a transcript with the harness its session ran on, not its bot's current one", async () => {
+    const { frame, press } = await show({ ...snapshot, harnesses: { "bbbbbbbb-2": "codex" } });
+    await press(KEYS.down);
+    await press(KEYS.enter);
+    // The log is Claude's, so read as Codex's only what isn't JSON is left.
+    expect(frame()).toContain("some stderr output");
+    expect(frame()).not.toContain("Reading the issue.");
+  });
+
   it("writes a message to an open thread with m, sends it with enter and drops it with esc", async () => {
     const { frame, line, press } = await show();
     await press(KEYS.down);
