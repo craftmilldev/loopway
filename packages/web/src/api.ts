@@ -1107,7 +1107,11 @@ export function createApi(opts: ApiOptions) {
         interrupted: z.boolean().optional(),
         limited: z.boolean().optional(),
         add_subjects: threadSubjects.optional(),
-        metadata_set: z.record(z.string().min(1).max(200), z.json()).optional(),
+        // Postgres jsonb can't hold \u0000, in a key or a string value.
+        metadata_set: z
+          .record(z.string().min(1).max(200), z.json())
+          .refine((m) => !JSON.stringify(m).includes("\\u0000"), "Metadata can't contain \\u0000")
+          .optional(),
         metadata_unset: z.array(z.string().min(1).max(200)).max(100).optional(),
       })
       .parse(await jsonBody(c));

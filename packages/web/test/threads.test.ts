@@ -347,6 +347,10 @@ describe("thread writes", () => {
     expect((await patch({ metadata_unset: ["steps", "nope"] })).body.metadata).toEqual({ label: "other" });
     expect((await thread(t)).body.metadata).toEqual({ label: "other" });
 
+    // A NUL character is something jsonb can't store: a 400, not a 500.
+    for (const set of [{ k: "a\u0000b" }, { "a\u0000b": 1 }, { k: { deep: ["\u0000"] } }])
+      expect((await patch({ metadata_set: set })).status).toBe(400);
+
     // Over 16 KB is a 400 and changes nothing.
     const big = await patch({ metadata_set: { blob: "x".repeat(17 * 1024) } });
     expect([big.status, big.body.error.code]).toEqual([400, "metadata_too_large"]);
