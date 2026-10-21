@@ -521,8 +521,7 @@ export class Dispatcher {
       if (inflight) {
         await this.client.finishThread(bot.id, t.id, this.token(), { requeue: true });
         void this.ctx.metrics?.capture("thread_inflight_requeued", { transcript: log ? "present" : "empty" });
-      }
-      else if (cutOff && !t.waiting.length) patch.interrupted = true;
+      } else if (cutOff && !t.waiting.length) patch.interrupted = true;
       if (Object.keys(patch).length)
         await this.client.patchThread(bot.id, t.id, { ...patch, lease_token: this.token() });
       repaired++;

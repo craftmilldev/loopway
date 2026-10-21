@@ -2001,40 +2001,40 @@ describe("threads", () => {
     await finish();
   });
 
-  it.each([["empty", true], ["missing", false]])(
-    "requeues an inflight message of a previous runner whose transcript is %s",
-    async (_name, createLog) => {
-      const { inbox, runs, bot, client, d, finish } = await setup(3);
-      await send(inbox, "issues", issue("opened", 7));
-      await d.tick();
-      const id = runs[0]!.sessionId;
-      const runnerId = (await runJson("runners"))[0].id;
-      if (createLog) {
-        await mkdir(join(configDir, "threads"), { recursive: true });
-        await writeFile(join(configDir, "threads", `${id}.log`), "");
-      }
-      await run("bots", "release", bot.id, "--force");
-      await client.forceReleaseRunner(runnerId);
+  it.each([
+    ["empty", true],
+    ["missing", false],
+  ])("requeues an inflight message of a previous runner whose transcript is %s", async (_name, createLog) => {
+    const { inbox, runs, bot, client, d, finish } = await setup(3);
+    await send(inbox, "issues", issue("opened", 7));
+    await d.tick();
+    const id = runs[0]!.sessionId;
+    const runnerId = (await runJson("runners"))[0].id;
+    if (createLog) {
+      await mkdir(join(configDir, "threads"), { recursive: true });
+      await writeFile(join(configDir, "threads", `${id}.log`), "");
+    }
+    await run("bots", "release", bot.id, "--force");
+    await client.forceReleaseRunner(runnerId);
 
-      const runs2: AgentRun[] = [];
-      const ctx: Context = {
-        configDir,
-        env: {},
-        interactive: false,
-        out: () => {},
-        fetch: apiFetch,
-        runAgent: async (r) => (runs2.push(r), { code: 0, delivered: true }),
-      };
-      const d2 = await Dispatcher.start(ctx, client, [bot], { max: 3, ttl: 60, runnerId });
-      closers.push(() => d2.close());
-      await d2.tick();
-      await d2.idle();
-      expect(runs2).toHaveLength(1);
-      expect(runs2[0]).toMatchObject({ sessionId: id });
-      expect((await sessions())[id].inflight).toEqual([]);
-      await finish();
-    },
-  );
+    const runs2: AgentRun[] = [];
+    const ctx: Context = {
+      configDir,
+      env: {},
+      interactive: false,
+      out: () => {},
+      fetch: apiFetch,
+      runAgent: async (r) => (runs2.push(r), { code: 0, delivered: true }),
+    };
+    const d2 = await Dispatcher.start(ctx, client, [bot], { max: 3, ttl: 60, runnerId });
+    closers.push(() => d2.close());
+    await d2.tick();
+    await d2.idle();
+    expect(runs2).toHaveLength(1);
+    expect(runs2[0]).toMatchObject({ sessionId: id });
+    expect((await sessions())[id].inflight).toEqual([]);
+    await finish();
+  });
 
   it("serves a link tool that routes a PR's messages to the session", async () => {
     const { inbox, runs, d, finish } = await setup(3);
