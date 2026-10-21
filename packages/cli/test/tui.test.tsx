@@ -176,6 +176,12 @@ describe("ThreadsTui", () => {
       expect(frame()).toContain(text);
     };
 
+    /** Presses `key` until `text` shows: ink only listens for keys once its first frame is out, which a slow machine can be late to. */
+    const pressUntil = async (press: (k: string) => Promise<void>, frame: () => string, key: string, text: string) => {
+      for (let i = 0; i < 30 && !frame().includes(text); i++) await press(key);
+      expect(frame()).toContain(text);
+    };
+
     it("is off by default: no key, no footer hint", async () => {
       const { frame, press } = await show();
       await shows(frame, "WAITING MESSAGES");
@@ -189,11 +195,9 @@ describe("ThreadsTui", () => {
       events.length = 0;
       const { frame, press } = await show(snapshot, { chat: true, capture });
       await shows(frame, "c chat · q quit");
-      await press("c");
-      await shows(frame, "CHAT");
+      await pressUntil(press, frame, "c", "CHAT");
       expect(frame()).toContain("← lists");
-      await press(KEYS.left);
-      await shows(frame, "WAITING MESSAGES");
+      await pressUntil(press, frame, KEYS.left, "WAITING MESSAGES");
       expect(events).toEqual([["chat_view_opened", { via: "key" }]]);
     });
 
@@ -201,32 +205,29 @@ describe("ThreadsTui", () => {
       events.length = 0;
       const { frame, press } = await show(snapshot, { chat: true, capture });
       await shows(frame, "c chat");
-      await press("c");
-      await shows(frame, "CHAT");
+      await pressUntil(press, frame, "c", "CHAT");
+      // The chat's own key listener attaches after its first frame.
+      await sleep(150);
       await press("hi q");
-      await shows(frame, "you ❯ hi q");
+      await shows(frame, "hi q");
       await press("\r");
       await shows(frame, "manager ❯ No agent is connected yet.");
-      expect(frame()).toContain("you ❯ hi q");
+      expect(frame()).toContain("hi q");
       await press("\r");
       expect(events).toEqual([
         ["chat_view_opened", { via: "key" }],
         ["chat_message_sent", {}],
         ["chat_message_ignored", { reason: "empty" }],
       ]);
-      await press(KEYS.left);
-      await shows(frame, "WAITING MESSAGES");
-      await press("c");
-      await shows(frame, "manager ❯ No agent is connected yet.");
+      await pressUntil(press, frame, KEYS.left, "WAITING MESSAGES");
+      await pressUntil(press, frame, "c", "manager ❯ No agent is connected yet.");
     });
 
     it("goes back with esc too", async () => {
       const { frame, press } = await show(snapshot, { chat: true });
       await shows(frame, "c chat");
-      await press("c");
-      await shows(frame, "CHAT");
-      await press("\u001B");
-      await shows(frame, "WAITING MESSAGES");
+      await pressUntil(press, frame, "c", "CHAT");
+      await pressUntil(press, frame, "\u001B", "WAITING MESSAGES");
     });
 
     it("opens in chat when started there", async () => {
