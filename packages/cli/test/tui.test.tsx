@@ -266,8 +266,10 @@ describe("ThreadsTui", () => {
 
   it("reads a transcript with the harness its session ran on, not its bot's current one", async () => {
     const { frame, press } = await show({ ...snapshot, harnesses: { "bbbbbbbb-2": "codex" } });
+    await press(KEYS.up);
     await press(KEYS.down);
     await press(KEYS.enter);
+    await sleep(100);
     // The log is Claude's, so read as Codex's only what isn't JSON is left.
     expect(frame()).toContain("some stderr output");
     expect(frame()).not.toContain("Reading the issue.");
