@@ -49,6 +49,11 @@ export interface CreateOptions {
   events?: string[];
   secret?: string;
   schema?: Record<string, unknown>;
+  every?: string;
+  hour?: number;
+  message?: string[];
+  messageFile?: string[];
+  config?: ScheduleConfig;
   json?: boolean;
 }
 
@@ -62,19 +67,73 @@ const OTHER = "__other__";
 export async function createInbox(ctx: Context, opts: CreateOptions) {
   const client = await authedClient(ctx);
   opts = { ...opts, org: await resolveOrg(ctx, client, opts.org, "inbox") };
-  const inbox = ctx.interactive ? await createInteractive(client, opts) : await createFromFlags(client, opts);
+  const inbox = ctx.interactive ? await createInteractive(ctx, client, opts) : await createFromFlags(ctx, client, opts);
+  if (inbox.source_type === "schedule") await ctx.metrics?.capture("schedule_created", { how: scheduleHow(ctx, opts) });
   if (opts.json) return ctx.out(json(inbox));
-  if (!ctx.interactive) ctx.out(`Created inbox ${bold(inbox.name)} (${inbox.id})\n\n${setupText(inbox)}`);
+  if (!ctx.interactive) {
+    const body = inbox.source_type === "schedule" ? scheduleText(inbox.config) : setupText(inbox);
+    ctx.out(`Created inbox ${bold(inbox.name)} (${inbox.id})\n\n${body}`);
+  }
 }
 
-async function createFromFlags(client: LoopwayClient, opts: CreateOptions) {
+const scheduleHow = (ctx: Context, opts: CreateOptions) =>
+  opts.config ? "file" : ctx.interactive ? "interactive" : "flags";
+
+async function createFromFlags(ctx: Context, client: LoopwayClient, opts: CreateOptions) {
   if (!opts.name) throw new UsageError("--name is required when not running in a terminal");
   const source = opts.source ?? (await onlySource(client));
   if (!source) throw new UsageError("--source is required when not running in a terminal");
-  return client.createInbox({ org: opts.org!, name: opts.name, source_type: source, config: flagConfig(opts) });
+  if (source !== "schedule") {
+    const scheduleFlags = SCHEDULE_FLAGS.filter(
+      (f) => f !== "removeMessage" && opts[f as keyof CreateOptions] !== undefined,
+    );
+    if (scheduleFlags.length) {
+      await ctx.metrics?.capture("inbox_create_rejected", { source, reason: "schedule_flag_on_other_source" });
+      throw new UsageError("--every, --hour, --message, --message-file and --config only work with --source schedule");
+    }
+    return client.createInbox({ org: opts.org!, name: opts.name, source_type: source, config: flagConfig(opts) });
+  }
+
+  const reject = async (reason: string, message: string): Promise<never> => {
+    await ctx.metrics?.capture("inbox_create_rejected", { source, reason });
+    throw new UsageError(message);
+  };
+  if (opts.events || opts.secret || opts.schema) {
+    return reject("webhook_flag_on_schedule", "--events, --secret and --schema don't apply to a schedule inbox");
+  }
+  let config: ScheduleConfig;
+  try {
+    config = applyScheduleFlags({ messages: [] } as unknown as ScheduleConfig, opts);
+  } catch (err) {
+    if (err instanceof ScheduleFlagError) return reject(err.reason, err.message);
+    throw err;
+  }
+  if (!config.schedule)
+    return reject("no_schedule", "A schedule inbox needs --every hour, or --every day with --hour <0-23>");
+  return createScheduleInbox(ctx, client, opts.org!, opts.name, config);
 }
 
-async function createInteractive(client: LoopwayClient, opts: CreateOptions): Promise<Inbox> {
+async function createScheduleInbox(
+  ctx: Context,
+  client: LoopwayClient,
+  org: string,
+  name: string,
+  config: ScheduleConfig,
+) {
+  try {
+    return await client.createInbox({
+      org,
+      name,
+      source_type: "schedule",
+      config: config,
+    });
+  } catch (err) {
+    await ctx.metrics?.capture("schedule_create_failed", { reason: "server_rejected" });
+    throw err;
+  }
+}
+
+async function createInteractive(ctx: Context, client: LoopwayClient, opts: CreateOptions): Promise<Inbox> {
   p.intro(bold(" New loopway inbox "));
 
   const name =
@@ -100,13 +159,14 @@ async function createInteractive(client: LoopwayClient, opts: CreateOptions): Pr
       await p.select({
         message: "Where will messages come from?",
         options: sources
-          .filter((s) => s.secret.from !== "none")
+          .filter((s) => s.secret.from !== "none" || s.type === "schedule")
           .map((s) => ({ value: s.type, label: s.label, hint: s.description })),
       }),
     );
   const source = sources.find((s) => s.type === type);
   if (!source) throw new UsageError(`Unknown source "${type}". Available: ${sources.map((s) => s.type).join(", ")}`);
 
+  if (source.type === "schedule") return createScheduleInteractive(ctx, client, opts, name);
   if (source.secret.from === "none") {
     throw new UsageError(
       `${source.label} inboxes are created through the API: POST /api/inboxes (see docs/sources/${source.type}.md)`,
@@ -150,6 +210,34 @@ async function createInteractive(client: LoopwayClient, opts: CreateOptions): Pr
   } else {
     p.outro(`Read messages with ${bold(`loopway messages list ${inbox.id}`)}`);
   }
+  return inbox;
+}
+
+async function createScheduleInteractive(ctx: Context, client: LoopwayClient, opts: CreateOptions, name: string) {
+  const config = (await editScheduleInteractive({
+    schedule: { every: "day", hour: 9 },
+    messages: [],
+  })) as unknown as ScheduleConfig;
+  try {
+    applyScheduleFlags(config, {});
+  } catch (err) {
+    if (err instanceof ScheduleFlagError) {
+      await ctx.metrics?.capture("inbox_create_rejected", { source: "schedule", reason: err.reason });
+    }
+    throw err;
+  }
+  const spin = p.spinner();
+  spin.start("Creating inbox");
+  let inbox: Inbox;
+  try {
+    inbox = await createScheduleInbox(ctx, client, opts.org!, name, config);
+  } catch (err) {
+    spin.error("Could not create inbox");
+    throw err;
+  }
+  spin.stop(`Created ${bold(inbox.name)} ${dim(inbox.id)}`);
+  p.note(scheduleText(inbox.config), "Schedule");
+  p.outro(`Read messages with ${bold(`loopway messages list ${inbox.id}`)}`);
   return inbox;
 }
 
@@ -240,6 +328,8 @@ export interface UpdateOptions {
   config?: ScheduleConfig;
   json?: boolean;
 }
+
+type ScheduleFlags = Pick<UpdateOptions, "every" | "hour" | "message" | "messageFile" | "removeMessage" | "config">;
 
 const SCHEDULE_FLAGS = ["every", "hour", "message", "messageFile", "removeMessage", "config"] as const;
 const SCHEDULE_FLAG_NAMES = "--every, --hour, --message, --message-file, --remove-message or --config";
@@ -367,7 +457,7 @@ function splitMessage(flag: string, arg: string): [string, string] {
 }
 
 /** The inbox's current config (or `--config`'s) with the flags applied; checks what the server checks. */
-export function applyScheduleFlags(current: ScheduleConfig, opts: UpdateOptions): ScheduleConfig {
+export function applyScheduleFlags(current: ScheduleConfig, opts: ScheduleFlags): ScheduleConfig {
   const base = opts.config ?? current;
   let schedule = base.schedule;
   const messages = new Map((base.messages ?? []).map((m) => [m.type, m.message]));

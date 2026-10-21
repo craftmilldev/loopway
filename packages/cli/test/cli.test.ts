@@ -658,6 +658,80 @@ describe("inboxes", () => {
     });
   });
 
+  describe("creating schedule inboxes", () => {
+    it("creates one from flags and shows its schedule", async () => {
+      await configured();
+      const file = join(configDir, "long.txt");
+      await writeFile(file, "line one\nline two\n");
+      const out = await run(
+        "inbox",
+        "create",
+        "--name",
+        "clock",
+        "--source",
+        "schedule",
+        "--every",
+        "day",
+        "--hour",
+        "9",
+        "--message",
+        "standup=Write the standup",
+        "--message-file",
+        `report=${file}`,
+      );
+      expect(out).toMatch(/schedule\s+daily at 9:00 UTC/);
+      expect(out).not.toMatch(/webhook/i);
+      const shown = await run("inbox", "show", "clock");
+      expect(shown).toMatch(/schedule\s+daily at 9:00 UTC/);
+      expect(shown).toContain("Write the standup");
+      const inbox = await runJson("inbox", "show", "clock");
+      expect(inbox.config.messages).toEqual([
+        { type: "standup", message: "Write the standup" },
+        { type: "report", message: "line one\nline two" },
+      ]);
+    });
+
+    it("creates one from --config, with flags applied on top", async () => {
+      await configured();
+      const file = join(configDir, "schedule.json");
+      await writeFile(file, JSON.stringify({ schedule: { every: "hour" }, messages: [{ type: "a", message: "b" }] }));
+      const inbox = await runJson(
+        "inbox",
+        "create",
+        "--name",
+        "clock",
+        "--source",
+        "schedule",
+        "--config",
+        file,
+        "--every",
+        "day",
+        "--hour",
+        "3",
+      );
+      expect(inbox.config).toEqual({ schedule: { every: "day", hour: 3 }, messages: [{ type: "a", message: "b" }] });
+    });
+
+    it("refuses without messages or a schedule, and webhook or schedule flags on the wrong source", async () => {
+      await configured();
+      const base = ["inbox", "create", "--name", "clock", "--source", "schedule"];
+      await expect(run(...base, "--every", "hour")).rejects.toThrow(/at least one message/);
+      await expect(run(...base, "--message", "a=b")).rejects.toThrow(/needs --every/);
+      await expect(run(...base, "--every", "day", "--message", "a=b")).rejects.toThrow(/needs --hour/);
+      await expect(run(...base, "--every", "hour", "--message", "A=b")).rejects.toThrow(/lowercase/);
+      await expect(run(...base, "--every", "hour", "--message", "a=b", "--secret", "x")).rejects.toThrow(
+        /don't apply to a schedule inbox/,
+      );
+      await expect(run(...base, "--every", "hour", "--message", "a=b", "--events", "x")).rejects.toThrow(
+        /don't apply to a schedule inbox/,
+      );
+      await expect(run("inbox", "create", "--name", "gh", "--source", "github", "--every", "hour")).rejects.toThrow(
+        /only work with --source schedule/,
+      );
+      expect(await run("inbox", "list")).toContain("No inboxes yet");
+    });
+  });
+
   it("creates a granola inbox without a secret and sets it with update", async () => {
     await configured();
     const inbox = await runJson("inbox", "create", "--name", "notes", "--source", "granola");
