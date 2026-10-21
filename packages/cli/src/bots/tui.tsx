@@ -83,9 +83,13 @@ export function ThreadsTui({
   // Kept here so the transcript is still there when you come back from the lists.
   const [chat, setChat] = useState<Chat>(emptyChat);
   useEffect(() => poll(load, setSnap, refreshMs), [load, refreshMs]);
+  // Only the view it opens in counts as the default, so this reports once.
+  const reported = useRef(false);
   useEffect(() => {
+    if (reported.current) return;
+    reported.current = true;
     if (inChat && startInChat) capture?.("chat_view_opened", { via: "default" });
-  }, []); // once: only the view it opens in counts as the default
+  }, [capture, inChat, startInChat]);
 
   if (inChat)
     return (

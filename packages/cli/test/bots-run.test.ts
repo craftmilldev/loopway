@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Context } from "../src/context.js";
 
 const mocks = vi.hoisted(() => ({
-  showTui: vi.fn(async (_props: unknown, _signal?: AbortSignal) => {}),
+  showTui: vi.fn<(props: unknown, signal?: AbortSignal) => Promise<void>>(async () => {}),
   start: vi.fn(),
 }));
 
