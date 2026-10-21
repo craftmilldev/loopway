@@ -1,6 +1,7 @@
 import type { AgentRun, RunOutcome, RunWatch } from "./agent.js";
 import { Harness, type Launch } from "./harness.js";
 import { HARNESS_LABELS } from "./labels.js";
+import type { TranscriptLine } from "./transcript.js";
 
 /** Exit code a script uses to say "not done, wake me on the next message" (-1, as a shell sees it). */
 export const SCRIPT_WAITING = 255;
@@ -52,6 +53,14 @@ export class ScriptHarness extends Harness {
       stdin: run.message,
       env: { LOOPWAY_SESSION_ID: run.sessionId, LOOPWAY_MCP_URL: run.mcpUrl },
     };
+  }
+
+  /** A script prints plain text, so every line is shown as it is. */
+  transcript(log: string): TranscriptLine[] {
+    return log
+      .split("\n")
+      .filter((l) => l.trim())
+      .map((text) => ({ text, kind: "text" }));
   }
 
   watch(onStarted?: () => void) {

@@ -101,7 +101,7 @@ const log = [
 
 describe("transcriptLines", () => {
   it("shows the session's text, tool calls, short tool results, and runs", () => {
-    expect(transcriptLines(log)).toEqual([
+    expect(transcriptLines(log, "claude")).toEqual([
       { text: "── run started ──", kind: "meta" },
       { text: "Reading the issue.", kind: "text" },
       { text: "● Bash(Read issue #2)", kind: "tool" },
@@ -262,6 +262,17 @@ describe("ThreadsTui", () => {
     await press(KEYS.right);
     expect(frame()).toContain("No transcript yet.");
     expect(frame()).toContain("eeeeeeee · limited");
+  });
+
+  it("reads a transcript with the harness its session ran on, not its bot's current one", async () => {
+    const { frame, press } = await show({ ...snapshot, harnesses: { "bbbbbbbb-2": "codex" } });
+    await press(KEYS.up);
+    await press(KEYS.down);
+    await press(KEYS.enter);
+    await sleep(100);
+    // The log is Claude's, so read as Codex's only what isn't JSON is left.
+    expect(frame()).toContain("some stderr output");
+    expect(frame()).not.toContain("Reading the issue.");
   });
 
   it("writes a message to an open thread with m, sends it with enter and drops it with esc", async () => {

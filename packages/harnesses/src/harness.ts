@@ -5,6 +5,7 @@ import { dirname } from "node:path";
 import { createInterface } from "node:readline";
 import { pipeline } from "node:stream/promises";
 import type { AgentRun, RunOutcome, RunWatch } from "./agent.js";
+import type { TranscriptLine } from "./transcript.js";
 
 /** What a harness decides before it spawns: how to call its binary, and what to feed it. */
 export interface Launch {
@@ -48,6 +49,9 @@ export abstract class Harness {
 
   /** A fresh watch for one run; `onStarted` is for it to call once the session exists. */
   abstract watch(onStarted?: () => void): RunWatch;
+
+  /** Turns a session log (what `run` appended to the log, stdout and stderr) into the lines the runner's thread view shows. */
+  abstract transcript(log: string): TranscriptLine[];
 
   /** Runs the session headless, appending the process's stdout to the log. */
   async run(run: AgentRun): Promise<RunOutcome> {

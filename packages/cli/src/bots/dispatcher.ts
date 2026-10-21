@@ -94,6 +94,8 @@ export interface DispatcherState {
   offline: ReadonlySet<string>;
   /** Threads with a run in flight. */
   running: ReadonlySet<string>;
+  /** Thread id → the harness this runner ran its session on, which can differ from its bot's now. */
+  harnesses?: Record<string, string>;
 }
 
 /**
@@ -391,6 +393,7 @@ export class Dispatcher {
       runners,
       offline: new Set(all.filter((r) => !r.leased_until).map((r) => r.id)),
       running: new Set(this.running.keys()),
+      harnesses: Object.fromEntries([...this.sessions].map(([id, s]) => [id, s.harness])),
     };
   }
 
