@@ -170,38 +170,44 @@ describe("ThreadsTui", () => {
   describe("chat", () => {
     const events: [string, unknown][] = [];
     const capture = (e: string, p?: Record<string, unknown>) => void events.push([e, p]);
+    /** Waits for the frame to show `text`, so a slow machine doesn't fail a test that is only early. */
+    const shows = async (frame: () => string, text: string) => {
+      for (let i = 0; i < 100 && !frame().includes(text); i++) await sleep(20);
+      expect(frame()).toContain(text);
+    };
 
     it("is off by default: no key, no footer hint", async () => {
       const { frame, press } = await show();
+      await shows(frame, "WAITING MESSAGES");
       expect(frame()).not.toContain("c chat");
       await press("c");
       expect(frame()).toContain("WAITING MESSAGES");
       expect(frame()).not.toContain("CHAT");
     });
 
-    it("opens with c, shows both keys in the footers, and goes back with esc", async () => {
+    it("opens with c, shows both keys in the footers, and goes back with the left arrow", async () => {
       events.length = 0;
       const { frame, press } = await show(snapshot, { chat: true, capture });
-      expect(frame()).toContain("c chat · q quit");
+      await shows(frame, "c chat · q quit");
       await press("c");
-      expect(frame()).toContain("CHAT");
+      await shows(frame, "CHAT");
       expect(frame()).toContain("← lists");
       await press(KEYS.left);
-      await sleep(30);
-      expect(frame()).toContain("WAITING MESSAGES");
+      await shows(frame, "WAITING MESSAGES");
       expect(events).toEqual([["chat_view_opened", { via: "key" }]]);
     });
 
     it("adds a message and the placeholder reply, and keeps them when you come back", async () => {
       events.length = 0;
       const { frame, press } = await show(snapshot, { chat: true, capture });
+      await shows(frame, "c chat");
       await press("c");
-      for (const ch of "hi q") await press(ch);
-      expect(frame()).toContain("you ❯ hi q");
+      await shows(frame, "CHAT");
+      await press("hi q");
+      await shows(frame, "you ❯ hi q");
       await press("\r");
-      const f = frame();
-      expect(f).toContain("you ❯ hi q");
-      expect(f).toContain("manager ❯ No agent is connected yet.");
+      await shows(frame, "manager ❯ No agent is connected yet.");
+      expect(frame()).toContain("you ❯ hi q");
       await press("\r");
       expect(events).toEqual([
         ["chat_view_opened", { via: "key" }],
@@ -209,23 +215,24 @@ describe("ThreadsTui", () => {
         ["chat_message_ignored", { reason: "empty" }],
       ]);
       await press(KEYS.left);
-      await sleep(30);
+      await shows(frame, "WAITING MESSAGES");
       await press("c");
-      expect(frame()).toContain("manager ❯ No agent is connected yet.");
+      await shows(frame, "manager ❯ No agent is connected yet.");
     });
 
     it("goes back with esc too", async () => {
       const { frame, press } = await show(snapshot, { chat: true });
+      await shows(frame, "c chat");
       await press("c");
+      await shows(frame, "CHAT");
       await press("\u001B");
-      await sleep(30);
-      expect(frame()).toContain("WAITING MESSAGES");
+      await shows(frame, "WAITING MESSAGES");
     });
 
     it("opens in chat when started there", async () => {
       events.length = 0;
       const { frame } = await show(snapshot, { chat: true, startInChat: true, capture });
-      expect(frame()).toContain("CHAT");
+      await shows(frame, "CHAT");
       expect(events).toEqual([["chat_view_opened", { via: "default" }]]);
     });
 
