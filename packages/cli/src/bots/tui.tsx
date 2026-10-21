@@ -107,6 +107,13 @@ export function ThreadsTui({
           // Shows the message and the thinking state now, not at the next poll.
           void chatOn!.read().then(setChat);
         }}
+        onAnswer={(approved) => {
+          const { result, done } = chatOn!.answer(approved);
+          if (result === "answered") capture?.(approved ? "chat_change_approved" : "chat_change_denied", {});
+          // Reads right away so the prompt goes and "thinking…" shows, then follows the reply as any turn does.
+          void chatOn!.read().then(setChat);
+          void done.then(() => chatOn!.read().then(setChat));
+        }}
         onBack={() => setInChat(false)}
       />
     );
@@ -554,6 +561,8 @@ function LogView({ id, snap, readLog, send, end, refreshMs, onBack }: LogViewPro
 interface ChatViewProps {
   chat: Chat;
   onSubmit: (text: string) => void;
+  /** The user's answer to the proposed change: y or n. */
+  onAnswer: (approved: boolean) => void;
   onBack: () => void;
 }
 
@@ -561,7 +570,7 @@ interface ChatViewProps {
  * The chat with the manager: a transcript that follows new messages until you scroll up (↑/↓, PgUp/PgDn, Home/End),
  * and a one-line input that is always live, so keys type. Enter sends, ← (or Esc) goes back to the lists, Ctrl-C quits.
  */
-function ChatView({ chat, onSubmit, onBack }: ChatViewProps) {
+function ChatView({ chat, onSubmit, onAnswer, onBack }: ChatViewProps) {
   const { rows: height, columns } = useWindowSize();
   const [draft, setDraft] = useState("");
   // undefined: pinned to the end.
@@ -569,10 +578,11 @@ function ChatView({ chat, onSubmit, onBack }: ChatViewProps) {
   const lines = useMemo(
     () => [
       ...chat.messages.flatMap((m) => {
-        const prefix = m.kind === "tool" || m.kind === "error" ? "  " : `${m.from} ❯ `;
+        const prefix = m.kind === "tool" || m.kind === "error" || m.kind === "result" ? "  " : `${m.from} ❯ `;
         return wrap(`${prefix}${m.text}`, columns).map((text) => ({ text, from: m.from, kind: m.kind }));
       }),
       ...(chat.thinking ? [{ text: "manager ❯ thinking…", from: "manager" as const, kind: "tool" as const }] : []),
+      ...(chat.pending ? pendingLines(chat.pending, columns) : []),
     ],
     [chat, columns],
   );
@@ -581,8 +591,13 @@ function ChatView({ chat, onSubmit, onBack }: ChatViewProps) {
   const start = Math.min(top ?? bottom, bottom);
   const scroll = (to: number) => setTop(to >= bottom ? undefined : Math.max(0, to));
 
+  const asking = !!chat.pending;
   useInput((input, key) => {
     if (key.escape || key.leftArrow) onBack();
+    // A proposed change waits for y or n; nothing else types until it is answered.
+    else if (asking && (input === "y" || input === "Y")) onAnswer(true);
+    else if (asking && (input === "n" || input === "N")) onAnswer(false);
+    else if (asking && !(key.upArrow || key.downArrow || key.pageUp || key.pageDown || key.home || key.end)) return;
     else if (key.return) {
       onSubmit(draft);
       setDraft("");
@@ -615,20 +630,48 @@ function ChatView({ chat, onSubmit, onBack }: ChatViewProps) {
           <Text dimColor>Say something to the manager.</Text>
         )}
       </Box>
-      <Text wrap="truncate-start">
-        <Text color={termColor(INDIGO.ink)}>you ❯ </Text>
-        {draft}
-        <Text inverse> </Text>
-        <Text color={muted}> enter send · ← lists · ctrl-c quit</Text>
-      </Text>
+      {chat.pending ? (
+        <Text wrap="truncate-start">
+          <Text color={termColor(INDIGO.ink)}>run this? </Text>
+          <Text bold>y</Text>
+          <Text color={muted}> approve · </Text>
+          <Text bold>n</Text>
+          <Text color={muted}> deny · ← lists · ctrl-c quit</Text>
+        </Text>
+      ) : (
+        <Text wrap="truncate-start">
+          <Text color={termColor(INDIGO.ink)}>you ❯ </Text>
+          {draft}
+          <Text inverse> </Text>
+          <Text color={muted}> enter send · ← lists · ctrl-c quit</Text>
+        </Text>
+      )}
     </Box>
   );
 }
 
+/** The proposed change as the user must see it before answering: the exact command, any files it saves, and what it does. */
+function pendingLines(p: NonNullable<Chat["pending"]>, columns: number) {
+  const text = [
+    "approve ❯ the manager wants to run:",
+    `  ${p.command}`,
+    ...Object.entries(p.files).flatMap(([name, body]) => [
+      `  ${name}:`,
+      ...body
+        .trimEnd()
+        .split("\n")
+        .map((l) => `    ${l}`),
+    ]),
+    `  ${p.effect}`,
+  ].join("\n");
+  return wrap(text, columns).map((t) => ({ text: t, from: "manager" as const, kind: "pending" as const }));
+}
+
 /** How a line of the chat looks: you in the terminal's color, the manager in indigo, its tools dim and its errors red. */
-function lineStyle(l: { from: string; kind?: string }): { color?: string; dimColor?: boolean } {
+function lineStyle(l: { from: string; kind?: string }): { color?: string; dimColor?: boolean; bold?: boolean } {
   if (l.kind === "error") return KIND_STYLE.error;
-  if (l.kind === "tool") return { dimColor: true };
+  if (l.kind === "pending") return { bold: true };
+  if (l.kind === "tool" || l.kind === "result") return { dimColor: true };
   return l.from === "you" ? {} : { color: termColor(INDIGO.ink) };
 }
 

@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentRun, RunOutcome } from "@loopway/harnesses";
 import { MANAGER_PROMPT } from "@loopway/presets";
 import { emptyChat, ManagerChat, type ManagerChatOptions } from "../src/bots/chat.js";
+import { parseProposal, tokenize, type Proposal } from "../src/bots/chat-changes.js";
 
 const rec = (r: object) => JSON.stringify(r) + "\n";
 const reply = (text: string) => rec({ type: "assistant", message: { content: [{ type: "text", text }] } });
@@ -186,6 +187,201 @@ describe("chat", () => {
     await chat.send("what bots do I have?").done;
     expect((await chat.read()).messages.at(-1)!.text).toBe("You have no bots yet.");
     expect(runs[0]!.mcpUrl).toMatch(/^http/);
+  });
+
+  describe("changes", () => {
+    const propose = (command: string, extra = "") =>
+      "Here is what I'll do.\n\n```loopway-change\n" + command + extra + "\n```";
+    const CREATE =
+      "loopway bots create --name triage --preset github-threads --model sonnet --harness claude --inbox gh";
+    const parsed = (block: string): Proposal => {
+      const p = parseProposal(block);
+      if (!p.ok) throw new Error(p.text);
+      return p.proposal;
+    };
+    /** A runner with a fake `loopway`: records the commands it is asked to run. */
+    function commands(code = 0, output = "Created bot triage") {
+      const ran: { args: string[]; files: Record<string, string> }[] = [];
+      return {
+        ran,
+        runCommand: async (args: string[]) => {
+          const files: Record<string, string> = {};
+          for (const a of args) if (a.startsWith("/")) files[a] = await readFile(a, "utf8");
+          ran.push({ args, files });
+          return { code, output };
+        },
+      };
+    }
+
+    it("proposes a change, runs nothing until approved, then runs exactly that command and logs it", async () => {
+      const { ran, runCommand } = commands();
+      const { runs, runAgent } = fake((_run, n) => (n === 1 ? propose(CREATE) : "Done: triage exists."));
+      const { chat, dir, events } = await manager(runAgent, { runCommand });
+      await chat.send("create a bot named triage on inbox gh").done;
+
+      const waiting = await chat.read();
+      expect(waiting.pending).toMatchObject({ command: CREATE, kind: "create", name: "triage" });
+      expect(ran).toEqual([]);
+      // The session itself never gets the change commands.
+      expect(runs[0]!.allowedTools!.join(" ")).not.toMatch(/bots (create|update|edit|delete)|inbox create/);
+      expect(runs[0]!.deniedTools).toContain("Bash(loopway bots create:*)");
+      expect(runs[0]!.deniedTools).toContain("Bash(loopway bots delete:*)");
+      // A message sent while the proposal waits is ignored.
+      expect(chat.send("hello").result).toBe("busy");
+
+      const { result, done } = chat.answer(true);
+      expect(result).toBe("answered");
+      await done;
+      expect(ran.map((r) => r.args)).toEqual([CREATE.split(" ").slice(1)]);
+      const after = await chat.read();
+      expect(after.pending).toBeUndefined();
+      expect(after.messages.map((m) => m.text)).toEqual([
+        "create a bot named triage on inbox gh",
+        "Here is what I'll do.\n\n```loopway-change\n" + CREATE + "\n```",
+        `ran: ${CREATE}\nCreated bot triage`,
+        "Done: triage exists.",
+      ]);
+      // The manager was told how it went, in the same session.
+      expect(runs[1]).toMatchObject({ resume: true });
+      expect(runs[1]!.message).toContain("approved it and it ran");
+      expect(runs[1]!.message).toContain("Created bot triage");
+
+      const log = await readFile(join(dir, "chats", `${runs[0]!.sessionId}.changes.jsonl`), "utf8");
+      expect(JSON.parse(log)).toMatchObject({ kind: "create", target: "bot", name: "triage", ok: true });
+      expect(events).toContainEqual(["manager_change_proposed", { kind: "create", target: "bot" }]);
+      expect(events).toContainEqual(["manager_change_done", { kind: "create", target: "bot" }]);
+    });
+
+    it("runs nothing on a no, and tells the manager so it can acknowledge", async () => {
+      const { ran, runCommand } = commands();
+      const { runs, runAgent } = fake((_run, n) =>
+        n === 1 ? propose("loopway bots delete triage") : "Okay, I left it.",
+      );
+      const { chat, events } = await manager(runAgent, { runCommand });
+      await chat.send("delete triage").done;
+      expect((await chat.read()).pending).toMatchObject({ kind: "delete", name: "triage" });
+      await chat.answer(false).done;
+      expect(ran).toEqual([]);
+      expect(runs[1]!.message).toContain("denied");
+      expect(runs[1]!.message).toContain("nothing ran");
+      expect((await chat.read()).messages.at(-1)!.text).toBe("Okay, I left it.");
+      expect(events).toContainEqual(["manager_change_denied", { kind: "delete", target: "bot" }]);
+      expect(chat.answer(true).result).toBe("none");
+    });
+
+    it("refuses to run a change that wasn't approved, and an approval works once for that exact command", async () => {
+      const { ran, runCommand } = commands();
+      const { chat } = await manager(fake(() => "").runAgent, { runCommand });
+      const proposal = parsed("loopway bots delete triage");
+      expect(await chat.execute(proposal)).toMatchObject({ ok: false, reason: "not_approved" });
+      expect(ran).toEqual([]);
+      // Approving one command doesn't approve another.
+      const { runAgent } = fake((_run, n) => (n === 1 ? propose("loopway bots delete triage") : "ok"));
+      const second = await manager(runAgent, { runCommand });
+      await second.chat.send("x").done;
+      await second.chat.answer(true).done;
+      expect(ran).toHaveLength(1);
+      expect(await second.chat.execute(proposal)).toMatchObject({ ok: false, reason: "not_approved" });
+      expect(await second.chat.execute(parsed("loopway bots delete other"))).toMatchObject({ reason: "not_approved" });
+      expect(ran).toHaveLength(1);
+    });
+
+    it("refuses commands outside the allowed list, without asking the user", async () => {
+      const { ran, runCommand } = commands();
+      const { chat, events } = await manager(
+        fake((_run, n) => (n === 1 ? propose("loopway bots release triage --force") : "ok")).runAgent,
+        { runCommand },
+      );
+      await chat.send("free it").done;
+      const read = await chat.read();
+      expect(read.pending).toBeUndefined();
+      expect(read.messages.at(-1)).toMatchObject({ kind: "error" });
+      expect(read.messages.at(-1)!.text).toContain("may not run");
+      expect(events).toContainEqual(["manager_change_refused", { reason: "not_allowed" }]);
+      expect(ran).toEqual([]);
+      for (const bad of [
+        "loopway threads end x",
+        "loopway bots threads end triage t1",
+        "loopway bots rm triage",
+        "rm -rf /",
+        "loopway bots delete triage; rm -rf /",
+        "loopway bots delete $(whoami)",
+        "loopway bots create --name x > /etc/passwd",
+        "loopway bots edit triage --prompt-file /etc/passwd",
+        "loopway inbox create --name x --schema /etc/passwd",
+      ])
+        expect(parseProposal(bad)).toMatchObject({ ok: false });
+      expect(
+        await chat.execute({
+          ...parsed("loopway bots delete a"),
+          command: "loopway bots release a",
+          args: ["bots", "release", "a"],
+        }),
+      ).toMatchObject({
+        ok: false,
+        reason: "not_allowed",
+      });
+    });
+
+    it("saves a prompt and rules the manager wrote, from files only it can fill, after approval", async () => {
+      const { ran, runCommand } = commands(0, "Saved version 2");
+      const block = propose(
+        "loopway bots edit triage --prompt-file @prompt --rules-file @rules",
+        '\n@prompt\nYou triage issues.\n@rules\n{"assign": []}',
+      );
+      const { chat } = await manager(fake((_run, n) => (n === 1 ? block : "Saved.")).runAgent, { runCommand });
+      await chat.send("write the prompt").done;
+      const pending = (await chat.read()).pending!;
+      expect(pending).toMatchObject({
+        kind: "update",
+        name: "triage",
+        files: { "@prompt": "You triage issues.\n", "@rules": '{"assign": []}\n' },
+      });
+      expect(pending.effect).toContain("prompt and rules");
+      await chat.answer(true).done;
+      expect(ran).toHaveLength(1);
+      expect(Object.values(ran[0]!.files).sort()).toEqual(["You triage issues.\n", '{"assign": []}\n']);
+      expect(ran[0]!.args.slice(0, 3)).toEqual(["bots", "edit", "triage"]);
+    });
+
+    it("shows a failed change and logs it as not ok", async () => {
+      const { runCommand } = commands(1, "Error: no such inbox");
+      const { runs, runAgent } = fake((_run, n) => (n === 1 ? propose(CREATE) : "That failed."));
+      const { chat, dir, events } = await manager(runAgent, { runCommand });
+      await chat.send("go").done;
+      await chat.answer(true).done;
+      const messages = (await chat.read()).messages;
+      expect(messages.find((m) => m.text.startsWith("failed:"))).toMatchObject({ kind: "error" });
+      expect(
+        JSON.parse(await readFile(join(dir, "chats", `${runs[0]!.sessionId}.changes.jsonl`), "utf8")),
+      ).toMatchObject({ ok: false });
+      expect(events).toContainEqual(["manager_change_failed", { kind: "create", target: "bot", reason: "failed" }]);
+    });
+
+    it("takes only the first of several proposals and tells the manager", async () => {
+      const { runs, runAgent } = fake((_run, n) =>
+        n === 1 ? propose("loopway bots delete a") + "\n" + propose("loopway bots delete b") : "ok",
+      );
+      const { chat } = await manager(runAgent, { runCommand: commands().runCommand });
+      await chat.send("x").done;
+      expect((await chat.read()).pending!.command).toBe("loopway bots delete a");
+      await chat.answer(false).done;
+      expect(runs[1]!.message).toContain("Only your first proposal");
+    });
+
+    it("tokenizes quotes without expanding anything", () => {
+      expect(tokenize(`loopway bots create --name "my bot" --model 'a b'`)).toEqual([
+        "loopway",
+        "bots",
+        "create",
+        "--name",
+        "my bot",
+        "--model",
+        "a b",
+      ]);
+      expect(tokenize("loopway bots delete a && b")).toBeUndefined();
+      expect(tokenize('loopway "unterminated')).toBeUndefined();
+    });
   });
 
   it("imports no ink, so a web UI can reuse it", async () => {

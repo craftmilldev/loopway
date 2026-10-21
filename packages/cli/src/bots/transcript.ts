@@ -7,6 +7,9 @@ export const sessionLogPath = (dir: string, threadId: string) => join(dir, "thre
 /** Where a manager chat's transcript goes: ~/.loopway/chats/<chat>.log */
 export const chatLogPath = (dir: string, chatId: string) => join(dir, "chats", `${chatId}.log`);
 
+/** Where a manager chat's approved changes go, a JSON line each: ~/.loopway/chats/<chat>.changes.jsonl */
+export const chatChangesPath = (dir: string, chatId: string) => join(dir, "chats", `${chatId}.changes.jsonl`);
+
 export type { TranscriptLine };
 
 /** A thread's transcript, read the way the harness its bot runs on writes its log. */
