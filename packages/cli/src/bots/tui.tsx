@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { Box, render, Text, useApp, useInput, useWindowSize } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ago, clock } from "../format.js";
+import { emptyChat, submitMessage, type Chat } from "./chat.js";
 import { termColor } from "./colors.js";
 import type { DispatcherState } from "./dispatcher.js";
 import { transcriptLines, wrap, type TranscriptLine } from "./transcript.js";
@@ -24,6 +25,12 @@ export interface TuiProps {
   end: (threadId: string) => Promise<void>;
   /** The slug of the org the runner runs bots for. */
   org?: string;
+  /** Adds the Chat view (`c`), for the opt-in manager bot. Without it the TUI is the lists and transcripts only. */
+  chat?: boolean;
+  /** Opens in Chat instead of the lists; only with `chat`. */
+  startInChat?: boolean;
+  /** Records a product metric for the chat view. */
+  capture?: (event: string, properties?: Record<string, unknown>) => void;
   refreshMs?: number;
 }
 
@@ -58,12 +65,43 @@ export async function showTui(props: TuiProps, signal?: AbortSignal): Promise<vo
  * The threads TUI: waiting messages, then working, waiting and done sessions. ↑/↓ moves between
  * sessions (messages can't be opened), Tab jumps to the next list, Enter or → opens a session's transcript.
  */
-export function ThreadsTui({ load, readLog, send, end, org, refreshMs = 1000 }: TuiProps) {
+export function ThreadsTui({
+  load,
+  readLog,
+  send,
+  end,
+  org,
+  chat: chatOn,
+  startInChat,
+  capture,
+  refreshMs = 1000,
+}: TuiProps) {
   const [snap, setSnap] = useState<Snapshot>();
   const [selected, setSelected] = useState<string>();
   const [open, setOpen] = useState<string>();
+  const [inChat, setInChat] = useState(!!chatOn && !!startInChat);
+  // Kept here so the transcript is still there when you come back from the lists.
+  const [chat, setChat] = useState<Chat>(emptyChat);
   useEffect(() => poll(load, setSnap, refreshMs), [load, refreshMs]);
+  useEffect(() => {
+    if (inChat && startInChat) capture?.("chat_view_opened", { via: "default" });
+  }, []); // once: only the view it opens in counts as the default
 
+  if (inChat)
+    return (
+      <ChatView
+        chat={chat}
+        onSubmit={(text) => {
+          const next = submitMessage(chat, text);
+          capture?.(
+            next === chat ? "chat_message_ignored" : "chat_message_sent",
+            next === chat ? { reason: "empty" } : {},
+          );
+          setChat(next);
+        }}
+        onBack={() => setInChat(false)}
+      />
+    );
   if (!snap) return <Text dimColor>Loading…</Text>;
   if (open)
     return (
@@ -77,7 +115,23 @@ export function ThreadsTui({ load, readLog, send, end, org, refreshMs = 1000 }: 
         onBack={() => setOpen(undefined)}
       />
     );
-  return <ListView snap={snap} org={org} selected={selected} onSelect={setSelected} onOpen={setOpen} />;
+  return (
+    <ListView
+      snap={snap}
+      org={org}
+      selected={selected}
+      onSelect={setSelected}
+      onOpen={setOpen}
+      onChat={
+        chatOn
+          ? () => {
+              capture?.("chat_view_opened", { via: "key" });
+              setInChat(true);
+            }
+          : undefined
+      }
+    />
+  );
 }
 
 /** Sorts threads into the three lists, most recently updated first. */
@@ -154,9 +208,11 @@ interface ListViewProps {
   selected: string | undefined;
   onSelect: (id: string) => void;
   onOpen: (id: string) => void;
+  /** Set when the Chat view is on. */
+  onChat?: () => void;
 }
 
-function ListView({ snap, org, selected, onSelect, onOpen }: ListViewProps) {
+function ListView({ snap, org, selected, onSelect, onOpen, onChat }: ListViewProps) {
   const { exit } = useApp();
   const { rows: height, columns } = useWindowSize();
   const lists = sessionLists(snap);
@@ -166,6 +222,7 @@ function ListView({ snap, org, selected, onSelect, onOpen }: ListViewProps) {
   useInput((input, key) => {
     const i = current ? order.indexOf(current) : -1;
     if (input === "q") exit();
+    else if (input === "c" && onChat) onChat();
     else if (key.upArrow && i > 0) onSelect(order[i - 1]!);
     else if (key.downArrow && i >= 0 && i < order.length - 1) onSelect(order[i + 1]!);
     else if (key.tab && current) {
@@ -238,7 +295,9 @@ function ListView({ snap, org, selected, onSelect, onOpen }: ListViewProps) {
           </Text>
         </Box>
         <Box flexShrink={0} marginLeft={2}>
-          <Text color={termColor(MUTED)}>↑↓ move · tab next list · enter/→ open · q quit</Text>
+          <Text color={termColor(MUTED)}>
+            ↑↓ move · tab next list · enter/→ open · {onChat ? "c chat · " : ""}q quit
+          </Text>
         </Box>
       </Box>
     </Box>
@@ -480,6 +539,74 @@ function LogView({ id, snap, readLog, send, end, refreshMs, onBack }: LogViewPro
           scroll · m message · e end · ← back · q quit
         </Text>
       )}
+    </Box>
+  );
+}
+
+interface ChatViewProps {
+  chat: Chat;
+  onSubmit: (text: string) => void;
+  onBack: () => void;
+}
+
+/**
+ * The chat with the manager: a transcript that follows new messages until you scroll up (↑/↓, PgUp/PgDn, Home/End),
+ * and a one-line input that is always live, so keys type. Enter sends, Esc goes back to the lists, Ctrl-C quits.
+ */
+function ChatView({ chat, onSubmit, onBack }: ChatViewProps) {
+  const { rows: height, columns } = useWindowSize();
+  const [draft, setDraft] = useState("");
+  // undefined: pinned to the end.
+  const [top, setTop] = useState<number>();
+  const lines = useMemo(
+    () => chat.messages.flatMap((m) => wrap(`${m.from} ❯ ${m.text}`, columns).map((text) => ({ text, from: m.from }))),
+    [chat, columns],
+  );
+  const body = Math.max(1, height - 2);
+  const bottom = Math.max(0, lines.length - body);
+  const start = Math.min(top ?? bottom, bottom);
+  const scroll = (to: number) => setTop(to >= bottom ? undefined : Math.max(0, to));
+
+  useInput((input, key) => {
+    if (key.escape) onBack();
+    else if (key.return) {
+      onSubmit(draft);
+      setDraft("");
+      setTop(undefined);
+    } else if (key.backspace || key.delete) setDraft(draft.slice(0, -1));
+    else if (key.upArrow) scroll(start - 1);
+    else if (key.downArrow) scroll(start + 1);
+    else if (key.pageUp) scroll(start - body);
+    else if (key.pageDown) scroll(start + body);
+    else if (key.home) scroll(0);
+    else if (key.end) scroll(bottom);
+    else if (input && !key.ctrl && !key.meta) setDraft(draft + input);
+  });
+
+  const muted = termColor(MUTED);
+  return (
+    <Box flexDirection="column" height={height}>
+      <Text wrap="truncate-end">
+        <Text bold>CHAT</Text>
+        <Text color={muted}> · manager</Text>
+      </Text>
+      <Box flexDirection="column" height={body} overflow="hidden">
+        {lines.length ? (
+          lines.slice(start, start + body).map((l, i) => (
+            <Text key={start + i} wrap="truncate-end" color={l.from === "you" ? undefined : termColor(INDIGO.ink)}>
+              {l.text}
+            </Text>
+          ))
+        ) : (
+          <Text dimColor>Say something to the manager.</Text>
+        )}
+      </Box>
+      <Text wrap="truncate-start">
+        <Text color={termColor(INDIGO.ink)}>you ❯ </Text>
+        {draft}
+        <Text inverse> </Text>
+        <Text color={muted}> enter send · esc lists · ctrl-c quit</Text>
+      </Text>
     </Box>
   );
 }

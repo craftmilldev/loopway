@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Bot, Thread } from "../src/client.js";
 import { nearest256, termColor } from "../src/bots/colors.js";
 import { transcriptLines } from "../src/bots/transcript.js";
-import { ThreadsTui, type Snapshot } from "../src/bots/tui.js";
+import { ThreadsTui, type Snapshot, type TuiProps } from "../src/bots/tui.js";
 import { clock } from "../src/format.js";
 import { CLI_VERSION } from "../src/version.js";
 
@@ -130,7 +130,7 @@ describe("ThreadsTui", () => {
   const ended: string[] = [];
   let endError: Error | undefined;
 
-  async function show(snap = snapshot) {
+  async function show(snap = snapshot, props: Partial<TuiProps> = {}) {
     const app = render(
       <ThreadsTui
         load={async () => snap}
@@ -141,6 +141,7 @@ describe("ThreadsTui", () => {
           ended.push(id);
         }}
         org="acme"
+        {...props}
       />,
     );
     unmount = app.unmount;
@@ -165,6 +166,66 @@ describe("ThreadsTui", () => {
       press,
     };
   }
+
+  describe("chat", () => {
+    const events: [string, unknown][] = [];
+    const capture = (e: string, p?: Record<string, unknown>) => void events.push([e, p]);
+
+    it("is off by default: no key, no footer hint", async () => {
+      const { frame, press } = await show();
+      expect(frame()).not.toContain("c chat");
+      await press("c");
+      expect(frame()).toContain("WAITING MESSAGES");
+      expect(frame()).not.toContain("CHAT");
+    });
+
+    it("opens with c, shows both keys in the footers, and goes back with esc", async () => {
+      events.length = 0;
+      const { frame, press } = await show(snapshot, { chat: true, capture });
+      expect(frame()).toContain("c chat · q quit");
+      await press("c");
+      expect(frame()).toContain("CHAT");
+      expect(frame()).toContain("esc lists");
+      await press("\u001B");
+      await sleep(30);
+      expect(frame()).toContain("WAITING MESSAGES");
+      expect(events).toEqual([["chat_view_opened", { via: "key" }]]);
+    });
+
+    it("adds a message and the placeholder reply, and keeps them when you come back", async () => {
+      events.length = 0;
+      const { frame, press } = await show(snapshot, { chat: true, capture });
+      await press("c");
+      for (const ch of "hi q") await press(ch);
+      expect(frame()).toContain("you ❯ hi q");
+      await press("\r");
+      const f = frame();
+      expect(f).toContain("you ❯ hi q");
+      expect(f).toContain("manager ❯ No agent is connected yet.");
+      await press("\r");
+      expect(events).toEqual([
+        ["chat_view_opened", { via: "key" }],
+        ["chat_message_sent", {}],
+        ["chat_message_ignored", { reason: "empty" }],
+      ]);
+      await press("\u001B");
+      await sleep(30);
+      await press("c");
+      expect(frame()).toContain("manager ❯ No agent is connected yet.");
+    });
+
+    it("opens in chat when started there", async () => {
+      events.length = 0;
+      const { frame } = await show(snapshot, { chat: true, startInChat: true, capture });
+      expect(frame()).toContain("CHAT");
+      expect(events).toEqual([["chat_view_opened", { via: "default" }]]);
+    });
+
+    it("ignores startInChat without chat", async () => {
+      const { frame } = await show(snapshot, { startInChat: true });
+      expect(frame()).toContain("WAITING MESSAGES");
+    });
+  });
 
   it("lists the bots, waiting messages, and working, waiting and done sessions", async () => {
     const { frame, selected } = await show();
