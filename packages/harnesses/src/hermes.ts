@@ -97,7 +97,15 @@ export class HermesHarness extends Harness {
     // A resumed session whose home is gone (the log directory was cleaned, or another runner made it) starts a new
     // session; the message still goes in, but without the old conversation.
     const resume = run.resume && existsSync(join(this.home(run), "state.db"));
-    const args = ["chat", "--query-file", "-", "--format", "stream-json", "--yolo", "--model", run.model];
+    const args = [
+      "chat",
+      "--query-file",
+      "-",
+      "--format",
+      "stream-json",
+      "--yolo",
+      ...(run.model ? ["--model", run.model] : []),
+    ];
     if (resume) args.push("--resume", "latest");
     return { args, stdin: run.message, env: { HERMES_HOME: this.home(run) } };
   }

@@ -1,4 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import { runHarness } from "@loopway/harnesses";
 import { ApiError, type LoopwayClient } from "../client.js";
 import { applyUpdate, availableUpdate as availableUpdateNow } from "../update.js";
 import { loadConfig } from "../config.js";
@@ -7,6 +8,7 @@ import { DEFAULTS, Dispatcher, MAX_POLL_INTERVAL, type ThreadsOptions } from "..
 import { ensureRunner, savedRunnerOrg } from "../bots/runner.js";
 import { loadWorkdirs, WORKDIRS_FILE } from "../bots/workdirs.js";
 import { resolveOrg } from "./orgs.js";
+import { ManagerChat } from "../bots/chat.js";
 import { colorSupport } from "../bots/colors.js";
 import { showTui } from "../bots/tui.js";
 import { CLI_VERSION } from "../version.js";
@@ -30,8 +32,9 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
       void ctx.metrics?.capture("bot_skipped", { reason: "no_version" });
     }
   // The opt-in manager gives the TUI a Chat view, which is also what an empty runner opens in.
-  const chat = (await loadConfig(ctx.configDir, ctx.env)).manager_enabled && opts.tui !== false && ctx.interactive;
-  if (!bots.length && !chat) {
+  const config = await loadConfig(ctx.configDir, ctx.env);
+  const chatOn = config.manager_enabled && opts.tui !== false && ctx.interactive;
+  if (!bots.length && !chatOn) {
     ctx.out(
       `No bots to run. Create one with \`loopway bots create --name <name> --preset <preset> --model <model> --inbox <inbox>\`.`,
     );
@@ -85,7 +88,17 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     await showTui(
       {
         org: runner.org,
-        chat,
+        chat: chatOn
+          ? new ManagerChat({
+              org: runner.org,
+              dir: ctx.configDir,
+              env: ctx.env,
+              harness: config.manager_harness,
+              model: config.manager_model,
+              runAgent: ctx.runAgent ?? runHarness,
+              capture: (event, properties) => void ctx.metrics?.capture(event, properties),
+            })
+          : undefined,
         startInChat: !bots.length,
         capture: (event, properties) => void ctx.metrics?.capture(event, properties),
         load: async () => ({ ...(await dispatcher.state()), message }),

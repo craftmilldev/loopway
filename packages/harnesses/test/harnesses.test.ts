@@ -131,6 +131,48 @@ echo '{"type":"result","is_error":false,"result":"ok"}'
     expect(extra.cwd).toBeUndefined();
   });
 
+  it("ClaudeHarness: a run with allowedTools gets only those, denies the rest and has no MCP config or model when unset", () => {
+    const run: AgentRun = {
+      harness: "claude",
+      sessionId: "t1",
+      resume: true,
+      message: "hello",
+      model: "",
+      logPath: "/tmp/t1.log",
+      mcpUrl: "http://127.0.0.1:1/mcp/t1",
+      env: {},
+      allowedTools: ["Bash(loopway bots list:*)", "Bash(loopway runners:*)"],
+      deniedTools: ["Edit", "Write"],
+    };
+    const { args } = getHarness("claude").launch(run) as Launch;
+    expect(args.slice(0, 3)).toEqual(["-p", "--resume", "t1"]);
+    const at = args.indexOf("--allowedTools");
+    expect(args.slice(at, at + 4)).toEqual([
+      "--allowedTools",
+      "Bash(loopway bots list:*)",
+      "Bash(loopway runners:*)",
+      "--disallowedTools",
+    ]);
+    expect(args.slice(at + 4, at + 7)).toEqual(["Edit", "Write", "--permission-mode"]);
+    expect(args[args.indexOf("--permission-mode") + 1]).toBe("default");
+    expect(args).not.toContain("--mcp-config");
+    expect(args).not.toContain("mcp__loopway__end");
+    expect(args).not.toContain("--model");
+    // Without allowedTools nothing changes: the dispatcher's tools, auto approval and the model.
+    const plain = (
+      getHarness("claude").launch({
+        ...run,
+        allowedTools: undefined,
+        deniedTools: undefined,
+        model: "sonnet",
+      }) as Launch
+    ).args;
+    expect(plain).toContain("--mcp-config");
+    expect(plain).not.toContain("--disallowedTools");
+    expect(plain[plain.indexOf("--permission-mode") + 1]).toBe("auto");
+    expect(plain[plain.indexOf("--model") + 1]).toBe("sonnet");
+  });
+
   it("HermesWatch: init starts the session and delivers; a result with an error or exit code is an API error", () => {
     let started = 0;
     const w = new HermesWatch(() => started++);

@@ -5,7 +5,7 @@ export interface AgentRun {
   sessionId: string;
   resume: boolean;
   message: string;
-  /** The model to run on, as the harness takes it. */
+  /** The model to run on, as the harness takes it; empty leaves it to the harness. */
   model: string;
   logPath: string;
   /** The dispatcher's MCP endpoint for this session (its `link` and `end` tools). */
@@ -15,6 +15,14 @@ export interface AgentRun {
   cwd?: string;
   /** Other directories the session may work in besides `cwd`, for harnesses that take them (`--add-dir`). */
   addDirs?: string[];
+  /**
+   * Limits the session to these tools (Claude Code's `--allowedTools` syntax) and denies the rest instead of
+   * approving them, and leaves out the dispatcher's MCP tools. Only Claude Code enforces it; the other harnesses
+   * ignore it, so a prompt must still say what the session may not do.
+   */
+  allowedTools?: string[];
+  /** Tools denied even if `allowedTools` would match them (`--disallowedTools`). */
+  deniedTools?: string[];
   /** The shell command of a `script` bot (its prompt); other harnesses ignore it. */
   script?: string;
   /** Called once Claude Code has created the session (its `system` `init` record), so later runs must resume it. */

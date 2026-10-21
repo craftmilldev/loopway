@@ -6,6 +6,7 @@ import { stripVTControlCharacters as plain } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Bot, Thread } from "../src/client.js";
 import { nearest256, termColor } from "../src/bots/colors.js";
+import type { Chat, ChatBackend } from "../src/bots/chat.js";
 import { transcriptLines } from "../src/bots/transcript.js";
 import { ThreadsTui, type Snapshot, type TuiProps } from "../src/bots/tui.js";
 import { clock } from "../src/format.js";
@@ -168,6 +169,25 @@ describe("ThreadsTui", () => {
   }
 
   describe("chat", () => {
+    /** A manager that answers "pong" to everything, or never answers while `hold` is set. */
+    const backend = (hold = false): ChatBackend & { sent: string[] } => {
+      const chat: Chat = { messages: [], thinking: false };
+      const sent: string[] = [];
+      return {
+        sent,
+        send: (text) => {
+          const t = text.trim();
+          if (!t) return { result: "empty", done: Promise.resolve() };
+          if (chat.thinking) return { result: "busy", done: Promise.resolve() };
+          sent.push(t);
+          chat.messages.push({ from: "you", text: t });
+          if (hold) chat.thinking = true;
+          else chat.messages.push({ from: "manager", text: "pong", kind: "text" });
+          return { result: "sent", done: Promise.resolve() };
+        },
+        read: async () => ({ messages: [...chat.messages], thinking: chat.thinking }),
+      };
+    };
     const events: [string, unknown][] = [];
     const capture = (e: string, p?: Record<string, unknown>) => void events.push([e, p]);
     /** Waits for the frame to show `text`, so a slow machine doesn't fail a test that is only early. */
@@ -193,7 +213,7 @@ describe("ThreadsTui", () => {
 
     it("opens with c, shows both keys in the footers, and goes back with the left arrow", async () => {
       events.length = 0;
-      const { frame, press } = await show(snapshot, { chat: true, capture });
+      const { frame, press } = await show(snapshot, { chat: backend(), capture });
       await shows(frame, "c chat · q quit");
       await pressUntil(press, frame, "c", "CHAT");
       expect(frame()).toContain("← lists");
@@ -201,9 +221,9 @@ describe("ThreadsTui", () => {
       expect(events).toEqual([["chat_view_opened", { via: "key" }]]);
     });
 
-    it("adds a message and the placeholder reply, and keeps them when you come back", async () => {
+    it("sends a message and shows the manager's reply, and keeps them when you come back", async () => {
       events.length = 0;
-      const { frame, press } = await show(snapshot, { chat: true, capture });
+      const { frame, press } = await show(snapshot, { chat: backend(), capture });
       await shows(frame, "c chat");
       await pressUntil(press, frame, "c", "CHAT");
       // The chat's own key listener attaches after its first frame.
@@ -211,7 +231,7 @@ describe("ThreadsTui", () => {
       await press("hi q");
       await shows(frame, "hi q");
       await press("\r");
-      await shows(frame, "manager ❯ No agent is connected yet.");
+      await shows(frame, "manager ❯ pong");
       expect(frame()).toContain("hi q");
       await press("\r");
       expect(events).toEqual([
@@ -220,11 +240,27 @@ describe("ThreadsTui", () => {
         ["chat_message_ignored", { reason: "empty" }],
       ]);
       await pressUntil(press, frame, KEYS.left, "WAITING MESSAGES");
-      await pressUntil(press, frame, "c", "manager ❯ No agent is connected yet.");
+      await pressUntil(press, frame, "c", "manager ❯ pong");
+    });
+
+    it("shows a thinking state while a run is in flight, and ignores messages sent meanwhile", async () => {
+      events.length = 0;
+      const manager = backend(true);
+      const { frame, press } = await show(snapshot, { chat: manager, startInChat: true, capture });
+      await shows(frame, "CHAT");
+      await sleep(150);
+      await press("one");
+      await press("\r");
+      await shows(frame, "manager ❯ thinking…");
+      await press("two");
+      await press("\r");
+      await sleep(100);
+      expect(manager.sent).toEqual(["one"]);
+      expect(events).toContainEqual(["chat_message_ignored", { reason: "busy" }]);
     });
 
     it("goes back with esc too", async () => {
-      const { frame, press } = await show(snapshot, { chat: true });
+      const { frame, press } = await show(snapshot, { chat: backend() });
       await shows(frame, "c chat");
       await pressUntil(press, frame, "c", "CHAT");
       await pressUntil(press, frame, "\u001B", "WAITING MESSAGES");
@@ -232,7 +268,7 @@ describe("ThreadsTui", () => {
 
     it("opens in chat when started there", async () => {
       events.length = 0;
-      const { frame } = await show(snapshot, { chat: true, startInChat: true, capture });
+      const { frame } = await show(snapshot, { chat: backend(), startInChat: true, capture });
       await shows(frame, "CHAT");
       expect(events).toEqual([["chat_view_opened", { via: "default" }]]);
     });

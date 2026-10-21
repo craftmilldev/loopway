@@ -60,7 +60,10 @@ describe("bots run with no bots", () => {
     expect(mocks.start).toHaveBeenCalledOnce();
     expect(mocks.start.mock.calls[0]![2]).toEqual([]);
     expect(mocks.showTui).toHaveBeenCalledOnce();
-    expect(mocks.showTui.mock.calls[0]![0]).toMatchObject({ chat: true, startInChat: true });
+    expect(mocks.showTui.mock.calls[0]![0]).toMatchObject({
+      chat: expect.objectContaining({ botId: "manager:acme" }),
+      startInChat: true,
+    });
   });
 
   it.each([
