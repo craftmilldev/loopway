@@ -310,7 +310,10 @@ export function createApi(opts: ApiOptions) {
         throw new ApiError(400, "username_required", "This email has no account yet: pick a username to sign up");
       throw usernameError(result.problem);
     }
-    await metrics.capture(result.created ? "signed_up" : "logged_in", result.user.id);
+    // Person properties go with the event so CLI-only users get an email and name too, not just dashboard visitors.
+    await metrics.capture(result.created ? "signed_up" : "logged_in", result.user.id, {
+      $set: { email: result.user.email, name: result.user.name },
+    });
     if (result.joined) await metrics.capture("org_invites_claimed", result.user.id, { orgs: result.joined });
     const { token, expiresAt } = signSessionToken(result.user.id, opts.tokenSecret);
     return c.json(
