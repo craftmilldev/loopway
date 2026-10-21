@@ -4,6 +4,9 @@ import { join } from "node:path";
 /** Where a thread's transcript goes: ~/.loopway/threads/<thread>.log */
 export const sessionLogPath = (dir: string, threadId: string) => join(dir, "threads", `${threadId}.log`);
 
+/** Where a manager chat's transcript goes: ~/.loopway/chats/<chat>.log */
+export const chatLogPath = (dir: string, chatId: string) => join(dir, "chats", `${chatId}.log`);
+
 export type { TranscriptLine };
 
 /** A thread's transcript, read the way the harness its bot runs on writes its log. */

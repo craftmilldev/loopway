@@ -3,7 +3,7 @@ import chalk from "chalk";
 import { Box, render, Text, useApp, useInput, useWindowSize } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ago, clock } from "../format.js";
-import { emptyChat, submitMessage, type Chat } from "./chat.js";
+import { emptyChat, type Chat, type ChatBackend } from "./chat.js";
 import { termColor } from "./colors.js";
 import type { DispatcherState } from "./dispatcher.js";
 import { transcriptLines, wrap, type TranscriptLine } from "./transcript.js";
@@ -25,8 +25,8 @@ export interface TuiProps {
   end: (threadId: string) => Promise<void>;
   /** The slug of the org the runner runs bots for. */
   org?: string;
-  /** Adds the Chat view (`c`), for the opt-in manager bot. Without it the TUI is the lists and transcripts only. */
-  chat?: boolean;
+  /** Adds the Chat view (`c`), talking to the opt-in manager bot. Without it the TUI is the lists and transcripts only. */
+  chat?: ChatBackend;
   /** Opens in Chat instead of the lists; only with `chat`. */
   startInChat?: boolean;
   /** Records a product metric for the chat view. */
@@ -82,6 +82,10 @@ export function ThreadsTui({
   const [inChat, setInChat] = useState(!!chatOn && !!startInChat);
   // Kept here so the transcript is still there when you come back from the lists.
   const [chat, setChat] = useState<Chat>(emptyChat);
+  useEffect(
+    () => (chatOn ? poll(() => chatOn.read(), setChat, Math.min(refreshMs, 500)) : undefined),
+    [chatOn, refreshMs],
+  );
   useEffect(() => poll(load, setSnap, refreshMs), [load, refreshMs]);
   // Only the view it opens in counts as the default, so this reports once.
   const reported = useRef(false);
@@ -96,12 +100,11 @@ export function ThreadsTui({
       <ChatView
         chat={chat}
         onSubmit={(text) => {
-          const next = submitMessage(chat, text);
-          capture?.(
-            next === chat ? "chat_message_ignored" : "chat_message_sent",
-            next === chat ? { reason: "empty" } : {},
-          );
-          setChat(next);
+          const { result } = chatOn!.send(text);
+          if (result === "sent") capture?.("chat_message_sent", {});
+          else capture?.("chat_message_ignored", { reason: result });
+          // Shows the message and the thinking state now, not at the next poll.
+          void chatOn!.read().then(setChat);
         }}
         onBack={() => setInChat(false)}
       />
@@ -563,7 +566,13 @@ function ChatView({ chat, onSubmit, onBack }: ChatViewProps) {
   // undefined: pinned to the end.
   const [top, setTop] = useState<number>();
   const lines = useMemo(
-    () => chat.messages.flatMap((m) => wrap(`${m.from} ❯ ${m.text}`, columns).map((text) => ({ text, from: m.from }))),
+    () => [
+      ...chat.messages.flatMap((m) => {
+        const prefix = m.kind === "tool" || m.kind === "error" ? "  " : `${m.from} ❯ `;
+        return wrap(`${prefix}${m.text}`, columns).map((text) => ({ text, from: m.from, kind: m.kind }));
+      }),
+      ...(chat.thinking ? [{ text: "manager ❯ thinking…", from: "manager" as const, kind: "tool" as const }] : []),
+    ],
     [chat, columns],
   );
   const body = Math.max(1, height - 2);
@@ -597,7 +606,7 @@ function ChatView({ chat, onSubmit, onBack }: ChatViewProps) {
       <Box flexDirection="column" height={body} overflow="hidden">
         {lines.length ? (
           lines.slice(start, start + body).map((l, i) => (
-            <Text key={start + i} wrap="truncate-end" color={l.from === "you" ? undefined : termColor(INDIGO.ink)}>
+            <Text key={start + i} wrap="truncate-end" {...lineStyle(l)}>
               {l.text}
             </Text>
           ))
@@ -613,6 +622,13 @@ function ChatView({ chat, onSubmit, onBack }: ChatViewProps) {
       </Text>
     </Box>
   );
+}
+
+/** How a line of the chat looks: you in the terminal's color, the manager in indigo, its tools dim and its errors red. */
+function lineStyle(l: { from: string; kind?: string }): { color?: string; dimColor?: boolean } {
+  if (l.kind === "error") return KIND_STYLE.error;
+  if (l.kind === "tool") return { dimColor: true };
+  return l.from === "you" ? {} : { color: termColor(INDIGO.ink) };
 }
 
 /** Calls `fn` now and every `ms` ms, handing each result to `set`; returns the cleanup for useEffect. */

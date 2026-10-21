@@ -84,7 +84,14 @@ export class CursorHarness extends Harness {
 
   async launch(run: AgentRun): Promise<Launch> {
     const chat = (await readFile(this.chatFile(run), "utf8")).trim();
-    const args = ["-p", "--resume", chat, "--model", run.model, "--output-format", "stream-json"];
+    const args = [
+      "-p",
+      "--resume",
+      chat,
+      ...(run.model ? ["--model", run.model] : []),
+      "--output-format",
+      "stream-json",
+    ];
     args.push("--force", "--trust", "--approve-mcps");
     // The workspace is the session's own scratch directory, so the repo it works in, and any other directory
     // the run allows, go in as extra directories.

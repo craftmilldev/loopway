@@ -89,7 +89,13 @@ export class CodexHarness extends Harness {
     // A resumed session whose thread id is gone (the log directory was cleaned) starts a new thread; the message
     // still goes in, but without the old conversation.
     const thread = run.resume ? (await readFile(this.threadFile(run), "utf8").catch(() => "")).trim() : "";
-    const args = ["exec", ...(thread ? ["resume"] : []), "--json", "--skip-git-repo-check", "-m", run.model];
+    const args = [
+      "exec",
+      ...(thread ? ["resume"] : []),
+      "--json",
+      "--skip-git-repo-check",
+      ...(run.model ? ["-m", run.model] : []),
+    ];
     // A new thread takes its working root as a flag. `exec resume` doesn't accept -C; the spawn's cwd covers it.
     if (run.cwd && !thread) args.push("-C", run.cwd);
     // The dispatcher's tools, with their calls approved up front: a headless run has nobody to ask.
