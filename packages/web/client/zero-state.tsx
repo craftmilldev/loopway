@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AgentPrompt } from "./agent-prompt.js";
 import { commands, CopyCommand } from "./runners.js";
-import { DashLayout, MembersHint } from "./layout.js";
+import { useContext } from "react";
+import { DashLayout, MembersHint, OrgsContext } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
 
@@ -128,6 +129,35 @@ export function Celebration({ slug, onContinue }: { slug: string; onContinue: ()
   );
 }
 
+/** Which org the user is in, and what the other kind would give them. Nothing until the orgs have loaded. */
+function OrgExplainer() {
+  const orgs = useContext(OrgsContext);
+  const org = orgs?.find((o) => o.slug === lw.orgSlug());
+  if (!org) return null;
+  return (
+    <section className="org-explainer" aria-label="About orgs">
+      <span className="lbl">{org.personal ? "You're in your personal org" : "You're in a shared org"}</span>
+      <p className="muted">
+        An org holds bots, inboxes and runners.{" "}
+        {org.personal ? (
+          <>
+            <strong>{org.slug}</strong> is your personal org: it's yours alone and can't have other members, which makes
+            it the simplest place to start and to try things. If you'll work with others, make a shared org with{" "}
+            <code>loopway orgs create &lt;slug&gt;</code>; bots and inboxes don't move between orgs, so it's easiest to
+            decide before you build.
+          </>
+        ) : (
+          <>
+            <strong>{org.slug}</strong> is a shared org: everyone in it sees the same bots, inboxes and runners, and any
+            member's runner can pick a bot up. Your personal org is separate and stays yours alone. Use a shared org for
+            team work, and your personal one for anything private.
+          </>
+        )}
+      </p>
+    </section>
+  );
+}
+
 /** What an org that hasn't finished setting up sees in place of its dashboard: three steps, then the app. */
 export function ZeroState({ progress }: { progress: SetupProgress }) {
   const me = lw.useMe();
@@ -144,11 +174,31 @@ export function ZeroState({ progress }: { progress: SetupProgress }) {
             <h1>Get your runner going and we'll make some bots together</h1>
           </div>
           <section className="runner-setup" aria-label="Start a runner">
-            <p className="muted">Run these on the machine where your code lives, and leave the last one open.</p>
+            <p className="muted">
+              loopway catches webhooks from services like GitHub and Linear and hands them to a bot. A bot is a coding
+              agent (Claude Code, Codex and so on) that runs on <em>your</em> machine, so your code and credentials stay
+              there. The three commands below set that machine up: the first installs the <code>loopway</code> command,
+              the second logs you in with an emailed code, and the third starts a <em>runner</em> in your repo. The
+              runner waits for messages and starts an agent session for each one. It doesn't connect any agent to
+              loopway until you make a bot, which is the next step. Leave the last command open.
+            </p>
             {commands(lw.orgSlug()).map((c) => (
               <CopyCommand key={c.key} command={c} from="zero_state" />
             ))}
+            <p className="muted">
+              Prefer to read first? The{" "}
+              <a
+                href="https://github.com/craftmilldev/loopway#readme"
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => track("zero_state_readme_clicked")}
+              >
+                README
+              </a>{" "}
+              covers the same ground.
+            </p>
           </section>
+          <OrgExplainer />
           <AgentPrompt from="zero_state" />
         </>
       )}

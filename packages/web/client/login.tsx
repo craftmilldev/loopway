@@ -88,8 +88,9 @@ export function Login() {
         <h1>{step === "username" ? "Pick a username" : "Log in"}</h1>
         {step === "username" && (
           <p className="hint muted" style={{ marginTop: 12 }}>
-            Lowercase letters, numbers and hyphens, 2-39 characters. It names your personal org, and you can change it
-            later.
+            Lowercase letters, numbers and hyphens, 2-39 characters. It names your personal org, the private space that
+            holds your own bots and inboxes. You can make a shared org for a team later, and you can change this
+            username.
           </p>
         )}
         {step === "code" && (
