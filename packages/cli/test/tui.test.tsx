@@ -244,6 +244,56 @@ describe("ThreadsTui", () => {
       await pressUntil(press, frame, "c", "manager ❯ pong");
     });
 
+    it("puts the input in a bordered box and the hints on their own line below it", async () => {
+      const { frame, press } = await show(snapshot, { chat: backend(), startInChat: true });
+      await shows(frame, "CHAT");
+      await sleep(150);
+      const hints = "enter send · ← lists · ctrl-c quit";
+      const rowsOf = () => frame().split("\n");
+      const before = rowsOf().findIndex((l) => l.includes(hints));
+      expect(before).toBeGreaterThan(0);
+      const box = rowsOf().slice(before - 3, before);
+      expect(box[0]).toMatch(/^╭─+╮$/);
+      expect(box[1]).toMatch(/^│ .*you|^│ {2}/);
+      expect(box[2]).toMatch(/^╰─+╯$/);
+      expect(box[1]).not.toContain("enter send");
+      await press("x".repeat(250));
+      await shows(frame, "xxxx");
+      // The box grew upward; the hints stayed on a line of their own, in the same place.
+      const after = rowsOf();
+      const hintRow = after.findIndex((l) => l.includes(hints));
+      expect(after[hintRow]?.trim()).toBe(hints);
+      expect(after.filter((l) => l.includes("╭")).length).toBe(1);
+      expect(hintRow).toBe(before);
+      expect(after.findIndex((l) => l.includes("╭"))).toBeLessThan(before - 3);
+    });
+
+    it("wraps a long message inside the box at 60 columns, and keeps every row within the screen", async () => {
+      const app = render(
+        <ThreadsTui
+          load={async () => snapshot}
+          readLog={async () => ""}
+          send={async () => {}}
+          end={async () => {}}
+          org="acme"
+          chat={backend()}
+          startInChat
+        />,
+      );
+      unmount = app.unmount;
+      Object.defineProperty(app.stdout, "columns", { value: 60 });
+      await sleep(200);
+      app.stdin.write("word ".repeat(40));
+      await sleep(100);
+      const rows = plain(app.lastFrame() ?? "").split("\n");
+      expect(rows.every((l) => l.length <= 60)).toBe(true);
+      const hint = rows.findIndex((l) => l.includes("enter send"));
+      expect(hint).toBe(rows.length - 1);
+      expect(rows[hint - 1]).toMatch(/^╰─+╯$/);
+      expect(rows.filter((l) => l.startsWith("│")).length).toBeGreaterThan(1);
+      expect(rows.filter((l) => l.startsWith("│")).length).toBeLessThanOrEqual(4);
+    });
+
     it("shows a thinking state while a run is in flight, and ignores messages sent meanwhile", async () => {
       events.length = 0;
       const manager = backend(true);
