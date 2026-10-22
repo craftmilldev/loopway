@@ -248,7 +248,7 @@ describe("ThreadsTui", () => {
       const { frame, press } = await show(snapshot, { chat: backend(), startInChat: true });
       await shows(frame, "CHAT");
       await sleep(150);
-      const hints = "enter send · ← lists · ctrl-c quit";
+      const hints = "enter send · /new start over · ← lists · ctrl-c quit";
       const rowsOf = () => frame().split("\n");
       const before = rowsOf().findIndex((l) => l.includes(hints));
       expect(before).toBeGreaterThan(0);

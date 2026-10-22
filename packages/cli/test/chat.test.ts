@@ -472,6 +472,66 @@ describe("chat threads", () => {
   const propose = (command: string) => "Here is what I'll do.\n\n```loopway-change\n" + command + "\n```";
   const ok = async () => ({ code: 0, output: "done" });
 
+  describe("/new", () => {
+    it("clears the transcript, ends the old thread with its label, and the next message is a new session", async () => {
+      const { api, threads } = server();
+      const script = [propose(CREATE(1)), "Created.", "Hello again."];
+      const { runs, runAgent } = fake((_run, n) => script[n - 1]!);
+      const { chat, events } = await manager(runAgent, { threads: api, runCommand: ok });
+      await chat.send("make a bot").done;
+      await chat.answer(true).done;
+      const [oldId] = [...threads.keys()];
+
+      const sent = chat.send(" /new ");
+      expect(sent.result).toBe("new");
+      await sent.done;
+      expect(await chat.read()).toEqual({ messages: [], thinking: false });
+      // The old chat is ended and keeps its label.
+      expect(threads.get(oldId!)).toEqual({ status: "ended", metadata: { label: "create", actions: { create: 1 } } });
+
+      await chat.send("hi").done;
+      expect(runs).toHaveLength(3);
+      expect(runs[2]).toMatchObject({ resume: false });
+      expect(runs[2]!.sessionId).not.toBe(runs[0]!.sessionId);
+      expect(runs[2]!.logPath).not.toBe(runs[0]!.logPath);
+      expect(runs[2]!.message).toBe(`${MANAGER_PROMPT}\n\nhi`);
+      expect((await chat.read()).messages.map((m) => m.text)).toEqual(["hi", "Hello again."]);
+      const [, newId] = [...threads.keys()];
+      expect(newId).not.toBe(oldId);
+      expect(threads.get(newId!)!.status).toBe("active");
+      expect(events).toContainEqual(["manager_chat_new", { pending: false, thread: true }]);
+
+      // Closing ends only the current chat's thread, with its own (empty) label.
+      await chat.close();
+      expect(threads.get(newId!)).toEqual({ status: "ended", metadata: { label: "generic", actions: {} } });
+      expect(threads.get(oldId!)!.metadata).toEqual({ label: "create", actions: { create: 1 } });
+    });
+
+    it("cancels a change awaiting approval: nothing runs, and it can't be approved later", async () => {
+      const commands: string[][] = [];
+      const { chat, events } = await manager(fake(() => propose(CREATE(1))).runAgent, {
+        runCommand: async (args) => (commands.push(args), { code: 0, output: "" }),
+      });
+      await chat.send("make a bot").done;
+      expect((await chat.read()).pending).toBeDefined();
+      expect(chat.send("/new").result).toBe("new");
+      expect((await chat.read()).pending).toBeUndefined();
+      expect(chat.answer(true).result).toBe("none");
+      expect(commands).toEqual([]);
+      expect(events).toContainEqual(["manager_chat_new", { pending: true, thread: false }]);
+    });
+
+    it("does nothing while a run is in flight, and a chat that never started has no thread to end", async () => {
+      const { api, calls } = server();
+      const { chat } = await manager(fake(() => "ok").runAgent, { threads: api });
+      expect(chat.send("/new").result).toBe("new");
+      expect(calls).toEqual([]);
+      const first = chat.send("hello");
+      expect(chat.send("/new").result).toBe("busy");
+      await first.done;
+    });
+  });
+
   it("makes no thread before the first message, then one the runner owns, with the record tools bound to it", async () => {
     const { api, threads, calls } = server();
     const { runs, runAgent } = fake(() => "Hi.");

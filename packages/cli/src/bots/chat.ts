@@ -39,12 +39,18 @@ export interface Chat {
 
 /** What the Chat view talks to. No ink in this file or behind it, so a web UI can reuse it. */
 export interface ChatBackend {
-  /** Starts a turn. `empty` and `busy` (a run is in flight) start nothing; `done` settles when the run is over, and never rejects. */
-  send(text: string): { result: "sent" | "empty" | "busy"; done: Promise<void> };
+  /**
+   * Starts a turn. `empty` and `busy` (a run is in flight) start nothing; `done` settles when the run is over, and never rejects.
+   * `/new` ends this chat and starts a fresh one (`new`), cancelling a change that awaited an answer; `done` settles when the old chat's thread is ended.
+   */
+  send(text: string): { result: "sent" | "new" | "empty" | "busy"; done: Promise<void> };
   /** Answers the pending proposal: approving runs that exact command, denying runs nothing. `none` means there is nothing to answer. */
   answer(approved: boolean): { result: "answered" | "none"; done: Promise<void> };
   read(): Promise<Chat>;
 }
+
+/** Typed into the chat input to end this chat and start a fresh one. */
+export const NEW_COMMAND = "/new";
 
 export const emptyChat = (): Chat => ({ messages: [], thinking: false });
 
@@ -121,8 +127,8 @@ interface Turn {
  */
 export class ManagerChat implements ChatBackend {
   readonly botId: string;
-  private readonly chatId = randomUUID();
-  private readonly logPath: string;
+  private chatId: string = randomUUID();
+  private logPath: string;
   private sessionId = this.chatId;
   private started = false;
   private turns: Turn[] = [];
@@ -143,9 +149,10 @@ export class ManagerChat implements ChatBackend {
     this.logPath = chatLogPath(opts.dir, this.chatId);
   }
 
-  send(text: string): { result: "sent" | "empty" | "busy"; done: Promise<void> } {
+  send(text: string): { result: "sent" | "new" | "empty" | "busy"; done: Promise<void> } {
     const trimmed = text.trim();
     if (!trimmed) return { result: "empty", done: Promise.resolve() };
+    if (trimmed === NEW_COMMAND && !this.running) return { result: "new", done: this.startOver() };
     // A proposal waiting for an answer holds the chat too: the user answers it first.
     if (this.running || this.pending) return { result: "busy", done: Promise.resolve() };
     this.running = true;
@@ -251,7 +258,31 @@ export class ManagerChat implements ChatBackend {
     if (this.closed) return;
     this.closed = true;
     if (!this.threadOpen) return;
-    if (await this.syncThread(true)) this.opts.capture?.("manager_thread_ended", {});
+    await this.endThread(this.chatId, this.changes);
+  }
+
+  /**
+   * Ends this chat (its thread keeps its label) and starts a new one: empty transcript, new thread id, and a manager
+   * session with no memory of the old one. A change awaiting an answer is dropped, and its approval with it.
+   */
+  private startOver(): Promise<void> {
+    const { chatId, threadOpen, changes, closed } = this;
+    this.opts.capture?.("manager_chat_new", { pending: !!this.pending, thread: threadOpen });
+    this.chatId = randomUUID();
+    this.sessionId = this.chatId;
+    this.logPath = chatLogPath(this.opts.dir, this.chatId);
+    this.started = false;
+    this.turns = [];
+    this.pending = undefined;
+    this.notes = [];
+    this.approvals.clear();
+    this.changes = [];
+    this.threadOpen = false;
+    return !threadOpen || closed ? Promise.resolve() : this.endThread(chatId, changes);
+  }
+
+  private async endThread(chatId: string, changes: ChangeRecord[]): Promise<void> {
+    if (await this.syncThread(true, chatId, changes)) this.opts.capture?.("manager_thread_ended", {});
   }
 
   /** Makes the chat's thread at its first message (again at the next, if that failed). A chat without one still works. */
@@ -273,10 +304,10 @@ export class ManagerChat implements ChatBackend {
   }
 
   /** Sets the thread's label and action counts from the changes so far, and ends it with `end`. False if the server refused. */
-  private async syncThread(end = false): Promise<boolean> {
-    const { label, actions } = chatLabel(this.changes);
+  private async syncThread(end = false, chatId = this.chatId, changes = this.changes): Promise<boolean> {
+    const { label, actions } = chatLabel(changes);
     try {
-      await this.opts.threads!.patch(this.chatId, {
+      await this.opts.threads!.patch(chatId, {
         metadata_set: { label, actions },
         ...(end ? { status: "ended" as const } : {}),
       });

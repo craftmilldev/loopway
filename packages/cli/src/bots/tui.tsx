@@ -101,11 +101,13 @@ export function ThreadsTui({
       <ChatView
         chat={chat}
         onSubmit={(text) => {
-          const { result } = chatOn!.send(text);
+          const { result, done } = chatOn!.send(text);
           if (result === "sent") capture?.("chat_message_sent", {});
+          else if (result === "new") capture?.("chat_new", {});
           else capture?.("chat_message_ignored", { reason: result });
           // Shows the message and the thinking state now, not at the next poll.
           void chatOn!.read().then(setChat);
+          if (result === "new") void done.then(() => chatOn!.read().then(setChat));
         }}
         onAnswer={(approved) => {
           const { result, done } = chatOn!.answer(approved);
@@ -590,9 +592,12 @@ function ChatView({ chat, onSubmit, onAnswer, onBack }: ChatViewProps) {
     [chat, columns],
   );
   const asking = !!chat.pending;
+  // A proposed change locks the input to y and n, except for a command: typing "/" opens the input (for /new).
+  const [command, setCommand] = useState(false);
+  const locked = asking && !command;
   // The input box: a border and a space of padding either side, so text gets four columns less. It grows with the
   // draft up to MAX_INPUT_ROWS (and never past a third of the screen), then shows the end of it, where the cursor is.
-  const inputRows = hardWrap(asking ? "" : `${draft} `, Math.max(1, columns - 4));
+  const inputRows = hardWrap(locked ? "" : `${draft} `, Math.max(1, columns - 4));
   const shown = inputRows.slice(-Math.max(1, Math.min(MAX_INPUT_ROWS, Math.floor(height / 3) - 2)));
   // The title, the box (its rows and two border lines) and the hint line.
   const body = Math.max(1, height - shown.length - 4);
@@ -603,15 +608,21 @@ function ChatView({ chat, onSubmit, onAnswer, onBack }: ChatViewProps) {
   useInput((input, key) => {
     if (key.escape || key.leftArrow) onBack();
     // A proposed change waits for y or n; nothing else types until it is answered.
-    else if (asking && (input === "y" || input === "Y")) onAnswer(true);
-    else if (asking && (input === "n" || input === "N")) onAnswer(false);
-    else if (asking && !(key.upArrow || key.downArrow || key.pageUp || key.pageDown || key.home || key.end)) return;
+    else if (locked && input === "/") {
+      setCommand(true);
+      setDraft("/");
+    } else if (locked && (input === "y" || input === "Y")) onAnswer(true);
+    else if (locked && (input === "n" || input === "N")) onAnswer(false);
+    else if (locked && !(key.upArrow || key.downArrow || key.pageUp || key.pageDown || key.home || key.end)) return;
     else if (key.return) {
       onSubmit(draft);
+      setCommand(false);
       setDraft("");
       setTop(undefined);
-    } else if (key.backspace || key.delete) setDraft(draft.slice(0, -1));
-    else if (key.upArrow) scroll(start - 1);
+    } else if (key.backspace || key.delete) {
+      setDraft(draft.slice(0, -1));
+      if (draft.length <= 1) setCommand(false);
+    } else if (key.upArrow) scroll(start - 1);
     else if (key.downArrow) scroll(start + 1);
     else if (key.pageUp) scroll(start - body);
     else if (key.pageDown) scroll(start + body);
@@ -641,15 +652,15 @@ function ChatView({ chat, onSubmit, onAnswer, onBack }: ChatViewProps) {
       <Box
         flexDirection="column"
         borderStyle="round"
-        borderDimColor={asking}
-        borderColor={asking ? undefined : termColor(INDIGO.ink)}
+        borderDimColor={locked}
+        borderColor={locked ? undefined : termColor(INDIGO.ink)}
         paddingX={1}
         flexShrink={0}
       >
         {shown.map((row, i) => (
           <Text key={i} wrap="truncate-end">
-            {asking ? " " : i === shown.length - 1 ? row.slice(0, -1) : row}
-            {!asking && i === shown.length - 1 && <Text inverse> </Text>}
+            {locked ? " " : i === shown.length - 1 ? row.slice(0, -1) : row}
+            {!locked && i === shown.length - 1 && <Text inverse> </Text>}
           </Text>
         ))}
       </Box>
@@ -659,11 +670,11 @@ function ChatView({ chat, onSubmit, onAnswer, onBack }: ChatViewProps) {
           <Text bold>y</Text>
           <Text color={muted}> approve · </Text>
           <Text bold>n</Text>
-          <Text color={muted}> deny · ← lists · ctrl-c quit</Text>
+          <Text color={muted}> deny · /new start over · ← lists · ctrl-c quit</Text>
         </Text>
       ) : (
         <Text color={muted} wrap="truncate-end">
-          enter send · ← lists · ctrl-c quit
+          enter send · /new start over · ← lists · ctrl-c quit
         </Text>
       )}
     </Box>
