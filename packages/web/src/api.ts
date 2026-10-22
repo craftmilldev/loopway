@@ -494,12 +494,15 @@ export function createApi(opts: ApiOptions) {
   }
 
   /**
-   * The id of the org a list endpoint is narrowed to by `?org=<slug>`; undefined without it (all the user's orgs).
-   * A slug the user isn't a member of is a 404, the same whether or not the org exists.
+   * The id of the org a list endpoint is scoped to by `?org=<slug>`, so two orgs' records never share a list.
+   * 400 without one; a slug the user isn't a member of is a 404, the same whether or not the org exists.
    */
-  async function listOrg(c: Context<Env>, endpoint: string): Promise<string | undefined> {
+  async function listOrg(c: Context<Env>, endpoint: string): Promise<string> {
     const slug = c.req.query("org");
-    if (slug === undefined) return undefined;
+    if (!slug) {
+      await metrics.capture("org_filter_rejected", c.var.user.id, { endpoint, reason: "org_required" });
+      throw new ApiError(400, "org_required", "org is required: the slug of the org to list, as ?org=<slug>");
+    }
     const org = await store.memberOrg(c.var.db, c.var.user.id, slug);
     if (!org) {
       await metrics.capture("org_filter_rejected", c.var.user.id, { endpoint, reason: "org_not_found" });

@@ -58,9 +58,20 @@ afterEach(() => {
 
 // ---------- helpers ----------
 
+/** What the last `run` wrote to stderr. */
+let notes: string[] = [];
+
 async function run(...args: string[]) {
   const out: string[] = [];
-  const ctx: Context = { configDir, env: {}, interactive: false, out: (t) => out.push(t), fetch: apiFetch };
+  notes = [];
+  const ctx: Context = {
+    configDir,
+    env: {},
+    interactive: false,
+    out: (t) => out.push(t),
+    err: (t) => notes.push(t),
+    fetch: apiFetch,
+  };
   const program = createProgram(ctx);
   // Throw instead of exiting on usage errors; these settings don't propagate to existing subcommands.
   const quiet = (c: Command) => {
@@ -2417,7 +2428,7 @@ describe("threads", () => {
       await run("bots", "run", "--no-tui", "--org", shared);
       const first = await saved();
       expect(first.org).toBe(shared);
-      expect((await client.listRunners()).map((r) => [r.id, r.org])).toEqual([[first.id, shared]]);
+      expect((await client.listRunners(shared)).map((r) => [r.id, r.org])).toEqual([[first.id, shared]]);
 
       // Later runs in the same config dir don't ask again.
       await run("bots", "run", "--no-tui");
@@ -2428,12 +2439,36 @@ describe("threads", () => {
       await run("bots", "run", "--no-tui", "--org", personal);
       const second = await saved();
       expect(second.id).not.toBe(first.id);
-      expect((await client.listRunners()).map((r) => [r.id, r.org]).sort()).toEqual(
-        [
-          [first.id, shared],
-          [second.id, personal],
-        ].sort(),
-      );
+      expect((await client.listRunners(shared)).map((r) => [r.id, r.org])).toEqual([[first.id, shared]]);
+      expect((await client.listRunners(personal)).map((r) => [r.id, r.org])).toEqual([[second.id, personal]]);
+    });
+
+    it("lists in the org `orgs use` chose, says so, and lets --org override it", async () => {
+      const { client, personal, shared } = await inTwoOrgs();
+      for (const org of [personal, shared]) await client.createInbox({ org, name: `in-${org}`, source_type: "github" });
+      await expect(run("inbox", "list")).rejects.toThrow(/orgs use/);
+
+      expect(await run("orgs", "use", shared)).toMatch(new RegExp(shared));
+      expect(await run("orgs", "use")).toMatch(new RegExp(shared));
+      const listed = await run("inbox", "list");
+      expect(listed).toMatch(`in-${shared}`);
+      expect(listed).not.toMatch(`in-${personal}`);
+      expect(notes.join("\n")).toMatch(new RegExp(`org: ${shared}.*orgs use`));
+
+      expect(await run("inbox", "list", "--org", personal)).toMatch(`in-${personal}`);
+      expect(notes.join("\n")).toBe(`org: ${personal}`);
+
+      // Names are looked up in that org too.
+      expect(await run("inbox", "show", `in-${shared}`)).toMatch(`in-${shared}`);
+      await expect(run("inbox", "show", `in-${personal}`)).rejects.toThrow(/No inbox/);
+
+      await run("orgs", "use", "--clear");
+      await expect(run("inbox", "list")).rejects.toThrow(/several orgs/);
+    });
+
+    it("won't use an org the user isn't in", async () => {
+      await inTwoOrgs();
+      await expect(run("orgs", "use", "no-such-org")).rejects.toThrow(/aren't in an org/);
     });
 
     it("finds bots in one org: --org, else the saved runner org, else it asks", async () => {

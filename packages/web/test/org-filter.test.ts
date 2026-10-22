@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { call, db, newUser } from "./helpers.js";
 
-// `?org=<slug>` narrows the list endpoints an org's pages use to that org; a slug the caller isn't in is a 404.
+// `?org=<slug>` scopes the list endpoints to that org and is required; a slug the caller isn't in is a 404.
 
 async function sharedOrg(...keys: string[]) {
   const id = randomUUID();
@@ -24,7 +24,7 @@ const personal = async (key: string) =>
 const LISTS = ["/inboxes", "/bots", "/runners", "/events", "/inboxes/activity", "/bots/activity"];
 
 describe("the org filter on list endpoints", () => {
-  it("shows only the named org's inboxes and bots, and everything without it", async () => {
+  it("shows only the named org's inboxes and bots", async () => {
     const key = await newUser();
     const team = await sharedOrg(key);
     const mine = await personal(key);
@@ -43,13 +43,20 @@ describe("the org filter on list endpoints", () => {
 
     expect(await ids(`/inboxes?org=${team.slug}`)).toEqual([inTeam.id]);
     expect(await ids(`/inboxes?org=${mine}`)).toEqual([inMine.id]);
-    expect(await ids("/inboxes")).toEqual([inTeam.id, inMine.id].sort());
     expect(await ids(`/bots?org=${team.slug}`)).toEqual([botTeam.id]);
     expect(await ids(`/bots?org=${mine}`)).toEqual([botMine.id]);
-    expect(await ids("/bots")).toEqual([botTeam.id, botMine.id].sort());
     expect(await ids(`/inboxes/activity?org=${team.slug}`)).toEqual([inTeam.id]);
     expect(await ids(`/bots/activity?org=${mine}`)).toEqual([botMine.id]);
     for (const path of LISTS) expect((await call("GET", `${path}?org=${mine}`, { key })).status, path).toBe(200);
+  });
+
+  it("answers 400 org_required without an org, so no list mixes orgs", async () => {
+    const key = await newUser();
+    for (const path of LISTS) {
+      const r = await call("GET", path, { key, noOrg: true });
+      expect([r.status, r.body.error.code], path).toEqual([400, "org_required"]);
+      expect((await call("GET", `${path}?org=`, { key, noOrg: true })).status, path).toBe(400);
+    }
   });
 
   it("answers 404 for an org the caller isn't in, the same as for one that doesn't exist", async () => {

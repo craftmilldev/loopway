@@ -14,6 +14,7 @@ const ctx = {
   env: process.env,
   interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
   out: (text: string) => process.stdout.write(text + "\n"),
+  err: (text: string) => process.stderr.write(text + "\n"),
   metrics,
 };
 const program = createProgram(ctx);

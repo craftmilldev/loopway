@@ -40,6 +40,7 @@ loopway whoami
 loopway clear-config                   # deletes ~/.loopway/config.json
 
 loopway orgs                           # your orgs
+loopway orgs use <slug>                # the org commands work in without --org (each prints which one it used)
 loopway orgs members <slug>            # members and pending emails
 loopway orgs create <slug> [--name <name>] # a shared org, with you as its only member
 loopway orgs add-member <slug> <email> # no account yet? they join the first time they log in

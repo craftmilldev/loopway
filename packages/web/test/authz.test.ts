@@ -170,6 +170,7 @@ describe("ownership", () => {
     const ownerOrg = await personalOrg(owner);
     await db.query(`UPDATE loopway.orgs SET personal_user_id = NULL WHERE id = $1`, [ownerOrg]);
     await join(member, ownerOrg);
+    const ownerSlug = await slugOf(ownerOrg);
     for (const [method, path, body] of attempts) {
       if (method === "DELETE" || path.endsWith("/release") || path.endsWith("/end")) continue;
       const res = await call(method, path, { key: member, body });
@@ -177,13 +178,17 @@ describe("ownership", () => {
       expect(res.status, `member ${method} ${path}`).toBeLessThan(500);
     }
     for (const list of ["/inboxes", "/bots", "/runners"]) {
-      const ids = ((await call("GET", list, { key: member })).body.data as { id: string }[]).map((r) => r.id);
+      const ids = ((await call("GET", `${list}?org=${ownerSlug}`, { key: member })).body.data as { id: string }[]).map(
+        (r) => r.id,
+      );
       expect(ids.length, list).toBeGreaterThan(0);
     }
-    const memberActivity = (await call("GET", "/bots/activity", { key: member })).body.data as { bot_id: string }[];
+    const memberActivity = (await call("GET", `/bots/activity?org=${ownerSlug}`, { key: member })).body.data as {
+      bot_id: string;
+    }[];
     expect(memberActivity.map((a) => a.bot_id)).toContain(bot.id);
     expect((await call("GET", `/inboxes/${inbox.id}/activity`, { key: member })).status).toBe(200);
-    expect((await call("GET", "/events", { key: member })).body.data.length).toBeGreaterThan(0);
+    expect((await call("GET", `/events?org=${ownerSlug}`, { key: member })).body.data.length).toBeGreaterThan(0);
     expect((await call("DELETE", b, { key: member })).status).toBe(204);
   });
 
@@ -191,6 +196,7 @@ describe("ownership", () => {
     const a = await newUser("a");
     const b = await newUser("b");
     const shared = await newOrg();
+    const sharedSlug = await slugOf(shared);
     await join(a, shared);
     await join(b, shared);
     // Fixtures in the shared org, which nothing can create into yet.
@@ -218,10 +224,11 @@ describe("ownership", () => {
     }
     const mine = await newInbox(b);
     expect((await call("GET", `/inboxes/${mine.id}`, { key: b })).body.org_id).toBe(await personalOrg(b));
-    const ids = ((await call("GET", "/inboxes", { key: b })).body.data as { id: string }[]).map((i) => i.id);
-    expect(ids).toEqual(expect.arrayContaining([inbox.id, mine.id]));
-    const aIds = ((await call("GET", "/inboxes", { key: a })).body.data as { id: string }[]).map((i) => i.id);
-    expect(aIds).not.toContain(mine.id);
+    const list = async (key: string, org: string) =>
+      ((await call("GET", `/inboxes?org=${org}`, { key })).body.data as { id: string }[]).map((i) => i.id);
+    expect(await list(b, sharedSlug)).toEqual([inbox.id]);
+    expect(await list(b, await personalSlug(b))).toEqual([mine.id]);
+    expect(await list(a, await personalSlug(a))).not.toContain(mine.id);
 
     // Tying entities of different orgs together is a 400, not a 500.
     expect((await call("PATCH", `/bots/${bot.id}`, { key: b, body: { inbox_ids: [mine.id] } })).status).toBe(400);
@@ -247,6 +254,13 @@ async function personalOrg(key: string): Promise<string> {
   ]);
   return org!.id;
 }
+
+async function slugOf(orgId: string): Promise<string> {
+  const [org] = await db.query<{ slug: string }>(`SELECT slug FROM loopway.orgs WHERE id = $1`, [orgId]);
+  return org!.slug;
+}
+
+const personalSlug = async (key: string) => slugOf(await personalOrg(key));
 
 async function newOrg(): Promise<string> {
   const id = randomUUID();

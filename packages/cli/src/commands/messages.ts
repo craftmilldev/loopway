@@ -10,11 +10,12 @@ interface JsonOpt {
 export async function listMessages(
   ctx: Context,
   inboxRef: string,
-  opts: ListMessagesQuery & JsonOpt & { all?: boolean },
+  opts: ListMessagesQuery & JsonOpt & { all?: boolean; org?: string },
 ) {
   const client = await authedClient(ctx);
-  const inboxId = await resolveInbox(client, inboxRef);
+  const inboxId = await resolveInbox(ctx, client, inboxRef, opts.org);
   const { json: asJson, all, ...query } = opts;
+  delete query.org;
 
   let page = await client.listMessages(inboxId, query);
   const messages = [...page.data];
@@ -38,10 +39,10 @@ export async function getMessage(
   ctx: Context,
   inboxRef: string,
   messageId: string,
-  opts: JsonOpt & { data?: boolean },
+  opts: JsonOpt & { data?: boolean; org?: string },
 ) {
   const client = await authedClient(ctx);
-  const e = await client.getMessage(await resolveInbox(client, inboxRef), messageId);
+  const e = await client.getMessage(await resolveInbox(ctx, client, inboxRef, opts.org), messageId);
   if (opts.data) return ctx.out(json(e.event.data ?? null));
   if (opts.json) return ctx.out(json(e));
   ctx.out(`${describe(e)}\n\n${json(e.event.data ?? null)}`);

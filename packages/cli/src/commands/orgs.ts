@@ -3,22 +3,69 @@ import type { LoopwayClient } from "../client.js";
 import { ApiError } from "../client.js";
 import { authedClient, CancelledError, UsageError, type Context } from "../context.js";
 import { bold, dim, json, table } from "../format.js";
+import { readSavedOrg, writeSavedOrg } from "../config.js";
 import { savedRunnerOrg } from "../bots/runner.js";
 import { USERNAME_ERRORS } from "./auth.js";
 
+export type OrgKind = "inbox" | "bot" | "runner" | "bots";
+
+/** How an org was chosen, so the note under it can say how to choose another. */
+type OrgSource = "flag" | "use" | "runner" | "only" | "picked";
+
+const noted = new WeakMap<Context, Set<string>>();
+
+/** Tells the user, once per command, which org the command is using and how to switch. */
+function noteOrg(ctx: Context, slug: string, source: OrgSource) {
+  const seen = noted.get(ctx) ?? new Set<string>();
+  noted.set(ctx, seen);
+  if (seen.has(slug)) return;
+  seen.add(slug);
+  const how =
+    source === "use"
+      ? `the org you chose with \`loopway orgs use\``
+      : source === "runner"
+        ? "the org this machine runs bots for"
+        : source === "only"
+          ? "your only org"
+          : source === "picked"
+            ? "the org you picked"
+            : undefined;
+  const line = how ? `org: ${slug} (${how}; switch with --org <slug> or \`loopway orgs use <slug>\`)` : `org: ${slug}`;
+  (ctx.err ?? ((t: string) => process.stderr.write(t + "\n")))(dim(line));
+}
+
 /**
- * The slug of the org to create in: `--org` if given. Otherwise the user's only org, or in a terminal a pick from
- * their orgs. With several orgs and no terminal there is no safe default, so it names the slugs and the flag.
+ * The slug of the org a command works in: `--org` if given, else the one `loopway orgs use` saved, else (for
+ * `runner` and `bots`) the one this machine runs bots for, if the user is still in it. Otherwise the user's only
+ * org, or in a terminal a pick from their orgs. With several orgs and no terminal there is no safe default, so it
+ * names the slugs and the flag. Says which org it settled on, on stderr.
  */
 export async function resolveOrg(
   ctx: Context,
   client: LoopwayClient,
   flag: string | undefined,
-  kind: "inbox" | "bot" | "runner" | "bots",
+  kind: OrgKind,
 ): Promise<string> {
-  if (flag) return flag;
+  if (flag) {
+    noteOrg(ctx, flag, "flag");
+    return flag;
+  }
   const orgs = await client.listOrgs();
-  if (orgs.length === 1) return orgs[0]!.slug;
+  const member = (slug: string | undefined) => (slug && orgs.some((o) => o.slug === slug) ? slug : undefined);
+  const used = member(await readSavedOrg(ctx.configDir));
+  if (used) {
+    noteOrg(ctx, used, "use");
+    return used;
+  }
+  const runner = kind === "runner" || kind === "bots" ? member(await savedRunnerOrg(ctx.configDir)) : undefined;
+  if (runner) {
+    noteOrg(ctx, runner, "runner");
+    return runner;
+  }
+  if (orgs.length === 1) {
+    noteOrg(ctx, orgs[0]!.slug, "only");
+    return orgs[0]!.slug;
+  }
   if (!orgs.length) throw new UsageError("You don't belong to any org yet. Choose a username with `loopway username`.");
   if (!ctx.interactive) {
     await ctx.metrics?.capture("org_unresolved", { kind, reason: "several_orgs_non_interactive" });
@@ -28,8 +75,8 @@ export async function resolveOrg(
           ? "the org to run bots for"
           : kind === "bots"
             ? "whose bots to use"
-            : `where to create the ${kind}`
-      }.`,
+            : `where to use the ${kind}`
+      }, or run \`loopway orgs use <slug>\` once.`,
     );
   }
   const picked = await p.select({
@@ -46,20 +93,46 @@ export async function resolveOrg(
     p.cancel(kind === "runner" ? "Not running." : kind === "bots" ? "Cancelled." : `No ${kind} created.`);
     throw new CancelledError();
   }
+  noteOrg(ctx, picked, "picked");
   return picked;
 }
 
-/** The org to use: `flag`, else the one this machine's runner was started for (if the user is still in it), else a pick. */
-export async function defaultOrg(
-  ctx: Context,
-  client: LoopwayClient,
-  flag: string | undefined,
-  kind: "runner" | "bots",
-): Promise<string> {
+/**
+ * The org a command can tell without asking: `--org`, the one `orgs use` saved, or the user's only org. For looking
+ * up names to show next to ids, where being unsure should show the ids rather than stop the command.
+ */
+export async function orgIfKnown(ctx: Context, client: LoopwayClient, flag: string | undefined) {
   if (flag) return flag;
-  const saved = await savedRunnerOrg(ctx.configDir);
-  const member = saved && (await client.listOrgs()).some((o) => o.slug === saved);
-  return resolveOrg(ctx, client, member ? saved : undefined, kind);
+  const orgs = await client.listOrgs();
+  const used = await readSavedOrg(ctx.configDir);
+  if (used && orgs.some((o) => o.slug === used)) return used;
+  return orgs.length === 1 ? orgs[0]!.slug : undefined;
+}
+
+/** `loopway orgs use [slug]`: the org commands work in when `--org` isn't given. Without a slug, says which it is. */
+export async function useOrg(ctx: Context, slug: string | undefined, opts: { clear?: boolean }) {
+  if (opts.clear) {
+    await writeSavedOrg(ctx.configDir, undefined);
+    await ctx.metrics?.capture("org_use_cleared", {});
+    return ctx.out("Cleared. Commands go back to your only org, or ask when you have several.");
+  }
+  if (!slug) {
+    const saved = await readSavedOrg(ctx.configDir);
+    return ctx.out(
+      saved
+        ? `Commands use ${bold(saved)}. Switch with \`loopway orgs use <slug>\`.`
+        : "No org chosen. Pick one with `loopway orgs use <slug>`.",
+    );
+  }
+  const orgs = await (await authedClient(ctx)).listOrgs();
+  const org = orgs.find((o) => o.slug === slug.trim().toLowerCase());
+  if (!org) {
+    await ctx.metrics?.capture("org_use_rejected", { reason: "not_a_member" });
+    throw new UsageError(`You aren't in an org called "${slug}". Yours: ${orgs.map((o) => o.slug).join(", ")}.`);
+  }
+  await writeSavedOrg(ctx.configDir, org.slug);
+  await ctx.metrics?.capture("org_use_saved", { personal: org.personal });
+  ctx.out(`Commands now use ${bold(org.slug)} unless you pass --org.`);
 }
 
 export async function listOrgs(ctx: Context, opts: { json?: boolean }) {
