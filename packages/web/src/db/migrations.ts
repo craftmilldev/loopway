@@ -627,11 +627,18 @@ ALTER TABLE loopway.orgs ADD COLUMN celebrated_at timestamptz;
 `,
   },
   {
+    // What a thread's session records about itself (see the record tool): a JSON object of keys to values.
+    version: "031_thread_metadata",
+    sql: `
+ALTER TABLE loopway.threads ADD COLUMN metadata jsonb NOT NULL DEFAULT '{}'::jsonb;
+`,
+  },
+  {
     // bot_inboxes, thread_subjects and thread_messages had no column to read "what changed since" from, so anything
     // copying them out had to re-read every row. Each now has a timestamp that only moves forward (created_at on
     // bot_inboxes, whose rows are only added or removed; updated_at on the other two, kept by a trigger so every
     // writer is covered), with an index to range-scan it. Existing rows start from the nearest time we know.
-    version: "031_join_table_timestamps",
+    version: "032_join_table_timestamps",
     sql: `
 ALTER TABLE loopway.bot_inboxes
   ADD COLUMN created_at timestamptz;

@@ -141,14 +141,14 @@ export default async function plugin(bb: BbPluginApi) {
     const client = await authedClient(ctx);
     const org = await pickOrg(client, s.org);
     const runner = await ensureRunner(ctx, client, org, `${hostname()} (bb)`);
-    const all = (await client.listBots()).filter((b) => b.org_id === runner.org_id);
+    const all = await client.listBots(runner.org);
     const bots = all.filter((b) => b.prompt_version?.rules);
 
     const sessions = new BbSessions({
       threads: bb.sdk.threads,
       kv: bb.storage.kv,
       projectId: s.project,
-      describe: (id) => describe(client, id),
+      describe: (id) => describe(client, runner.org, id),
       log: (text) => note(text),
       signal: stop,
     });
@@ -158,6 +158,7 @@ export default async function plugin(bb: BbPluginApi) {
       interval,
       ttl: ttlFor(interval),
       runnerId: runner.id,
+      org: runner.org,
       seen: all.map((b) => b.id),
       leaseBots: s.leaseBots,
     });
@@ -358,8 +359,12 @@ async function pickOrg(client: LoopwayClient, setting: string): Promise<string> 
 }
 
 /** The bot prompt and a title for a loopway thread, from the bot that owns it. */
-async function describe(client: LoopwayClient, loopwayThreadId: string): Promise<LoopwayThreadInfo | undefined> {
-  for (const bot of await client.listBots()) {
+async function describe(
+  client: LoopwayClient,
+  org: string,
+  loopwayThreadId: string,
+): Promise<LoopwayThreadInfo | undefined> {
+  for (const bot of await client.listBots(org)) {
     const thread = (await client.listThreads(bot.id, "all")).find((t) => t.id === loopwayThreadId);
     if (!thread) continue;
     return {

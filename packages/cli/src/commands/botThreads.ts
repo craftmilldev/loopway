@@ -1,13 +1,13 @@
 import { ApiError, type LoopwayClient } from "../client.js";
 import { authedClient, type Context } from "../context.js";
 import { dim, json, table } from "../format.js";
-import { resolveBot } from "./bots.js";
+import { resolveBot, type OrgOpt } from "./bots.js";
 
 /** `loopway bots threads <bot>`: the threads the server has for a bot. */
-export async function listBotThreads(ctx: Context, ref: string, opts: { status?: string; json?: boolean }) {
+export async function listBotThreads(ctx: Context, ref: string, opts: OrgOpt & { status?: string; json?: boolean }) {
   const client = await authedClient(ctx);
   const status = (opts.status ?? "active") as "active" | "ended" | "all";
-  const threads = await client.listThreads(await resolveBot(client, ref), status);
+  const threads = await client.listThreads(await resolveBot(ctx, client, ref, opts.org), status);
   if (opts.json) return ctx.out(json(threads));
   if (!threads.length) return ctx.out(status === "all" ? "No threads." : `No ${status} threads.`);
   const names = new Map((await client.listRunners()).map((r) => [r.id, r.name]));
@@ -27,13 +27,30 @@ export async function listBotThreads(ctx: Context, ref: string, opts: { status?:
   );
 }
 
+/** `loopway bots threads show <bot> <thread>`: one thread, with the metadata its session recorded. */
+export async function showBotThread(ctx: Context, ref: string, thread: string, opts: { json?: boolean }) {
+  const client = await authedClient(ctx);
+  const botId = await resolveBot(client, ref);
+  const t = await client.getThread(botId, (await threadFinder(client, botId))(thread));
+  if (opts.json) return ctx.out(json(t));
+  const metadata = Object.entries(t.metadata ?? {});
+  ctx.out(
+    [
+      `Thread ${t.id} (${t.status})`,
+      `Subjects: ${t.subjects.join(", ") || dim("none")}`,
+      `Metadata:${metadata.length ? "" : ` ${dim("none")}`}`,
+      ...metadata.map(([k, v]) => `  ${k}: ${JSON.stringify(v)}`),
+    ].join("\n"),
+  );
+}
+
 /**
  * `loopway bots threads release <bot> <thread>`: the manual move for a thread whose runner is gone. The thread has
  * no owner afterwards, so a runner can claim it.
  */
-export async function releaseBotThread(ctx: Context, ref: string, threadId: string) {
+export async function releaseBotThread(ctx: Context, ref: string, threadId: string, opts: OrgOpt) {
   const client = await authedClient(ctx);
-  const thread = await client.releaseThread(await resolveBot(client, ref), threadId);
+  const thread = await client.releaseThread(await resolveBot(ctx, client, ref, opts.org), threadId);
   ctx.out(`Released thread ${thread.id}; a runner can claim it now.`);
 }
 
@@ -41,11 +58,11 @@ export async function releaseBotThread(ctx: Context, ref: string, threadId: stri
  * `loopway bots threads end <bot> <thread>`: ends a thread from the terminal, with no lease. Its waiting and inflight
  * messages stay as they are and the runner keeps its claim; the next message for the thread resumes it.
  */
-export async function endBotThread(ctx: Context, ref: string, threadId: string, opts: { json?: boolean }) {
+export async function endBotThread(ctx: Context, ref: string, threadId: string, opts: OrgOpt & { json?: boolean }) {
   const client = await authedClient(ctx);
   let thread;
   try {
-    thread = await client.endThread(await resolveBot(client, ref), threadId);
+    thread = await client.endThread(await resolveBot(ctx, client, ref, opts.org), threadId);
   } catch (err) {
     const reason = err instanceof ApiError ? err.code : "error";
     void ctx.metrics?.capture("thread_end_failed", { surface: "cli", reason });
@@ -60,9 +77,16 @@ export async function endBotThread(ctx: Context, ref: string, threadId: string, 
  * `loopway bots threads move <bot> <subject> <from-thread> <to-thread>`: the repair for a subject on the wrong thread.
  * The threads may be the start of their ids. The subject's waiting messages go with it; a target that ended resumes.
  */
-export async function moveBotSubject(ctx: Context, ref: string, subject: string, from: string, to: string) {
+export async function moveBotSubject(
+  ctx: Context,
+  ref: string,
+  subject: string,
+  from: string,
+  to: string,
+  opts: OrgOpt,
+) {
   const client = await authedClient(ctx);
-  const botId = await resolveBot(client, ref);
+  const botId = await resolveBot(ctx, client, ref, opts.org);
   const find = await threadFinder(client, botId);
   const thread = await client.moveSubject(botId, subject, find(from), find(to));
   ctx.out(`Moved ${subject} to thread ${thread.id} (${thread.status}).`);
@@ -83,9 +107,9 @@ async function threadFinder(client: LoopwayClient, botId: string) {
  * `loopway bots threads send <bot> <thread> <text...>`: sends a message to the thread. It goes through the bot's inbox,
  * so the bot's runner hands it to the thread's session like any other message.
  */
-export async function sendBotThreadMessage(ctx: Context, ref: string, thread: string, words: string[]) {
+export async function sendBotThreadMessage(ctx: Context, ref: string, thread: string, words: string[], opts: OrgOpt) {
   const client = await authedClient(ctx);
-  const botId = await resolveBot(client, ref);
+  const botId = await resolveBot(ctx, client, ref, opts.org);
   const threadId = (await threadFinder(client, botId))(thread);
   try {
     await client.sendThreadMessage(botId, threadId, words.join(" "));
