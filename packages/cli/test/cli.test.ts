@@ -2157,6 +2157,38 @@ describe("threads", () => {
     await finish();
   });
 
+  it.each([
+    ["Claude", '{"type":"result","subtype":"success"}', 0],
+    ["Codex", '{"type":"turn.completed","usage":{}}', 0],
+    ["unfinished Codex", '{"type":"turn.started"}', 1],
+  ])("after a restart, a %s run that ended %s resumes %i time(s)", async (_name, last, resumed) => {
+    const { inbox, runs, bot, client, d, finish } = await setup(3);
+    await send(inbox, "issues", issue("opened", 7));
+    await d.tick();
+    const id = runs[0]!.sessionId;
+    const runnerId = (await runJson("runners"))[0].id;
+    await finish();
+    await mkdir(join(configDir, "threads"), { recursive: true });
+    await writeFile(join(configDir, "threads", `${id}.log`), `{"type":"thread.started"}\n${last}\n`);
+    await run("bots", "release", bot.id, "--force");
+    await client.forceReleaseRunner(runnerId);
+
+    const runs2: AgentRun[] = [];
+    const ctx: Context = {
+      configDir,
+      env: {},
+      interactive: false,
+      out: () => {},
+      fetch: apiFetch,
+      runAgent: async (r) => (runs2.push(r), { code: 0, delivered: true }),
+    };
+    const d2 = await Dispatcher.start(ctx, client, [bot], { max: 3, ttl: 60, runnerId });
+    closers.push(() => d2.close());
+    await d2.tick();
+    await d2.idle();
+    expect(runs2).toHaveLength(resumed);
+  });
+
   it("serves a link tool that routes a PR's messages to the session", async () => {
     const { inbox, runs, d, finish } = await setup(3);
     await send(inbox, "issues", issue("opened", 5));

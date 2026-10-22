@@ -516,7 +516,8 @@ export class Dispatcher {
       // A script that died before writing anything leaves no transcript, but its messages are still inflight.
       if (!log && !inflight) continue;
       const last = log.trimEnd().split("\n").at(-1) ?? "";
-      const cutOff = !last.includes('"type":"result"');
+      // Claude Code ends a finished run with a `result` record, Codex with `turn.completed`.
+      const cutOff = !last.includes('"type":"result"') && !last.includes('"type":"turn.completed"');
       const started = !t.started && log.includes('"subtype":"init"');
       if (!started && !(cutOff && (inflight || !t.waiting.length))) continue;
       const patch: ThreadPatch = {};
