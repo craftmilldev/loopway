@@ -373,7 +373,7 @@ export class Dispatcher {
   async state(): Promise<DispatcherState> {
     const threads: Record<string, Thread> = {};
     for (const bot of this.bots) for (const t of await this.client.listThreads(bot.id, "all")) threads[t.id] = t;
-    const all = await this.client.listRunners();
+    const all = await this.client.listRunners(this.org);
     const runners = Object.fromEntries(all.map((r) => [r.id, r.name]));
     const names = new Map(this.bots.map((b) => [b.id, b.name]));
     const waiting = Object.values(threads)

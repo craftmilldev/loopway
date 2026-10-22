@@ -7,7 +7,7 @@ import { authedClient, type Context } from "../context.js";
 import { DEFAULTS, Dispatcher, MAX_POLL_INTERVAL, type ThreadsOptions } from "../bots/dispatcher.js";
 import { ensureRunner } from "../bots/runner.js";
 import { loadWorkdirs, WORKDIRS_FILE } from "../bots/workdirs.js";
-import { defaultOrg } from "./orgs.js";
+import { resolveOrg } from "./orgs.js";
 import { ManagerChat, MANAGER_MCP_TOOLS } from "../bots/chat.js";
 import { startMcpServer } from "../mcp.js";
 import { sessionTools } from "../bots/tools.js";
@@ -25,7 +25,7 @@ export interface RunBotsOptions extends ThreadsOptions {
 /** `loopway bots run`: run every bot of one org, handing each message to its thread's session, forever. */
 export async function runBots(ctx: Context, opts: RunBotsOptions) {
   const client = await authedClient(ctx);
-  const runner = await ensureRunner(ctx, client, await defaultOrg(ctx, client, opts.org, "runner"));
+  const runner = await ensureRunner(ctx, client, await resolveOrg(ctx, client, opts.org, "runner"));
   const all = await client.listBots(runner.org);
   const bots = all.filter((b) => b.prompt_version?.rules);
   for (const b of all)

@@ -2,6 +2,7 @@ import { ApiError, type LoopwayClient } from "../client.js";
 import { authedClient, type Context } from "../context.js";
 import { dim, json, table } from "../format.js";
 import { resolveBot, type OrgOpt } from "./bots.js";
+import { resolveOrg } from "./orgs.js";
 
 /** `loopway bots threads <bot>`: the threads the server has for a bot. */
 export async function listBotThreads(ctx: Context, ref: string, opts: OrgOpt & { status?: string; json?: boolean }) {
@@ -10,7 +11,9 @@ export async function listBotThreads(ctx: Context, ref: string, opts: OrgOpt & {
   const threads = await client.listThreads(await resolveBot(ctx, client, ref, opts.org), status);
   if (opts.json) return ctx.out(json(threads));
   if (!threads.length) return ctx.out(status === "all" ? "No threads." : `No ${status} threads.`);
-  const names = new Map((await client.listRunners()).map((r) => [r.id, r.name]));
+  const names = new Map(
+    (await client.listRunners(await resolveOrg(ctx, client, opts.org, "bots"))).map((r) => [r.id, r.name]),
+  );
   ctx.out(
     table(
       ["ID", "STATUS", "SUBJECTS", "RUNNER", "WAITING", "INFLIGHT", "DELIVERED"],

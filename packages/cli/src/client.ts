@@ -301,8 +301,9 @@ export class LoopwayClient {
 
   // ---------- inboxes ----------
 
-  async listInboxes() {
-    return (await this.request<{ data: Inbox[] }>("GET", "/inboxes")).data;
+  /** The inboxes of one org (by slug). */
+  async listInboxes(org: string) {
+    return (await this.request<{ data: Inbox[] }>("GET", `/inboxes?org=${enc(org)}`)).data;
   }
 
   createInbox(input: { org: string; name: string; source_type: string; config?: unknown }) {
@@ -354,15 +355,16 @@ export class LoopwayClient {
     await this.request("POST", `/runners/${enc(runnerId)}/release`, { force: true });
   }
 
-  async listRunners() {
-    return (await this.request<{ data: Runner[] }>("GET", "/runners")).data;
+  /** The runners of one org (by slug). */
+  async listRunners(org: string) {
+    return (await this.request<{ data: Runner[] }>("GET", `/runners?org=${enc(org)}`)).data;
   }
 
   // ---------- bots ----------
 
   /** The bots of one org (by slug): a runner asks for only the bots it can run. */
   async listBots(org: string) {
-    return (await this.request<{ data: Bot[] }>("GET", `/bots?org=${encodeURIComponent(org)}`)).data;
+    return (await this.request<{ data: Bot[] }>("GET", `/bots?org=${enc(org)}`)).data;
   }
 
   createBot(input: {

@@ -177,7 +177,7 @@ describe("a runner's org", () => {
     const made = await call("POST", "/runners", { key, body: { org: shared, id: randomUUID(), name: "x" } });
     expect(made.status).toBe(200);
     expect(made.body.org).toBe(shared);
-    expect((await call("GET", "/runners", { key })).body.data[0].org).toBe(shared);
+    expect((await call("GET", `/runners?org=${shared}`, { key })).body.data[0].org).toBe(shared);
   });
 
   it("is kept: the same id in another org is a 409, in its own org it is a rename", async () => {

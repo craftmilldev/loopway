@@ -1,7 +1,7 @@
 import { loadConfig } from "../config.js";
 import { authedClient, UsageError, type Context } from "../context.js";
 import { ago, dim, json, table } from "../format.js";
-import { defaultOrg } from "./orgs.js";
+import { resolveOrg } from "./orgs.js";
 
 /** `loopway chats`: the org's chats with the manager, each recorded as a manager thread with the label of what it did. */
 export async function listChats(ctx: Context, opts: { org?: string; json?: boolean }) {
@@ -12,7 +12,7 @@ export async function listChats(ctx: Context, opts: { org?: string; json?: boole
     );
   }
   const client = await authedClient(ctx);
-  const chats = await client.listManagerThreads(await defaultOrg(ctx, client, opts.org, "bots"));
+  const chats = await client.listManagerThreads(await resolveOrg(ctx, client, opts.org, "bots"));
   await ctx.metrics?.capture("chats_listed", { count: chats.length, json: !!opts.json });
   if (opts.json) return ctx.out(json(chats));
   if (!chats.length) return ctx.out("No chats yet. Start one in the Chat view of `loopway bots run`.");

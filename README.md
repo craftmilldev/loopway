@@ -40,6 +40,7 @@ loopway whoami
 loopway clear-config                   # deletes ~/.loopway/config.json
 
 loopway orgs                           # your orgs
+loopway orgs use <slug>                # the org commands work in without --org (each prints which one it used)
 loopway orgs members <slug>            # members and pending emails
 loopway orgs create <slug> [--name <name>] # a shared org, with you as its only member
 loopway orgs add-member <slug> <email> # no account yet? they join the first time they log in
@@ -66,7 +67,7 @@ loopway bots threads <bot> [--status active|ended|all]   # the threads the serve
 loopway bots threads release <bot> <thread>         # give up a thread whose runner is gone, so another can claim it
 loopway bots threads end <bot> <thread>             # end a thread; its next message resumes it
 loopway runners                                     # the machines running your bots, their orgs, and what each holds
-loopway bots run [--max 3] [--interval 5] [--ttl <seconds>] [--no-tui]   # run your bots (see below)
+loopway bots run --org <slug> [--max 3] [--interval 5] [--ttl <seconds>] [--no-tui]   # run your bots (see below)
 ```
 
 - `<inbox>` is an inbox id or its exact name; `<bot>` is a bot id or its exact name.
@@ -79,12 +80,12 @@ loopway bots run [--max 3] [--interval 5] [--ttl <seconds>] [--no-tui]   # run y
 ### Running bots
 
 ```bash
-loopway bots run [--max 3] [--interval 5] [--ttl <seconds>] [--no-tui]   # run your bots (q or Ctrl-C to stop)
+loopway bots run --org <slug> [--max 3] [--interval 5] [--ttl <seconds>] [--no-tui]   # run your bots (q or Ctrl-C to stop)
 ```
 
 `loopway bots run` runs every bot on your account that has a prompt and rules, in the current directory or the directory `loopway.json` gives it (see **Working directories** below). With no bots, it says how to create one and exits (with the manager on, it opens in the Chat view below instead). One process runs all your bots, and `--max` is shared across them, since it caps the load on this machine.
 
-**Org.** A runner belongs to one org and only runs that org's bots. `loopway bots run --org <slug>` picks it; without the flag your only org is used, or you're asked to choose between several (non-interactively it fails and lists the slugs). The choice is saved with the runner in `~/.loopway/runner.json`, so later runs in that directory don't ask. A runner never moves: `--org` with another org starts a new runner for it. A `runner.json` from before orgs has no org saved yet; if its runner belongs to a different org than the one chosen, `bots run` says which, and that deleting `runner.json` starts a new runner.
+**Org.** A runner belongs to one org and only runs that org's bots. `loopway bots run --org <slug>` picks it; without the flag the org this machine's runner is registered for is used, else the one `loopway orgs use` chose, else your only org, or you're asked to choose between several (non-interactively it fails and lists the slugs). The choice is saved with the runner in `~/.loopway/runner.json`, so later runs in that directory don't ask. A runner never moves: `--org` with another org starts a new runner for it. A `runner.json` from before orgs has no org saved yet; if its runner belongs to a different org than the one chosen, `bots run` says which, and that deleting `runner.json` starts a new runner.
 
 In a terminal, `loopway bots run` takes over the screen. The header names the bots this runner holds, and any it skipped because another runner holds their lease. Below are four lists: waiting messages (assigned to one of this runner's threads but not delivered yet), working threads (a run in flight), waiting threads (active, waiting for their next message) and done threads (ended, newest first). Threads owned by another runner are listed too, marked "on <runner>"; their sessions live on that machine, so this runner leaves them alone. ↑/↓ moves between sessions, Tab/Shift-Tab jumps between lists, and Enter or → opens a session's transcript, which follows new output until you scroll up (↑/↓, PgUp/PgDn, Home/End). ← goes back to the lists. The dispatcher's latest log line shows at the bottom. Quitting stops the dispatcher and its sessions, as Ctrl-C does. `--no-tui`, or output that isn't a terminal, prints the plain log instead.
 

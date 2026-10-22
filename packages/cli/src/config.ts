@@ -17,6 +17,8 @@ export interface Config {
   auto_update?: boolean;
   /** The opt-in manager bot. Off unless `enabled` is true. */
   manager?: ManagerSettings;
+  /** The org commands use when `--org` isn't given. Set by `loopway orgs use`; `login` keeps it. */
+  org?: string;
 }
 
 /** What the manager bot runs on; the harness defaults to DEFAULT_MANAGER_HARNESS. */
@@ -127,6 +129,21 @@ function readManager(raw: ManagerSettings): ManagerSettings {
     harness: typeof raw.harness === "string" && raw.harness ? raw.harness : undefined,
     model: typeof raw.model === "string" && raw.model ? raw.model : undefined,
   };
+}
+
+/** The org `loopway orgs use` saved, if any. */
+export async function readSavedOrg(dir: string): Promise<string | undefined> {
+  const raw = await readJson(configPath(dir));
+  const org = raw && typeof raw === "object" ? (raw as Partial<Config>).org : undefined;
+  return typeof org === "string" && org ? org : undefined;
+}
+
+/** Saves (or with undefined, forgets) the org commands default to, keeping the rest of config.json. */
+export async function writeSavedOrg(dir: string, org: string | undefined): Promise<void> {
+  const existing = await readJson(configPath(dir));
+  const rest = { ...(existing && typeof existing === "object" ? existing : {}) } as Record<string, unknown>;
+  delete rest.org;
+  await writeJson(configPath(dir), org ? { ...rest, org } : rest);
 }
 
 /** Just config.json's `manager`, without env or defaults. */

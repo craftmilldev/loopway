@@ -12,6 +12,8 @@ export interface Context {
   interactive: boolean;
   /** Writes one chunk of command output to stdout. */
   out: (text: string) => void;
+  /** Writes one line to stderr: notes about what a command is doing that shouldn't end up in piped output. */
+  err?: (text: string) => void;
   fetch?: typeof fetch;
   /** Runs one `loopway bots run` agent turn; defaults to headless `claude -p`. */
   runAgent?: (run: AgentRun) => Promise<RunOutcome>;

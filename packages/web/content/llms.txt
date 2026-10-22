@@ -43,6 +43,7 @@ Core commands:
 ```
 loopway orgs                                  # your orgs
 loopway orgs create <slug>                    # a shared org
+loopway orgs use <slug>                       # the org commands work in without --org
 loopway orgs add-member <slug> <email>
 
 loopway inbox create --name <n> --source github --events issues,pull_request --secret <s> [--org <slug>]
@@ -60,17 +61,17 @@ loopway bots show <bot>
 loopway bots update <bot> [--name n] [--harness h] [--model m] [--inbox a,b]
 loopway bots messages <bot>                   # what the bot would read next
 loopway bots threads <bot>                    # the bot's threads
-loopway bots run [--max 3] [--interval 5]     # run all your bots; loopway.json can give each its own directory
+loopway bots run --org <slug> [--max 3] [--interval 5]     # run all your bots; loopway.json can give each its own directory
 ```
 
-`<inbox>` and `<bot>` are an id or an exact name. Read commands take `--json`. Without a terminal, `inbox create` runs from flags alone, so pass every flag; `bots create` always needs `--name`, `--preset`, `--harness`, `--model` and `--inbox`. For `linear`, `vercel`, `granola` and `resend` inboxes the sender makes the secret: add the webhook in the sender, then give loopway the secret with `loopway inbox update <inbox> --secret <s>`.
+`<inbox>` and `<bot>` are an id or an exact name, looked up in one org: `--org <slug>`, else the one `loopway orgs use` chose, else your only org. Lists work the same way. Commands say which org they used. Read commands take `--json`. Without a terminal, `inbox create` runs from flags alone, so pass every flag; `bots create` always needs `--name`, `--preset`, `--harness`, `--model` and `--inbox`. For `linear`, `vercel`, `granola` and `resend` inboxes the sender makes the secret: add the webhook in the sender, then give loopway the secret with `loopway inbox update <inbox> --secret <s>`.
 
 ## Typical setup
 
 1. `loopway login`
 2. `loopway inbox create` for the source, then add the webhook URL, and the secret `loopway inbox create` printed, in the sender (for GitHub, a repo or org webhook with JSON content type).
 3. `loopway bots create --name <n> --preset github-threads --harness <harness> --model <model> --inbox <inbox>`
-4. Run `loopway bots run`:
+4. Run `loopway bots run --org <slug>` (a runner belongs to one org; `--org` is remembered with it):
    - with one repo, run it in that repo;
    - with several repos, run it from a parent directory with a `loopway.json` that maps each bot to its repo: `{"bots": {"<bot name>": {"cwd": "path/relative/to/here"}}}`.
 

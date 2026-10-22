@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AgentPrompt } from "./agent-prompt.js";
-import { COMMANDS, CopyCommand } from "./runners.js";
+import { commands, CopyCommand } from "./runners.js";
 import { DashLayout, MembersHint } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
@@ -145,7 +145,7 @@ export function ZeroState({ progress }: { progress: SetupProgress }) {
           </div>
           <section className="runner-setup" aria-label="Start a runner">
             <p className="muted">Run these on the machine where your code lives, and leave the last one open.</p>
-            {COMMANDS.map((c) => (
+            {commands(lw.orgSlug()).map((c) => (
               <CopyCommand key={c.key} command={c} from="zero_state" />
             ))}
           </section>

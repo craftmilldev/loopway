@@ -34,7 +34,7 @@ import {
 import { listChats } from "./commands/chats.js";
 import { listRunners } from "./commands/runners.js";
 import { runBots } from "./commands/bots-run.js";
-import { addOrgMember, createOrg, leaveOrg, listOrgs, orgMembers, removeOrgMember } from "./commands/orgs.js";
+import { addOrgMember, createOrg, leaveOrg, listOrgs, orgMembers, removeOrgMember, useOrg } from "./commands/orgs.js";
 import { HARNESSES } from "@loopway/harnesses";
 import type { Context } from "./context.js";
 import { PRESETS } from "@loopway/presets";
@@ -61,6 +61,11 @@ A CLI installed from a release updates itself to the newest one; turn that off w
   });
 
   const jsonOpt = () => new Option("--json", "print raw JSON");
+  const orgOpt = (what: string) =>
+    new Option(
+      "--org <slug>",
+      `org ${what} (the one \`loopway orgs use\` chose, else your only org; prompted for if unsure)`,
+    );
 
   // ---------- auth ----------
 
@@ -167,6 +172,13 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .action((slug, who) => removeOrgMember(ctx, slug, who));
 
   orgs
+    .command("use")
+    .description("choose the org commands work in when --org isn't given (without a slug, shows the current one)")
+    .argument("[slug]", "org slug")
+    .option("--clear", "forget the chosen org")
+    .action((slug, opts) => useOrg(ctx, slug, opts));
+
+  orgs
     .command("leave")
     .description("leave an org (its last member can't)")
     .argument("<slug>", "org slug")
@@ -224,6 +236,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
       "schedule inbox: replace the whole {schedule, messages} config from a JSON file",
       readScheduleConfig,
     )
+    .addOption(orgOpt("the inbox is in, to find it by name"))
     .addOption(jsonOpt())
     .action((ref, opts) => updateInbox(ctx, ref, opts));
 
@@ -231,6 +244,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .command("list")
     .alias("ls")
     .description("list your inboxes")
+    .addOption(orgOpt("whose inboxes to list"))
     .addOption(jsonOpt())
     .action((opts) => listInboxes(ctx, opts));
 
@@ -238,6 +252,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .command("show")
     .description("show an inbox, its webhook setup, and message counts")
     .argument("<inbox>", "inbox id or name")
+    .addOption(orgOpt("the inbox is in, to find it by name"))
     .addOption(jsonOpt())
     .action((ref, opts) => showInbox(ctx, ref, opts));
 
@@ -255,6 +270,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .addOption(new Option("--order <order>", "sort by arrival").choices(["asc", "desc"]))
     .option("--cursor <cursor>", "next_cursor from a previous page")
     .option("--all", "follow cursors and print every page")
+    .addOption(orgOpt("the inbox is in, to find it by name"))
     .addOption(jsonOpt())
     .action((ref, opts) => listMessages(ctx, ref, opts));
 
@@ -265,6 +281,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .argument("<inbox>", "inbox id or name")
     .argument("<message>", "message id")
     .option("--data", "print only the CloudEvent data (the webhook payload) as JSON")
+    .addOption(orgOpt("the inbox is in, to find it by name"))
     .addOption(jsonOpt())
     .action((ref, id, opts) => getMessage(ctx, ref, id, opts));
 
@@ -274,6 +291,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .command("runners")
     .alias("runner")
     .description("list the machines that run your bots, and the bots and threads each holds")
+    .addOption(orgOpt("whose runners to list"))
     .addOption(jsonOpt())
     .action((opts) => listRunners(ctx, opts));
 

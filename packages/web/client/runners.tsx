@@ -14,15 +14,22 @@ const FILTERS: { key: RunnerFilter; label: string }[] = [
   { key: "offline", label: "Offline" },
 ];
 
-export const COMMANDS = [
+/** The commands that start a runner for `org`; `--org` is what ties the runner to this org rather than another. */
+export const commands = (org: string) => [
   { key: "install", text: "curl -fsSL https://loopway.craftmill.dev/install.sh | sh" },
   { key: "login", text: "loopway login" },
-  { key: "run", text: "cd ~/code/your-repo && loopway bots run" },
+  { key: "run", text: `cd ~/code/your-repo && loopway bots run --org ${org}` },
 ];
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : one + "s"}`;
 
-export function CopyCommand({ command, from = "runners" }: { command: (typeof COMMANDS)[number]; from?: string }) {
+export function CopyCommand({
+  command,
+  from = "runners",
+}: {
+  command: ReturnType<typeof commands>[number];
+  from?: string;
+}) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
@@ -52,7 +59,7 @@ export function SetupPanel() {
         Run these on a machine with the repository checked out, and leave the last one open. Each runner holds the bots
         it can reach.
       </p>
-      {COMMANDS.map((c) => (
+      {commands(lw.orgSlug()).map((c) => (
         <CopyCommand key={c.key} command={c} />
       ))}
     </section>

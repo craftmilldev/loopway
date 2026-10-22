@@ -30,24 +30,30 @@ afterAll(() => db.close());
 
 const personalOrgs = new Map<string, string>();
 
+const LISTS = ["/inboxes", "/bots", "/runners", "/events", "/inboxes/activity", "/bots/activity"];
+
 /**
- * Calls the API as `key`. Creating an inbox, bot or runner needs an `org`; unless the body names one (or `noOrg` is set,
- * to test its absence) the caller's personal org is filled in, so tests needn't repeat it.
+ * Calls the API as `key`. Creating an inbox, bot or runner needs an `org`, and so does listing them; unless the body
+ * or query names one (or `noOrg` is set, to test its absence) the caller's personal org is filled in, so tests needn't
+ * repeat it.
  */
 export async function call(method: string, path: string, opts: { key?: string; body?: unknown; noOrg?: boolean } = {}) {
-  if (
-    method === "POST" &&
-    (path === "/inboxes" || path === "/bots" || path === "/runners") &&
+  const [route = "", query = ""] = path.split("?");
+  const named = opts.body && typeof opts.body === "object" && "org" in opts.body;
+  const fill =
     opts.key &&
-    !opts.noOrg
-  ) {
-    const body = opts.body as Record<string, unknown>;
-    if (body && !("org" in body)) {
-      if (!personalOrgs.has(opts.key)) {
-        const orgs = await call("GET", "/orgs", { key: opts.key });
-        personalOrgs.set(opts.key, orgs.body.data.find((o: { personal: boolean }) => o.personal).slug);
-      }
-      opts = { ...opts, body: { ...body, org: personalOrgs.get(opts.key) } };
+    !opts.noOrg &&
+    ((method === "POST" && ["/inboxes", "/bots", "/runners"].includes(path) && !!opts.body && !named) ||
+      (method === "GET" && LISTS.includes(route) && !new URLSearchParams(query).has("org")));
+  if (fill) {
+    if (!personalOrgs.has(opts.key!)) {
+      const orgs = await call("GET", "/orgs", { key: opts.key });
+      personalOrgs.set(opts.key!, orgs.body.data.find((o: { personal: boolean }) => o.personal).slug);
+    }
+    const org = personalOrgs.get(opts.key!)!;
+    if (method === "GET") path += `${query ? "&" : "?"}org=${org}`;
+    else {
+      opts = { ...opts, body: { ...(opts.body as Record<string, unknown>), org } };
     }
   }
   const res = await app.request("/api" + path, {

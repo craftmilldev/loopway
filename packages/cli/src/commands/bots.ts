@@ -6,23 +6,24 @@ import { checkRules, type BotRule } from "@loopway/rules";
 import { PRESETS } from "@loopway/presets";
 import { HARNESSES } from "@loopway/harnesses";
 import { resolveInbox } from "./inboxes.js";
-import { defaultOrg, resolveOrg } from "./orgs.js";
+import { orgIfKnown, resolveOrg } from "./orgs.js";
 
 interface JsonOpt {
   json?: boolean;
 }
 
-/** The org a bot is looked up in by name; see `defaultOrg` for what happens without it. */
+/** The org a bot is looked up in by name; see `resolveOrg` for what happens without it. */
 export interface OrgOpt {
   org?: string;
 }
 
 export async function listBots(ctx: Context, opts: JsonOpt & { org?: string }) {
   const client = await authedClient(ctx);
-  const bots = await client.listBots(await defaultOrg(ctx, client, opts.org, "bots"));
+  const org = await resolveOrg(ctx, client, opts.org, "bots");
+  const bots = await client.listBots(org);
   if (opts.json) return ctx.out(json(bots));
   if (!bots.length) return ctx.out("No bots yet. Create one with `loopway bots create`.");
-  const names = await inboxNames(client);
+  const names = await inboxNames(ctx, client, org);
   ctx.out(
     table(
       ["ID", "NAME", "HARNESS", "MODEL", "INBOXES", "CREATED"],
@@ -45,7 +46,7 @@ export async function showBot(
     return ctx.out(opts.prompt ? version.prompt : json(version.rules ?? []));
   }
   if (opts.json) return ctx.out(json(bot));
-  ctx.out(describe(bot, await inboxNames(client)));
+  ctx.out(describe(bot, await inboxNames(ctx, client, opts.org)));
 }
 
 /** `loopway bots versions <bot>`: every saved version of the bot's prompt and rules, newest first. */
@@ -111,17 +112,18 @@ export async function createBot(
   if (!opts.harness) throw new UsageError(`--harness is required (${HARNESSES.map((h) => h.name).join(", ")})`);
   if (!opts.inbox?.length) throw new UsageError("--inbox is required");
   const client = await authedClient(ctx);
+  const org = await resolveOrg(ctx, client, opts.org, "bot");
   const bot = await client.createBot({
-    org: await resolveOrg(ctx, client, opts.org, "bot"),
+    org,
     name: opts.name,
     prompt: opts.preset ? PRESETS[opts.preset]?.prompt : undefined,
     rules: opts.preset ? PRESETS[opts.preset]?.rules : undefined,
     ...(opts.model ? { model: opts.model } : {}),
     harness: opts.harness,
-    inbox_ids: await resolveInboxes(client, opts.inbox),
+    inbox_ids: await resolveInboxes(ctx, client, opts.inbox, org),
   });
   if (opts.json) return ctx.out(json(bot));
-  ctx.out(`Created bot ${bold(bot.name)} (${bot.id})\n\n${describe(bot, await inboxNames(client))}`);
+  ctx.out(`Created bot ${bold(bot.name)} (${bot.id})\n\n${describe(bot, await inboxNames(ctx, client, org))}`);
 }
 
 export async function updateBot(
@@ -138,10 +140,10 @@ export async function updateBot(
     name: opts.name,
     model: opts.model,
     harness: opts.harness,
-    inbox_ids: opts.inbox && (await resolveInboxes(client, opts.inbox)),
+    inbox_ids: opts.inbox && (await resolveInboxes(ctx, client, opts.inbox, opts.org)),
   });
   if (opts.json) return ctx.out(json(bot));
-  ctx.out(`Updated bot ${bold(bot.name)} (${bot.id})\n\n${describe(bot, await inboxNames(client))}`);
+  ctx.out(`Updated bot ${bold(bot.name)} (${bot.id})\n\n${describe(bot, await inboxNames(ctx, client, opts.org))}`);
 }
 
 export async function deleteBot(ctx: Context, ref: string, opts: OrgOpt) {
@@ -170,7 +172,7 @@ export async function botMessages(ctx: Context, ref: string, opts: JsonOpt & Org
   const messages = await client.botMessages(await resolveBot(ctx, client, ref, opts.org), { limit: opts.limit });
   if (opts.json) return ctx.out(json(messages));
   if (!messages.length) return ctx.out("No new messages.");
-  const names = await inboxNames(client);
+  const names = await inboxNames(ctx, client, opts.org);
   ctx.out(
     table(
       ["SEQ", "ID", "INBOX", "TYPE", "SUBJECT", "RECEIVED"],
@@ -202,15 +204,17 @@ function describe(bot: Bot, names: Map<string, string>): string {
   ].join("\n");
 }
 
-async function inboxNames(client: LoopwayClient) {
-  return new Map((await client.listInboxes()).map((i) => [i.id, i.name]));
+/** Inbox names by id for display; ids show instead when the org isn't known without asking. */
+async function inboxNames(ctx: Context, client: LoopwayClient, flag: string | undefined) {
+  const org = await orgIfKnown(ctx, client, flag);
+  return new Map(org ? (await client.listInboxes(org)).map((i) => [i.id, i.name]) : []);
 }
 
 const inboxList = (bot: Bot, names: Map<string, string>) => bot.inbox_ids.map((id) => names.get(id) ?? id).join(", ");
 
-async function resolveInboxes(client: LoopwayClient, refs: string[]) {
+async function resolveInboxes(ctx: Context, client: LoopwayClient, refs: string[], org: string | undefined) {
   const ids: string[] = [];
-  for (const ref of refs) ids.push(await resolveInbox(client, ref));
+  for (const ref of refs) ids.push(await resolveInbox(ctx, client, ref, org));
   return ids;
 }
 
@@ -224,7 +228,7 @@ export async function resolveBot(
   org: string | undefined,
 ): Promise<string> {
   if (UUID_RE.test(ref)) return ref;
-  const matches = (await client.listBots(await defaultOrg(ctx, client, org, "bots"))).filter((b) => b.name === ref);
+  const matches = (await client.listBots(await resolveOrg(ctx, client, org, "bots"))).filter((b) => b.name === ref);
   if (matches.length === 1) return matches[0]!.id;
   if (!matches.length) throw new UsageError(`No bot with id or name "${ref}". See \`loopway bots list\`.`);
   throw new UsageError(

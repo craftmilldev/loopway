@@ -8,8 +8,9 @@ import { resolveOrg } from "./orgs.js";
 
 // ---------- list / show ----------
 
-export async function listInboxes(ctx: Context, opts: { json?: boolean }) {
-  const inboxes = await (await authedClient(ctx)).listInboxes();
+export async function listInboxes(ctx: Context, opts: { json?: boolean; org?: string }) {
+  const client = await authedClient(ctx);
+  const inboxes = await client.listInboxes(await resolveOrg(ctx, client, opts.org, "inbox"));
   if (opts.json) return ctx.out(json(inboxes));
   if (!inboxes.length) return ctx.out("No inboxes yet. Create one with `loopway inbox create`.");
   ctx.out(
@@ -20,9 +21,9 @@ export async function listInboxes(ctx: Context, opts: { json?: boolean }) {
   );
 }
 
-export async function showInbox(ctx: Context, ref: string, opts: { json?: boolean }) {
+export async function showInbox(ctx: Context, ref: string, opts: { json?: boolean; org?: string }) {
   const client = await authedClient(ctx);
-  const inbox = await client.getInbox(await resolveInbox(client, ref));
+  const inbox = await client.getInbox(await resolveInbox(ctx, client, ref, opts.org));
   if (opts.json) return ctx.out(json(inbox));
   const { stats } = inbox;
   ctx.out(
@@ -316,6 +317,8 @@ function flagConfig(opts: CreateOptions): Record<string, unknown> | undefined {
 // ---------- update ----------
 
 export interface UpdateOptions {
+  /** The org the inbox is in, to find it by name. */
+  org?: string;
   name?: string;
   events?: string[];
   secret?: string;
@@ -341,7 +344,7 @@ const SCHEDULE_FLAG_NAMES = "--every, --hour, --message, --message-file, --remov
  */
 export async function updateInbox(ctx: Context, ref: string, opts: UpdateOptions) {
   const client = await authedClient(ctx);
-  const id = await resolveInbox(client, ref);
+  const id = await resolveInbox(ctx, client, ref, opts.org);
   const scheduleFlags = SCHEDULE_FLAGS.filter((f) => opts[f] !== undefined);
   const hasFlags = !!(opts.name || opts.events || opts.secret || opts.schema) || scheduleFlags.length > 0;
 
@@ -673,10 +676,15 @@ export const splitList = (s: string) =>
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Commands take an inbox id or an exact inbox name. */
-export async function resolveInbox(client: LoopwayClient, ref: string): Promise<string> {
+/** Commands take an inbox id or an exact inbox name, which is looked up in the org (see `resolveOrg`). */
+export async function resolveInbox(
+  ctx: Context,
+  client: LoopwayClient,
+  ref: string,
+  org: string | undefined,
+): Promise<string> {
   if (UUID_RE.test(ref)) return ref;
-  const matches = (await client.listInboxes()).filter((i) => i.name === ref);
+  const matches = (await client.listInboxes(await resolveOrg(ctx, client, org, "inbox"))).filter((i) => i.name === ref);
   if (matches.length === 1) return matches[0]!.id;
   if (!matches.length) throw new UsageError(`No inbox with id or name "${ref}". See \`loopway inbox list\`.`);
   throw new UsageError(
