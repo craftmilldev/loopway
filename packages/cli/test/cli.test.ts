@@ -2232,6 +2232,39 @@ describe("threads", () => {
     expect(runs[1]).toMatchObject({ sessionId: runs[0]!.sessionId, resume: true });
   });
 
+  it("makes manager threads through the dispatcher and lists them with `chats`, only with the manager on", async () => {
+    const { d, client, runner } = await setup(1);
+    await expect(run("chats")).rejects.toThrow(/manager is off/);
+    await run("config", "update", "--manager");
+    expect(await run("chats")).toMatch(/No chats yet/);
+
+    const id = randomUUID();
+    const made = await d.createManagerThread(id);
+    expect(made).toMatchObject({ id, bot_id: null, kind: "manager", runner_id: runner.id });
+    await d.patchManagerThread(id, { metadata_set: { label: "create", actions: { create: 2, delete: 1 } } });
+    await d.createManagerThread(randomUUID());
+
+    const chats = await runJson("chats");
+    expect(chats).toHaveLength(2);
+    expect(chats[0]).toMatchObject({
+      id,
+      bot_id: null,
+      status: "active",
+      metadata: { label: "create", actions: { create: 2, delete: 1 } },
+    });
+    const table = await run("chats");
+    expect(table).toMatch(/LABEL\s+ACTIONS\s+STATUS/);
+    expect(table).toContain(id);
+    expect(table).toMatch(/create\s+create 2, delete 1\s+open/);
+    expect(table).toMatch(/none\s+none\s+open/);
+
+    await d.patchManagerThread(id, { status: "ended" });
+    expect((await runJson("chats"))[0].status).toBe("ended");
+    // The dev bot's own threads never include them.
+    expect(await runJson("bots", "threads", "dev1", "--status", "all")).toEqual([]);
+    expect((await client.listBots(runner.org)).length).toBe(1);
+  });
+
   it("records metadata on the thread with record and unrecord, shown by threads show", async () => {
     const { inbox, runs, d, finish } = await setup(3);
     await send(inbox, "issues", issue("opened", 5));

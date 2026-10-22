@@ -28,9 +28,9 @@ export async function listBotThreads(ctx: Context, ref: string, opts: OrgOpt & {
 }
 
 /** `loopway bots threads show <bot> <thread>`: one thread, with the metadata its session recorded. */
-export async function showBotThread(ctx: Context, ref: string, thread: string, opts: { json?: boolean }) {
+export async function showBotThread(ctx: Context, ref: string, thread: string, opts: OrgOpt & { json?: boolean }) {
   const client = await authedClient(ctx);
-  const botId = await resolveBot(client, ref);
+  const botId = await resolveBot(ctx, client, ref, opts.org);
   const t = await client.getThread(botId, (await threadFinder(client, botId))(thread));
   if (opts.json) return ctx.out(json(t));
   const metadata = Object.entries(t.metadata ?? {});

@@ -416,6 +416,77 @@ export function createApi(opts: ApiOptions) {
     return c.body(null, 204);
   });
 
+  // Manager threads: the org's chats with its manager. They have no bot, so the bot endpoints never see them. Only
+  // the runner that made one, holding its live lease, changes it.
+  const metadataSet = z
+    .record(z.string().min(1).max(200), z.json())
+    .refine((m) => !JSON.stringify(m).includes("\\u0000"), "Metadata can't contain \\u0000");
+
+  authed.get("/orgs/:slug/threads", async (c) => {
+    const org = await memberOrgParam(c, "list_threads");
+    const { kind } = z.object({ kind: z.enum(["manager", "bot"]).default("manager") }).parse(c.req.query());
+    return c.json({ data: (await store.listOrgThreads(c.var.db, org.id, kind)).map(serializeThreadRow) });
+  });
+
+  authed.get("/orgs/:slug/threads/:threadId", async (c) => {
+    const org = await memberOrgParam(c, "get_thread");
+    return c.json(serializeThreadRow(await orgThread(c, org)));
+  });
+
+  authed.post("/orgs/:slug/threads", async (c) => {
+    const org = await memberOrgParam(c, "create_thread");
+    const input = z.object({ id: uuid, lease_token: leaseToken }).parse(await jsonBody(c));
+    const runner = await liveRunner(c, input.lease_token);
+    if (runner.org_id !== org.id) {
+      await metrics.capture("runner_org_mismatch_rejected", c.var.user.id, { action: "manager_thread_create" });
+      throw new ApiError(400, "runner_org_mismatch", "A manager thread can only use a runner from its own org");
+    }
+    const thread = await store.createManagerThread(c.var.db, org.id, input.id, input.lease_token);
+    if (!thread) {
+      await metrics.capture("manager_thread_rejected", c.var.user.id, { reason: "thread_exists" });
+      throw new ApiError(409, "thread_exists", "A thread with that id already exists");
+    }
+    await metrics.capture("manager_thread_created", c.var.user.id, {});
+    return c.json(serializeThreadRow(thread), 201);
+  });
+
+  authed.patch("/orgs/:slug/threads/:threadId", async (c) => {
+    const org = await memberOrgParam(c, "patch_thread");
+    const thread = await orgThread(c, org);
+    const input = z
+      .object({
+        lease_token: leaseToken,
+        status: z.enum(["active", "ended"]).optional(),
+        // Postgres jsonb can't hold \u0000, in a key or a string value.
+        metadata_set: metadataSet.optional(),
+        metadata_unset: z.array(z.string().min(1).max(200)).max(100).optional(),
+      })
+      .parse(await jsonBody(c));
+    await requireOwner(c, thread, input.lease_token);
+    let patched: boolean;
+    try {
+      patched = await store.patchManagerThread(c.var.db, org.id, input.lease_token, thread.id, {
+        status: input.status,
+        metadataSet: input.metadata_set,
+        metadataUnset: input.metadata_unset,
+      });
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "metadata_too_large")
+        await metrics.capture("thread_metadata_rejected", c.var.user.id, { reason: "too_large" });
+      throw err;
+    }
+    if (!patched) throw runnerNotLeased();
+    if (input.status === "ended" && thread.status !== "ended")
+      await metrics.capture("manager_thread_ended", c.var.user.id, {});
+    const touched = Object.keys(input.metadata_set ?? {}).length + (input.metadata_unset?.length ?? 0);
+    if (touched)
+      await metrics.capture("thread_metadata_changed", c.var.user.id, {
+        set: Object.keys(input.metadata_set ?? {}).length > 0,
+        unset: (input.metadata_unset?.length ?? 0) > 0,
+      });
+    return c.json(serializeThreadRow((await store.getOrgThread(c.var.db, org.id, thread.id))!));
+  });
+
   authed.post("/orgs/:slug/members", async (c) => {
     const org = await memberOrgParam(c, "add");
     const { email } = z.object({ email: z.string().trim().email().max(320) }).parse(await jsonBody(c));
@@ -1239,6 +1310,13 @@ export function createApi(opts: ApiOptions) {
     if (thread.runner_id !== runner.id) throw threadOwned(thread);
   }
 
+  async function orgThread(c: Context<Env>, org: store.Org): Promise<store.Thread> {
+    const id = c.req.param("threadId") ?? "";
+    const thread = isUuid(id) ? await store.getOrgThread(c.var.db, org.id, id.toLowerCase()) : undefined;
+    if (!thread) throw new ApiError(404, "not_found", "Thread not found");
+    return thread;
+  }
+
   async function existingThread(c: Context<Env>, bot: store.Bot, threadId?: string): Promise<store.Thread> {
     const id = threadId ?? c.req.param("threadId") ?? "";
     const thread = isUuid(id) ? await store.getThread(c.var.db, bot.id, id.toLowerCase()) : undefined;
@@ -1442,6 +1520,7 @@ function serializeThreadRow(t: store.Thread) {
   return {
     id: t.id,
     bot_id: t.bot_id,
+    kind: t.kind,
     created_by: t.created_by,
     status: t.status,
     started: t.started,

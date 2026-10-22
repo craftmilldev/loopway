@@ -4,7 +4,9 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AgentRun, RunOutcome } from "@loopway/harnesses";
 import { MANAGER_PROMPT } from "@loopway/presets";
-import { emptyChat, ManagerChat, type ManagerChatOptions } from "../src/bots/chat.js";
+import { emptyChat, ManagerChat, type ChatThreads, type ManagerChatOptions } from "../src/bots/chat.js";
+import { chatLabel } from "../src/bots/chat-label.js";
+import { ApiError } from "../src/client.js";
 import { parseProposal, tokenize, type Proposal } from "../src/bots/chat-changes.js";
 
 const rec = (r: object) => JSON.stringify(r) + "\n";
@@ -405,5 +407,180 @@ describe("chat", () => {
   it("imports no ink, so a web UI can reuse it", async () => {
     const src = await readFile(new URL("../src/bots/chat.ts", import.meta.url), "utf8");
     expect(src).not.toMatch(/from\s+["'](ink|react)/);
+  });
+});
+
+describe("chatLabel", () => {
+  const did = (...kinds: string[]) => kinds.map((kind) => ({ kind: kind as "create", ok: true }));
+
+  it("is generic with no counts when nothing changed", () => {
+    expect(chatLabel([])).toEqual({ label: "generic", actions: {} });
+  });
+
+  it("is the most frequent kind, with a count per kind", () => {
+    expect(chatLabel(did("create", "create", "delete"))).toEqual({
+      label: "create",
+      actions: { create: 2, delete: 1 },
+    });
+    expect(chatLabel(did("update", "delete", "delete", "delete"))).toEqual({
+      label: "delete",
+      actions: { update: 1, delete: 3 },
+    });
+  });
+
+  it("gives a tie to the kind done first", () => {
+    expect(chatLabel(did("delete", "create", "create", "delete")).label).toBe("delete");
+    expect(chatLabel(did("update", "create")).label).toBe("update");
+  });
+
+  it("counts only changes that succeeded", () => {
+    expect(chatLabel([{ kind: "create", ok: false }])).toEqual({ label: "generic", actions: {} });
+    expect(chatLabel([{ kind: "create", ok: false }, ...did("delete")])).toEqual({
+      label: "delete",
+      actions: { delete: 1 },
+    });
+  });
+});
+
+describe("chat threads", () => {
+  /** A fake server: the manager threads the chat made, with their metadata and status. */
+  function server(failCreate = 0) {
+    const threads = new Map<string, { status: string; metadata: Record<string, unknown> }>();
+    const calls: string[] = [];
+    let creates = failCreate;
+    const api: ChatThreads = {
+      create: async (id) => {
+        calls.push("create");
+        if (creates-- > 0) throw new ApiError(409, "runner_not_leased", "no lease");
+        threads.set(id, { status: "active", metadata: {} });
+      },
+      patch: async (id, patch) => {
+        calls.push("patch");
+        const t = threads.get(id);
+        if (!t) throw new ApiError(404, "not_found", "no thread");
+        if (patch.status) t.status = patch.status;
+        Object.assign(t.metadata, patch.metadata_set);
+      },
+      mcpUrl: (id) => `http://127.0.0.1:1/secret/${id}`,
+    };
+    return { api, threads, calls };
+  }
+
+  const CREATE = (n: number) =>
+    `loopway bots create --name bot${n} --preset github-threads --model sonnet --harness claude --inbox gh`;
+  const propose = (command: string) => "Here is what I'll do.\n\n```loopway-change\n" + command + "\n```";
+  const ok = async () => ({ code: 0, output: "done" });
+
+  it("makes no thread before the first message, then one the runner owns, with the record tools bound to it", async () => {
+    const { api, threads, calls } = server();
+    const { runs, runAgent } = fake(() => "Hi.");
+    const { chat, events } = await manager(runAgent, { threads: api });
+    expect(calls).toEqual([]);
+    await chat.send("hello").done;
+    await chat.send("again").done;
+
+    // One thread, id the chat's session id, created before the manager ran and labelled generic at once.
+    expect(calls).toEqual(["create", "patch"]);
+    const [id] = [...threads.keys()];
+    expect(id).toBe(runs[0]!.sessionId);
+    expect(threads.get(id!)).toEqual({ status: "active", metadata: { label: "generic", actions: {} } });
+    for (const run of runs) {
+      expect(run.mcpUrl).toBe(`http://127.0.0.1:1/secret/${id}`);
+      expect(run.mcpTools).toEqual(["record", "unrecord"]);
+    }
+    expect(events).toContainEqual(["manager_thread_created", {}]);
+  });
+
+  it("makes no thread, and gives the manager no MCP tools, without threads (the manager flag off never builds a chat)", async () => {
+    const { runs, runAgent } = fake(() => "Hi.");
+    const { chat } = await manager(runAgent);
+    await chat.send("hello").done;
+    await chat.close();
+    expect(runs[0]!.mcpTools).toBeUndefined();
+    expect(runs[0]!.mcpUrl).toBe("http://127.0.0.1:1/mcp/manager");
+  });
+
+  it("labels a chat that only asked questions generic when it closes, and ends the thread", async () => {
+    const { api, threads } = server();
+    const { chat } = await manager(fake(() => "You have 2 bots.").runAgent, { threads: api });
+    await chat.send("what bots do I have?").done;
+    await chat.close();
+    expect([...threads.values()]).toEqual([{ status: "ended", metadata: { label: "generic", actions: {} } }]);
+  });
+
+  it("labels a chat that created two bots and deleted one `create`, after each change and at the end", async () => {
+    const { api, threads } = server();
+    const script = [propose(CREATE(1)), propose(CREATE(2)), propose("loopway bots delete bot1"), "All done."];
+    const { chat, events } = await manager(fake((_run, n) => script[n - 1]!).runAgent, {
+      threads: api,
+      runCommand: ok,
+    });
+    await chat.send("make two bots and drop the first").done;
+    const metadata = () => [...threads.values()][0]!.metadata;
+    await chat.answer(true).done;
+    expect(metadata()).toEqual({ label: "create", actions: { create: 1 } });
+    await chat.answer(true).done;
+    await chat.answer(true).done;
+    // Before it closes, the thread is already labelled.
+    expect(metadata()).toEqual({ label: "create", actions: { create: 2, delete: 1 } });
+    await chat.close();
+    expect([...threads.values()][0]).toEqual({
+      status: "ended",
+      metadata: { label: "create", actions: { create: 2, delete: 1 } },
+    });
+    expect(events).toContainEqual(["manager_thread_ended", {}]);
+  });
+
+  it("does not count a denied or failed change", async () => {
+    const { api, threads } = server();
+    const script = [propose(CREATE(1)), propose(CREATE(2)), "Okay."];
+    let n = 0;
+    const { chat } = await manager(fake(() => script[n++]!).runAgent, {
+      threads: api,
+      runCommand: async () => ({ code: 1, output: "boom" }),
+    });
+    await chat.send("make a bot").done;
+    await chat.answer(false).done;
+    await chat.answer(true).done;
+    await chat.close();
+    expect([...threads.values()][0]!.metadata).toEqual({ label: "generic", actions: {} });
+  });
+
+  it("closes once, and not at all for a chat that never started", async () => {
+    const { api, calls } = server();
+    const unused = await manager(fake(() => "").runAgent, { threads: api });
+    await unused.chat.close();
+    expect(calls).toEqual([]);
+
+    const { chat } = await manager(fake(() => "Hi.").runAgent, { threads: api });
+    await chat.send("hello").done;
+    await chat.close();
+    await chat.close();
+    expect(calls).toEqual(["create", "patch", "patch"]);
+  });
+
+  it("keeps chatting when the thread can't be made, and tries again on the next message", async () => {
+    const { api, threads } = server(1);
+    const { runs, runAgent } = fake(() => "Hi.");
+    const { chat, events } = await manager(runAgent, { threads: api });
+    await chat.send("one").done;
+    expect((await chat.read()).messages.at(-1)!.text).toBe("Hi.");
+    expect(runs[0]!.mcpTools).toBeUndefined();
+    expect(threads.size).toBe(0);
+    expect(events).toContainEqual(["manager_thread_failed", { step: "create", reason: "runner_not_leased" }]);
+
+    await chat.send("two").done;
+    expect(threads.size).toBe(1);
+    expect(runs[1]!.mcpTools).toEqual(["record", "unrecord"]);
+  });
+
+  it("reports a refused label or end, and carries on", async () => {
+    const { api } = server();
+    const failing: ChatThreads = { ...api, patch: () => Promise.reject(new ApiError(409, "runner_not_leased", "no")) };
+    const { chat, events } = await manager(fake(() => "Hi.").runAgent, { threads: failing });
+    await chat.send("hello").done;
+    await chat.close();
+    expect(events).toContainEqual(["manager_thread_failed", { step: "label", reason: "runner_not_leased" }]);
+    expect(events).toContainEqual(["manager_thread_failed", { step: "end", reason: "runner_not_leased" }]);
   });
 });

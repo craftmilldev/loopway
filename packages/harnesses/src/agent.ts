@@ -17,10 +17,12 @@ export interface AgentRun {
   addDirs?: string[];
   /**
    * Limits the session to these tools (Claude Code's `--allowedTools` syntax) and denies the rest instead of
-   * approving them, and leaves out the dispatcher's MCP tools. Only Claude Code enforces it; the other harnesses
-   * ignore it, so a prompt must still say what the session may not do.
+   * approving them, and leaves out the dispatcher's MCP tools (but see `mcpTools`). Only Claude Code enforces it; the
+   * other harnesses ignore it, so a prompt must still say what the session may not do.
    */
   allowedTools?: string[];
+  /** With `allowedTools`: the tools of the `loopway` MCP server at `mcpUrl` to allow too, by name (`record`). */
+  mcpTools?: string[];
   /** Tools denied even if `allowedTools` would match them (`--disallowedTools`). */
   deniedTools?: string[];
   /** The shell command of a `script` bot (its prompt); other harnesses ignore it. */

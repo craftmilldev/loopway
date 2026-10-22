@@ -173,6 +173,33 @@ echo '{"type":"result","is_error":false,"result":"ok"}'
     expect(plain[plain.indexOf("--model") + 1]).toBe("sonnet");
   });
 
+  it("ClaudeHarness: a restricted run gets the MCP server only for the tools it names", () => {
+    const run: AgentRun = {
+      harness: "claude",
+      sessionId: "t1",
+      resume: false,
+      message: "hello",
+      model: "",
+      logPath: "/tmp/t1.log",
+      mcpUrl: "http://127.0.0.1:1/mcp/t1",
+      env: {},
+      allowedTools: ["Bash(loopway runners:*)"],
+      mcpTools: ["record", "unrecord"],
+    };
+    const { args } = getHarness("claude").launch(run) as Launch;
+    expect(args[args.indexOf("--mcp-config") + 1]).toContain("http://127.0.0.1:1/mcp/t1");
+    const at = args.indexOf("--allowedTools");
+    expect(args.slice(at, at + 4)).toEqual([
+      "--allowedTools",
+      "Bash(loopway runners:*)",
+      "mcp__loopway__record",
+      "mcp__loopway__unrecord",
+    ]);
+    // Nothing else of the dispatcher's.
+    expect(args).not.toContain("mcp__loopway__link");
+    expect(args).not.toContain("mcp__loopway__end");
+  });
+
   it("HermesWatch: init starts the session and delivers; a result with an error or exit code is an API error", () => {
     let started = 0;
     const w = new HermesWatch(() => started++);

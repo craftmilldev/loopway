@@ -31,6 +31,7 @@ import {
   splitList,
   updateInbox,
 } from "./commands/inboxes.js";
+import { listChats } from "./commands/chats.js";
 import { listRunners } from "./commands/runners.js";
 import { runBots } from "./commands/bots-run.js";
 import { addOrgMember, createOrg, leaveOrg, listOrgs, orgMembers, removeOrgMember } from "./commands/orgs.js";
@@ -276,6 +277,15 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .addOption(jsonOpt())
     .action((opts) => listRunners(ctx, opts));
 
+  // ---------- chats ----------
+
+  program
+    .command("chats")
+    .description("list your org's chats with the manager bot (needs the manager on), each labelled by what it did")
+    .option("--org <slug>", "the org (the one this machine runs bots for by default; prompted for if unsure)")
+    .addOption(jsonOpt())
+    .action((opts) => listChats(ctx, opts));
+
   // ---------- bots ----------
 
   const bots = program.command("bots").alias("bot").description("create, list, update and run bots");
@@ -394,6 +404,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .description("show one thread, with the metadata its session recorded")
     .argument("<bot>", "bot id or name")
     .argument("<thread>", "id of the thread (the start of it is enough)")
+    .addOption(botOrgOpt())
     .addOption(jsonOpt())
     .action((ref: string, thread: string, _opts: unknown, cmd: Command) =>
       showBotThread(ctx, ref, thread, cmd.optsWithGlobals()),

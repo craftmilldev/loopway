@@ -8,7 +8,9 @@ import { DEFAULTS, Dispatcher, MAX_POLL_INTERVAL, type ThreadsOptions } from "..
 import { ensureRunner } from "../bots/runner.js";
 import { loadWorkdirs, WORKDIRS_FILE } from "../bots/workdirs.js";
 import { defaultOrg } from "./orgs.js";
-import { ManagerChat } from "../bots/chat.js";
+import { ManagerChat, MANAGER_MCP_TOOLS } from "../bots/chat.js";
+import { startMcpServer } from "../mcp.js";
+import { sessionTools } from "../bots/tools.js";
 import { colorSupport } from "../bots/colors.js";
 import { showTui } from "../bots/tui.js";
 import { CLI_VERSION } from "../version.js";
@@ -75,7 +77,41 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
   let message = watching;
   const quiet: Context = { ...ctx, out: (t) => void (message = t) };
   const dispatcher = await Dispatcher.start(quiet, client, bots, dispatcherOpts);
-  const release = releaseOnExit(dispatcher);
+  // The manager's chats are manager threads of the org, written with this runner's lease. Its only MCP tools are
+  // `record` and `unrecord`, bound to the thread of the session that calls them.
+  const chatMcp = chatOn
+    ? await startMcpServer(
+        "loopway",
+        sessionTools(
+          {
+            get: () => Promise.reject(new Error("The manager's thread can't be read.")),
+            patch: (id, patch) => dispatcher.patchManagerThread(id, patch),
+          },
+          ctx.metrics,
+        ).filter((t) => MANAGER_MCP_TOOLS.includes(t.name)),
+      )
+    : undefined;
+  const chat = chatMcp
+    ? new ManagerChat({
+        org: runner.org,
+        dir: ctx.configDir,
+        env: ctx.env,
+        harness: config.manager_harness,
+        model: config.manager_model,
+        runAgent: ctx.runAgent ?? runHarness,
+        capture: (event, properties) => void ctx.metrics?.capture(event, properties),
+        threads: {
+          create: async (id) => void (await dispatcher.createManagerThread(id)),
+          patch: async (id, patch) => void (await dispatcher.patchManagerThread(id, patch)),
+          mcpUrl: (id) => chatMcp.urlFor(id),
+        },
+      })
+    : undefined;
+  const release = releaseOnExit(dispatcher, async () => {
+    // The chat's thread ends while the runner's lease is still held.
+    await chat?.close();
+    await chatMcp?.close();
+  });
   // An update closes the TUI, as quitting does; then it runs again on the new version.
   const closeTui = new AbortController();
   let version: string | undefined;
@@ -89,17 +125,7 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     await showTui(
       {
         org: runner.org,
-        chat: chatOn
-          ? new ManagerChat({
-              org: runner.org,
-              dir: ctx.configDir,
-              env: ctx.env,
-              harness: config.manager_harness,
-              model: config.manager_model,
-              runAgent: ctx.runAgent ?? runHarness,
-              capture: (event, properties) => void ctx.metrics?.capture(event, properties),
-            })
-          : undefined,
+        chat,
         startInChat: !bots.length,
         capture: (event, properties) => void ctx.metrics?.capture(event, properties),
         load: async () => ({ ...(await dispatcher.state()), message }),
@@ -163,11 +189,11 @@ const RELEASE_TIMEOUT_MS = 5000;
  * joins the first instead of skipping it, and gives up after a few seconds so a lost network can't
  * hang the exit.
  */
-function releaseOnExit(dispatcher: Dispatcher): () => Promise<void> {
+function releaseOnExit(dispatcher: Dispatcher, before?: () => Promise<void>): () => Promise<void> {
   let releasing: Promise<void> | undefined;
   const release = () =>
     (releasing ??= Promise.race([
-      dispatcher.close().catch(() => {}),
+      (before?.().catch(() => {}) ?? Promise.resolve()).then(() => dispatcher.close()).catch(() => {}),
       sleep(RELEASE_TIMEOUT_MS, undefined, { ref: false }),
     ]));
   const exitWith = (code: number) => void release().finally(() => process.exit(code));
