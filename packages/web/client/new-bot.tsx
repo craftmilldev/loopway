@@ -482,7 +482,7 @@ function Runner({
       </p>
       <div className="add-runner">
         <code>$ curl -fsSL https://loopway.craftmill.dev/install.sh | sh &amp;&amp; loopway login</code>
-        <code>$ cd ~/code/your-repo &amp;&amp; loopway bots run</code>
+        <code>$ cd ~/code/your-repo &amp;&amp; loopway bots run --org {lw.orgSlug()}</code>
         <span className="lbl" role="status">
           {leased ? "A runner took the lease. Your bot is running." : "Listening for a runner to take the lease…"}
         </span>

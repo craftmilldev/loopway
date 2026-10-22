@@ -164,6 +164,23 @@ export interface Thread {
   updated_at: string;
 }
 
+/** A chat with the org's manager: a thread of the org with no bot. */
+export interface ManagerThread {
+  /** The chat's session id. */
+  id: string;
+  bot_id: null;
+  kind: "manager";
+  /** `runner:<id>`, the runner that made it. */
+  created_by: string;
+  status: "active" | "ended";
+  /** The runner that owns it, whose machine has the chat. */
+  runner_id: string | null;
+  /** What the runner and the manager recorded: `label` and `actions` (see `chatLabel`), and whatever else the manager did. */
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Assignment {
   message_id: string;
   thread_id: string;
@@ -453,6 +470,31 @@ export class LoopwayClient {
    */
   endThread(botId: string, threadId: string) {
     return this.request<Thread>("POST", `/bots/${enc(botId)}/threads/${enc(threadId)}/end`, {});
+  }
+
+  /** The org's chats with the manager, oldest first. */
+  async listManagerThreads(org: string) {
+    return (await this.request<{ data: ManagerThread[] }>("GET", `/orgs/${enc(org)}/threads?kind=manager`)).data;
+  }
+
+  /**
+   * Makes a manager thread with this id (the chat's session id), owned by the runner holding the live lease
+   * `runnerLeaseToken`. 409 `thread_exists` if the id is taken, `runner_not_leased` if the token isn't a live lease.
+   */
+  createManagerThread(org: string, threadId: string, runnerLeaseToken: string) {
+    return this.request<ManagerThread>("POST", `/orgs/${enc(org)}/threads`, {
+      id: threadId,
+      lease_token: runnerLeaseToken,
+    });
+  }
+
+  /** Changes a manager thread's status or metadata; `lease_token` is the owning runner's live lease. */
+  patchManagerThread(
+    org: string,
+    threadId: string,
+    patch: Pick<ThreadPatch, "status" | "metadata_set" | "metadata_unset"> & { lease_token: string },
+  ) {
+    return this.request<ManagerThread>("PATCH", `/orgs/${enc(org)}/threads/${enc(threadId)}`, patch);
   }
 
   /**

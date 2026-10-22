@@ -36,8 +36,11 @@ export class ClaudeHarness extends Harness {
     // --add-dir, --mcp-config and --allowedTools take several values, so each is followed by another flag.
     // A session with a tool list of its own gets those tools only, and what isn't on the list is denied.
     const restricted = run.allowedTools !== undefined;
-    if (restricted) args.push("--allowedTools", ...run.allowedTools!);
-    else args.push("--mcp-config", mcpConfig, "--allowedTools", "mcp__loopway__link", "mcp__loopway__end");
+    if (restricted) {
+      // A restricted session gets the MCP server only for the tools it names.
+      if (run.mcpTools?.length) args.push("--mcp-config", mcpConfig);
+      args.push("--allowedTools", ...run.allowedTools!, ...(run.mcpTools ?? []).map((t) => `mcp__loopway__${t}`));
+    } else args.push("--mcp-config", mcpConfig, "--allowedTools", "mcp__loopway__link", "mcp__loopway__end");
     if (run.deniedTools?.length) args.push("--disallowedTools", ...run.deniedTools);
     // Resumed runs get it too: a session keeps its model only if the flag says so.
     // A run without a model (the manager's, when none is configured) leaves it to the harness.

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApi } from "../src/api.js";
 import { type Db } from "../src/db/index.js";
 import { openTestDb, TEST_INBOX_KEY } from "../src/db/testing.js";
+import { createLoginCode } from "../src/store.js";
 import { createMetrics, noopMetrics, type Metrics } from "../src/metrics.js";
 
 let db: Db;
@@ -25,6 +26,28 @@ describe("metrics", () => {
       event: "api_error",
       distinctId: "anonymous",
       properties: { code: "unauthorized", status: 401 },
+    });
+  });
+
+  it("sets the person's email and name on signup and on login", async () => {
+    const email = "metrics-person@example.com";
+    const verify = async (body: Record<string, unknown>) => {
+      const { code } = await createLoginCode(db, email);
+      return app.request("/api/auth/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, code, ...body }),
+      });
+    };
+    const signup = await verify({ username: "metrics-person" });
+    expect(signup.status).toBe(201);
+    const { user } = await signup.json();
+    expect(events.find((e) => e.event === "signed_up" && e.distinctId === user.id)?.properties).toMatchObject({
+      $set: { email, name: user.name },
+    });
+    expect((await verify({})).status).toBe(201);
+    expect(events.findLast((e) => e.event === "logged_in" && e.distinctId === user.id)?.properties).toMatchObject({
+      $set: { email, name: user.name },
     });
   });
 

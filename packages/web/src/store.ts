@@ -972,7 +972,10 @@ export interface ThreadMessage {
 
 export interface Thread {
   id: string;
-  bot_id: string;
+  /** Null for a manager thread, which belongs to the org. */
+  bot_id: string | null;
+  /** 'bot': a bot's session. 'manager': a chat with the org's manager (no bot). */
+  kind: "bot" | "manager";
   /** The runner that assigned it for the bot, as an actor (see actor.ts); the bot if its lease named no runner. Informational. */
   created_by: string;
   status: "active" | "ended";
@@ -1008,7 +1011,7 @@ const threadMessages = (state: ThreadMessageState) => `
             WHERE tm.thread_id = t.id AND tm.state = '${state}'), '[]'::jsonb)`;
 
 const THREAD_COLS = `
-  t.id, t.bot_id, t.created_by, t.status, t.started, t.interrupted, t.limited, t.runner_id, t.automation_level, t.metadata,
+  t.id, t.bot_id, t.kind, t.created_by, t.status, t.started, t.interrupted, t.limited, t.runner_id, t.automation_level, t.metadata,
   t.created_at, t.updated_at,
   COALESCE((SELECT jsonb_agg(k.subject ORDER BY k.subject) FROM loopway.thread_subjects k WHERE k.thread_id = t.id),
            '[]'::jsonb) AS subjects,
@@ -1060,10 +1063,26 @@ export async function getThread(db: Db, botId: string, id: string): Promise<Thre
   return row;
 }
 
+/** The org's threads of one kind, oldest first. A manager thread has no bot, so no bot's list ever has it. */
+export async function listOrgThreads(db: Db, orgId: string, kind: "bot" | "manager"): Promise<Thread[]> {
+  return db.query<Thread>(
+    `SELECT ${THREAD_COLS} FROM loopway.threads t WHERE t.org_id = $1 AND t.kind = $2 ORDER BY t.created_at, t.id`,
+    [orgId, kind],
+  );
+}
+
+export async function getOrgThread(db: Db, orgId: string, id: string): Promise<Thread | undefined> {
+  const [row] = await db.query<Thread>(
+    `SELECT ${THREAD_COLS}${DELIVERED_IDS} FROM loopway.threads t WHERE t.id = $1 AND t.org_id = $2 AND t.kind = 'manager'`,
+    [id, orgId],
+  );
+  return row;
+}
+
 /** Which bot has each of these threads, for the ones that exist. */
 export async function threadBots(db: Db, ids: string[]): Promise<Map<string, string>> {
   const rows = await db.query<{ id: string; bot_id: string }>(
-    `SELECT id, bot_id FROM loopway.threads WHERE id IN (SELECT value::uuid FROM jsonb_array_elements_text($1::jsonb))`,
+    `SELECT id, bot_id FROM loopway.threads WHERE bot_id IS NOT NULL AND id IN (SELECT value::uuid FROM jsonb_array_elements_text($1::jsonb))`,
     [ids],
   );
   return new Map(rows.map((r) => [r.id, r.bot_id]));
@@ -1159,6 +1178,60 @@ export async function claimThread(
     [botId, userId, token, id],
   );
   return rows.length ? getThread(db, botId, id) : undefined;
+}
+
+/**
+ * Makes a manager thread of the org, owned by the runner holding the live lease `token`. Undefined if the id is taken
+ * or the token isn't a live lease of a runner of the org.
+ */
+export async function createManagerThread(
+  db: Db,
+  orgId: string,
+  id: string,
+  token: string,
+): Promise<Thread | undefined> {
+  const rows = await db.query<{ id: string }>(
+    `INSERT INTO loopway.threads (id, bot_id, kind, created_by, org_id, runner_id, started, automation_level)
+     SELECT $1::uuid, NULL, 'manager', 'runner:' || r.id, r.org_id, r.id, true, 2
+     FROM loopway.runners r WHERE r.org_id = $2::uuid AND r.lock_token = $3 AND r.locked_until > now()
+     ON CONFLICT (id) DO NOTHING RETURNING id`,
+    [id, orgId, token],
+  );
+  return rows.length ? getOrgThread(db, orgId, id) : undefined;
+}
+
+export interface ManagerThreadPatch {
+  status?: "active" | "ended";
+  metadataSet?: Record<string, unknown>;
+  metadataUnset?: string[];
+}
+
+/** False unless `token` is the live lease of the runner that owns the org's manager thread. */
+export async function patchManagerThread(
+  db: Db,
+  orgId: string,
+  token: string,
+  id: string,
+  patch: ManagerThreadPatch,
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const upd = await tx.query<{ metadata_bytes: number }>(
+      `UPDATE loopway.threads t SET
+         status     = COALESCE($4::text, t.status),
+         metadata   = (t.metadata || $5::jsonb) - $6::text[],
+         updated_at = now()
+       WHERE t.id = $3::uuid AND t.org_id = $1::uuid AND t.kind = 'manager' AND EXISTS (
+         SELECT 1 FROM loopway.runners r
+         WHERE r.id = t.runner_id AND r.lock_token = $2 AND r.locked_until > now())
+       RETURNING octet_length(t.metadata::text) AS metadata_bytes`,
+      [orgId, token, id, patch.status ?? null, patch.metadataSet ?? {}, patch.metadataUnset ?? []],
+    );
+    if (!upd.length) return false;
+    // Throwing rolls the update back.
+    if (upd[0]!.metadata_bytes > METADATA_MAX_BYTES)
+      throw new ApiError(400, "metadata_too_large", `A thread's metadata can be at most ${METADATA_MAX_BYTES} bytes`);
+    return true;
+  });
 }
 
 /** Gives up the thread's owner, so a runner can claim it: the manual move for when its runner is gone. */
