@@ -52,6 +52,20 @@ export abstract class Harness {
   /** A fresh watch for one run; `onStarted` is for it to call once the session exists. */
   abstract watch(onStarted?: () => void): RunWatch;
 
+  /**
+   * Whether a session log ends in a finished run, as opposed to one cut off (the runner died, the machine slept).
+   * A log holds every run of the session, so only its last record says how the latest one ended: a finished run
+   * ends on the record its watch marks `finished` (Claude's `result`, Codex's `turn.completed`), and a cut-off one
+   * on anything else. An empty log is cut off.
+   */
+  runFinished(log: string): boolean {
+    const last = log.trimEnd().split("\n").at(-1);
+    if (!last) return false;
+    const watch = this.watch();
+    watch.line(last);
+    return watch.finished;
+  }
+
   /** Turns a session log (what `run` appended to the log, stdout and stderr) into the lines the runner's thread view shows. */
   abstract transcript(log: string): TranscriptLine[];
 

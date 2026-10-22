@@ -63,6 +63,11 @@ export class ScriptHarness extends Harness {
       .map((text) => ({ text, kind: "text" }));
   }
 
+  /** A script's output has no end marker, so a log is never known to be finished. */
+  runFinished(): boolean {
+    return false;
+  }
+
   watch(onStarted?: () => void) {
     return new ScriptWatch(onStarted);
   }
