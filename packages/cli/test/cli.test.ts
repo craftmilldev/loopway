@@ -1193,7 +1193,7 @@ describe("threads", () => {
     };
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
     const runner = await ensure(client);
-    const d = await Dispatcher.start(ctx, client, bots, { max, ttl: 60, runnerId: runner.id });
+    const d = await Dispatcher.start(ctx, client, bots, { max, ttl: 60, runnerId: runner.id, orgId: bots[0]!.org_id });
     const finish = async (outcome: RunOutcome = { code: 0, delivered: true }) => (
       busy.splice(0).forEach((f) => f(outcome)),
       await d.idle()
@@ -1850,6 +1850,42 @@ describe("threads", () => {
     await d.tick();
     expect(out).toContain("bot late: found, now running it");
     expect((await d.state()).bots.held.map((b) => b.id).sort()).toEqual([bot.id, fresh.id].sort());
+  });
+
+  it("ignores bots of the account's other orgs, whether they existed at startup or came later", async () => {
+    const { inbox, bot, client, out, d } = await setup(3);
+    const me = await client.me();
+    const id = randomUUID();
+    const slug = `team-${id.slice(0, 8)}`;
+    await db.query(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [id, slug]);
+    await db.query(`INSERT INTO loopway.org_members (org_id, user_id, created_by) VALUES ($1, $2, 'test')`, [
+      id,
+      me.id,
+    ]);
+    const other = await client.createInbox({ org: slug, name: "elsewhere", source_type: "github" });
+    const foreign = await client.createBot({
+      org: slug,
+      name: "foreign",
+      model: "sonnet",
+      harness: "claude",
+      inbox_ids: [other.id],
+    });
+    await client.addBotVersion(foreign.id, "Foreign.", [{ types: ["*"], subject: '"f"', action: "'attach'" }]);
+    // A bot of this runner's org created at the same time is still picked up.
+    const local = await client.createBot({
+      org: (await client.listOrgs()).find((o) => o.id === bot.org_id)!.slug,
+      name: "local",
+      model: "sonnet",
+      harness: "claude",
+      inbox_ids: [inbox.id],
+    });
+    await client.addBotVersion(local.id, "Local.", [{ types: ["*"], subject: '"l"', action: "'attach'" }]);
+    await d.tick();
+    await d.tick();
+    expect(out).toContain("bot local: found, now running it");
+    expect(out.filter((l) => l.includes("foreign"))).toEqual([]);
+    expect(out.filter((l) => l.startsWith("error:"))).toEqual([]);
+    expect((await d.state()).bots.held.map((b) => b.id).sort()).toEqual([bot.id, local.id].sort());
   });
 
   it("stops running a bot deleted while the runner runs, and still delivers to the others", async () => {

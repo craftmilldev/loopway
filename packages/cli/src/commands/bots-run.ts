@@ -48,6 +48,7 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     ...opts,
     ttl: opts.ttl ?? defaultTtl(interval),
     runnerId: runner.id,
+    orgId: runner.org_id,
     seen: all.map((b) => b.id),
     workdirs,
   };

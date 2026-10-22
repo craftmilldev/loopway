@@ -34,6 +34,8 @@ export interface ThreadsOptions {
 
 interface StartOptions extends ThreadsOptions {
   runnerId: string;
+  /** The org this runner belongs to: bots found later in other orgs are ignored. Without it, every listed bot counts. */
+  orgId?: string;
   /** Ids of bots already reported as not ready, so a new bot is announced only once. */
   seen?: string[];
   /** Bot name → the absolute directory its sessions run in (see loadWorkdirs); the others run in this process's. */
@@ -136,6 +138,7 @@ export class Dispatcher {
   private readonly ttl: number;
   /** This machine's runner id (see ensureRunner), recorded on the bot leases it takes. */
   private readonly runnerId: string;
+  private readonly orgId?: string;
   /** Thread id → the harness and model its session started on, which a resume keeps even if the bot has moved on. */
   private readonly sessions = new Map<string, { harness: Bot["harness"]; model: Bot["model"] }>();
   /** Bot name → the directory its sessions run in, for the bots loopway.json names. */
@@ -211,6 +214,7 @@ export class Dispatcher {
     this.leaseBots = opts.leaseBots !== false;
     this.ttl = opts.ttl ?? DEFAULTS.ttl;
     this.runnerId = opts.runnerId;
+    this.orgId = opts.orgId;
     this.workdirs = opts.workdirs ?? new Map<string, string>();
     this.runAgent = ctx.runAgent ?? runHarness;
     this.dir = ctx.configDir;
@@ -283,7 +287,8 @@ export class Dispatcher {
    * don't parse is reported once per version. Sessions already running for a deleted bot's threads are left to finish.
    */
   private async syncBots(): Promise<void> {
-    const listed = await this.client.listBots();
+    // The runner belongs to one org; the server refuses leases on any other org's bots, so don't try.
+    const listed = (await this.client.listBots()).filter((b) => !this.orgId || b.org_id === this.orgId);
     const ids = new Set(listed.map((b) => b.id));
     for (const bot of [...this.bots]) if (!ids.has(bot.id)) this.dropBot(bot, "deleted");
     for (const bot of listed) {
