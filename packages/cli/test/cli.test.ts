@@ -976,17 +976,19 @@ describe("runners", () => {
     );
     const ctx: Context = { configDir, env: {}, interactive: false, out: () => {}, fetch: apiFetch };
 
-    const first = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id });
+    const first = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id, org: runner.org });
     expect((await runJson("runners"))[0].leased_until).toEqual(expect.any(String));
     await first.tick();
     // Another process on the same machine (or a copy of runner.json) is refused.
     // A UsageError, which index.ts prints as one `error:` line instead of a stack trace.
-    const refused = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id }).catch((e) => e);
+    const refused = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id, org: runner.org }).catch(
+      (e) => e,
+    );
     expect(refused).toBeInstanceOf(UsageError);
     expect(refused.message).toMatch(/runner is already in use/);
     await first.close();
     expect((await runJson("runners"))[0]).toMatchObject({ leased_until: null, bots: [] });
-    const second = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id });
+    const second = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id, org: runner.org });
     await second.close();
   });
 
@@ -1193,7 +1195,12 @@ describe("threads", () => {
     };
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
     const runner = await ensure(client);
-    const d = await Dispatcher.start(ctx, client, bots, { max, ttl: 60, runnerId: runner.id });
+    const d = await Dispatcher.start(ctx, client, bots, {
+      max,
+      ttl: 60,
+      runnerId: runner.id,
+      org: (await client.listOrgs()).find((o) => o.id === bots[0]!.org_id)!.slug,
+    });
     const finish = async (outcome: RunOutcome = { code: 0, delivered: true }) => (
       busy.splice(0).forEach((f) => f(outcome)),
       await d.idle()
@@ -1852,6 +1859,42 @@ describe("threads", () => {
     expect((await d.state()).bots.held.map((b) => b.id).sort()).toEqual([bot.id, fresh.id].sort());
   });
 
+  it("ignores bots of the account's other orgs, whether they existed at startup or came later", async () => {
+    const { inbox, bot, client, out, d } = await setup(3);
+    const me = await client.me();
+    const id = randomUUID();
+    const slug = `team-${id.slice(0, 8)}`;
+    await db.query(`INSERT INTO loopway.orgs (id, slug, name) VALUES ($1, $2, $2)`, [id, slug]);
+    await db.query(`INSERT INTO loopway.org_members (org_id, user_id, created_by) VALUES ($1, $2, 'test')`, [
+      id,
+      me.id,
+    ]);
+    const other = await client.createInbox({ org: slug, name: "elsewhere", source_type: "github" });
+    const foreign = await client.createBot({
+      org: slug,
+      name: "foreign",
+      model: "sonnet",
+      harness: "claude",
+      inbox_ids: [other.id],
+    });
+    await client.addBotVersion(foreign.id, "Foreign.", [{ types: ["*"], subject: '"f"', action: "'attach'" }]);
+    // A bot of this runner's org created at the same time is still picked up.
+    const local = await client.createBot({
+      org: (await client.listOrgs()).find((o) => o.id === bot.org_id)!.slug,
+      name: "local",
+      model: "sonnet",
+      harness: "claude",
+      inbox_ids: [inbox.id],
+    });
+    await client.addBotVersion(local.id, "Local.", [{ types: ["*"], subject: '"l"', action: "'attach'" }]);
+    await d.tick();
+    await d.tick();
+    expect(out).toContain("bot local: found, now running it");
+    expect(out.filter((l) => l.includes("foreign"))).toEqual([]);
+    expect(out.filter((l) => l.startsWith("error:"))).toEqual([]);
+    expect((await d.state()).bots.held.map((b) => b.id).sort()).toEqual([bot.id, local.id].sort());
+  });
+
   it("stops running a bot deleted while the runner runs, and still delivers to the others", async () => {
     const { inbox, bots, client, runs, out, d } = await setup(3, {}, 2);
     // The dispatcher shares the array and removes the bot from it.
@@ -2018,7 +2061,7 @@ describe("threads", () => {
       { ...ctxOf([]), runAgent: async (r) => (theirs.push(r), { code: 0, delivered: true }) },
       client,
       [bot],
-      { runnerId: second.id },
+      { runnerId: second.id, org: second.org },
     );
     closers.push(() => other.close());
     await send(inbox, "issue_comment", comment(1));
@@ -2054,7 +2097,7 @@ describe("threads", () => {
       id: randomUUID(),
       name: "other",
     });
-    const other = await Dispatcher.start(ctxOf([]), client, [bot], { runnerId: second.id });
+    const other = await Dispatcher.start(ctxOf([]), client, [bot], { runnerId: second.id, org: second.org });
     closers.push(() => other.close());
     const before = Date.now();
     await other.tick();
@@ -2110,7 +2153,12 @@ describe("threads", () => {
       fetch: apiFetch,
       runAgent: async (r) => (runs2.push(r), { code: 0, delivered: true }),
     };
-    const d2 = await Dispatcher.start(ctx, client, [bot], { max: 3, ttl: 60, runnerId });
+    const d2 = await Dispatcher.start(ctx, client, [bot], {
+      max: 3,
+      ttl: 60,
+      runnerId,
+      org: (await client.listOrgs()).find((o) => o.personal)!.slug,
+    });
     closers.push(() => d2.close());
     await d2.tick();
     await d2.idle();
@@ -2147,7 +2195,12 @@ describe("threads", () => {
       fetch: apiFetch,
       runAgent: async (r) => (runs2.push(r), { code: 0, delivered: true }),
     };
-    const d2 = await Dispatcher.start(ctx, client, [bot], { max: 3, ttl: 60, runnerId });
+    const d2 = await Dispatcher.start(ctx, client, [bot], {
+      max: 3,
+      ttl: 60,
+      runnerId,
+      org: (await client.listOrgs()).find((o) => o.personal)!.slug,
+    });
     closers.push(() => d2.close());
     await d2.tick();
     await d2.idle();
@@ -2315,6 +2368,41 @@ describe("threads", () => {
           [second.id, personal],
         ].sort(),
       );
+    });
+
+    it("finds bots in one org: --org, else the saved runner org, else it asks", async () => {
+      const { client, personal, shared } = await inTwoOrgs();
+      const inboxIn = async (org: string) =>
+        (await client.createInbox({ org, name: `in-${org}`, source_type: "github" })).id;
+      await client.createBot({
+        org: personal,
+        name: "mine",
+        model: "sonnet",
+        harness: "claude",
+        inbox_ids: [await inboxIn(personal)],
+      });
+      await client.createBot({
+        org: shared,
+        name: "theirs",
+        model: "sonnet",
+        harness: "claude",
+        inbox_ids: [await inboxIn(shared)],
+      });
+      const names = async (...args: string[]) => (await runJson(...args)).map((b: { name: string }) => b.name);
+
+      // Several orgs, no terminal and no saved runner: nothing to go on.
+      await expect(run("bots", "list")).rejects.toThrow(new RegExp(`${personal}, ${shared}.*--org`));
+      await expect(run("bots", "show", "theirs")).rejects.toThrow(/--org/);
+      expect(await names("bots", "list", "--org", shared)).toEqual(["theirs"]);
+      expect((await runJson("bots", "show", "theirs", "--org", shared)).name).toBe("theirs");
+
+      // With a runner saved for the personal org, that is the default; --org reaches the other.
+      await writeFile(join(configDir, "runner.json"), JSON.stringify({ id: randomUUID(), org: personal }));
+      expect(await names("bots", "list")).toEqual(["mine"]);
+      expect((await runJson("bots", "show", "mine")).name).toBe("mine");
+      await expect(run("bots", "show", "theirs")).rejects.toThrow(/No bot with id or name "theirs"/);
+      expect((await runJson("bots", "show", "theirs", "--org", shared)).name).toBe("theirs");
+      expect(await names("bots", "list", "--org", shared)).toEqual(["theirs"]);
     });
 
     it("says which org a runner from before orgs belongs to", async () => {

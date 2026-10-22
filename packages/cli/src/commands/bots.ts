@@ -6,15 +6,20 @@ import { checkRules, type BotRule } from "@loopway/rules";
 import { PRESETS } from "@loopway/presets";
 import { HARNESSES } from "@loopway/harnesses";
 import { resolveInbox } from "./inboxes.js";
-import { resolveOrg } from "./orgs.js";
+import { defaultOrg, resolveOrg } from "./orgs.js";
 
 interface JsonOpt {
   json?: boolean;
 }
 
-export async function listBots(ctx: Context, opts: JsonOpt) {
+/** The org a bot is looked up in by name; see `defaultOrg` for what happens without it. */
+export interface OrgOpt {
+  org?: string;
+}
+
+export async function listBots(ctx: Context, opts: JsonOpt & { org?: string }) {
   const client = await authedClient(ctx);
-  const bots = await client.listBots();
+  const bots = await client.listBots(await defaultOrg(ctx, client, opts.org, "bots"));
   if (opts.json) return ctx.out(json(bots));
   if (!bots.length) return ctx.out("No bots yet. Create one with `loopway bots create`.");
   const names = await inboxNames(client);
@@ -26,9 +31,13 @@ export async function listBots(ctx: Context, opts: JsonOpt) {
   );
 }
 
-export async function showBot(ctx: Context, ref: string, opts: JsonOpt & { prompt?: boolean; rules?: boolean }) {
+export async function showBot(
+  ctx: Context,
+  ref: string,
+  opts: JsonOpt & OrgOpt & { prompt?: boolean; rules?: boolean },
+) {
   const client = await authedClient(ctx);
-  const bot = await client.getBot(await resolveBot(client, ref));
+  const bot = await client.getBot(await resolveBot(ctx, client, ref, opts.org));
   if (opts.prompt || opts.rules) {
     const version = bot.prompt_version;
     if (!version) throw new UsageError(`Bot ${bot.name} has no version yet.`);
@@ -40,9 +49,9 @@ export async function showBot(ctx: Context, ref: string, opts: JsonOpt & { promp
 }
 
 /** `loopway bots versions <bot>`: every saved version of the bot's prompt and rules, newest first. */
-export async function botVersions(ctx: Context, ref: string, opts: JsonOpt) {
+export async function botVersions(ctx: Context, ref: string, opts: JsonOpt & OrgOpt) {
   const client = await authedClient(ctx);
-  const versions = await client.listBotVersions(await resolveBot(client, ref));
+  const versions = await client.listBotVersions(await resolveBot(ctx, client, ref, opts.org));
   if (opts.json) return ctx.out(json(versions));
   if (!versions.length) return ctx.out("No versions yet.");
   ctx.out(
@@ -62,10 +71,14 @@ export async function botVersions(ctx: Context, ref: string, opts: JsonOpt) {
  * `loopway bots edit <bot>`: saves a new version with the prompt and/or rules read from files. What isn't given
  * carries over from the current version. The rules are checked before saving, so a bad edit is caught here.
  */
-export async function editBot(ctx: Context, ref: string, opts: JsonOpt & { promptFile?: string; rulesFile?: string }) {
+export async function editBot(
+  ctx: Context,
+  ref: string,
+  opts: JsonOpt & OrgOpt & { promptFile?: string; rulesFile?: string },
+) {
   if (!opts.promptFile && !opts.rulesFile) throw new UsageError("Pass --prompt-file or --rules-file");
   const client = await authedClient(ctx);
-  const bot = await client.getBot(await resolveBot(client, ref));
+  const bot = await client.getBot(await resolveBot(ctx, client, ref, opts.org));
   const prompt = opts.promptFile ? (await readFile(opts.promptFile, "utf8")).trimEnd() : bot.prompt_version?.prompt;
   if (!prompt) throw new UsageError(`Bot ${bot.name} has no prompt yet; pass --prompt-file.`);
   let rules: BotRule[] | undefined;
@@ -114,13 +127,13 @@ export async function createBot(
 export async function updateBot(
   ctx: Context,
   ref: string,
-  opts: JsonOpt & { name?: string; model?: string; harness?: string; inbox?: string[] },
+  opts: JsonOpt & OrgOpt & { name?: string; model?: string; harness?: string; inbox?: string[] },
 ) {
   if (!opts.name && !opts.model && !opts.harness && !opts.inbox)
     throw new UsageError("Pass --name, --model, --harness or --inbox");
   if (opts.inbox && !opts.inbox.length) throw new UsageError("--inbox needs at least one inbox");
   const client = await authedClient(ctx);
-  const id = await resolveBot(client, ref);
+  const id = await resolveBot(ctx, client, ref, opts.org);
   const bot = await client.updateBot(id, {
     name: opts.name,
     model: opts.model,
@@ -131,30 +144,30 @@ export async function updateBot(
   ctx.out(`Updated bot ${bold(bot.name)} (${bot.id})\n\n${describe(bot, await inboxNames(client))}`);
 }
 
-export async function deleteBot(ctx: Context, ref: string) {
+export async function deleteBot(ctx: Context, ref: string, opts: OrgOpt) {
   const client = await authedClient(ctx);
-  const id = await resolveBot(client, ref);
+  const id = await resolveBot(ctx, client, ref, opts.org);
   await client.deleteBot(id);
   ctx.out(`Deleted bot ${id}.`);
 }
 
 /** `loopway bots release <bot> --force`: drops the lease a runner left behind when it died. */
-export async function releaseBot(ctx: Context, ref: string, opts: { force?: boolean }) {
+export async function releaseBot(ctx: Context, ref: string, opts: OrgOpt & { force?: boolean }) {
   if (!opts.force) {
     throw new UsageError(
       "Pass --force to drop the lease. A `loopway bots run` still holding it loses the bot to the next runner.",
     );
   }
   const client = await authedClient(ctx);
-  const id = await resolveBot(client, ref);
+  const id = await resolveBot(ctx, client, ref, opts.org);
   await client.forceReleaseBot(id);
   ctx.out(`Released the lease on bot ${id}; the next \`loopway bots run\` can take it.`);
 }
 
 /** What the bot would read next: messages after its cursor, oldest first. */
-export async function botMessages(ctx: Context, ref: string, opts: JsonOpt & { limit?: number }) {
+export async function botMessages(ctx: Context, ref: string, opts: JsonOpt & OrgOpt & { limit?: number }) {
   const client = await authedClient(ctx);
-  const messages = await client.botMessages(await resolveBot(client, ref), { limit: opts.limit });
+  const messages = await client.botMessages(await resolveBot(ctx, client, ref, opts.org), { limit: opts.limit });
   if (opts.json) return ctx.out(json(messages));
   if (!messages.length) return ctx.out("No new messages.");
   const names = await inboxNames(client);
@@ -204,9 +217,14 @@ async function resolveInboxes(client: LoopwayClient, refs: string[]) {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Commands take a bot id or an exact bot name. */
-export async function resolveBot(client: LoopwayClient, ref: string): Promise<string> {
+export async function resolveBot(
+  ctx: Context,
+  client: LoopwayClient,
+  ref: string,
+  org: string | undefined,
+): Promise<string> {
   if (UUID_RE.test(ref)) return ref;
-  const matches = (await client.listBots()).filter((b) => b.name === ref);
+  const matches = (await client.listBots(await defaultOrg(ctx, client, org, "bots"))).filter((b) => b.name === ref);
   if (matches.length === 1) return matches[0]!.id;
   if (!matches.length) throw new UsageError(`No bot with id or name "${ref}". See \`loopway bots list\`.`);
   throw new UsageError(
