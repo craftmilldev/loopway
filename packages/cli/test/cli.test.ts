@@ -2466,6 +2466,18 @@ describe("threads", () => {
       await expect(run("inbox", "list")).rejects.toThrow(/several orgs/);
     });
 
+    it("keeps `bots run` on the runner's org even after `orgs use` picks another", async () => {
+      const { personal, shared } = await inTwoOrgs();
+      await run("bots", "run", "--no-tui", "--org", shared);
+      const first = await saved();
+      await run("orgs", "use", personal);
+      await run("bots", "run", "--no-tui");
+      expect(await saved()).toEqual(first);
+      // Reads follow `orgs use`.
+      await run("bots", "list");
+      expect(notes.join("\n")).toMatch(new RegExp(`org: ${personal} .*orgs use`));
+    });
+
     it("won't use an org the user isn't in", async () => {
       await inTwoOrgs();
       await expect(run("orgs", "use", "no-such-org")).rejects.toThrow(/aren't in an org/);

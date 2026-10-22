@@ -35,8 +35,8 @@ function noteOrg(ctx: Context, slug: string, source: OrgSource) {
 }
 
 /**
- * The slug of the org a command works in: `--org` if given, else the one `loopway orgs use` saved, else (for
- * `runner` and `bots`) the one this machine runs bots for, if the user is still in it. Otherwise the user's only
+ * The slug of the org a command works in: `--org` if given, else (for `runner`) the one this machine runs bots for, else the one `loopway orgs use` saved, else (for
+ * `bots`) the runner's, if the user is still in it. Otherwise the user's only
  * org, or in a terminal a pick from their orgs. With several orgs and no terminal there is no safe default, so it
  * names the slugs and the flag. Says which org it settled on, on stderr.
  */
@@ -52,15 +52,21 @@ export async function resolveOrg(
   }
   const orgs = await client.listOrgs();
   const member = (slug: string | undefined) => (slug && orgs.some((o) => o.slug === slug) ? slug : undefined);
+  // A machine keeps running the org its runner was registered for, even if `orgs use` has since looked elsewhere.
+  const runner = kind === "runner" ? member(await savedRunnerOrg(ctx.configDir)) : undefined;
+  if (runner) {
+    noteOrg(ctx, runner, "runner");
+    return runner;
+  }
   const used = member(await readSavedOrg(ctx.configDir));
   if (used) {
     noteOrg(ctx, used, "use");
     return used;
   }
-  const runner = kind === "runner" || kind === "bots" ? member(await savedRunnerOrg(ctx.configDir)) : undefined;
-  if (runner) {
-    noteOrg(ctx, runner, "runner");
-    return runner;
+  const bots = kind === "bots" ? member(await savedRunnerOrg(ctx.configDir)) : undefined;
+  if (bots) {
+    noteOrg(ctx, bots, "runner");
+    return bots;
   }
   if (orgs.length === 1) {
     noteOrg(ctx, orgs[0]!.slug, "only");
