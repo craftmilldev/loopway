@@ -301,7 +301,11 @@ A CLI installed from a release updates itself to the newest one; turn that off w
   bots
     .command("list")
     .alias("ls")
-    .description("list your bots")
+    .description("list an org's bots")
+    .option(
+      "--org <slug>",
+      "org whose bots to list (the one this machine runs bots for by default; prompted for if unsure)",
+    )
     .addOption(jsonOpt())
     .action((opts) => listBots(ctx, opts));
 

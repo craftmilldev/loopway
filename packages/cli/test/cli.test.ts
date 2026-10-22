@@ -976,17 +976,19 @@ describe("runners", () => {
     );
     const ctx: Context = { configDir, env: {}, interactive: false, out: () => {}, fetch: apiFetch };
 
-    const first = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id });
+    const first = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id, org: runner.org });
     expect((await runJson("runners"))[0].leased_until).toEqual(expect.any(String));
     await first.tick();
     // Another process on the same machine (or a copy of runner.json) is refused.
     // A UsageError, which index.ts prints as one `error:` line instead of a stack trace.
-    const refused = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id }).catch((e) => e);
+    const refused = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id, org: runner.org }).catch(
+      (e) => e,
+    );
     expect(refused).toBeInstanceOf(UsageError);
     expect(refused.message).toMatch(/runner is already in use/);
     await first.close();
     expect((await runJson("runners"))[0]).toMatchObject({ leased_until: null, bots: [] });
-    const second = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id });
+    const second = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id, org: runner.org });
     await second.close();
   });
 
@@ -2059,7 +2061,7 @@ describe("threads", () => {
       { ...ctxOf([]), runAgent: async (r) => (theirs.push(r), { code: 0, delivered: true }) },
       client,
       [bot],
-      { runnerId: second.id },
+      { runnerId: second.id, org: second.org },
     );
     closers.push(() => other.close());
     await send(inbox, "issue_comment", comment(1));
@@ -2095,7 +2097,7 @@ describe("threads", () => {
       id: randomUUID(),
       name: "other",
     });
-    const other = await Dispatcher.start(ctxOf([]), client, [bot], { runnerId: second.id });
+    const other = await Dispatcher.start(ctxOf([]), client, [bot], { runnerId: second.id, org: second.org });
     closers.push(() => other.close());
     const before = Date.now();
     await other.tick();
@@ -2151,7 +2153,12 @@ describe("threads", () => {
       fetch: apiFetch,
       runAgent: async (r) => (runs2.push(r), { code: 0, delivered: true }),
     };
-    const d2 = await Dispatcher.start(ctx, client, [bot], { max: 3, ttl: 60, runnerId });
+    const d2 = await Dispatcher.start(ctx, client, [bot], {
+      max: 3,
+      ttl: 60,
+      runnerId,
+      org: (await client.listOrgs()).find((o) => o.personal)!.slug,
+    });
     closers.push(() => d2.close());
     await d2.tick();
     await d2.idle();
@@ -2188,7 +2195,12 @@ describe("threads", () => {
       fetch: apiFetch,
       runAgent: async (r) => (runs2.push(r), { code: 0, delivered: true }),
     };
-    const d2 = await Dispatcher.start(ctx, client, [bot], { max: 3, ttl: 60, runnerId });
+    const d2 = await Dispatcher.start(ctx, client, [bot], {
+      max: 3,
+      ttl: 60,
+      runnerId,
+      org: (await client.listOrgs()).find((o) => o.personal)!.slug,
+    });
     closers.push(() => d2.close());
     await d2.tick();
     await d2.idle();

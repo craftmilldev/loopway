@@ -1,13 +1,13 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { runHarness } from "@loopway/harnesses";
-import { ApiError, type LoopwayClient } from "../client.js";
+import { ApiError } from "../client.js";
 import { applyUpdate, availableUpdate as availableUpdateNow } from "../update.js";
 import { loadConfig } from "../config.js";
 import { authedClient, type Context } from "../context.js";
 import { DEFAULTS, Dispatcher, MAX_POLL_INTERVAL, type ThreadsOptions } from "../bots/dispatcher.js";
-import { ensureRunner, savedRunnerOrg } from "../bots/runner.js";
+import { ensureRunner } from "../bots/runner.js";
 import { loadWorkdirs, WORKDIRS_FILE } from "../bots/workdirs.js";
-import { resolveOrg } from "./orgs.js";
+import { defaultOrg } from "./orgs.js";
 import { ManagerChat } from "../bots/chat.js";
 import { colorSupport } from "../bots/colors.js";
 import { showTui } from "../bots/tui.js";
@@ -23,7 +23,7 @@ export interface RunBotsOptions extends ThreadsOptions {
 /** `loopway bots run`: run every bot of one org, handing each message to its thread's session, forever. */
 export async function runBots(ctx: Context, opts: RunBotsOptions) {
   const client = await authedClient(ctx);
-  const runner = await ensureRunner(ctx, client, await runnerOrg(ctx, client, opts.org));
+  const runner = await ensureRunner(ctx, client, await defaultOrg(ctx, client, opts.org, "runner"));
   const all = await client.listBots(runner.org);
   const bots = all.filter((b) => b.prompt_version?.rules);
   for (const b of all)
@@ -138,14 +138,6 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
   // Quitting stops everything, as Ctrl-C does without the TUI: interrupt the whole process group so
   // the claude sessions this dispatcher started stop with it.
   process.kill(0, "SIGINT");
-}
-
-/** The org to run for: --org, else the one this machine's runner already has (if the user is still in it), else a pick. */
-async function runnerOrg(ctx: Context, client: LoopwayClient, flag: string | undefined): Promise<string> {
-  if (flag) return flag;
-  const saved = await savedRunnerOrg(ctx.configDir);
-  const member = saved && (await client.listOrgs()).some((o) => o.slug === saved);
-  return resolveOrg(ctx, client, member ? saved : undefined, "runner");
 }
 
 /**

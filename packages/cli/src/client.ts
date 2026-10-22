@@ -338,10 +338,9 @@ export class LoopwayClient {
 
   // ---------- bots ----------
 
-  /** The account's bots, or those of one org (by slug), which is how a runner asks for only the bots it can run. */
-  async listBots(org?: string) {
-    const query = org === undefined ? "" : `?org=${encodeURIComponent(org)}`;
-    return (await this.request<{ data: Bot[] }>("GET", `/bots${query}`)).data;
+  /** The bots of one org (by slug): a runner asks for only the bots it can run. */
+  async listBots(org: string) {
+    return (await this.request<{ data: Bot[] }>("GET", `/bots?org=${encodeURIComponent(org)}`)).data;
   }
 
   createBot(input: {

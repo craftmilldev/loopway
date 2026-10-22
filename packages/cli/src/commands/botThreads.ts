@@ -7,7 +7,7 @@ import { resolveBot } from "./bots.js";
 export async function listBotThreads(ctx: Context, ref: string, opts: { status?: string; json?: boolean }) {
   const client = await authedClient(ctx);
   const status = (opts.status ?? "active") as "active" | "ended" | "all";
-  const threads = await client.listThreads(await resolveBot(client, ref), status);
+  const threads = await client.listThreads(await resolveBot(ctx, client, ref), status);
   if (opts.json) return ctx.out(json(threads));
   if (!threads.length) return ctx.out(status === "all" ? "No threads." : `No ${status} threads.`);
   const names = new Map((await client.listRunners()).map((r) => [r.id, r.name]));
@@ -33,7 +33,7 @@ export async function listBotThreads(ctx: Context, ref: string, opts: { status?:
  */
 export async function releaseBotThread(ctx: Context, ref: string, threadId: string) {
   const client = await authedClient(ctx);
-  const thread = await client.releaseThread(await resolveBot(client, ref), threadId);
+  const thread = await client.releaseThread(await resolveBot(ctx, client, ref), threadId);
   ctx.out(`Released thread ${thread.id}; a runner can claim it now.`);
 }
 
@@ -45,7 +45,7 @@ export async function endBotThread(ctx: Context, ref: string, threadId: string, 
   const client = await authedClient(ctx);
   let thread;
   try {
-    thread = await client.endThread(await resolveBot(client, ref), threadId);
+    thread = await client.endThread(await resolveBot(ctx, client, ref), threadId);
   } catch (err) {
     const reason = err instanceof ApiError ? err.code : "error";
     void ctx.metrics?.capture("thread_end_failed", { surface: "cli", reason });
@@ -62,7 +62,7 @@ export async function endBotThread(ctx: Context, ref: string, threadId: string, 
  */
 export async function moveBotSubject(ctx: Context, ref: string, subject: string, from: string, to: string) {
   const client = await authedClient(ctx);
-  const botId = await resolveBot(client, ref);
+  const botId = await resolveBot(ctx, client, ref);
   const find = await threadFinder(client, botId);
   const thread = await client.moveSubject(botId, subject, find(from), find(to));
   ctx.out(`Moved ${subject} to thread ${thread.id} (${thread.status}).`);
@@ -85,7 +85,7 @@ async function threadFinder(client: LoopwayClient, botId: string) {
  */
 export async function sendBotThreadMessage(ctx: Context, ref: string, thread: string, words: string[]) {
   const client = await authedClient(ctx);
-  const botId = await resolveBot(client, ref);
+  const botId = await resolveBot(ctx, client, ref);
   const threadId = (await threadFinder(client, botId))(thread);
   try {
     await client.sendThreadMessage(botId, threadId, words.join(" "));
