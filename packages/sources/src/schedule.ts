@@ -77,7 +77,9 @@ export const schedule = ({ makeCloudEvent }: SourceDeps): SourceAdapter<Schedule
   parseConfig(input, existing) {
     const parsed = configInput.safeParse(input ?? existing);
     if (!parsed.success) throw parsed.error;
-    return parsed.data;
+    // Without strictNullChecks (Vercel's compile) zod infers every field as optional, hence the cast.
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    return parsed.data as ScheduleConfig;
   },
 
   publicConfig(config) {
