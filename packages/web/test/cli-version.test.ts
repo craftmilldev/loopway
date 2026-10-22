@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApi } from "../src/api.js";
-import { olderThan } from "../src/cli-version.js";
+import { MIN_CLI_VERSION_FLOOR, minCliVersion, olderThan } from "../src/cli-version.js";
 import { type Db } from "../src/db/index.js";
 import { openTestDb, TEST_INBOX_KEY } from "../src/db/testing.js";
 import { createWeb } from "../src/ui.js";
@@ -14,6 +14,46 @@ describe("olderThan", () => {
   });
   it("turns nobody away for a minimum that isn't a version", () => {
     expect(olderThan("0.1.0", "soon")).toBe(false);
+  });
+});
+
+describe("minCliVersion", () => {
+  it("is the floor in code when the env var is unset, empty or not a version", () => {
+    expect(minCliVersion(undefined)).toBe(MIN_CLI_VERSION_FLOOR);
+    expect(minCliVersion("")).toBe(MIN_CLI_VERSION_FLOOR);
+    expect(minCliVersion("soon")).toBe(MIN_CLI_VERSION_FLOOR);
+  });
+  it("lets the env var raise the minimum but not lower it", () => {
+    expect(minCliVersion("0.1.0", "0.3.37")).toBe("0.3.37");
+    expect(minCliVersion("0.3.37", "0.3.37")).toBe("0.3.37");
+    expect(minCliVersion("0.4.0", "0.3.37")).toBe("0.4.0");
+    expect(minCliVersion(" 0.10.0 ", "0.9.0")).toBe("0.10.0");
+  });
+});
+
+describe("the floor in code", () => {
+  it("turns away the last CLI without org on list requests, and serves the release that has it", async () => {
+    const db = await openTestDb();
+    const app = createApi({
+      getDb: async () => db,
+      tokenSecret: "test-secret",
+      inboxSecretKey: TEST_INBOX_KEY,
+      minCliVersion: minCliVersion(undefined),
+    });
+    const get = (version?: string) =>
+      app.request("/api/health", { headers: version ? { "x-loopway-cli-version": version } : {} });
+    expect((await get("0.3.36")).status).toBe(426);
+    expect((await get("0.3.37")).status).toBe(200);
+    expect((await get()).status).toBe(200);
+    // An env value below the floor can't let 0.3.36 back in; one above it raises the minimum.
+    const lowered = createApi({
+      getDb: async () => db,
+      tokenSecret: "test-secret",
+      inboxSecretKey: TEST_INBOX_KEY,
+      minCliVersion: minCliVersion("0.2.0"),
+    });
+    expect((await lowered.request("/api/health", { headers: { "x-loopway-cli-version": "0.3.36" } })).status).toBe(426);
+    await db.close();
   });
 });
 
