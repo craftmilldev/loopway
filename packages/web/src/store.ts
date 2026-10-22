@@ -983,6 +983,8 @@ export interface Thread {
   runner_id: string | null;
   /** 2: a person started it. 3: a bot did, but a person took part. 4: no person did. Null while no message has a known author. */
   automation_level: 2 | 3 | 4 | null;
+  /** What the thread's session recorded about itself: a JSON object. */
+  metadata: Record<string, unknown>;
   subjects: string[];
   /** Assigned, not handed to a run yet. */
   waiting: ThreadMessage[];
@@ -1006,7 +1008,7 @@ const threadMessages = (state: ThreadMessageState) => `
             WHERE tm.thread_id = t.id AND tm.state = '${state}'), '[]'::jsonb)`;
 
 const THREAD_COLS = `
-  t.id, t.bot_id, t.created_by, t.status, t.started, t.interrupted, t.limited, t.runner_id, t.automation_level,
+  t.id, t.bot_id, t.created_by, t.status, t.started, t.interrupted, t.limited, t.runner_id, t.automation_level, t.metadata,
   t.created_at, t.updated_at,
   COALESCE((SELECT jsonb_agg(k.subject ORDER BY k.subject) FROM loopway.thread_subjects k WHERE k.thread_id = t.id),
            '[]'::jsonb) AS subjects,
@@ -1303,7 +1305,13 @@ export interface ThreadPatch {
   interrupted?: boolean;
   limited?: boolean;
   addSubjects?: string[];
+  /** Keys to set (merged into the metadata) and keys to remove; the set is applied first. */
+  metadataSet?: Record<string, unknown>;
+  metadataUnset?: string[];
 }
+
+/** The most a thread's metadata may be, serialized. */
+export const METADATA_MAX_BYTES = 16 * 1024;
 
 /** False unless `token` is the live lease of the thread's owner. */
 export async function patchThread(
@@ -1322,6 +1330,7 @@ export async function patchThread(
       started: boolean;
       interrupted: boolean;
       limited: boolean;
+      metadata_bytes: number;
       old_status: string;
       old_started: boolean;
       old_interrupted: boolean;
@@ -1332,16 +1341,31 @@ export async function patchThread(
          started     = COALESCE($5::boolean, t.started),
          interrupted = COALESCE($6::boolean, t.interrupted),
          limited     = COALESCE($7::boolean, t.limited),
+         metadata    = (t.metadata || $8::jsonb) - $9::text[],
          updated_at  = now()
        FROM loopway.threads o
        WHERE o.id = t.id AND ${THREAD_OWNED}
        RETURNING t.org_id, t.status, t.started, t.interrupted, t.limited,
+                 octet_length(t.metadata::text) AS metadata_bytes,
                  o.status AS old_status, o.started AS old_started, o.interrupted AS old_interrupted,
                  o.limited AS old_limited`,
-      [botId, token, id, patch.status ?? null, patch.started ?? null, patch.interrupted ?? null, patch.limited ?? null],
+      [
+        botId,
+        token,
+        id,
+        patch.status ?? null,
+        patch.started ?? null,
+        patch.interrupted ?? null,
+        patch.limited ?? null,
+        patch.metadataSet ?? {},
+        patch.metadataUnset ?? [],
+      ],
     );
     if (!upd.length) return false;
     const u = upd[0]!;
+    // Throwing rolls the whole update back.
+    if (u.metadata_bytes > METADATA_MAX_BYTES)
+      throw new ApiError(400, "metadata_too_large", `A thread's metadata can be at most ${METADATA_MAX_BYTES} bytes`);
     const kinds: ThreadEventKind[] = [];
     if (u.started && !u.old_started) kinds.push("started");
     if (u.interrupted && !u.old_interrupted) kinds.push("interrupted");

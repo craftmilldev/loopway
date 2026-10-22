@@ -6,6 +6,7 @@ import {
   moveBotSubject,
   releaseBotThread,
   sendBotThreadMessage,
+  showBotThread,
 } from "./commands/botThreads.js";
 import {
   botMessages,
@@ -278,6 +279,11 @@ A CLI installed from a release updates itself to the newest one; turn that off w
   // ---------- bots ----------
 
   const bots = program.command("bots").alias("bot").description("create, list, update and run bots");
+  const botOrgOpt = () =>
+    new Option(
+      "--org <slug>",
+      "org the bot is in, to find it by name (the one this machine runs bots for by default; prompted for if unsure)",
+    );
   const harnessOpt = (desc: string) => new Option("--harness <harness>", desc).choices(HARNESSES.map((h) => h.name));
   const inboxesOpt = (desc: string) => new Option("--inbox <list>", desc).argParser(splitList);
 
@@ -301,7 +307,11 @@ A CLI installed from a release updates itself to the newest one; turn that off w
   bots
     .command("list")
     .alias("ls")
-    .description("list your bots")
+    .description("list an org's bots")
+    .option(
+      "--org <slug>",
+      "org whose bots to list (the one this machine runs bots for by default; prompted for if unsure)",
+    )
     .addOption(jsonOpt())
     .action((opts) => listBots(ctx, opts));
 
@@ -309,6 +319,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .command("show")
     .description("show a bot, its inboxes and its cursor")
     .argument("<bot>", "bot id or name")
+    .addOption(botOrgOpt())
     .option("--prompt", "print the bot's current prompt instead")
     .option("--rules", "print the bot's current assign rules (JSON) instead")
     .addOption(jsonOpt())
@@ -318,6 +329,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .command("versions")
     .description("list the saved versions of a bot's prompt and rules, newest first")
     .argument("<bot>", "bot id or name")
+    .addOption(botOrgOpt())
     .addOption(jsonOpt())
     .action((ref, opts) => botVersions(ctx, ref, opts));
 
@@ -325,6 +337,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .command("edit")
     .description("save a new version of a bot's prompt and/or rules, read from files; a running bot picks it up")
     .argument("<bot>", "bot id or name")
+    .addOption(botOrgOpt())
     .option("--prompt-file <path>", "the new prompt (Markdown)")
     .option("--rules-file <path>", "the new assign rules (JSON, as `bots show --rules` prints them)")
     .addOption(jsonOpt())
@@ -334,6 +347,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .command("update")
     .description("rename a bot, change its model, or replace its inboxes")
     .argument("<bot>", "bot id or name")
+    .addOption(botOrgOpt())
     .option("--name <name>", "new name")
     .option("--model <model>", "new model")
     .addOption(harnessOpt("new harness"))
@@ -346,12 +360,14 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .alias("rm")
     .description("delete a bot")
     .argument("<bot>", "bot id or name")
-    .action((ref) => deleteBot(ctx, ref));
+    .addOption(botOrgOpt())
+    .action((ref, opts) => deleteBot(ctx, ref, opts));
 
   bots
     .command("release")
     .description("drop the lease a runner left on a bot when it died, so the next `loopway bots run` can take it")
     .argument("<bot>", "bot id or name")
+    .addOption(botOrgOpt())
     .option("--force", "confirm: a `loopway bots run` still holding the lease loses the bot")
     .action((ref, opts) => releaseBot(ctx, ref, opts));
 
@@ -359,6 +375,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .command("messages")
     .description("list the messages the bot would read next (after its cursor, oldest first)")
     .argument("<bot>", "bot id or name")
+    .addOption(botOrgOpt())
     .option("--limit <n>", "how many (default 50, max 100)", positiveInt)
     .addOption(jsonOpt())
     .action((ref, opts) => botMessages(ctx, ref, opts));
@@ -367,16 +384,28 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .command("threads")
     .description("list a bot's threads on the server")
     .argument("<bot>", "bot id or name")
+    .addOption(botOrgOpt())
     .addOption(new Option("--status <status>", "which threads (default active)").choices(["active", "ended", "all"]))
     .addOption(jsonOpt())
     .action((ref, opts) => listBotThreads(ctx, ref, opts));
 
   botThreads
+    .command("show")
+    .description("show one thread, with the metadata its session recorded")
+    .argument("<bot>", "bot id or name")
+    .argument("<thread>", "id of the thread (the start of it is enough)")
+    .addOption(jsonOpt())
+    .action((ref: string, thread: string, _opts: unknown, cmd: Command) =>
+      showBotThread(ctx, ref, thread, cmd.optsWithGlobals()),
+    );
+
+  botThreads
     .command("release")
     .description("give up a thread whose runner is gone, so another runner can claim it")
     .argument("<bot>", "bot id or name")
+    .addOption(botOrgOpt())
     .argument("<thread>", "thread id")
-    .action((ref, thread) => releaseBotThread(ctx, ref, thread));
+    .action((ref, thread, _opts: unknown, cmd: Command) => releaseBotThread(ctx, ref, thread, cmd.optsWithGlobals()));
 
   botThreads
     .command("end")
@@ -384,6 +413,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
       "end a thread; its waiting and inflight messages stay as they are, its runner keeps its claim, and the next message for it resumes it",
     )
     .argument("<bot>", "bot id or name")
+    .addOption(botOrgOpt())
     .argument("<thread>", "thread id")
     .addOption(jsonOpt())
     // The parent `threads` command takes --json too, and claims it wherever it appears.
@@ -395,9 +425,12 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .command("send")
     .description("send a message to a thread; its runner hands it to the thread's session")
     .argument("<bot>", "bot id or name")
+    .addOption(botOrgOpt())
     .argument("<thread>", "id of the thread (the start of it is enough)")
     .argument("<text...>", "the message")
-    .action((ref, thread, text) => sendBotThreadMessage(ctx, ref, thread, text));
+    .action((ref, thread, text, _opts: unknown, cmd: Command) =>
+      sendBotThreadMessage(ctx, ref, thread, text, cmd.optsWithGlobals()),
+    );
 
   botThreads
     .command("move")
@@ -405,10 +438,13 @@ A CLI installed from a release updates itself to the newest one; turn that off w
       "move a subject from one of the bot's threads to another, with its waiting messages; an ended thread resumes",
     )
     .argument("<bot>", "bot id or name")
+    .addOption(botOrgOpt())
     .argument("<subject>", "the subject, e.g. owner/repo#12")
     .argument("<from-thread>", "id of the thread it is on (the start of it is enough)")
     .argument("<to-thread>", "id of the thread to move it to (the start of it is enough)")
-    .action((ref, subject, from, to) => moveBotSubject(ctx, ref, subject, from, to));
+    .action((ref, subject, from, to, _opts: unknown, cmd: Command) =>
+      moveBotSubject(ctx, ref, subject, from, to, cmd.optsWithGlobals()),
+    );
 
   bots
     .command("run")

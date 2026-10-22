@@ -326,6 +326,41 @@ describe("thread writes", () => {
     expect((await patch({ add_subjects: ["b#1"] })).body.error.code).toBe("subject_taken");
   });
 
+  it("keeps metadata keys, merges sets, unsets only the named keys, and refuses too much", async () => {
+    const { key, base, messages, assign, thread, leaseThread } = await setup(1);
+    const t = randomUUID();
+    await assign([{ message_id: messages[0]!.id, thread_id: t }]);
+    const lease = await leaseThread(t);
+    const patch = (body: object, token = lease) =>
+      call("PATCH", `${base}/threads/${t}`, { key, body: { lease_token: token, ...body } });
+
+    // Existing threads read {}.
+    expect((await thread(t)).body.metadata).toEqual({});
+    expect((await call("GET", `${base}/threads`, { key })).body.data[0].metadata).toEqual({});
+
+    expect((await patch({ metadata_set: { label: "generic" } })).body.metadata).toEqual({ label: "generic" });
+    expect((await patch({ metadata_set: { steps: [1, { a: null }] } })).body.metadata).toEqual({
+      label: "generic",
+      steps: [1, { a: null }],
+    });
+    expect((await patch({ metadata_set: { label: "other" } })).body.metadata.label).toBe("other");
+    expect((await patch({ metadata_unset: ["steps", "nope"] })).body.metadata).toEqual({ label: "other" });
+    expect((await thread(t)).body.metadata).toEqual({ label: "other" });
+
+    // A NUL character is something jsonb can't store: a 400, not a 500.
+    for (const set of [{ k: "a\u0000b" }, { "a\u0000b": 1 }, { k: { deep: ["\u0000"] } }])
+      expect((await patch({ metadata_set: set })).status).toBe(400);
+
+    // Over 16 KB is a 400 and changes nothing.
+    const big = await patch({ metadata_set: { blob: "x".repeat(17 * 1024) } });
+    expect([big.status, big.body.error.code]).toEqual([400, "metadata_too_large"]);
+    expect((await thread(t)).body.metadata).toEqual({ label: "other" });
+
+    // Without a live lease it is refused like other fields.
+    expect((await patch({ metadata_set: { label: "x" } }, "bad")).status).toBe(409);
+    expect((await thread(t)).body.metadata).toEqual({ label: "other" });
+  });
+
   it("delivers waiting messages as inflight, then finishes or requeues them", async () => {
     const { key, base, messages, assign, thread, leaseThread } = await setup(3);
     const t = randomUUID();

@@ -3,6 +3,7 @@ import type { LoopwayClient } from "../client.js";
 import { ApiError } from "../client.js";
 import { authedClient, CancelledError, UsageError, type Context } from "../context.js";
 import { bold, dim, json, table } from "../format.js";
+import { savedRunnerOrg } from "../bots/runner.js";
 import { USERNAME_ERRORS } from "./auth.js";
 
 /**
@@ -13,7 +14,7 @@ export async function resolveOrg(
   ctx: Context,
   client: LoopwayClient,
   flag: string | undefined,
-  kind: "inbox" | "bot" | "runner",
+  kind: "inbox" | "bot" | "runner" | "bots",
 ): Promise<string> {
   if (flag) return flag;
   const orgs = await client.listOrgs();
@@ -23,21 +24,42 @@ export async function resolveOrg(
     await ctx.metrics?.capture("org_unresolved", { kind, reason: "several_orgs_non_interactive" });
     throw new UsageError(
       `You belong to several orgs (${orgs.map((o) => o.slug).join(", ")}). Pass --org <slug> to choose ${
-        kind === "runner" ? "the org to run bots for" : `where to create the ${kind}`
+        kind === "runner"
+          ? "the org to run bots for"
+          : kind === "bots"
+            ? "whose bots to use"
+            : `where to create the ${kind}`
       }.`,
     );
   }
   const picked = await p.select({
     message:
-      kind === "runner" ? "Which org should this machine run bots for?" : `Which org should the ${kind} belong to?`,
+      kind === "runner"
+        ? "Which org should this machine run bots for?"
+        : kind === "bots"
+          ? "Which org's bots?"
+          : `Which org should the ${kind} belong to?`,
     options: orgs.map((o) => ({ value: o.slug, label: o.slug, hint: o.personal ? "personal" : undefined })),
   });
   if (p.isCancel(picked)) {
     await ctx.metrics?.capture("org_unresolved", { kind, reason: "cancelled" });
-    p.cancel(kind === "runner" ? "Not running." : `No ${kind} created.`);
+    p.cancel(kind === "runner" ? "Not running." : kind === "bots" ? "Cancelled." : `No ${kind} created.`);
     throw new CancelledError();
   }
   return picked;
+}
+
+/** The org to use: `flag`, else the one this machine's runner was started for (if the user is still in it), else a pick. */
+export async function defaultOrg(
+  ctx: Context,
+  client: LoopwayClient,
+  flag: string | undefined,
+  kind: "runner" | "bots",
+): Promise<string> {
+  if (flag) return flag;
+  const saved = await savedRunnerOrg(ctx.configDir);
+  const member = saved && (await client.listOrgs()).some((o) => o.slug === saved);
+  return resolveOrg(ctx, client, member ? saved : undefined, kind);
 }
 
 export async function listOrgs(ctx: Context, opts: { json?: boolean }) {

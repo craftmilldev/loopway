@@ -61,6 +61,62 @@ export function sessionTools(api: ThreadApi, metrics: Metrics = noopMetrics): Mc
       },
     },
     {
+      name: "record",
+      description:
+        'Record one fact about your own session on this thread, as a key and a JSON value (for example key `label`, value `"generic"`). This is for your own metadata about yourself, kept by the server; it is not shown to anyone in the thread. Setting a key again replaces its value; other keys stay.',
+      inputSchema: {
+        type: "object",
+        properties: {
+          key: { type: "string", description: "the key, 1 to 200 characters" },
+          value: { description: "any JSON value" },
+        },
+        required: ["key", "value"],
+      },
+      call: async (sessionId, args) => {
+        const key = args.key;
+        if (typeof key !== "string" || !key || key.length > 200) {
+          await metrics.capture("record_rejected", { reason: "invalid_key" });
+          throw new Error("key must be a string of 1 to 200 characters.");
+        }
+        if (args.value === undefined) {
+          await metrics.capture("record_rejected", { reason: "missing_value" });
+          throw new Error("Pass a value (any JSON, null included).");
+        }
+        try {
+          await api.patch(sessionId, { metadata_set: { [key]: args.value } });
+        } catch (err) {
+          await metrics.capture("record_rejected", { reason: err instanceof ApiError ? err.code : "error" });
+          throw err;
+        }
+        await metrics.capture("record_set", {});
+        return `Recorded ${key}.`;
+      },
+    },
+    {
+      name: "unrecord",
+      description: "Remove one key you recorded with `record` from this thread's metadata. Other keys stay.",
+      inputSchema: {
+        type: "object",
+        properties: { key: { type: "string", description: "the key to remove" } },
+        required: ["key"],
+      },
+      call: async (sessionId, args) => {
+        const key = args.key;
+        if (typeof key !== "string" || !key || key.length > 200) {
+          await metrics.capture("record_rejected", { reason: "invalid_key" });
+          throw new Error("key must be a string of 1 to 200 characters.");
+        }
+        try {
+          await api.patch(sessionId, { metadata_unset: [key] });
+        } catch (err) {
+          await metrics.capture("record_rejected", { reason: err instanceof ApiError ? err.code : "error" });
+          throw err;
+        }
+        await metrics.capture("record_unset", {});
+        return `Removed ${key}.`;
+      },
+    },
+    {
       name: "end",
       description:
         "Tell the dispatcher this thread's work is finished (the PR is merged or closed for good, or the user asked you to stop). It moves the thread to done. A later event for the thread resumes you and makes it active again.",
