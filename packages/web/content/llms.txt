@@ -7,7 +7,7 @@ If a person asks you to set up loopway, make an inbox, or make a bot, the steps 
 ## Concepts
 
 - **Org**: owns inboxes and bots. Every user has a personal org; shared orgs can have several members.
-- **Inbox**: listens to one source, named by its `source_type`: `github`, `linear`, `vercel`, `granola`, `resend`, `schedule` (a message each hour, or each day at a UTC hour you pick) or `loopway` (messages posted straight to the inbox, so bots and backends can message each other). The source's webhook points at the inbox, which checks the signature and keeps the message; a `schedule` inbox takes no webhooks and fills itself. `loopway inbox show <inbox>` prints the webhook URL and secret to paste into the sender.
+- **Inbox**: listens to one source, named by its `source_type`: `github`, `linear`, `vercel`, `granola`, `resend`, `schedule` (a message each hour, or each day at a UTC hour you pick) or `loopway` (messages posted straight to the inbox, so bots and backends can message each other). The source's webhook points at the inbox, which checks the signature and keeps the message; a `schedule` inbox takes no webhooks and fills itself. `loopway inbox create` prints the webhook URL and, for `github` and `loopway`, where loopway makes the secret, the secret, once; `loopway inbox show <inbox>` prints the URL and setup again, but not the secret. For `vercel`, `linear`, `granola` and `resend`, the sender makes the secret and you paste it in with `loopway inbox update <inbox> --secret ...`.
 - **Message**: one stored delivery: the CloudEvent (its `type`, e.g. `com.github.issues.opened`, and `data`), when it arrived, and its place in arrival order. Nothing is marked done.
 - **Bot**: reads the messages of one or more inboxes in arrival order and keeps a cursor, so it knows where it left off. A bot has a prompt, rules, a harness and a model. The harness is the coding agent its sessions run in: `claude` (Claude Code), `codex` (Codex), `cursor` (Cursor), `hermes` (Hermes) or `script` (a shell command, kept as the bot's prompt, for bots that act on an API's answer themselves), picked with `loopway bots create --harness <name>` and changed with `loopway bots update --harness <name>`. The model is one that agent takes. A new bot starts at the newest message, so it doesn't replay history.
 - **Thread**: one session of the bot's agent working on a related set of messages. For GitHub, a thread is an issue and the PRs linked to it.
@@ -68,7 +68,7 @@ loopway bots run [--max 3] [--interval 5]     # run all your bots; loopway.json 
 ## Typical setup
 
 1. `loopway login`
-2. `loopway inbox create` for the source, then add the webhook URL and secret from `loopway inbox show` in the sender (for GitHub, a repo or org webhook with JSON content type).
+2. `loopway inbox create` for the source, then add the webhook URL, and the secret `loopway inbox create` printed, in the sender (for GitHub, a repo or org webhook with JSON content type).
 3. `loopway bots create --name <n> --preset github-threads --harness <harness> --model <model> --inbox <inbox>`
 4. Run `loopway bots run`:
    - with one repo, run it in that repo;
