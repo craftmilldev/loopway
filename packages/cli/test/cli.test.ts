@@ -2236,7 +2236,8 @@ describe("threads", () => {
       fetch: apiFetch,
       runAgent: async (r) => (runs2.push(r), { code: 0, delivered: true }),
     };
-    const d2 = await Dispatcher.start(ctx, client, [bot], { max: 3, ttl: 60, runnerId });
+    const org = (await client.listOrgs()).find((o) => o.id === bot.org_id)!.slug;
+    const d2 = await Dispatcher.start(ctx, client, [bot], { max: 3, ttl: 60, runnerId, org });
     closers.push(() => d2.close());
     await d2.tick();
     await d2.idle();
