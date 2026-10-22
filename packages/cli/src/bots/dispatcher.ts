@@ -688,6 +688,7 @@ export class Dispatcher {
         onStarted: () => {
           this.patchThread(id, { started: true }).catch(() => {});
         },
+        onPlanUsage: (outcome) => void this.ctx.metrics?.capture("plan_usage_reported", { outcome }),
       });
     let outcome: RunOutcome;
     try {

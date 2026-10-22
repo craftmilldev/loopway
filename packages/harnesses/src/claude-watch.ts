@@ -1,4 +1,5 @@
 import type { RunWatch } from "./agent.js";
+import type { RateLimitInfo } from "./plan-usage.js";
 
 /** How long to wait when a run hit the usage limit but didn't say when it resets. */
 export const LIMIT_FALLBACK_MS = 5 * 60_000;
@@ -16,7 +17,11 @@ export class LimitWatch implements RunWatch {
   private hit = false;
   private error?: string;
 
-  constructor(private readonly onInit?: () => void) {}
+  /** `onRateLimit` hears every `rate_limit_event`, for reporting plan usage. */
+  constructor(
+    private readonly onInit?: () => void,
+    private readonly onRateLimit?: (info: RateLimitInfo) => void,
+  ) {}
 
   line(raw: string): void {
     let r: {
@@ -27,7 +32,7 @@ export class LimitWatch implements RunWatch {
       result?: unknown;
       parent_tool_use_id?: string | null;
       message?: { content?: unknown };
-      rate_limit_info?: { status?: string; resetsAt?: number };
+      rate_limit_info?: RateLimitInfo;
     };
     try {
       r = JSON.parse(raw) as typeof r;
@@ -38,9 +43,11 @@ export class LimitWatch implements RunWatch {
     // Tool results are user records too, but with content blocks; only our message is a plain string.
     else if (r.type === "user" && !r.parent_tool_use_id && typeof r.message?.content === "string")
       this.delivered = true;
-    else if (r.type === "rate_limit_event" && r.rate_limit_info?.status === "rejected" && r.rate_limit_info.resetsAt)
-      this.resetsAt = r.rate_limit_info.resetsAt * 1000;
-    else if (r.type === "result") {
+    else if (r.type === "rate_limit_event" && r.rate_limit_info) {
+      this.onRateLimit?.(r.rate_limit_info);
+      if (r.rate_limit_info.status === "rejected" && r.rate_limit_info.resetsAt)
+        this.resetsAt = r.rate_limit_info.resetsAt * 1000;
+    } else if (r.type === "result") {
       this.finished = true;
       if (r.api_error === "usage_limit_reached") this.hit = true;
       // API errors come back with subtype `success`, so the run looks like it finished.

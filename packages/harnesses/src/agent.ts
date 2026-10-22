@@ -1,3 +1,5 @@
+import type { PlanUsageOutcome } from "./plan-usage.js";
+
 /** One headless agent run: start session `sessionId` (or resume it) with `message`. */
 export interface AgentRun {
   /** The harness to run it with, by name (see harnesses/index.ts). */
@@ -29,6 +31,8 @@ export interface AgentRun {
   script?: string;
   /** Called once Claude Code has created the session (its `system` `init` record), so later runs must resume it. */
   onStarted?: () => void;
+  /** Called when a plan usage report was attempted (see plan-usage.ts), for product metrics. */
+  onPlanUsage?: (outcome: PlanUsageOutcome) => void;
 }
 
 export interface RunOutcome {
