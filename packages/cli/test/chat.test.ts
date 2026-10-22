@@ -7,6 +7,7 @@ import { MANAGER_PROMPT } from "@loopway/presets";
 import { emptyChat, ManagerChat, type ChatThreads, type ManagerChatOptions } from "../src/bots/chat.js";
 import { chatLabel } from "../src/bots/chat-label.js";
 import { ApiError } from "../src/client.js";
+import { reservedChatKey } from "../src/commands/bots-run.js";
 import { parseProposal, tokenize, type Proposal } from "../src/bots/chat-changes.js";
 
 const rec = (r: object) => JSON.stringify(r) + "\n";
@@ -582,5 +583,14 @@ describe("chat threads", () => {
     await chat.close();
     expect(events).toContainEqual(["manager_thread_failed", { step: "label", reason: "runner_not_leased" }]);
     expect(events).toContainEqual(["manager_thread_failed", { step: "end", reason: "runner_not_leased" }]);
+  });
+});
+
+describe("reservedChatKey", () => {
+  it("finds the runner's keys when the manager sets or removes them, and only those", () => {
+    expect(reservedChatKey({ metadata_set: { label: "x" } })).toBe("label");
+    expect(reservedChatKey({ metadata_set: { note: 1, actions: {} } })).toBe("actions");
+    expect(reservedChatKey({ metadata_unset: ["label"] })).toBe("label");
+    expect(reservedChatKey({ metadata_set: { note: 1 }, metadata_unset: ["other"] })).toBeUndefined();
   });
 });

@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { runHarness } from "@loopway/harnesses";
-import { ApiError } from "../client.js";
+import { ApiError, type ThreadPatch } from "../client.js";
 import { applyUpdate, availableUpdate as availableUpdateNow } from "../update.js";
 import { loadConfig } from "../config.js";
 import { authedClient, type Context } from "../context.js";
@@ -85,7 +85,15 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
         sessionTools(
           {
             get: () => Promise.reject(new Error("The manager's thread can't be read.")),
-            patch: (id, patch) => dispatcher.patchManagerThread(id, patch),
+            patch: (id, patch) => {
+              // label and actions are the runner's, set from the approved changes; the manager can't touch them.
+              const reserved = reservedChatKey(patch);
+              if (reserved) {
+                void ctx.metrics?.capture("record_rejected", { reason: "reserved_key" });
+                return Promise.reject(new Error(`The key ${reserved} is set by the runner; pick another.`));
+              }
+              return dispatcher.patchManagerThread(id, patch);
+            },
           },
           ctx.metrics,
         ).filter((t) => MANAGER_MCP_TOOLS.includes(t.name)),
@@ -178,6 +186,15 @@ export const defaultTtl = (interval: number) => Math.max(DEFAULTS.ttl, 6 * inter
  */
 export const pollDelay = (interval: number, idleMs: number) =>
   Math.min(Math.max(interval, idleMs / 1000), Math.max(interval, MAX_POLL_INTERVAL));
+
+/** The metadata keys the runner sets on a chat's thread. */
+const RESERVED_CHAT_KEYS = ["label", "actions"];
+
+/** The first of the runner's keys a patch to a chat's metadata sets or removes, if any. */
+export const reservedChatKey = (patch: Pick<ThreadPatch, "metadata_set" | "metadata_unset">) =>
+  [...Object.keys(patch.metadata_set ?? {}), ...(patch.metadata_unset ?? [])].find((k) =>
+    RESERVED_CHAT_KEYS.includes(k),
+  );
 
 /** How long an exit waits for the leases to be released before going ahead without. */
 const RELEASE_TIMEOUT_MS = 5000;
