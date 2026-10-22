@@ -54,11 +54,15 @@ export abstract class Harness {
 
   /**
    * Whether a session log ends in a finished run, as opposed to one cut off (the runner died, the machine slept).
-   * It reads the log's last record the way a live run's watch does, so what counts as finished is the watch's call.
+   * A log holds every run of the session, so only its last record says how the latest one ended: a finished run
+   * ends on the record its watch marks `finished` (Claude's `result`, Codex's `turn.completed`), and a cut-off one
+   * on anything else. An empty log is cut off.
    */
   runFinished(log: string): boolean {
+    const last = log.trimEnd().split("\n").at(-1);
+    if (!last) return false;
     const watch = this.watch();
-    watch.line(log.trimEnd().split("\n").at(-1) ?? "");
+    watch.line(last);
     return watch.finished;
   }
 
