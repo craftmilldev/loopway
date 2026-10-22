@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AgentPrompt } from "./agent-prompt.js";
 import { commands, CopyCommand } from "./runners.js";
-import { useContext } from "react";
 import { DashLayout, MembersHint, OrgsContext } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";

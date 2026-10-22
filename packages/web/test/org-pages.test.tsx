@@ -218,6 +218,18 @@ describe("OrgGate with no bots", () => {
     fireEvent.click(await screen.findByText("Members"));
     expect(track).toHaveBeenCalledWith("zero_state_members_link_clicked");
   });
+
+  it("says which kind of org it is, and counts a click on the README link", async () => {
+    window.history.replaceState(null, "", "/craftmill");
+    render(<OrgGate>the page</OrgGate>);
+    expect(await screen.findByText("You're in a shared org")).toBeTruthy();
+    fireEvent.click(screen.getByText("README"));
+    expect(track).toHaveBeenCalledWith("zero_state_readme_clicked");
+    cleanup();
+    window.history.replaceState(null, "", "/mcwhittemore");
+    render(<OrgGate>the page</OrgGate>);
+    expect(await screen.findByText("You're in your personal org")).toBeTruthy();
+  });
 });
 
 describe("OrgGate for each combination of setup steps", () => {
