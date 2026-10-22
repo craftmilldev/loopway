@@ -43,6 +43,12 @@ describe("plan usage over OTLP", () => {
     expect(planUsageTarget({ ...env, OTEL_EXPORTER_OTLP_PROTOCOL: "grpc" })).toBe("unsupported_protocol");
   });
 
+  it("throttles the unsupported protocol outcome too", async () => {
+    const grpc = { ...env, OTEL_EXPORTER_OTLP_PROTOCOL: "grpc" };
+    expect(await reportPlanUsage(info, "s1", grpc, { now: 0 })).toBe("unsupported_protocol");
+    expect(await reportPlanUsage(info, "s1", grpc, { now: 1000 })).toBeUndefined();
+  });
+
   it("builds one point per window with the plan.* attributes", () => {
     const body = planUsageBody(info, "s1", { team: "x" }, 1000)!;
     const rm = body.resourceMetrics[0]!;

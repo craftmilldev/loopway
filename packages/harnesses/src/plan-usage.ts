@@ -128,10 +128,12 @@ export async function reportPlanUsage(
   try {
     const target = planUsageTarget(env);
     if (!target) return undefined;
-    if (target === "unsupported_protocol") return "unsupported_protocol";
     const now = opts.now ?? Date.now();
-    const rejected = info.status === "rejected";
-    if (!rejected && now - lastSent < PLAN_USAGE_INTERVAL_MS) return undefined;
+    if (info.status !== "rejected" && now - lastSent < PLAN_USAGE_INTERVAL_MS) return undefined;
+    if (target === "unsupported_protocol") {
+      lastSent = now;
+      return "unsupported_protocol";
+    }
     const body = planUsageBody(info, sessionId, target.resource, now);
     if (!body) return undefined;
     lastSent = now;
