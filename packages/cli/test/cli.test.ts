@@ -2370,6 +2370,41 @@ describe("threads", () => {
       );
     });
 
+    it("finds bots in one org: --org, else the saved runner org, else it asks", async () => {
+      const { client, personal, shared } = await inTwoOrgs();
+      const inboxIn = async (org: string) =>
+        (await client.createInbox({ org, name: `in-${org}`, source_type: "github" })).id;
+      await client.createBot({
+        org: personal,
+        name: "mine",
+        model: "sonnet",
+        harness: "claude",
+        inbox_ids: [await inboxIn(personal)],
+      });
+      await client.createBot({
+        org: shared,
+        name: "theirs",
+        model: "sonnet",
+        harness: "claude",
+        inbox_ids: [await inboxIn(shared)],
+      });
+      const names = async (...args: string[]) => (await runJson(...args)).map((b: { name: string }) => b.name);
+
+      // Several orgs, no terminal and no saved runner: nothing to go on.
+      await expect(run("bots", "list")).rejects.toThrow(new RegExp(`${personal}, ${shared}.*--org`));
+      await expect(run("bots", "show", "theirs")).rejects.toThrow(/--org/);
+      expect(await names("bots", "list", "--org", shared)).toEqual(["theirs"]);
+      expect((await runJson("bots", "show", "theirs", "--org", shared)).name).toBe("theirs");
+
+      // With a runner saved for the personal org, that is the default; --org reaches the other.
+      await writeFile(join(configDir, "runner.json"), JSON.stringify({ id: randomUUID(), org: personal }));
+      expect(await names("bots", "list")).toEqual(["mine"]);
+      expect((await runJson("bots", "show", "mine")).name).toBe("mine");
+      await expect(run("bots", "show", "theirs")).rejects.toThrow(/No bot with id or name "theirs"/);
+      expect((await runJson("bots", "show", "theirs", "--org", shared)).name).toBe("theirs");
+      expect(await names("bots", "list", "--org", shared)).toEqual(["theirs"]);
+    });
+
     it("says which org a runner from before orgs belongs to", async () => {
       const { personal, shared } = await inTwoOrgs();
       await run("bots", "run", "--no-tui", "--org", shared);
