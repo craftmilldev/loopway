@@ -558,6 +558,9 @@ function LogView({ id, snap, readLog, send, end, refreshMs, onBack }: LogViewPro
   );
 }
 
+/** The most rows the chat input shows before it scrolls. */
+const MAX_INPUT_ROWS = 4;
+
 interface ChatViewProps {
   chat: Chat;
   onSubmit: (text: string) => void;
@@ -568,7 +571,7 @@ interface ChatViewProps {
 
 /**
  * The chat with the manager: a transcript that follows new messages until you scroll up (↑/↓, PgUp/PgDn, Home/End),
- * and a one-line input that is always live, so keys type. Enter sends, ← (or Esc) goes back to the lists, Ctrl-C quits.
+ * and an input box that is always live, so keys type, with its hints on their own line below. Enter sends, ← (or Esc) goes back to the lists, Ctrl-C quits.
  */
 function ChatView({ chat, onSubmit, onAnswer, onBack }: ChatViewProps) {
   const { rows: height, columns } = useWindowSize();
@@ -586,12 +589,17 @@ function ChatView({ chat, onSubmit, onAnswer, onBack }: ChatViewProps) {
     ],
     [chat, columns],
   );
-  const body = Math.max(1, height - 2);
+  const asking = !!chat.pending;
+  // The input box: a border and a space of padding either side, so text gets four columns less. It grows with the
+  // draft up to MAX_INPUT_ROWS (and never past a third of the screen), then shows the end of it, where the cursor is.
+  const inputRows = hardWrap(asking ? "" : `${draft} `, Math.max(1, columns - 4));
+  const shown = inputRows.slice(-Math.max(1, Math.min(MAX_INPUT_ROWS, Math.floor(height / 3) - 2)));
+  // The title, the box (its rows and two border lines) and the hint line.
+  const body = Math.max(1, height - shown.length - 4);
   const bottom = Math.max(0, lines.length - body);
   const start = Math.min(top ?? bottom, bottom);
   const scroll = (to: number) => setTop(to >= bottom ? undefined : Math.max(0, to));
 
-  const asking = !!chat.pending;
   useInput((input, key) => {
     if (key.escape || key.leftArrow) onBack();
     // A proposed change waits for y or n; nothing else types until it is answered.
@@ -630,8 +638,23 @@ function ChatView({ chat, onSubmit, onAnswer, onBack }: ChatViewProps) {
           <Text dimColor>Say something to the manager.</Text>
         )}
       </Box>
+      <Box
+        flexDirection="column"
+        borderStyle="round"
+        borderDimColor={asking}
+        borderColor={asking ? undefined : termColor(INDIGO.ink)}
+        paddingX={1}
+        flexShrink={0}
+      >
+        {shown.map((row, i) => (
+          <Text key={i} wrap="truncate-end">
+            {asking ? " " : i === shown.length - 1 ? row.slice(0, -1) : row}
+            {!asking && i === shown.length - 1 && <Text inverse> </Text>}
+          </Text>
+        ))}
+      </Box>
       {chat.pending ? (
-        <Text wrap="truncate-start">
+        <Text wrap="truncate-end">
           <Text color={termColor(INDIGO.ink)}>run this? </Text>
           <Text bold>y</Text>
           <Text color={muted}> approve · </Text>
@@ -639,15 +662,21 @@ function ChatView({ chat, onSubmit, onAnswer, onBack }: ChatViewProps) {
           <Text color={muted}> deny · ← lists · ctrl-c quit</Text>
         </Text>
       ) : (
-        <Text wrap="truncate-start">
-          <Text color={termColor(INDIGO.ink)}>you ❯ </Text>
-          {draft}
-          <Text inverse> </Text>
-          <Text color={muted}> enter send · ← lists · ctrl-c quit</Text>
+        <Text color={muted} wrap="truncate-end">
+          enter send · ← lists · ctrl-c quit
         </Text>
       )}
     </Box>
   );
+}
+
+/** Splits text into rows of exactly `width` characters, so typing never reflows what's before the cursor. */
+function hardWrap(text: string, width: number): string[] {
+  return text.split("\n").flatMap((line) => {
+    const out: string[] = [];
+    for (let i = 0; i < line.length; i += width) out.push(line.slice(i, i + width));
+    return out.length ? out : [""];
+  });
 }
 
 /** The proposed change as the user must see it before answering: the exact command, any files it saves, and what it does. */
