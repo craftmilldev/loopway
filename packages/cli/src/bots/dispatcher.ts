@@ -5,6 +5,7 @@ import {
   type Bot,
   type Lease,
   type LoopwayClient,
+  type ManagerThread,
   type Message,
   type Thread,
   type ThreadMessage,
@@ -774,6 +775,16 @@ export class Dispatcher {
   /** Changes the thread of a run in flight, for the MCP tools and the run itself. */
   private patchThread(id: string, patch: ThreadPatch): Promise<Thread> {
     return this.client.patchThread(this.botOf(id), id, { ...patch, lease_token: this.token() });
+  }
+
+  /** Makes the org's manager thread for a chat, owned by this runner. */
+  createManagerThread(id: string): Promise<ManagerThread> {
+    return this.client.createManagerThread(this.org, id, this.token());
+  }
+
+  /** Changes a manager thread this runner owns. */
+  patchManagerThread(id: string, patch: ThreadPatch): Promise<ManagerThread> {
+    return this.client.patchManagerThread(this.org, id, { ...patch, lease_token: this.token() });
   }
 
   private botOf(threadId: string): string {

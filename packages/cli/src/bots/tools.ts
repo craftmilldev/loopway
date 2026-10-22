@@ -5,7 +5,7 @@ import { noopMetrics, type Metrics } from "../metrics.js";
 /** What the tools do to a session's thread: the dispatcher answers with its runner's lease token. */
 export interface ThreadApi {
   get(threadId: string): Promise<Thread>;
-  patch(threadId: string, patch: ThreadPatch): Promise<Thread>;
+  patch(threadId: string, patch: ThreadPatch): Promise<unknown>;
 }
 
 /** The MCP tools each session gets for talking back to the dispatcher. */

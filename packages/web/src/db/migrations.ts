@@ -679,4 +679,19 @@ CREATE INDEX thread_subjects_updated_idx ON loopway.thread_subjects (updated_at)
 CREATE INDEX thread_messages_updated_idx ON loopway.thread_messages (updated_at);
 `,
   },
+  {
+    // A thread is a bot's ('bot') or an org's ('manager': a chat with the org's manager, which has no bot row). Manager
+    // threads have no bot_id; their org_id (set on every thread since 018) says whose they are. The composite keys to
+    // bots skip a null bot_id, so subjects, messages and events still can't attach to a thread without a bot.
+    version: "033_manager_threads",
+    sql: `
+ALTER TABLE loopway.threads ALTER COLUMN bot_id DROP NOT NULL;
+
+ALTER TABLE loopway.threads ADD COLUMN kind text NOT NULL DEFAULT 'bot' CHECK (kind IN ('bot', 'manager'));
+
+ALTER TABLE loopway.threads ADD CONSTRAINT threads_kind_bot_check CHECK ((kind = 'manager') = (bot_id IS NULL));
+
+CREATE INDEX threads_org_kind_idx ON loopway.threads (org_id, kind, created_at);
+`,
+  },
 ];

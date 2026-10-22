@@ -122,7 +122,7 @@ Two webhooks landing at once can commit out of `seq` order, and a cursor that ha
 
 A thread is an agent session working on one or more issues and PRs. It belongs to one bot, and its id is the Claude session id (a UUID made by the client). A message is assigned to at most one thread per bot. Transcripts and the Claude session itself stay on one machine, so a thread belongs to the [runner](#runners) that claimed it, until someone releases it. Only that runner, holding its live lease, changes the thread, so a thread can't run twice. The bot's lease covers reading its messages and assigning them to threads.
 
-Thread shape: `{id, bot_id, created_by, status, started, interrupted, limited, runner_id, automation_level, subjects, waiting, inflight, delivered, created_at, updated_at}`. `runner_id` is the owning runner, null until one claims the thread. `automation_level` is 2 if a person started the thread, 3 if a bot did and a person took part, 4 if no person did. It comes from the `author_kind` (`human` or `bot`) that the bot's rules give each assignment: the thread's first message sets it, and a person's later message moves 4 to 3. It's null for a thread whose first message has no `author_kind`.
+Thread shape: `{id, bot_id, kind, created_by, status, started, interrupted, limited, runner_id, automation_level, subjects, waiting, inflight, delivered, created_at, updated_at}`. `runner_id` is the owning runner, null until one claims the thread. `automation_level` is 2 if a person started the thread, 3 if a bot did and a person took part, 4 if no person did. It comes from the `author_kind` (`human` or `bot`) that the bot's rules give each assignment: the thread's first message sets it, and a person's later message moves 4 to 3. It's null for a thread whose first message has no `author_kind`.
 
 - `status` is `active` or `ended`.
 - `subjects` are the things the thread works on. For GitHub, its issues and PRs (`owner/repo#number`). Assigning a message means working out the message's subjects and finding the thread that has one of them. A subject belongs to one thread per bot.
@@ -142,5 +142,18 @@ Thread shape: `{id, bot_id, created_by, status, started, interrupted, limited, r
 | `POST /api/bots/:id/threads/:threadId/deliver` `{lease_token}` | Moves `waiting` to `inflight`, sets `status` to `active`, and returns `{data: [message]}`. |
 | `POST /api/bots/:id/threads/:threadId/finish` `{lease_token, requeue?}` | Moves `inflight` to `delivered`, or back to `waiting` with `requeue: true`. Returns `{moved}`. |
 | `POST /api/bots/:id/threads` `{id, subjects, status, started, interrupted?, limited?, runner_id?, refresh?, messages}` | Import a thread with this id; `messages` is `[{id, state, subject?}]` with `state` `waiting`, `inflight` or `delivered`. Needs no lease; `runner_id` makes that runner the owner. `409 thread_exists` if the id exists, `409 subject_taken` if a subject is on another thread. Messages that don't exist are skipped. Returns `201 {thread, skipped}`. With `refresh: true`, a thread that exists and is owned by `runner_id` is brought up to date instead (status, flags, subjects and the listed messages' states; `200`); `409 thread_owned` if another runner, or none, owns it. |
+
+### Manager threads
+
+A manager thread is a chat with an org's manager bot. It belongs to the org and one [runner](#runners), not to a bot: `bot_id` is null and `kind` is `manager` (`bot` for every other thread, which the bot endpoints above serve). Manager threads never appear under `/api/bots/:id/threads`, and the bot endpoints answer `404` for one. They have no subjects or messages, so `subjects`, `waiting` and `inflight` are always empty. Its id is the chat's session id (a UUID made by the client). Only the runner that made it, holding its live lease, changes it, as for any thread. Members of the org read them.
+
+| Endpoint | |
+| --- | --- |
+| `GET /api/orgs/:slug/threads` `?kind=manager\|bot` | The org's threads of that kind (default `manager`), oldest first, as `{data}`. |
+| `GET /api/orgs/:slug/threads/:threadId` | One manager thread. |
+| `POST /api/orgs/:slug/threads` `{id, lease_token}` | Make a manager thread with this id, owned by the runner holding the live lease `lease_token`, and `active`. Returns it (`201`). `409 thread_exists` if the id is taken, `409 runner_not_leased` if the token isn't a live runner lease, `400 runner_org_mismatch` if that runner belongs to another org. |
+| `PATCH /api/orgs/:slug/threads/:threadId` `{lease_token, status?, metadata_set?, metadata_unset?}` | Update, with the same `metadata_set` / `metadata_unset` semantics and `400 metadata_too_large` limit as the bot thread `PATCH`. Returns the thread. `409 thread_owned` if another runner owns it, `409 runner_not_leased` if the token isn't a live lease. |
+
+The runner labels each chat in `metadata`: `label` is `generic` if the chat made no approved create, update or delete, otherwise the most frequent of `create`, `update` and `delete` (a tie goes to the one done first), and `actions` counts the kinds that ran, such as `{"create": 2, "delete": 1}`.
 
 `assign` needs the bot's live `lease_token`. `PATCH`, `deliver` and `finish` take the live lease token of the runner that owns the thread as `lease_token`: `409` (`runner_not_leased`, `thread_unclaimed` or `thread_owned`) otherwise, and nothing changes. A new thread has no owner until a runner claims it. Import needs no lease. An unknown thread, or one of another bot or user, is `404`.

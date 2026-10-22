@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { getHarness, type AgentRun, type RunOutcome } from "@loopway/harnesses";
 import { MANAGER_ALLOWED_TOOLS, MANAGER_DENIED_TOOLS, MANAGER_PROMPT } from "@loopway/presets";
+import { ApiError, type ThreadPatch } from "../client.js";
+import { chatLabel } from "./chat-label.js";
 import {
   approvalKey,
   changeBlocks,
@@ -63,6 +65,19 @@ export type ChangeOutcome =
 /** An unreachable MCP endpoint: the manager has no thread, and its tools come from `allowedTools`, not the dispatcher. */
 const NO_MCP_URL = "http://127.0.0.1:1/mcp/manager";
 
+/** The server side of a chat: its manager thread, which the org owns (it has no bot), and the tools that write to it. */
+export interface ChatThreads {
+  /** Makes the thread with this id (the chat's), owned by this runner. */
+  create(id: string): Promise<void>;
+  /** Changes the thread; the runner's lease token is the implementation's to add. */
+  patch(id: string, patch: Pick<ThreadPatch, "status" | "metadata_set" | "metadata_unset">): Promise<void>;
+  /** The MCP endpoint whose `record` and `unrecord` tools write this thread's metadata. */
+  mcpUrl(id: string): string;
+}
+
+/** The tools of the `loopway` MCP server the manager may use, once its thread exists. */
+export const MANAGER_MCP_TOOLS = ["record", "unrecord"];
+
 export interface ManagerChatOptions {
   /** The org's slug; the manager's bot id is derived from it. */
   org: string;
@@ -77,6 +92,8 @@ export interface ManagerChatOptions {
   runCommand?: (args: string[], env: NodeJS.ProcessEnv) => Promise<CommandResult>;
   /** Records a product metric. */
   capture?: (event: string, properties?: Record<string, unknown>) => void;
+  /** Records the chat as a manager thread on the server, labelled by what it did. Without it the chat is only local. */
+  threads?: ChatThreads;
 }
 
 interface Turn {
@@ -115,6 +132,11 @@ export class ManagerChat implements ChatBackend {
   private notes: string[] = [];
   /** Proposals the user approved and that haven't run yet, keyed by `approvalKey`. A key works once. */
   private approvals = new Set<string>();
+  /** The changes the chat made, in order, which label its thread. */
+  private changes: ChangeRecord[] = [];
+  /** Whether the chat's thread exists on the server. */
+  private threadOpen = false;
+  private closed = false;
 
   constructor(private readonly opts: ManagerChatOptions) {
     this.botId = `manager:${opts.org}`;
@@ -221,8 +243,57 @@ export class ManagerChat implements ChatBackend {
     await this.turn(turn);
   }
 
-  /** Appends one structured line per approved change to the chat's `.changes.jsonl`, for what labels sessions next. */
+  /**
+   * Ends the chat's thread on the server with its final label, if the chat ever started one. Safe to call again.
+   * The runner calls it when it quits, while it still holds its lease.
+   */
+  async close(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    if (!this.threadOpen) return;
+    if (await this.syncThread(true)) this.opts.capture?.("manager_thread_ended", {});
+  }
+
+  /** Makes the chat's thread at its first message (again at the next, if that failed). A chat without one still works. */
+  private async openThread(): Promise<void> {
+    const threads = this.opts.threads;
+    if (!threads || this.threadOpen || this.closed) return;
+    try {
+      await threads.create(this.chatId);
+    } catch (err) {
+      this.opts.capture?.("manager_thread_failed", {
+        step: "create",
+        reason: err instanceof ApiError ? err.code : "error",
+      });
+      return;
+    }
+    this.threadOpen = true;
+    this.opts.capture?.("manager_thread_created", {});
+    await this.syncThread();
+  }
+
+  /** Sets the thread's label and action counts from the changes so far, and ends it with `end`. False if the server refused. */
+  private async syncThread(end = false): Promise<boolean> {
+    const { label, actions } = chatLabel(this.changes);
+    try {
+      await this.opts.threads!.patch(this.chatId, {
+        metadata_set: { label, actions },
+        ...(end ? { status: "ended" as const } : {}),
+      });
+      return true;
+    } catch (err) {
+      this.opts.capture?.("manager_thread_failed", {
+        step: end ? "end" : "label",
+        reason: err instanceof ApiError ? err.code : "error",
+      });
+      return false;
+    }
+  }
+
+  /** Appends one structured line per approved change to the chat's `.changes.jsonl`, and labels the thread by them. */
   private async record(change: ChangeRecord): Promise<void> {
+    this.changes.push(change);
+    if (change.ok && this.threadOpen) await this.syncThread();
     const path = chatChangesPath(this.opts.dir, this.chatId);
     // A log that can't be written must not undo or hide a change that already happened.
     await mkdir(dirname(path), { recursive: true })
@@ -242,6 +313,7 @@ export class ManagerChat implements ChatBackend {
       this.opts.capture?.("manager_unenforced_harness", { harness: this.opts.harness });
     }
     const harness = this.opts.harness;
+    await this.openThread();
     try {
       const outcome = await this.opts.runAgent({
         harness,
@@ -250,7 +322,9 @@ export class ManagerChat implements ChatBackend {
         message: this.started ? text : `${MANAGER_PROMPT}\n\n${text}`,
         model: this.opts.model ?? "",
         logPath: this.logPath,
-        mcpUrl: NO_MCP_URL,
+        // The record tools are the manager's only MCP tools, and only once its thread exists to write to.
+        mcpUrl: this.threadOpen ? this.opts.threads!.mcpUrl(this.chatId) : NO_MCP_URL,
+        ...(this.threadOpen ? { mcpTools: MANAGER_MCP_TOOLS } : {}),
         env: this.opts.env,
         allowedTools: MANAGER_ALLOWED_TOOLS,
         deniedTools: MANAGER_DENIED_TOOLS,

@@ -564,3 +564,110 @@ describe("messages sent to a thread", () => {
     );
   });
 });
+
+describe("manager threads", () => {
+  /** A user with a leased runner, and the path of its org's threads. */
+  async function managerSetup() {
+    const { key, runner, runnerLease, base, bot, messages, assign, leaseThread } = await setup(1);
+    const org = (await call("GET", "/runners", { key })).body.data.find((r: any) => r.id === runner).org as string;
+    const orgThreads = `/orgs/${org}/threads`;
+    const create = (id = randomUUID(), token = runnerLease) =>
+      call("POST", orgThreads, { key, body: { id, lease_token: token } });
+    return { key, runner, runnerLease, org, orgThreads, create, base, bot, messages, assign, leaseThread };
+  }
+
+  it("makes a thread with no bot, owned by the runner, listed under the org and not under a bot", async () => {
+    const { key, runner, orgThreads, create, base } = await managerSetup();
+    const id = randomUUID();
+    const made = await create(id);
+    expect(made.status).toBe(201);
+    expect(made.body).toMatchObject({
+      id,
+      bot_id: null,
+      kind: "manager",
+      status: "active",
+      runner_id: runner,
+      metadata: {},
+      created_by: `runner:${runner}`,
+    });
+
+    const listed = (await call("GET", `${orgThreads}?kind=manager`, { key })).body.data;
+    expect(listed.map((t: any) => t.id)).toEqual([id]);
+    // The default is the manager's too; bot threads are another kind.
+    expect((await call("GET", orgThreads, { key })).body.data).toHaveLength(1);
+    expect((await call("GET", `${orgThreads}?kind=bot`, { key })).body.data).toEqual([]);
+    expect((await call("GET", `${orgThreads}?kind=nope`, { key })).status).toBe(400);
+    expect((await call("GET", `${base}/threads?status=all`, { key })).body.data).toEqual([]);
+    expect((await call("GET", `${base}/threads/${id}`, { key })).status).toBe(404);
+    expect((await call("GET", `${orgThreads}/${id}`, { key })).body.id).toBe(id);
+  });
+
+  it("refuses a taken id, a dead lease, another org's runner and non-members", async () => {
+    const { key, orgThreads, create, runnerLease } = await managerSetup();
+    const id = randomUUID();
+    expect((await create(id)).status).toBe(201);
+    expect((await create(id)).body.error.code).toBe("thread_exists");
+    expect((await create(randomUUID(), "bad")).body.error.code).toBe("runner_not_leased");
+
+    // A runner of another org can't make a thread in this one.
+    const other = await managerSetup();
+    expect(
+      (await call("POST", orgThreads, { key, body: { id: randomUUID(), lease_token: other.runnerLease } })).status,
+    ).toBe(409);
+    const stranger = await newUser();
+    expect((await call("GET", orgThreads, { key: stranger })).status).toBe(404);
+    expect(
+      (await call("POST", orgThreads, { key: stranger, body: { id: randomUUID(), lease_token: runnerLease } })).status,
+    ).toBe(404);
+  });
+
+  it("changes status and metadata like a bot thread's, but only for the owning runner with a live lease", async () => {
+    const { key, orgThreads, create, runnerLease } = await managerSetup();
+    const id = randomUUID();
+    await create(id);
+    const patch = (body: object, token = runnerLease) =>
+      call("PATCH", `${orgThreads}/${id}`, { key, body: { lease_token: token, ...body } });
+
+    expect((await patch({ metadata_set: { label: "generic", actions: { create: 1 } } })).body.metadata).toEqual({
+      label: "generic",
+      actions: { create: 1 },
+    });
+    expect((await patch({ metadata_set: { label: "create" } })).body.metadata.label).toBe("create");
+    expect((await patch({ metadata_unset: ["actions", "nope"] })).body.metadata).toEqual({ label: "create" });
+    expect((await patch({ metadata_set: { k: "a\u0000b" } })).status).toBe(400);
+    const big = await patch({ metadata_set: { blob: "x".repeat(17 * 1024) } });
+    expect([big.status, big.body.error.code]).toEqual([400, "metadata_too_large"]);
+
+    // Not a live lease, or another runner's lease.
+    expect((await patch({ metadata_set: { label: "x" } }, "bad")).status).toBe(409);
+    const second = randomUUID();
+    await call("POST", "/runners", { key, body: { id: second, name: "second" } });
+    const secondLease = (await call("POST", `/runners/${second}/lease`, { key, body: { ttl_seconds: 60 } })).body.lease
+      .token as string;
+    expect((await patch({ metadata_set: { label: "x" } }, secondLease)).body.error.code).toBe("thread_owned");
+    expect((await call("GET", `${orgThreads}/${id}`, { key })).body.metadata).toEqual({ label: "create" });
+
+    expect((await patch({ status: "ended" })).body.status).toBe("ended");
+    expect((await call("GET", `${orgThreads}?kind=manager`, { key })).body.data[0].status).toBe("ended");
+  });
+
+  it("is not reachable through the bot endpoints, and a bot thread is not through the org's", async () => {
+    const { key, orgThreads, create, runnerLease, bot, messages, assign, leaseThread } = await managerSetup();
+    const id = randomUUID();
+    await create(id);
+    const botThread = randomUUID();
+    await assign([{ message_id: messages[0]!.id, thread_id: botThread }]);
+    await leaseThread(botThread);
+    expect(
+      (await call("PATCH", `/bots/${bot.id}/threads/${id}`, { key, body: { lease_token: runnerLease, started: true } }))
+        .status,
+    ).toBe(404);
+    expect(
+      (await call("PATCH", `${orgThreads}/${botThread}`, { key, body: { lease_token: runnerLease, status: "ended" } }))
+        .status,
+    ).toBe(404);
+    // The bot's own threads are unchanged.
+    const bots = (await call("GET", `/bots/${bot.id}/threads`, { key })).body.data;
+    expect(bots.map((t: any) => [t.id, t.kind])).toEqual([[botThread, "bot"]]);
+  });
+});
