@@ -29,3 +29,5 @@ export { HARNESS_LABELS } from "./labels.js";
 export type { Launch } from "./harness.js";
 export type { TranscriptLine } from "./transcript.js";
 export type { AgentRun, RunAgent, RunOutcome, RunWatch } from "./agent.js";
+export { reportPlanUsage, planUsageTarget, planUsageBody } from "./plan-usage.js";
+export type { PlanUsageOutcome, RateLimitInfo } from "./plan-usage.js";

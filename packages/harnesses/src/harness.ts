@@ -49,8 +49,8 @@ export abstract class Harness {
 
   abstract launch(run: AgentRun): Launch | Promise<Launch>;
 
-  /** A fresh watch for one run; `onStarted` is for it to call once the session exists. */
-  abstract watch(onStarted?: () => void): RunWatch;
+  /** A fresh watch for one run; `onStarted` is for it to call once the session exists. `run` is there for a watch that reports on it. */
+  abstract watch(onStarted?: () => void, run?: AgentRun): RunWatch;
 
   /**
    * Whether a session log ends in a finished run, as opposed to one cut off (the runner died, the machine slept).
@@ -90,7 +90,7 @@ export abstract class Harness {
         child.stdin!.end(launch.stdin);
       }
       // stdout goes to the log as before, and through the watch on the way.
-      const watch = this.watch(run.onStarted);
+      const watch = this.watch(run.onStarted, run);
       createInterface({ input: child.stdout! }).on("line", (l) => watch.line(l));
       const copied = pipeline(child.stdout!, createWriteStream(run.logPath, { flags: "a", mode: 0o600 }));
       const exited = new Promise<number>((resolve, reject) => {

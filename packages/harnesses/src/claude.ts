@@ -1,5 +1,6 @@
 import type { AgentRun } from "./agent.js";
 import { LimitWatch } from "./claude-watch.js";
+import { reportPlanUsage } from "./plan-usage.js";
 import { Harness, type Launch } from "./harness.js";
 import { HARNESS_LABELS } from "./labels.js";
 import { streamJsonLines, transcribe } from "./transcript.js";
@@ -55,7 +56,13 @@ export class ClaudeHarness extends Harness {
     return transcribe(log, streamJsonLines);
   }
 
-  watch(onStarted?: () => void) {
-    return new LimitWatch(onStarted);
+  watch(onStarted?: () => void, run?: AgentRun) {
+    return new LimitWatch(
+      onStarted,
+      run &&
+        ((info) => {
+          void reportPlanUsage(info, run.sessionId, run.env).then((outcome) => outcome && run.onPlanUsage?.(outcome));
+        }),
+    );
   }
 }
