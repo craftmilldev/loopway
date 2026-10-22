@@ -65,7 +65,7 @@ export async function openTestDb(): Promise<Db> {
 export async function seedFixtures(db: Db) {
   const { user } = await createUser(db, { name: "Fixture", email: "fixture@example.com" });
   const username = await setUsername(db, user.id, "fixture");
-  if (!username.ok) throw new Error(`Fixture username rejected: ${username.problem}`);
+  if ("problem" in username) throw new Error(`Fixture username rejected: ${username.problem}`);
   const [org] = await db.query<{ id: string }>(`SELECT id FROM loopway.orgs WHERE personal_user_id = $1`, [user.id]);
   const orgId = org!.id;
   const inbox = await createInbox(db, {

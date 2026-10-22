@@ -22,7 +22,7 @@
     "start": "tsx scripts/dev.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit --strict false"
   },
   "dependencies": {
     "@loopway/presets": "*",
