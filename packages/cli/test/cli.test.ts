@@ -1193,7 +1193,12 @@ describe("threads", () => {
     };
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
     const runner = await ensure(client);
-    const d = await Dispatcher.start(ctx, client, bots, { max, ttl: 60, runnerId: runner.id, orgId: bots[0]!.org_id });
+    const d = await Dispatcher.start(ctx, client, bots, {
+      max,
+      ttl: 60,
+      runnerId: runner.id,
+      org: (await client.listOrgs()).find((o) => o.id === bots[0]!.org_id)!.slug,
+    });
     const finish = async (outcome: RunOutcome = { code: 0, delivered: true }) => (
       busy.splice(0).forEach((f) => f(outcome)),
       await d.idle()

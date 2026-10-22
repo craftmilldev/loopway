@@ -24,7 +24,7 @@ export interface RunBotsOptions extends ThreadsOptions {
 export async function runBots(ctx: Context, opts: RunBotsOptions) {
   const client = await authedClient(ctx);
   const runner = await ensureRunner(ctx, client, await runnerOrg(ctx, client, opts.org));
-  const all = (await client.listBots()).filter((b) => b.org_id === runner.org_id);
+  const all = await client.listBots(runner.org);
   const bots = all.filter((b) => b.prompt_version?.rules);
   for (const b of all)
     if (!b.prompt_version?.rules) {
@@ -48,7 +48,7 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     ...opts,
     ttl: opts.ttl ?? defaultTtl(interval),
     runnerId: runner.id,
-    orgId: runner.org_id,
+    org: runner.org,
     seen: all.map((b) => b.id),
     workdirs,
   };
