@@ -129,7 +129,8 @@ describe("migration 022_created_by", () => {
         "029_inbox_secret_enc",
         "030_org_celebrated",
         "031_thread_metadata",
-        "032_manager_threads",
+        "032_join_table_timestamps",
+        "033_manager_threads",
       ]);
 
       const by = async (table: string, id: string) =>

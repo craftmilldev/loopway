@@ -634,10 +634,56 @@ ALTER TABLE loopway.threads ADD COLUMN metadata jsonb NOT NULL DEFAULT '{}'::jso
 `,
   },
   {
+    // bot_inboxes, thread_subjects and thread_messages had no column to read "what changed since" from, so anything
+    // copying them out had to re-read every row. Each now has a timestamp that only moves forward (created_at on
+    // bot_inboxes, whose rows are only added or removed; updated_at on the other two, kept by a trigger so every
+    // writer is covered), with an index to range-scan it. Existing rows start from the nearest time we know.
+    version: "032_join_table_timestamps",
+    sql: `
+ALTER TABLE loopway.bot_inboxes
+  ADD COLUMN created_at timestamptz;
+UPDATE loopway.bot_inboxes bi SET created_at = GREATEST(
+  (SELECT created_at FROM loopway.bots b WHERE b.id = bi.bot_id),
+  (SELECT created_at FROM loopway.inboxes i WHERE i.id = bi.inbox_id));
+ALTER TABLE loopway.bot_inboxes
+  ALTER COLUMN created_at SET NOT NULL,
+  ALTER COLUMN created_at SET DEFAULT now();
+
+ALTER TABLE loopway.thread_subjects
+  ADD COLUMN created_at timestamptz,
+  ADD COLUMN updated_at timestamptz;
+UPDATE loopway.thread_subjects k SET created_at = t.created_at, updated_at = t.created_at
+  FROM loopway.threads t WHERE t.id = k.thread_id;
+ALTER TABLE loopway.thread_subjects
+  ALTER COLUMN created_at SET NOT NULL,
+  ALTER COLUMN created_at SET DEFAULT now(),
+  ALTER COLUMN updated_at SET NOT NULL,
+  ALTER COLUMN updated_at SET DEFAULT now();
+
+ALTER TABLE loopway.thread_messages ADD COLUMN updated_at timestamptz;
+UPDATE loopway.thread_messages SET updated_at = COALESCE(delivered_at, assigned_at);
+ALTER TABLE loopway.thread_messages
+  ALTER COLUMN updated_at SET NOT NULL,
+  ALTER COLUMN updated_at SET DEFAULT now();
+
+CREATE FUNCTION loopway.touch_updated_at() RETURNS trigger AS $$ BEGIN NEW.updated_at = now(); RETURN NEW; END $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER thread_subjects_touch BEFORE UPDATE ON loopway.thread_subjects FOR EACH ROW EXECUTE FUNCTION loopway.touch_updated_at();
+
+CREATE TRIGGER thread_messages_touch BEFORE UPDATE ON loopway.thread_messages FOR EACH ROW EXECUTE FUNCTION loopway.touch_updated_at();
+
+CREATE INDEX bot_inboxes_created_idx ON loopway.bot_inboxes (created_at);
+
+CREATE INDEX thread_subjects_updated_idx ON loopway.thread_subjects (updated_at);
+
+CREATE INDEX thread_messages_updated_idx ON loopway.thread_messages (updated_at);
+`,
+  },
+  {
     // A thread is a bot's ('bot') or an org's ('manager': a chat with the org's manager, which has no bot row). Manager
     // threads have no bot_id; their org_id (set on every thread since 018) says whose they are. The composite keys to
     // bots skip a null bot_id, so subjects, messages and events still can't attach to a thread without a bot.
-    version: "032_manager_threads",
+    version: "033_manager_threads",
     sql: `
 ALTER TABLE loopway.threads ALTER COLUMN bot_id DROP NOT NULL;
 

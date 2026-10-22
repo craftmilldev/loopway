@@ -1157,7 +1157,7 @@ describe("threads", () => {
     ]);
   }
 
-  async function setup(max: number, env: NodeJS.ProcessEnv = {}, inboxes = 1) {
+  async function setup(max: number, env: NodeJS.ProcessEnv = {}, inboxes = 1, harness = "claude") {
     const key = await configured();
     const bots: Bot[] = [];
     const boxes: { id: string; config: { secret: string } }[] = [];
@@ -1173,9 +1173,9 @@ describe("threads", () => {
           "--preset",
           "github-threads",
           "--model",
-          "sonnet",
+          harness === "codex" ? "gpt-6-sol" : "sonnet",
           "--harness",
-          "claude",
+          harness,
           "--inbox",
           inbox.id,
         ),
@@ -2208,6 +2208,40 @@ describe("threads", () => {
     expect(runs2[0]).toMatchObject({ sessionId: id });
     expect((await sessions())[id].inflight).toEqual([]);
     await finish();
+  });
+
+  it.each([
+    ["claude", '{"type":"result","subtype":"success"}', 0],
+    ["claude", '{"type":"assistant","message":{}}', 1],
+    ["codex", '{"type":"turn.completed","usage":{}}', 0],
+    ["codex", '{"type":"turn.started"}', 1],
+  ])("after a restart, a %s run whose log ends in %s resumes %i time(s)", async (harness, last, resumed) => {
+    const { inbox, runs, bot, client, d, finish } = await setup(3, {}, 1, harness);
+    await send(inbox, "issues", issue("opened", 7));
+    await d.tick();
+    const id = runs[0]!.sessionId;
+    const runnerId = (await runJson("runners"))[0].id;
+    await finish();
+    await mkdir(join(configDir, "threads"), { recursive: true });
+    await writeFile(join(configDir, "threads", `${id}.log`), `{"type":"thread.started"}\n${last}\n`);
+    await run("bots", "release", bot.id, "--force");
+    await client.forceReleaseRunner(runnerId);
+
+    const runs2: AgentRun[] = [];
+    const ctx: Context = {
+      configDir,
+      env: {},
+      interactive: false,
+      out: () => {},
+      fetch: apiFetch,
+      runAgent: async (r) => (runs2.push(r), { code: 0, delivered: true }),
+    };
+    const org = (await client.listOrgs()).find((o) => o.id === bot.org_id)!.slug;
+    const d2 = await Dispatcher.start(ctx, client, [bot], { max: 3, ttl: 60, runnerId, org });
+    closers.push(() => d2.close());
+    await d2.tick();
+    await d2.idle();
+    expect(runs2).toHaveLength(resumed);
   });
 
   it("serves a link tool that routes a PR's messages to the session", async () => {

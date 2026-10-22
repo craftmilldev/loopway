@@ -15,7 +15,7 @@ import { loadGithubBot } from "../config.js";
 import { UsageError, type Context } from "../context.js";
 import { clock, dim } from "../format.js";
 import { startMcpServer, type McpServer, type McpTool } from "../mcp.js";
-import { runHarness, type RunAgent, type RunOutcome } from "@loopway/harnesses";
+import { getHarness, runHarness, type RunAgent, type RunOutcome } from "@loopway/harnesses";
 import { botEnv } from "./github.js";
 import { checkRules, route, type BotRule } from "@loopway/rules";
 import { sessionTools } from "./tools.js";
@@ -521,8 +521,8 @@ export class Dispatcher {
       const inflight = t.inflight.length > 0;
       // A script that died before writing anything leaves no transcript, but its messages are still inflight.
       if (!log && !inflight) continue;
-      const last = log.trimEnd().split("\n").at(-1) ?? "";
-      const cutOff = !last.includes('"type":"result"');
+      const harness = this.sessions.get(t.id)?.harness ?? bot.harness;
+      const cutOff = !getHarness(harness).runFinished(log);
       const started = !t.started && log.includes('"subtype":"init"');
       if (!started && !(cutOff && (inflight || !t.waiting.length))) continue;
       const patch: ThreadPatch = {};
