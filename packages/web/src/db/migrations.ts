@@ -626,4 +626,11 @@ ALTER TABLE loopway.inboxes ADD COLUMN secret_enc text;
 ALTER TABLE loopway.orgs ADD COLUMN celebrated_at timestamptz;
 `,
   },
+  {
+    // What a thread's session records about itself (see the record tool): a JSON object of keys to values.
+    version: "031_thread_metadata",
+    sql: `
+ALTER TABLE loopway.threads ADD COLUMN metadata jsonb NOT NULL DEFAULT '{}'::jsonb;
+`,
+  },
 ];

@@ -2217,7 +2217,7 @@ describe("threads", () => {
     const url = runs[0]!.mcpUrl;
     expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\//);
     expect((await mcp(url, "initialize", { protocolVersion: "2025-06-18" })).serverInfo.name).toBe("loopway");
-    expect((await mcp(url, "tools/list")).tools.map((t: any) => t.name)).toEqual(["link", "end"]);
+    expect((await mcp(url, "tools/list")).tools.map((t: any) => t.name)).toEqual(["link", "record", "unrecord", "end"]);
     expect((await mcp(url, "tools/call", { name: "link", arguments: { number: 9 } })).content[0].text).toMatch(
       /Linked a\/b#9/,
     );
@@ -2230,6 +2230,38 @@ describe("threads", () => {
     await send(inbox, "issue_comment", comment(9));
     await d.tick();
     expect(runs[1]).toMatchObject({ sessionId: runs[0]!.sessionId, resume: true });
+  });
+
+  it("records metadata on the thread with record and unrecord, shown by threads show", async () => {
+    const { inbox, runs, d, finish } = await setup(3);
+    await send(inbox, "issues", issue("opened", 5));
+    await d.tick();
+    const id = runs[0]!.sessionId;
+    const call = async (name: string, args: object) =>
+      (await mcp(runs[0]!.mcpUrl, "tools/call", { name, arguments: args })) as {
+        isError?: boolean;
+        content: { text: string }[];
+      };
+    expect((await call("record", { key: "label", value: "generic" })).isError).toBeUndefined();
+    await call("record", { key: "prs", value: [9, { open: true }] });
+    expect((await sessions())[id].metadata).toEqual({ label: "generic", prs: [9, { open: true }] });
+    await call("unrecord", { key: "prs" });
+    expect((await sessions())[id].metadata).toEqual({ label: "generic" });
+    for (const [name, args] of [
+      ["record", { key: "", value: 1 }],
+      ["record", { key: "k" }],
+      ["record", { key: "big", value: "x".repeat(17 * 1024) }],
+      ["unrecord", {}],
+    ] as const)
+      expect((await call(name, args)).isError, name + JSON.stringify(args).slice(0, 30)).toBe(true);
+    expect((await sessions())[id].metadata).toEqual({ label: "generic" });
+    await finish();
+
+    expect((await runJson("bots", "threads", "dev1", "--status", "all"))[0].metadata).toEqual({ label: "generic" });
+    const shown = await run("bots", "threads", "show", "dev1", id.slice(0, 8));
+    expect(shown).toContain(`Thread ${id}`);
+    expect(shown).toContain('label: "generic"');
+    expect((await runJson("bots", "threads", "show", "dev1", id)).metadata).toEqual({ label: "generic" });
   });
 
   it("links any subject as is, and refuses bad or taken ones", async () => {
