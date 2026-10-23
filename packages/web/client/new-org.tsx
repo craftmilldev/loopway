@@ -69,8 +69,9 @@ export function NewOrg() {
         </div>
         <div className="narrow" style={{ margin: "0" }}>
           <p className="hint muted" style={{ marginTop: 12 }}>
-            A shared org holds bots and inboxes for the people in it. Lowercase letters, numbers and hyphens, 2-39
-            characters. You'll be its first member; add the others afterwards.
+            Unlike your personal org, which only you can use, a shared org holds bots and inboxes for the people in it.
+            Lowercase letters, numbers and hyphens, 2-39 characters. You'll be its first member; add the others
+            afterwards.
           </p>
           <form onSubmit={(e) => void submit(e)} style={{ marginTop: 24 }}>
             <div className="field">

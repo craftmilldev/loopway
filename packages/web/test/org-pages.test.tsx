@@ -144,6 +144,7 @@ describe("OrgGate with no bots", () => {
     await act(() => vi.advanceTimersByTimeAsync(lw.POLL_MS + 1000));
     expect(await screen.findByText("Your runner is connected")).toBeTruthy();
     expect(screen.queryByText(/Get your runner going/)).toBeNull();
+    expect(screen.getByText(/webhook address/)).toBeTruthy();
     expect(screen.queryByText("New bot")).toBeNull();
     expect(screen.getByLabelText("Create your bot with your agent").textContent).toContain("--org craftmill");
     expect(track).toHaveBeenCalledWith("zero_state_runner_connected");
@@ -217,6 +218,18 @@ describe("OrgGate with no bots", () => {
     render(<OrgGate>the page</OrgGate>);
     fireEvent.click(await screen.findByText("Members"));
     expect(track).toHaveBeenCalledWith("zero_state_members_link_clicked");
+  });
+
+  it("says which kind of org it is, and counts a click on the README link", async () => {
+    window.history.replaceState(null, "", "/craftmill");
+    render(<OrgGate>the page</OrgGate>);
+    expect(await screen.findByText("You're in a shared org")).toBeTruthy();
+    fireEvent.click(screen.getByText("README"));
+    expect(track).toHaveBeenCalledWith("zero_state_readme_clicked");
+    cleanup();
+    window.history.replaceState(null, "", "/mcwhittemore");
+    render(<OrgGate>the page</OrgGate>);
+    expect(await screen.findByText("You're in your personal org")).toBeTruthy();
   });
 });
 

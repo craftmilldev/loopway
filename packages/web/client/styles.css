@@ -1469,6 +1469,12 @@ fieldset {
   gap: 8px;
   margin-top: 28px;
 }
+.org-explainer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 28px;
+}
 .agent-prompt {
   display: flex;
   flex-direction: column;
