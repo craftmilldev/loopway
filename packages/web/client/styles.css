@@ -1464,9 +1464,10 @@ main.dash.bleed {
 .zs-rail ol {
   display: flex;
   flex-wrap: wrap;
+  gap: 10px;
   max-width: 1100px;
   margin: 0 auto;
-  padding: 0;
+  padding: 12px 16px;
   list-style: none;
 }
 .zs-rail li {
@@ -1474,15 +1475,13 @@ main.dash.bleed {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 14px 16px 16px;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--ink-300);
   color: var(--ink-600);
-}
-.zs-rail li + li {
-  border-left: 1px solid var(--zs-hair);
 }
 .zs-rail-top {
   display: flex;
-  justify-content: space-between;
+  gap: 12px;
   align-items: baseline;
   font-family: var(--font-type);
   font-size: 11px;
@@ -1503,6 +1502,7 @@ main.dash.bleed {
   line-height: 1.2;
 }
 .zs-rail li[aria-current="step"] {
+  border-color: var(--ink-900);
   background: var(--ink-900);
   color: var(--paper-100);
 }
