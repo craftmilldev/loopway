@@ -144,6 +144,7 @@ describe("OrgGate with no bots", () => {
     await act(() => vi.advanceTimersByTimeAsync(lw.POLL_MS + 1000));
     expect(await screen.findByText("Your runner is connected")).toBeTruthy();
     expect(screen.queryByText(/Get your runner going/)).toBeNull();
+    expect(screen.getByText(/webhook address/)).toBeTruthy();
     expect(screen.queryByText("New bot")).toBeNull();
     expect(screen.getByLabelText("Create your bot with your agent").textContent).toContain("--org craftmill");
     expect(track).toHaveBeenCalledWith("zero_state_runner_connected");

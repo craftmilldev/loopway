@@ -206,6 +206,15 @@ export function ZeroState({ progress }: { progress: SetupProgress }) {
           <div className="page-head">
             <h1>Your runner is connected</h1>
           </div>
+          <p className="muted">
+            Your machine is now ready to run agents for loopway. Next you make a <em>bot</em> and the inbox it listens
+            to. An <em>inbox</em> is a webhook address for one service, like GitHub or Linear; loopway keeps every
+            message sent to it. The bot reads one or more inboxes and has a prompt that tells its agent what to do with
+            each message. Your runner then starts an agent session on this machine whenever a message arrives. The
+            easiest way to set all that up is to hand the prompt below to the coding agent you already use: it asks what
+            you want the bot to do, creates the inbox and bot, and gives you the webhook URL and secret to paste into
+            the service. Nothing is sent to your agent until a message arrives.
+          </p>
           <AgentPrompt from="zero_state" />
         </>
       )}
@@ -215,7 +224,12 @@ export function ZeroState({ progress }: { progress: SetupProgress }) {
             <h1>Your bot is ready</h1>
           </div>
           <p className="muted">
-            Send it a message, with a webhook to its inbox. This page moves on when it has run for the first time.
+            Now give it something to do. Add the webhook URL and secret your agent gave you (or run{" "}
+            <code>loopway inbox show &lt;inbox&gt;</code> to see them again) in the service the inbox listens to, then
+            do what that service sends events for, such as opening a pull request on GitHub or commenting on a Linear
+            issue. The message lands in the inbox, your runner starts an agent session for it, and this page moves on
+            when the bot has handled its first message. If nothing happens, check that your runner is still open with{" "}
+            <code>loopway runners</code>.
           </p>
         </>
       )}
