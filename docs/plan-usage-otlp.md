@@ -33,7 +33,7 @@ Only the standard OpenTelemetry exporter variables: `OTEL_EXPORTER_OTLP_ENDPOINT
 Claude Code's status line is the only place plan usage shows up in its own output, and headless `claude -p` runs never run it. But their stream-json carries a `rate_limit_event` whose `rate_limit_info` holds `status`, `resetsAt`, `rateLimitType` and `unifiedWindows`, a map from window name (`five_hour`, `seven_day`, `seven_day_overage_included`, ...) to its `utilization` (0 to 1) and `resetsAt`. A bot run reads every such event and reports a snapshot of `unifiedWindows`: `five_hour` becomes `5h`, `seven_day` becomes `7d`, any other key is passed through.
 
 - At most one report a minute per runner; a `rejected` event always reports.
-- A `rejected` event without `unifiedWindows` reports the window named by `rateLimitType` at 1.
+- A `rejected` event without `unifiedWindows` reports the window named by `rateLimitType` at 1, but only while its `resetsAt` is still in the future and `rateLimitType` is not `overage`. A rejected overage allowance (`overageStatus`, `overageDisabledReason`) says nothing about the window, and a `resetsAt` already past means the event is stale, so both leave the point out.
 - Sending is asynchronous with a 3 second timeout. A run never waits for it or fails because of it, and an unreachable endpoint is logged once and then ignored.
 
 To try it, point a runner at an OpenTelemetry Collector with the `debug` exporter:

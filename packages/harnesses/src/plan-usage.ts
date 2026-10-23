@@ -3,6 +3,9 @@ export interface RateLimitInfo {
   status?: string;
   resetsAt?: number;
   rateLimitType?: string;
+  overageStatus?: string;
+  overageDisabledReason?: string;
+  isUsingOverage?: boolean;
   unifiedWindows?: Record<string, { utilization?: number; resetsAt?: number } | undefined>;
 }
 
@@ -65,8 +68,17 @@ export function planUsageBody(info: RateLimitInfo, sessionId: string, resource: 
   const windows = Object.entries(info.unifiedWindows ?? {}).filter(
     (e): e is [string, { utilization: number; resetsAt?: number }] => typeof e[1]?.utilization === "number",
   );
-  // A rejected event without per-window data still says which window is full, and when it resets.
-  if (!windows.length && info.status === "rejected" && info.rateLimitType)
+  // A rejected event without per-window data says which window is full, and when it resets. It only counts while
+  // that reset is still ahead (a replayed or stale event is not news) and when it is about the window itself,
+  // not overage, which can be rejected (disabled for the org) while the window has room.
+  if (
+    !windows.length &&
+    info.status === "rejected" &&
+    info.rateLimitType &&
+    info.rateLimitType !== "overage" &&
+    typeof info.resetsAt === "number" &&
+    info.resetsAt * 1000 > now
+  )
     windows.push([info.rateLimitType, { utilization: 1, resetsAt: info.resetsAt }]);
   const points = windows.map(([name, w]) => ({
     asDouble: Math.min(Math.max(w.utilization, 0), 1),
