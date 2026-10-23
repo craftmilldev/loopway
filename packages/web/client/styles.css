@@ -953,7 +953,7 @@ main.dash {
   border-bottom: 1px solid var(--rule-soft);
   color: var(--ink-600);
   text-decoration: none;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 .bot-switch-items a[hidden] {
   display: none;
@@ -1312,7 +1312,7 @@ fieldset {
   font-family: var(--font-type);
   font-size: 0.8125rem;
   color: var(--ink-700);
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 .version-row {
   display: flex;
@@ -1750,7 +1750,7 @@ main.dash.bleed {
   padding: 12px 16px 12px 0;
   border-bottom: 1px solid var(--zs-hair);
   vertical-align: middle;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 .zs-table th:last-child,
 .zs-table td:last-child {
@@ -2064,7 +2064,7 @@ main.lp {
   font-family: var(--font-type);
   font-size: 12px;
   color: var(--indigo-600);
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 .lp-num {
   display: flex;
@@ -2139,7 +2139,7 @@ main.lp {
 .lp-well-wrap pre {
   overflow-x: visible;
   white-space: pre-wrap;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 .lp-well-wrap .lp-cmd {
   display: block;
@@ -2639,7 +2639,7 @@ main.lp {
   color: var(--ink-500);
 }
 .lp-event-type {
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 .lp-event-time {
   white-space: nowrap;
