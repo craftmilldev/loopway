@@ -1403,10 +1403,6 @@ export function createApi(opts: ApiOptions) {
     }
   }
 
-  /**
-   * The inbox as the API shows it. The secret is never part of it, only whether one is set (`secret_set`), unless
-   * `revealed` (the one just made) is passed.
-   */
   /** Notes a delivery on the inbox; the first one is a metric, since it's the step that gets a bot its first message. */
   async function recordDelivery(db: Db, inbox: Inbox, outcome: string) {
     const stored = outcome === "duplicate" ? "accepted" : outcome;
@@ -1419,6 +1415,10 @@ export function createApi(opts: ApiOptions) {
     });
   }
 
+  /**
+   * The inbox as the API shows it. The secret is never part of it, only whether one is set (`secret_set`), unless
+   * `revealed` (the one just made) is passed.
+   */
   function serializeInbox(c: Context<Env>, inbox: Inbox, revealed?: string) {
     const source = sources.get(inbox.source_type);
     const url = webhookUrl(c, inbox.id);
