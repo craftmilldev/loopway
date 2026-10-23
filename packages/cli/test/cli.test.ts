@@ -427,7 +427,8 @@ describe("inboxes", () => {
     expect(sent).toMatchObject({ message_id: expect.any(String), seq: expect.any(Number) });
     expect(await run("inbox", "test", inbox.id)).toMatch(/^Sent test message \S+ \(seq \d+\)\./);
     const [message] = (await runJson("messages", "list", inbox.id, "--order", "desc")).data;
-    expect(message.event).toMatchObject({ type: "com.github.pull_request.opened", loopwaytest: true });
+    expect(message.test).toBe(true);
+    expect(message.event.type).toBe("com.github.pull_request.opened");
   });
 
   it("explains a test message that can't be sent", async () => {

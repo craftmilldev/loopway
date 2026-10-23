@@ -50,9 +50,6 @@ export interface ApiOptions extends EeOptions {
   minCliVersion?: string;
 }
 
-/** The CloudEvent extension attribute that marks a message made by the "send a test message" action. */
-const TEST_FLAG = "loopwaytest";
-
 const DEFAULT_TTL = 300;
 const MAX_TTL = 12 * 60 * 60;
 
@@ -230,8 +227,7 @@ export function createApi(opts: ApiOptions) {
       await received("ignored", { reason: result.reason });
       return { kind: "ignored", reason: result.reason };
     }
-    const event = test ? makeCloudEvent({ ...result.event, [TEST_FLAG]: true }) : result.event;
-    const stored = await store.insertMessage(c.var.db, inbox.id, event);
+    const stored = await store.insertMessage(c.var.db, inbox.id, result.event, test);
     await received(stored.duplicate ? "duplicate" : "accepted");
     return { kind: "stored", ...stored };
   }
@@ -783,7 +779,7 @@ export function createApi(opts: ApiOptions) {
           new ApiError(422, "no_accepted_type", "This inbox has no message to send"),
         );
       }
-      message = await store.insertMessage(c.var.db, inbox.id, makeCloudEvent({ ...event, id, [TEST_FLAG]: true }));
+      message = await store.insertMessage(c.var.db, inbox.id, makeCloudEvent({ ...event, id }), true);
     } else {
       const type = sources.sampleType(inbox.source_type, config);
       if (!type) {
@@ -1635,6 +1631,7 @@ function serializeMessage(e: MessageRow) {
     inbox_id: e.inbox_id,
     seq: Number(e.seq),
     received_at: iso(e.received_at),
+    test: e.is_test,
     event: e.cloudevent,
   };
 }

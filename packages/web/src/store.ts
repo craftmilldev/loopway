@@ -457,18 +457,20 @@ export interface MessageRow {
   seq: string | bigint;
   cloudevent: CloudEvent;
   received_at: Date;
+  /** Made by the "send a test message" action rather than received from a sender. */
+  is_test: boolean;
 }
 
-const MESSAGE_COLS = `id, inbox_id, seq, cloudevent, received_at`;
+const MESSAGE_COLS = `id, inbox_id, seq, cloudevent, received_at, is_test`;
 
 /** Returns the stored message and whether it was a redelivery of one we already had (same CE source+id). */
-export async function insertMessage(db: Db, inboxId: string, ce: CloudEvent) {
+export async function insertMessage(db: Db, inboxId: string, ce: CloudEvent, test = false) {
   const [inserted] = await db.query<{ id: string; seq: string | bigint }>(
-    `INSERT INTO loopway.messages (id, inbox_id, ce_id, ce_source, ce_type, ce_subject, ce_time, cloudevent)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+    `INSERT INTO loopway.messages (id, inbox_id, ce_id, ce_source, ce_type, ce_subject, ce_time, cloudevent, is_test)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
      ON CONFLICT ON CONSTRAINT messages_ce_unique DO NOTHING
      RETURNING id, seq`,
-    [uuidv7(), inboxId, ce.id, ce.source, ce.type, ce.subject ?? null, ce.time ?? null, ce],
+    [uuidv7(), inboxId, ce.id, ce.source, ce.type, ce.subject ?? null, ce.time ?? null, ce, test],
   );
   if (inserted) return { id: inserted.id, seq: Number(inserted.seq), duplicate: false };
   const [existing] = await db.query<{ id: string; seq: string | bigint }>(

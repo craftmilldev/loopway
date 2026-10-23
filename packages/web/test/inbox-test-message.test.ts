@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { call, events, newUser } from "./helpers.js";
+import { app, call, events, newUser } from "./helpers.js";
 
 const WHSEC = "whsec_" + Buffer.from("a signing secret for the tests").toString("base64");
 
@@ -36,7 +36,8 @@ describe("POST /inboxes/:id/test", () => {
       const list = await call("GET", `/inboxes/${id}/messages`, { key });
       expect(list.body.data).toHaveLength(1);
       expect(list.body.data[0]).toMatchObject({ id: sent.body.message_id, seq: sent.body.seq });
-      expect(list.body.data[0].event).toMatchObject({ type: s.message, loopwaytest: true });
+      expect(list.body.data[0].test).toBe(true);
+      expect(list.body.data[0].event.type).toBe(s.message);
     });
   }
 
@@ -54,7 +55,8 @@ describe("POST /inboxes/:id/test", () => {
     const id = await makeInbox(key, "github", { events: ["push"] });
     expect((await call("POST", `/inboxes/${id}/test`, { key })).status).toBe(201);
     const [message] = (await call("GET", `/inboxes/${id}/messages`, { key })).body.data;
-    expect(message.event).toMatchObject({ type: "com.github.push", loopwaytest: true });
+    expect(message.test).toBe(true);
+    expect(message.event.type).toBe("com.github.push");
   });
 
   it("sends a loopway inbox's own type when it accepts only that", async () => {
@@ -138,25 +140,19 @@ describe("POST /inboxes/:id/test", () => {
     expect((await call("GET", `/inboxes/${id}/messages`, { key: owner })).body.data).toEqual([]);
   });
 
-  it("can't be faked through the public webhook", async () => {
+  it("stores a real delivery as not a test", async () => {
     const key = await newUser();
-    const id = await makeInbox(key, "loopway");
-    const secret = (await call("GET", `/inboxes/${id}`, { key })).body.config.secret_set;
-    expect(secret).toBe(true);
-    // A real delivery that names the flag itself is stored without it: only the test route adds it.
     const created = await call("POST", "/inboxes", {
       key,
       body: { name: "known", source_type: "loopway", config: { secret: "a-known-secret-1234" } },
     });
-    const res = await (
-      await import("./helpers.js")
-    ).app.request(`/api/webhooks/${created.body.id}`, {
+    const res = await app.request(`/api/webhooks/${created.body.id}`, {
       method: "POST",
       headers: { authorization: "Bearer a-known-secret-1234", "content-type": "application/json" },
-      body: JSON.stringify({ type: "x", id: "1", data: { loopwaytest: true } }),
+      body: JSON.stringify({ type: "x", id: "1", data: { test: true } }),
     });
     expect(res.status).toBe(202);
     const [message] = (await call("GET", `/inboxes/${created.body.id}/messages`, { key })).body.data;
-    expect(message.event.loopwaytest).toBeUndefined();
+    expect(message.test).toBe(false);
   });
 });

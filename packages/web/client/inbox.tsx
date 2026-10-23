@@ -9,7 +9,8 @@ interface InboxMessage {
   id: string;
   received_at: string;
   seq: number;
-  event: { type: string; subject?: string; loopwaytest?: boolean };
+  test: boolean;
+  event: { type: string; subject?: string };
 }
 
 export function Inbox({ id }: { id: string }) {
@@ -114,7 +115,7 @@ export function Inbox({ id }: { id: string }) {
               <summary>
                 <span className="muted">#{e.seq}</span>
                 <span className="type">{e.event.type}</span>
-                {e.event.loopwaytest && <span className="badge">test</span>}
+                {e.test && <span className="badge">test</span>}
                 <span className="muted">{e.event.subject || ""}</span>
                 <span className="when">{new Date(e.received_at).toLocaleString()}</span>
               </summary>
