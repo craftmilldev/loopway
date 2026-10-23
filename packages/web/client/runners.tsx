@@ -18,7 +18,7 @@ const FILTERS: { key: RunnerFilter; label: string }[] = [
 export const commands = (org: string) => [
   { key: "install", text: "curl -fsSL https://loopway.craftmill.dev/install.sh | sh" },
   { key: "login", text: "loopway login" },
-  { key: "run", text: `cd ~/code/your-repo && loopway bots run --org ${org}` },
+  { key: "run", text: `loopway bots run --org ${org}` },
 ];
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : one + "s"}`;
