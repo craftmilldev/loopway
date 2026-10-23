@@ -29,6 +29,7 @@ import {
   readSchema,
   showInbox,
   splitList,
+  testInbox,
   updateInbox,
 } from "./commands/inboxes.js";
 import { listChats } from "./commands/chats.js";
@@ -255,6 +256,14 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .addOption(orgOpt("the inbox is in, to find it by name"))
     .addOption(jsonOpt())
     .action((ref, opts) => showInbox(ctx, ref, opts));
+
+  inbox
+    .command("test")
+    .description("send an inbox a sample message of its source, to see a bot run without setting up the sender")
+    .argument("<inbox>", "inbox id or name")
+    .addOption(orgOpt("the inbox is in, to find it by name"))
+    .addOption(jsonOpt())
+    .action((ref, opts) => testInbox(ctx, ref, opts));
 
   // ---------- messages ----------
 

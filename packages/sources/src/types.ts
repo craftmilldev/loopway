@@ -37,6 +37,20 @@ export interface IncomingWebhook {
   webhookUrl: string;
 }
 
+/** A sample delivery as the sender would make it: the headers and the exact body that was signed. */
+export interface SampleDelivery {
+  headers: Record<string, string>;
+  rawBody: string;
+}
+
+export interface SampleContext {
+  /** An event name from `sampleTypes`. */
+  type: string;
+  /** A fresh id for this delivery, so sending twice stores two messages. */
+  id: string;
+  now: Date;
+}
+
 export type ReceiveResult =
   | { kind: "event"; event: CloudEvent }
   | { kind: "ignored"; reason: string }
@@ -78,5 +92,12 @@ export interface SourceAdapter<Config = unknown> {
   title(event: CloudEvent): string | null;
   /** For sources that fill themselves on a clock: the events due at `now`. The server's cron route stores them; repeats must dedupe (same CE source and id). */
   tick?(config: Config, inboxId: string, now: Date): CloudEvent[];
+  /**
+   * The event names `sample` can build, the one to try first leading. Each is a name the inbox's `events` filter
+   * is checked against. Sources that take no webhooks have none.
+   */
+  sampleTypes?(config: Config): string[];
+  /** A delivery of `ctx.type` signed with the inbox's secret exactly as the sender would, for the "send a test message" action. */
+  sample?(config: Config, ctx: SampleContext): SampleDelivery;
   receive(req: IncomingWebhook, config: Config): ReceiveResult | Promise<ReceiveResult>;
 }

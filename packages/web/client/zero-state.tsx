@@ -4,6 +4,7 @@ import { commands, CopyCommand } from "./runners.js";
 import { DashLayout, MembersHint, OrgsContext } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
+import { TestMessageButton } from "./test-message.js";
 
 /** The three steps of the zero state, each done once its condition holds. */
 export interface SetupProgress {
@@ -164,6 +165,9 @@ export function ZeroState({ progress }: { progress: SetupProgress }) {
     track("zero_state_viewed");
   }, []);
   const current = currentStep(progress);
+  // Step 3 needs an inbox to poke: the first one the org's first bot reads.
+  const bots = lw.useList<lw.Bot>(lw.inOrg("/bots"), !!me && current === 2);
+  const testInbox = bots.data?.find((b) => b.inbox_ids.length)?.inbox_ids[0];
   return (
     <DashLayout title="Get started · loopway" me={me}>
       <SetupSteps progress={progress} />
@@ -229,8 +233,9 @@ export function ZeroState({ progress }: { progress: SetupProgress }) {
             do what that service sends events for, such as opening a pull request on GitHub or commenting on a Linear
             issue. The message lands in the inbox, your runner starts an agent session for it, and this page moves on
             when the bot has handled its first message. If nothing happens, check that your runner is still open with{" "}
-            <code>loopway runners</code>.
+            <code>loopway runners</code>. Don't want to set up the sender yet? Send the inbox a test message instead.
           </p>
+          {testInbox && <TestMessageButton inboxId={testInbox} from="zero_state" />}
         </>
       )}
       <p className="muted" style={{ marginTop: 24 }}>

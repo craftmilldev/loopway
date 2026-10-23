@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { z } from "zod";
-import { firstLine, get, str, withText } from "./payload.js";
+import { firstLine, get, standardWebhookSignature, str, withText } from "./payload.js";
 import type { CloudEvent, SourceAdapter, SourceDeps } from "./types.js";
 
 /** What the event is about: an email's subject line, a contact's address or a domain's name. */
@@ -90,6 +90,31 @@ export const resend = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter
       secret: config.secret
         ? "set"
         : "not set yet: paste the whsec_… signing secret Resend shows on the inbox page, or run `loopway inbox update <inbox> --secret whsec_…`",
+    };
+  },
+
+  sampleTypes: () => ["email.delivered", "email.sent", "email.bounced"],
+
+  sample(config, { type, id, now }) {
+    const rawBody = JSON.stringify({
+      type,
+      created_at: now.toISOString(),
+      data: {
+        email_id: "00000000-0000-0000-0000-00000000e001",
+        from: "Loopway Test <test@example.com>",
+        to: ["delivered@example.com"],
+        subject: "A test email from loopway",
+      },
+    });
+    const timestamp = String(Math.floor(now.getTime() / 1000));
+    return {
+      headers: {
+        "content-type": "application/json",
+        "svix-id": id,
+        "svix-timestamp": timestamp,
+        "svix-signature": standardWebhookSignature(config.secret!, id, timestamp, rawBody),
+      },
+      rawBody,
     };
   },
 

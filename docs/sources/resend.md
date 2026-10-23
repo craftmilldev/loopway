@@ -24,3 +24,7 @@ Deliveries are authenticated by the [Svix](https://docs.svix.com/receiving/verif
 ## CloudEvent mapping
 
 `id` = `svix-id`, `type` = `com.resend.<type>` (e.g. `com.resend.email.bounced`), `source` = `https://api.resend.com/emails/<email_id>` (`https://api.resend.com` for contact and domain events), `subject` = the email id (or the domain or contact id), `time` = `created_at`, `data` = payload.
+
+## Test message
+
+The test message is an `email.delivered` event for a made-up email. If `config.events` leaves out `email.delivered`, it is `email.sent` or `email.bounced`. It needs the signing secret to be set first (`409 secret_not_set` otherwise).

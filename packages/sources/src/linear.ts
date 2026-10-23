@@ -81,6 +81,35 @@ export const linear = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter
     };
   },
 
+  sampleTypes: () => ["issue.create", "issue.update", "issue.remove"],
+
+  sample(config, { type, id, now }) {
+    const action = type.split(".")[1];
+    const rawBody = JSON.stringify({
+      action,
+      type: "Issue",
+      actor: { id: "00000000-0000-0000-0000-000000000001", type: "user", name: "Loopway Test" },
+      data: {
+        id: "00000000-0000-0000-0000-000000000002",
+        identifier: "TEST-1",
+        title: "A test issue from loopway",
+        state: { name: "Todo" },
+      },
+      url: "https://linear.app/loopway-test/issue/TEST-1",
+      createdAt: now.toISOString(),
+      organizationId: "00000000-0000-0000-0000-000000000003",
+      webhookTimestamp: now.getTime(),
+    });
+    return {
+      headers: {
+        "content-type": "application/json",
+        "linear-delivery": id,
+        "linear-signature": createHmac("sha256", config.secret!).update(rawBody, "utf8").digest("hex"),
+      },
+      rawBody,
+    };
+  },
+
   summarize(event) {
     const body = (event.data ?? {}) as Payload;
     const [resource = "", action = ""] = event.type.replace(/^com\.linear\./, "").split(".");

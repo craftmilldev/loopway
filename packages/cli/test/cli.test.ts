@@ -420,6 +420,22 @@ describe("inboxes", () => {
     expect(await run("inbox", "ls")).toContain("prs");
   });
 
+  it("sends a test message", async () => {
+    await configured();
+    const inbox = await runJson("inbox", "create", "--name", "prs", "--source", "github");
+    const sent = await runJson("inbox", "test", "prs");
+    expect(sent).toMatchObject({ message_id: expect.any(String), seq: expect.any(Number) });
+    expect(await run("inbox", "test", inbox.id)).toMatch(/^Sent test message \S+ \(seq \d+\)\./);
+    const [message] = (await runJson("messages", "list", inbox.id, "--order", "desc")).data;
+    expect(message.event).toMatchObject({ type: "com.github.pull_request.opened", loopwaytest: true });
+  });
+
+  it("explains a test message that can't be sent", async () => {
+    await configured();
+    await runJson("inbox", "create", "--name", "deploys", "--source", "vercel");
+    await expect(run("inbox", "test", "deploys")).rejects.toThrow(/no signing secret yet/);
+  });
+
   it("requires --name without a terminal", async () => {
     await configured();
     await expect(run("inbox", "create", "--source", "github")).rejects.toThrow(/--name is required/);

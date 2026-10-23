@@ -1,4 +1,5 @@
 // Helpers for picking values out of webhook payloads.
+import { createHmac } from "node:crypto";
 
 export type Payload = Record<string, unknown>;
 
@@ -33,4 +34,10 @@ export function firstLine(text: string | undefined): string | undefined {
 export function withText(head: string, text: string | undefined): string {
   const line = firstLine(text);
   return line ? `${head}: ${line}` : head;
+}
+
+/** The Standard Webhooks (Svix) signature of a delivery, as the `v1,<base64>` header value. `secret` is `whsec_<base64>`. */
+export function standardWebhookSignature(secret: string, id: string, timestamp: string, body: string): string {
+  const key = Buffer.from(secret.slice("whsec_".length), "base64");
+  return "v1," + createHmac("sha256", key).update(`${id}.${timestamp}.${body}`, "utf8").digest("base64");
 }
