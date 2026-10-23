@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { agentPrompt } from "./agent-prompt.js";
 import { commands } from "./runners.js";
 import { DashLayout, MembersHint, OrgsContext } from "./layout.js";
@@ -118,93 +118,15 @@ function SetupSteps({ progress }: { progress: SetupProgress }) {
   );
 }
 
-export interface Box {
-  title: string;
-  caption: string;
-  /** The setup step that sets this part up, 1 to 3. */
-  step: number;
-  /** Done parts carry the rail's check, the part this step sets up is inked, the rest wait. */
-  state: "done" | "now" | "later";
-}
-
-/**
- * The idea drawn once, in the order of the setup steps: runner, bot, then the service that sends the message. A
- * message travels the other way, so the joins point left. Same boxes on every step, only the marks change.
- */
-export function diagramBoxes(step: number, names: { runner?: string; service?: string } = {}): Box[] {
-  const state = (n: number): Box["state"] => (n < step ? "done" : n === step ? "now" : "later");
-  return [
-    {
-      title: "runner" + (names.runner ? " " + names.runner : "") + ", with your coding agent",
-      caption: "on your machine, runs the bot",
-      step: 1,
-      state: state(1),
-    },
-    {
-      title: "create bot",
-      caption: "an inbox that keeps the message, and the bot's prompt",
-      step: 2,
-      state: state(2),
-    },
-    {
-      title: names.service ?? "GitHub, Linear, Vercel…",
-      caption: "sends a webhook, or you do",
-      step: 3,
-      state: state(3),
-    },
-  ];
-}
-
-/** The idea drawn once: boxes joined by lines, the one this step sets up inked. Scrolls sideways on a phone. */
-function Diagram({ boxes }: { boxes: Box[] }) {
-  return (
-    <div className="zs-diagram-wrap">
-      <div className="zs-diagram">
-        {boxes.map((b, i) => (
-          <Fragment key={b.step}>
-            {i > 0 && (
-              <div className="zs-join" aria-hidden="true">
-                <svg width="8" height="12" viewBox="0 0 8 12">
-                  <path d="M7 1L1 6l6 5" fill="none" stroke="currentColor" strokeWidth="1.2" />
-                </svg>
-                <span />
-              </div>
-            )}
-            <div className={"zs-box" + (b.state === "now" ? " inked" : "") + (b.state === "done" ? " done" : "")}>
-              <span className="zs-box-tag">
-                {b.state === "done" ? (
-                  <>
-                    <Check />
-                    step {b.step} done
-                  </>
-                ) : (
-                  "step " + b.step
-                )}
-              </span>
-              <span className="zs-box-title">{b.title}</span>
-              <span className="zs-box-caption">{b.caption}</span>
-            </div>
-          </Fragment>
-        ))}
-      </div>
-      <p className="zs-diagram-legend">
-        Dark box: the part this step sets up. Check: already set up. Arrows follow a message on its way to your bot.
-      </p>
-    </div>
-  );
-}
-
 function Lede({
   eyebrow,
   title,
   children,
-  diagram,
   big,
 }: {
   eyebrow: string;
   title: string;
   children?: ReactNode;
-  diagram?: Box[];
   big?: boolean;
 }) {
   return (
@@ -215,7 +137,6 @@ function Lede({
           {title}
         </h1>
         {children && <p className="zs-lede-text">{children}</p>}
-        {diagram && <Diagram boxes={diagram} />}
       </div>
     </section>
   );
@@ -513,7 +434,6 @@ function StepOne({ org }: { org: string }) {
       <Lede
         eyebrow="Getting started · the whole idea"
         title="Services send webhooks. loopway hands them to a bot on your machine."
-        diagram={diagramBoxes(1)}
       >
         A bot is a coding agent, Claude Code or Codex say, running where your code and credentials already are. loopway
         keeps an inbox in front of it, and a runner on your machine picks each message up. Three steps, and the first is
@@ -522,7 +442,7 @@ function StepOne({ org }: { org: string }) {
       <section className="zs-section" aria-labelledby="zs-step">
         <div className="zs-wrap zs-stack">
           <div className="zs-heading">
-            <p className="zs-eyebrow">Step 1 of 3 · on the machine where your code lives</p>
+            <p className="zs-eyebrow">On the machine where your code lives</p>
             <h2 id="zs-step">Start a runner</h2>
             <p className="zs-muted">
               Three commands. The last one stays open: it is the runner, and it waits for messages.
@@ -585,9 +505,8 @@ function StepTwo({ org, facts }: { org: string; facts: Facts }) {
   return (
     <>
       <Lede
-        eyebrow={"Step 2 of 3 · runner " + (facts.runner ? facts.runner.name + " " : "") + "is online"}
+        eyebrow={"Runner " + (facts.runner ? facts.runner.name + " " : "") + "is online"}
         title="Your runner is connected. Now give it a bot."
-        diagram={diagramBoxes(2, { runner: facts.runner?.name })}
       >
         A bot is an inbox and a prompt: which service it hears from, and what to do when a message arrives. Your own
         coding agent can set one up in a minute, since it already knows how to read a doc and run a CLI.
@@ -667,7 +586,7 @@ function StepTwo({ org, facts }: { org: string; facts: Facts }) {
 }
 
 function StepThree({ facts }: { facts: Facts }) {
-  const { runner, bot, inbox } = facts;
+  const { bot, inbox } = facts;
   const source = inbox ? sourceLabel(inbox.source_type) : "the service";
   const events = inbox?.config?.events;
   const github = inbox?.source_type === "github";
@@ -676,9 +595,8 @@ function StepThree({ facts }: { facts: Facts }) {
   return (
     <>
       <Lede
-        eyebrow={"Step 3 of 3 · bot " + (bot?.name ?? "") + (inbox ? " hears inbox " + inbox.name : "")}
+        eyebrow={"Bot " + (bot?.name ?? "") + (inbox ? " hears inbox " + inbox.name : "")}
         title="Your bot is ready. Send it something."
-        diagram={diagramBoxes(3, { runner: runner?.name, service: source })}
       >
         The runner starts an agent session the moment a message lands in the bot's inbox. You can wait for {source} to
         send one, or send a test message now and watch the first run in a few seconds.
