@@ -118,37 +118,78 @@ function SetupSteps({ progress }: { progress: SetupProgress }) {
   );
 }
 
-interface Box {
+export interface Box {
   title: string;
   caption: string;
-  /** Inked solid: the part this step is about. */
-  inked?: boolean;
-  /** The caption in indigo, for a part that is ready. */
-  ready?: boolean;
+  /** The setup step that sets this part up, 1 to 3. */
+  step: number;
+  /** Done parts carry the rail's check, the part this step sets up is inked, the rest wait. */
+  state: "done" | "now" | "later";
 }
 
-/** The idea drawn once: four boxes joined by lines, the ones this step is about inked. Scrolls sideways on a phone. */
+/**
+ * The idea drawn once, in the order of the setup steps: runner, inbox, then the service that sends the message. A
+ * message travels the other way, so the joins point left. Same boxes on every step, only the marks change.
+ */
+export function diagramBoxes(step: number, names: { runner?: string; inbox?: string; service?: string } = {}): Box[] {
+  const state = (n: number): Box["state"] => (n < step ? "done" : n === step ? "now" : "later");
+  return [
+    {
+      title: "runner" + (names.runner ? " " + names.runner : "") + ", with your coding agent",
+      caption: "on your machine, runs the bot",
+      step: 1,
+      state: state(1),
+    },
+    {
+      title: "loopway inbox" + (names.inbox ? " " + names.inbox : ""),
+      caption: "keeps the message, holds the bot's prompt",
+      step: 2,
+      state: state(2),
+    },
+    {
+      title: names.service ?? "GitHub, Linear, Vercel…",
+      caption: "sends a webhook, or you do",
+      step: 3,
+      state: state(3),
+    },
+  ];
+}
+
+/** The idea drawn once: boxes joined by lines, the one this step sets up inked. Scrolls sideways on a phone. */
 function Diagram({ boxes }: { boxes: Box[] }) {
   return (
     <div className="zs-diagram-wrap">
       <div className="zs-diagram">
         {boxes.map((b, i) => (
-          <Fragment key={b.title}>
+          <Fragment key={b.step}>
             {i > 0 && (
               <div className="zs-join" aria-hidden="true">
-                <span />
                 <svg width="8" height="12" viewBox="0 0 8 12">
-                  <path d="M1 1l6 5-6 5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M7 1L1 6l6 5" fill="none" stroke="currentColor" strokeWidth="1.2" />
                 </svg>
+                <span />
               </div>
             )}
-            <div className={"zs-box" + (b.inked ? " inked" : "") + (b.ready ? " ready" : "")}>
+            <div className={"zs-box" + (b.state === "now" ? " inked" : "") + (b.state === "done" ? " done" : "")}>
+              <span className="zs-box-tag">
+                {b.state === "done" ? (
+                  <>
+                    <Check />
+                    step {b.step} done
+                  </>
+                ) : (
+                  "step " + b.step
+                )}
+              </span>
               <span className="zs-box-title">{b.title}</span>
               <span className="zs-box-caption">{b.caption}</span>
             </div>
           </Fragment>
         ))}
       </div>
+      <p className="zs-diagram-legend">
+        Dark box: the part this step sets up. Check: already set up. Arrows follow a message on its way to your bot.
+      </p>
     </div>
   );
 }
@@ -470,12 +511,7 @@ function StepOne({ org }: { org: string }) {
       <Lede
         eyebrow="Getting started · the whole idea"
         title="Services send webhooks. loopway hands them to a bot on your machine."
-        diagram={[
-          { title: "GitHub, Linear, Vercel…", caption: "sends a webhook" },
-          { title: "loopway inbox", caption: "keeps the message" },
-          { title: "runner on your machine", caption: "step 1 · this page", inked: true },
-          { title: "your coding agent", caption: "does the work" },
-        ]}
+        diagram={diagramBoxes(1)}
       >
         A bot is a coding agent, Claude Code or Codex say, running where your code and credentials already are. loopway
         keeps an inbox in front of it, and a runner on your machine picks each message up. Three steps, and the first is
@@ -549,12 +585,7 @@ function StepTwo({ org, facts }: { org: string; facts: Facts }) {
       <Lede
         eyebrow={"Step 2 of 3 · runner " + (facts.runner ? facts.runner.name + " " : "") + "is online"}
         title="Your runner is connected. Now give it a bot."
-        diagram={[
-          { title: "GitHub, Linear, Vercel…", caption: "sends a webhook" },
-          { title: "loopway inbox", caption: "step 2 · the bot's inbox", inked: true },
-          { title: "runner on your machine", caption: "online", ready: true },
-          { title: "your coding agent", caption: "step 2 · the bot's prompt", inked: true },
-        ]}
+        diagram={diagramBoxes(2, { runner: facts.runner?.name })}
       >
         A bot is an inbox and a prompt: which service it hears from, and what to do when a message arrives. Your own
         coding agent can set one up in a minute, since it already knows how to read a doc and run a CLI.
@@ -645,12 +676,7 @@ function StepThree({ facts }: { facts: Facts }) {
       <Lede
         eyebrow={"Step 3 of 3 · bot " + (bot?.name ?? "") + (inbox ? " hears inbox " + inbox.name : "")}
         title="Your bot is ready. Send it something."
-        diagram={[
-          { title: source + ", or you", caption: "step 3 · send a message", inked: true },
-          { title: "inbox " + (inbox?.name ?? ""), caption: "ready", ready: true },
-          { title: "runner " + (runner?.name ?? ""), caption: "online", ready: true },
-          { title: "bot " + (bot?.name ?? ""), caption: "ready", ready: true },
-        ]}
+        diagram={diagramBoxes(3, { runner: runner?.name, inbox: inbox?.name, service: source })}
       >
         The runner starts an agent session the moment a message lands in the bot's inbox. You can wait for {source} to
         send one, or send a test message now and watch the first run in a few seconds.
