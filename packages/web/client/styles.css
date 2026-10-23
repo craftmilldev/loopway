@@ -1825,11 +1825,31 @@ main.dash.bleed {
   font-size: 14px;
 }
 .zs-table .state {
+  width: 132px;
+}
+.zs-badge {
+  display: inline-flex;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 116px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--indigo-200) 30%, transparent);
   font-family: var(--font-type);
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--indigo-600);
+}
+.zs-badge::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--indigo-600);
 }
 .zs-table .empty {
   color: var(--ink-500);

@@ -428,7 +428,9 @@ export function Celebration({ slug, onContinue }: { slug: string; onContinue: ()
                   <tr key={what}>
                     <td>{what}</td>
                     <td className="mono">{name}</td>
-                    <td className="state">{state}</td>
+                    <td className="state">
+                      <span className="zs-badge">{state}</span>
+                    </td>
                     <td className="mono r">{since}</td>
                   </tr>
                 ))}
