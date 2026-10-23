@@ -1568,15 +1568,34 @@ main.dash.bleed {
   text-transform: uppercase;
   color: var(--ink-500);
 }
-.zs-box.ready .zs-box-caption {
-  color: var(--indigo-600);
-}
 .zs-box.inked {
   background: var(--ink-900);
   color: var(--paper-100);
 }
 .zs-box.inked .zs-box-caption {
   color: var(--ink-200);
+}
+.zs-box-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-type);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.zs-box.inked .zs-box-tag {
+  color: var(--paper-100);
+}
+.zs-box.done .zs-box-tag {
+  color: var(--indigo-600);
+}
+.zs-diagram-legend {
+  margin: 12px 0 0;
+  min-width: 820px;
+  font-size: 14px;
+  color: var(--ink-500);
 }
 .zs-join {
   flex: 0 0 44px;
