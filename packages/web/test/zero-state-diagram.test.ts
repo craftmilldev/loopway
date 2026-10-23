@@ -13,7 +13,7 @@ describe("zero-state diagram", () => {
   });
 
   it("names the parts once they exist", () => {
-    const titles = diagramBoxes(3, { runner: "laptop", inbox: "gh", service: "GitHub" }).map((b) => b.title);
-    expect(titles).toEqual(["runner laptop, with your coding agent", "loopway inbox gh", "GitHub"]);
+    const titles = diagramBoxes(3, { runner: "laptop", service: "GitHub" }).map((b) => b.title);
+    expect(titles).toEqual(["runner laptop, with your coding agent", "create bot", "GitHub"]);
   });
 });

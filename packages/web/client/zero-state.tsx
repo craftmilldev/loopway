@@ -128,10 +128,10 @@ export interface Box {
 }
 
 /**
- * The idea drawn once, in the order of the setup steps: runner, inbox, then the service that sends the message. A
+ * The idea drawn once, in the order of the setup steps: runner, bot, then the service that sends the message. A
  * message travels the other way, so the joins point left. Same boxes on every step, only the marks change.
  */
-export function diagramBoxes(step: number, names: { runner?: string; inbox?: string; service?: string } = {}): Box[] {
+export function diagramBoxes(step: number, names: { runner?: string; service?: string } = {}): Box[] {
   const state = (n: number): Box["state"] => (n < step ? "done" : n === step ? "now" : "later");
   return [
     {
@@ -141,8 +141,8 @@ export function diagramBoxes(step: number, names: { runner?: string; inbox?: str
       state: state(1),
     },
     {
-      title: "loopway inbox" + (names.inbox ? " " + names.inbox : ""),
-      caption: "keeps the message, holds the bot's prompt",
+      title: "create bot",
+      caption: "an inbox that keeps the message, and the bot's prompt",
       step: 2,
       state: state(2),
     },
@@ -676,7 +676,7 @@ function StepThree({ facts }: { facts: Facts }) {
       <Lede
         eyebrow={"Step 3 of 3 · bot " + (bot?.name ?? "") + (inbox ? " hears inbox " + inbox.name : "")}
         title="Your bot is ready. Send it something."
-        diagram={diagramBoxes(3, { runner: runner?.name, inbox: inbox?.name, service: source })}
+        diagram={diagramBoxes(3, { runner: runner?.name, service: source })}
       >
         The runner starts an agent session the moment a message lands in the bot's inbox. You can wait for {source} to
         send one, or send a test message now and watch the first run in a few seconds.
