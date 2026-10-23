@@ -309,16 +309,18 @@ export function Celebration({ slug, onContinue }: { slug: string; onContinue: ()
     onContinue();
   };
   const rows = [
-    ["Runner", facts.runner?.name ?? "", "online", time(facts.runner?.created_at)],
+    ["Runner", facts.runner?.name ?? "your runner", "online", time(facts.runner?.created_at)],
     [
       "Bot",
-      facts.bot ? facts.bot.name + (facts.inbox ? ", hears " + facts.inbox.name : "") : "",
+      facts.bot ? facts.bot.name + (facts.inbox ? ", hears " + facts.inbox.name : "") : "your bot",
       "ready",
       time(facts.bot?.created_at),
     ],
     [
       "First run",
-      facts.firstRun ? (facts.firstRun.title ?? facts.firstRun.subjects[0] ?? "") : "",
+      facts.firstRun
+        ? (facts.firstRun.title ?? facts.firstRun.subjects[0] ?? "your first message")
+        : "your first message",
       "delivered",
       time(facts.firstRun?.created_at),
     ],
@@ -349,7 +351,7 @@ export function Celebration({ slug, onContinue }: { slug: string; onContinue: ()
                   <tr key={what}>
                     <td>{what}</td>
                     <td className="mono">{name}</td>
-                    <td className="state">
+                    <td className="zs-state">
                       <span className="zs-badge">{state}</span>
                     </td>
                     <td className="mono r">{since}</td>

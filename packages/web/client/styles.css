@@ -953,7 +953,7 @@ main.dash {
   border-bottom: 1px solid var(--rule-soft);
   color: var(--ink-600);
   text-decoration: none;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .bot-switch-items a[hidden] {
   display: none;
@@ -1312,7 +1312,7 @@ fieldset {
   font-family: var(--font-type);
   font-size: 0.8125rem;
   color: var(--ink-700);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .version-row {
   display: flex;
@@ -1730,11 +1730,13 @@ main.dash.bleed {
 }
 .zs-table {
   width: 100%;
+  max-width: 820px;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 15px;
 }
 .zs-table th {
-  padding: 0 0 8px;
+  padding: 0 16px 8px 0;
   border-bottom: 1px solid var(--ink-900);
   font-family: var(--font-type);
   font-size: 11px;
@@ -1745,8 +1747,23 @@ main.dash.bleed {
   color: var(--ink-600);
 }
 .zs-table td {
-  padding: 12px 0;
+  padding: 12px 16px 12px 0;
   border-bottom: 1px solid var(--zs-hair);
+  vertical-align: middle;
+  overflow-wrap: break-word;
+}
+.zs-table th:last-child,
+.zs-table td:last-child {
+  padding-right: 0;
+}
+.zs-table th:nth-child(1) {
+  width: 96px;
+}
+.zs-table th:nth-child(3) {
+  width: 132px;
+}
+.zs-table th:nth-child(4) {
+  width: 72px;
 }
 .zs-table .r {
   text-align: right;
@@ -1754,9 +1771,6 @@ main.dash.bleed {
 .zs-table .mono {
   font-family: var(--font-type);
   font-size: 14px;
-}
-.zs-table .state {
-  width: 132px;
 }
 .zs-badge {
   display: inline-flex;
@@ -1781,6 +1795,29 @@ main.dash.bleed {
   height: 6px;
   border-radius: 50%;
   background: var(--indigo-600);
+}
+@media (max-width: 560px) {
+  .zs-table th:nth-child(1) {
+    width: 80px;
+  }
+  .zs-table th:nth-child(3) {
+    width: 108px;
+  }
+  .zs-table th:nth-child(4) {
+    width: 52px;
+  }
+  .zs-table td,
+  .zs-table th {
+    padding-right: 10px;
+  }
+  .zs-table .mono {
+    font-size: 12px;
+  }
+  .zs-badge {
+    width: 98px;
+    padding: 5px 6px;
+    letter-spacing: 0.06em;
+  }
 }
 .zs-table .empty {
   color: var(--ink-500);
@@ -2027,7 +2064,7 @@ main.lp {
   font-family: var(--font-type);
   font-size: 12px;
   color: var(--indigo-600);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .lp-num {
   display: flex;
@@ -2102,7 +2139,7 @@ main.lp {
 .lp-well-wrap pre {
   overflow-x: visible;
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .lp-well-wrap .lp-cmd {
   display: block;
@@ -2602,7 +2639,7 @@ main.lp {
   color: var(--ink-500);
 }
 .lp-event-type {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .lp-event-time {
   white-space: nowrap;
