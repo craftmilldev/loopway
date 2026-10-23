@@ -60,6 +60,7 @@ export function DashLayout({
   me,
   crumb,
   orgless,
+  bleed,
   children,
 }: {
   title: string;
@@ -67,6 +68,8 @@ export function DashLayout({
   crumb?: ReactNode;
   /** For a page with no org in its path (/orgs/new): links go to the user's last org and no tab is current. */
   orgless?: boolean;
+  /** The page lays out its own full-width bands, so `main` adds no measure or padding. */
+  bleed?: boolean;
   children: ReactNode;
 }) {
   useEffect(() => {
@@ -113,7 +116,7 @@ export function DashLayout({
           </nav>
         )}
       </header>
-      <main className="dash">
+      <main className={bleed ? "dash bleed" : "dash"}>
         {crumb}
         {children}
       </main>

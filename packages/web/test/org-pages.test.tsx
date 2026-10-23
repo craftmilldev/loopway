@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OrgsContext } from "../client/layout.js";
 import * as lw from "../client/lw.js";
@@ -113,40 +113,57 @@ describe("OrgGate with no bots", () => {
   });
 
   it("shows only the zero state, with copyable steps and no nav", async () => {
-    const writeText = vi.fn(async () => {});
+    const writeText = vi.fn<(text: string) => Promise<void>>(async () => {});
     vi.stubGlobal("navigator", { clipboard: { writeText } });
     window.history.replaceState(null, "", "/craftmill");
     render(<OrgGate>the page</OrgGate>);
-    expect(await screen.findByText(/Get your runner going/)).toBeTruthy();
+    expect(await screen.findByText(/loopway hands them to a bot/)).toBeTruthy();
     expect(screen.queryByText("the page")).toBeNull();
     expect(screen.queryByText("Bots")).toBeNull();
     expect(screen.queryByText("New bot")).toBeNull();
-    expect(screen.getByLabelText("Create your bot with your agent").textContent).toContain("--org craftmill");
+    expect(screen.getByLabelText("Runner commands").textContent).toContain("loopway bots run --org craftmill");
+    expect(screen.getByRole("status").textContent).toContain("Waiting for a runner on craftmill");
     expect(screen.getByText("Members").getAttribute("href")).toBe("/craftmill/members");
     fireEvent.click(screen.getAllByText("Copy")[0]!);
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith("curl -fsSL https://loopway.craftmill.dev/install.sh | sh"),
     );
     expect(track).toHaveBeenCalledWith("zero_state_viewed");
-    expect(track).toHaveBeenCalledWith("runners_command_copied", { command: "install", from: "zero_state" });
+    expect(track).toHaveBeenCalledWith("zero_state_copy", { what: "install" });
+    fireEvent.click(screen.getByText("Copy all three"));
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("loopway login")));
+    const all = writeText.mock.calls.at(-1)![0];
+    expect(all.split("\n")).toHaveLength(3);
+    expect(all).not.toContain("cd ");
+    expect(track).toHaveBeenCalledWith("zero_state_copy", { what: "all" });
+    fireEvent.click(screen.getAllByText("Copy")[1]!);
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("loopway bots run --org craftmill"));
+  });
+
+  it("counts a copy the browser refuses", async () => {
+    vi.stubGlobal("navigator", { clipboard: { writeText: vi.fn(async () => Promise.reject(new Error("no"))) } });
+    window.history.replaceState(null, "", "/craftmill");
+    render(<OrgGate>the page</OrgGate>);
+    fireEvent.click((await screen.findAllByText("Copy"))[0]!);
+    await waitFor(() => expect(track).toHaveBeenCalledWith("zero_state_copy_failed", { what: "install" }));
   });
 
   it("moves on to the connected state when a runner shows up, without a refresh", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     window.history.replaceState(null, "", "/craftmill");
     render(<OrgGate>the page</OrgGate>);
-    expect(await screen.findByText(/Get your runner going/)).toBeTruthy();
-    expect(screen.queryByText("Your runner is connected")).toBeNull();
+    expect(await screen.findByText(/loopway hands them to a bot/)).toBeTruthy();
+    expect(screen.queryByText("Your runner is connected. Now give it a bot.")).toBeNull();
     runners = [offline];
     await act(() => vi.advanceTimersByTimeAsync(lw.POLL_MS + 1000));
-    expect(screen.queryByText("Your runner is connected")).toBeNull();
+    expect(screen.queryByText("Your runner is connected. Now give it a bot.")).toBeNull();
     runners = [online];
     await act(() => vi.advanceTimersByTimeAsync(lw.POLL_MS + 1000));
-    expect(await screen.findByText("Your runner is connected")).toBeTruthy();
-    expect(screen.queryByText(/Get your runner going/)).toBeNull();
-    expect(screen.getByText(/webhook address/)).toBeTruthy();
+    expect(await screen.findByText("Your runner is connected. Now give it a bot.")).toBeTruthy();
+    expect(screen.queryByText(/loopway hands them to a bot/)).toBeNull();
+    expect(screen.getByText(/Paste this into your agent/)).toBeTruthy();
     expect(screen.queryByText("New bot")).toBeNull();
-    expect(screen.getByLabelText("Create your bot with your agent").textContent).toContain("--org craftmill");
+    expect(screen.getByRole("status").textContent).toContain("Waiting for a bot in craftmill");
     expect(track).toHaveBeenCalledWith("zero_state_runner_connected");
   });
 
@@ -154,8 +171,11 @@ describe("OrgGate with no bots", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     window.history.replaceState(null, "", "/craftmill");
     render(<OrgGate>the page</OrgGate>);
-    await screen.findByText(/Get your runner going/);
-    const steps = () => screen.getAllByRole("listitem").map((li) => li.getAttribute("aria-current") === "step");
+    await screen.findByText(/loopway hands them to a bot/);
+    const steps = () =>
+      within(screen.getByLabelText("Setup progress"))
+        .getAllByRole("listitem")
+        .map((li) => li.getAttribute("aria-current") === "step");
     expect(screen.getByText("Get loopway running")).toBeTruthy();
     expect(screen.getByText("Make your first bot")).toBeTruthy();
     expect(screen.getByText("See it run")).toBeTruthy();
@@ -166,7 +186,7 @@ describe("OrgGate with no bots", () => {
     bots = [{ id: "b1" }];
     await act(() => vi.advanceTimersByTimeAsync(lw.POLL_MS + 1000));
     expect(steps()).toEqual([false, false, true]);
-    expect(screen.getByText("Your bot is ready")).toBeTruthy();
+    expect(screen.getByText("Your bot is ready. Send it something.")).toBeTruthy();
     expect(screen.queryByText("the page")).toBeNull();
     activity = [{ bot_id: "b1", last_delivery_at: "2026-10-18T00:00:00Z" }];
     await act(() => vi.advanceTimersByTimeAsync(lw.POLL_MS + 1000));
@@ -182,11 +202,15 @@ describe("OrgGate with no bots", () => {
     celebrated = false;
     window.history.replaceState(null, "", "/craftmill");
     const { unmount } = render(<OrgGate>the page</OrgGate>);
-    await screen.findByText("Your bot is ready");
+    await screen.findByText("Your bot is ready. Send it something.");
     activity = [{ bot_id: "b1", last_delivery_at: "2026-10-18T00:00:00Z" }];
     await act(() => vi.advanceTimersByTimeAsync(lw.POLL_MS + 1000));
     await screen.findByText("You did it");
-    expect(screen.getAllByRole("listitem").map((li) => li.className)).toEqual(["done", "done", "done"]);
+    expect(
+      within(screen.getByLabelText("Setup progress"))
+        .getAllByRole("listitem")
+        .map((li) => li.className),
+    ).toEqual(["done", "done", "done"]);
     expect(screen.queryByText("the page")).toBeNull();
     fireEvent.click(screen.getByText("Continue to loopway"));
     expect(await screen.findByText("the page")).toBeTruthy();
@@ -224,7 +248,7 @@ describe("OrgGate with no bots", () => {
     window.history.replaceState(null, "", "/craftmill");
     render(<OrgGate>the page</OrgGate>);
     expect(await screen.findByText("You're in a shared org")).toBeTruthy();
-    fireEvent.click(screen.getByText("README"));
+    fireEvent.click(screen.getAllByText("README")[0]!);
     expect(track).toHaveBeenCalledWith("zero_state_readme_clicked");
     cleanup();
     window.history.replaceState(null, "", "/mcwhittemore");
@@ -254,7 +278,9 @@ describe("OrgGate for each combination of setup steps", () => {
     }
     await screen.findByText("Get loopway running");
     expect(screen.queryByText("the page")).toBeNull();
-    const current = screen.getAllByRole("listitem").findIndex((li) => li.getAttribute("aria-current") === "step");
+    const current = within(screen.getByLabelText("Setup progress"))
+      .getAllByRole("listitem")
+      .findIndex((li) => li.getAttribute("aria-current") === "step");
     expect(current).toBe(!runner ? 0 : !bot ? 1 : 2);
   });
 });

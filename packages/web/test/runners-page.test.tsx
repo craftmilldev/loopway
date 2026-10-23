@@ -66,7 +66,7 @@ describe("Runners page", () => {
     expect(await screen.findByText("No runners yet.")).toBeTruthy();
     expect(screen.getByText(/Nothing is running your bots/)).toBeTruthy();
     fireEvent.click(screen.getAllByText("Copy")[2]!);
-    expect(writeText).toHaveBeenCalledWith("cd ~/code/your-repo && loopway bots run --org acme");
+    expect(writeText).toHaveBeenCalledWith("loopway bots run --org acme");
     expect(screen.queryByRole("table")).toBeNull();
   });
 
