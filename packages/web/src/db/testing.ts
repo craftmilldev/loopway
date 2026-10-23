@@ -85,15 +85,20 @@ export async function seedFixtures(db: Db) {
     prompt: "Fixture prompt",
   });
   const runner = await upsertRunner(db, user.id, orgId, randomUUID(), "fixture-runner");
-  const message = await insertMessage(db, inbox.id, {
-    specversion: "1.0",
-    id: "fixture-1",
-    source: "https://github.com/craftmill/loopway",
-    type: "com.github.pull_request.opened",
-    subject: "pull/1",
-    time: "2026-10-01T12:00:00Z",
-    data: { number: 1 },
-  });
+  const message = await insertMessage(
+    db,
+    inbox.id,
+    {
+      specversion: "1.0",
+      id: "fixture-1",
+      source: "https://github.com/craftmill/loopway",
+      type: "com.github.pull_request.opened",
+      subject: "pull/1",
+      time: "2026-10-01T12:00:00Z",
+      data: { number: 1 },
+    },
+    false,
+  );
   const lease = (await leaseBot(db, bot.id, 60, null, runner!.id))!;
   const threadId = randomUUID();
   await assignMessages(db, bot.id, lease.lock_token!, 0, [

@@ -4,6 +4,7 @@ import { commands } from "./runners.js";
 import { DashLayout, MembersHint, OrgsContext } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
+import { TestMessageButton } from "./test-message.js";
 
 /** The three steps of the zero state, each done once its condition holds. */
 export interface SetupProgress {
@@ -637,6 +638,7 @@ function StepThree({ facts }: { facts: Facts }) {
   const source = inbox ? sourceLabel(inbox.source_type) : "the service";
   const events = inbox?.config?.events;
   const github = inbox?.source_type === "github";
+  const sample = github ? "pull_request" : "sample";
   const setup = Object.entries(inbox?.setup ?? {}).filter(([k, v]) => typeof v === "string" && k !== "payload_url");
   return (
     <>
@@ -650,12 +652,29 @@ function StepThree({ facts }: { facts: Facts }) {
           { title: "bot " + (bot?.name ?? ""), caption: "ready", ready: true },
         ]}
       >
-        The runner starts an agent session the moment a message lands in the bot's inbox.
+        The runner starts an agent session the moment a message lands in the bot's inbox. You can wait for {source} to
+        send one, or send a test message now and watch the first run in a few seconds.
       </Lede>
       <section className="zs-section" aria-label="Send a message">
         <div className="zs-wrap zs-stack">
           <div className="zs-columns">
-            <div className="zs-col full">
+            {inbox && (
+              <div className="zs-col main test">
+                <div className="zs-heading">
+                  <p className="zs-eyebrow">The quick way</p>
+                  <h2>Send a test message</h2>
+                  <p className="zs-muted">
+                    loopway posts a sample {sample} event to {inbox.name}, signed the way {source} would sign it. The
+                    bot treats it like any other message, and the inbox marks it as a test.
+                  </p>
+                </div>
+                <div className="zs-actions">
+                  <TestMessageButton inboxId={inbox.id} from="zero_state" />
+                  <span className="zs-aside">About ten seconds to the first run.</span>
+                </div>
+              </div>
+            )}
+            <div className={"zs-col " + (inbox ? "side wide" : "full")}>
               <div className="zs-heading">
                 <p className="zs-eyebrow">The real thing</p>
                 <h2>Add the webhook in {source}</h2>

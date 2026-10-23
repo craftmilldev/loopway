@@ -179,12 +179,29 @@ export function createApi(opts: ApiOptions) {
     const inboxId = c.req.param("inboxId");
     const inbox = isUuid(inboxId) ? await store.getInbox(c.var.db, inboxId) : undefined;
     if (!inbox) throw new ApiError(404, "not_found", "Inbox not found");
+    const delivery = { headers: c.req.raw.headers, rawBody: await c.req.text() };
+    const result = await deliver(c, inbox, delivery, false);
+    if (result.kind === "ignored") return c.json({ ignored: true, reason: result.reason }, 200);
+    return c.json({ id: result.id, duplicate: result.duplicate }, result.duplicate ? 200 : 202);
+  });
+
+  /**
+   * Runs a delivery through its inbox's source and stores the event: what a real webhook and a test message share.
+   * A delivery the source refuses throws; `test` marks the stored event (no sender can, so it can't be forged).
+   */
+  async function deliver(
+    c: Context<Env>,
+    inbox: Inbox,
+    delivery: { headers: Headers; rawBody: string },
+    test: boolean,
+  ): Promise<{ kind: "ignored"; reason: string } | { kind: "stored"; id: string; seq: number; duplicate: boolean }> {
     const source = sources.get(inbox.source_type);
     if (!source) throw new ApiError(500, "internal", `Unknown source type ${inbox.source_type}`);
     const received = (outcome: string, extra?: Record<string, unknown>) =>
       metrics.capture("webhook_received", inbox.org_id, {
         source_type: inbox.source_type,
         outcome,
+        test,
         ...extra,
       });
 
@@ -199,12 +216,7 @@ export function createApi(opts: ApiOptions) {
     }
 
     const result = await source.receive(
-      {
-        headers: c.req.raw.headers,
-        rawBody: await c.req.text(),
-        receivedAt: new Date(),
-        webhookUrl: webhookUrl(c, inbox.id),
-      },
+      { ...delivery, receivedAt: new Date(), webhookUrl: webhookUrl(c, inbox.id) },
       config,
     );
     if (result.kind === "rejected") {
@@ -213,12 +225,12 @@ export function createApi(opts: ApiOptions) {
     }
     if (result.kind === "ignored") {
       await received("ignored", { reason: result.reason });
-      return c.json({ ignored: true, reason: result.reason }, 200);
+      return { kind: "ignored", reason: result.reason };
     }
-    const { id, duplicate } = await store.insertMessage(c.var.db, inbox.id, result.event);
-    await received(duplicate ? "duplicate" : "accepted");
-    return c.json({ id, duplicate }, duplicate ? 200 : 202);
-  });
+    const stored = await store.insertMessage(c.var.db, inbox.id, result.event, test);
+    await received(stored.duplicate ? "duplicate" : "accepted");
+    return { kind: "stored", ...stored };
+  }
 
   // Vercel Cron calls this on the schedule in vercel.json (daily by default; hourly where the plan allows) with
   // `Authorization: Bearer $CRON_SECRET`. Every inbox whose source fills itself on a clock gets the messages due in
@@ -246,7 +258,7 @@ export function createApi(opts: ApiOptions) {
       }
       try {
         for (const event of sources.get(inbox.source_type)!.tick!(inbox.config, inbox.id, now)) {
-          const { duplicate } = await store.insertMessage(c.var.db, inbox.id, event);
+          const { duplicate } = await store.insertMessage(c.var.db, inbox.id, event, false);
           total[duplicate ? "duplicate" : "accepted"]++;
           await metrics.capture("schedule_message", inbox.org_id, { outcome: duplicate ? "duplicate" : "accepted" });
         }
@@ -730,6 +742,66 @@ export function createApi(opts: ApiOptions) {
     return c.json(serializeMessage(await existingMessage(c, inbox)));
   });
 
+  // A sample event signed with the inbox's own secret and run through the same path as a real delivery, so a new
+  // user sees a bot run without setting up the sender first.
+  authed.post("/inboxes/:inboxId/test", async (c) => {
+    const inbox = await memberInbox(c);
+    const { from } = z
+      .object({ from: z.enum(["inbox_page", "zero_state", "cli"]).default("cli") })
+      .parse(await jsonBody(c));
+    const fail = async (reason: "secret_not_set" | "no_accepted_type" | "api_error", err: ApiError) => {
+      await metrics.capture("test_message_failed", c.var.user.id, { source_type: inbox.source_type, from, reason });
+      return err;
+    };
+
+    const source = sources.get(inbox.source_type)!;
+    const config = (await fullConfigOr500(c, inbox)) as { secret?: string | null; events?: string[] };
+    if (source.secret.from === "sender" && !config.secret) {
+      throw await fail(
+        "secret_not_set",
+        new ApiError(
+          409,
+          "secret_not_set",
+          `This inbox has no signing secret yet: paste the one ${source.label} shows first, then send a test message`,
+        ),
+      );
+    }
+
+    const now = new Date();
+    const id = uuidv7(now.getTime());
+    let message: { id: string; seq: number };
+    if (source.tick) {
+      // A schedule fills itself: the test is its first message type, under a fresh id so it isn't a repeat of the window's.
+      const [event] = source.tick(inbox.config, inbox.id, now);
+      if (!event) {
+        throw await fail(
+          "no_accepted_type",
+          new ApiError(422, "no_accepted_type", "This inbox has no message to send"),
+        );
+      }
+      message = await store.insertMessage(c.var.db, inbox.id, makeCloudEvent({ ...event, id }), true);
+    } else {
+      const type = sources.sampleType(inbox.source_type, config);
+      if (!type) {
+        throw await fail(
+          "no_accepted_type",
+          new ApiError(422, "no_accepted_type", "This inbox's events filter accepts none of the types a test can send"),
+        );
+      }
+      const sample = source.sample!(config, { type, id, now });
+      try {
+        const result = await deliver(c, inbox, { headers: new Headers(sample.headers), rawBody: sample.rawBody }, true);
+        if (result.kind === "ignored")
+          throw new ApiError(422, "rejected", `The test message was ignored: ${result.reason}`);
+        message = result;
+      } catch (err) {
+        throw err instanceof ApiError ? await fail("api_error", err) : err;
+      }
+    }
+    await metrics.capture("test_message_sent", c.var.user.id, { source_type: inbox.source_type, from });
+    return c.json({ message_id: message.id, seq: message.seq }, 201);
+  });
+
   // Runners
 
   authed.get("/runners", async (c) => {
@@ -1118,6 +1190,7 @@ export function createApi(opts: ApiOptions) {
         datacontenttype: "application/json",
         data: { thread_id: thread.id, bot_id: bot.id, text: parsed.data.text, user_id: c.var.user.id },
       }),
+      false,
     );
     await metrics.capture("thread_message_sent", c.var.user.id, { thread_status: thread.status });
     return c.json({ id: sent.id, inbox_id: inboxId }, 201);
@@ -1559,6 +1632,7 @@ function serializeMessage(e: MessageRow) {
     inbox_id: e.inbox_id,
     seq: Number(e.seq),
     received_at: iso(e.received_at),
+    test: e.is_test,
     event: e.cloudevent,
   };
 }

@@ -1710,6 +1710,16 @@ main.dash.bleed {
   padding-left: 40px;
   border-left: 1px solid var(--zs-hair);
 }
+.zs-col.main.test {
+  flex: 1 1 360px;
+}
+.zs-col.side.wide {
+  flex: 1 1 420px;
+}
+.zs-col.wide .zs-heading h2 {
+  font-size: 24px;
+  line-height: 1.2;
+}
 .zs-col.full {
   flex: 1 1 420px;
 }

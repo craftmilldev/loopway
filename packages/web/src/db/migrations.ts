@@ -694,4 +694,11 @@ ALTER TABLE loopway.threads ADD CONSTRAINT threads_kind_bot_check CHECK ((kind =
 CREATE INDEX threads_org_kind_idx ON loopway.threads (org_id, kind, created_at);
 `,
   },
+  {
+    // Messages made by the "send a test message" action, so the inbox page can badge them.
+    version: "034_message_is_test",
+    sql: `
+ALTER TABLE loopway.messages ADD COLUMN is_test boolean NOT NULL DEFAULT false;
+`,
+  },
 ];

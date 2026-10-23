@@ -52,6 +52,17 @@ Each source's `config`, how to connect it in the sender, and how its deliveries 
 - `200 {ignored:true, reason}` `ping`
 - `400` malformed body (for Loopway, one that doesn't match the inbox schema) · `401` bad/missing signature or token (or, for Vercel, Granola and Resend, no secret set yet) · `404` unknown inbox · `415` unsupported content type · `422` event type not in `config.events` (GitHub shows it as a failed delivery and doesn't retry it; Vercel retries any non-2xx for up to 24 hours; Granola retries only 408, 429 and 5xx)
 
+## Sending a test message
+
+`POST /api/inboxes/:id/test` `{from?}` — session auth; you must be a member of the inbox's org (`404` otherwise). It builds a small sample event for the inbox's source, signs it with the inbox's stored secret the way the sender would, and runs it through the same handler as `POST /api/webhooks/:inboxId`, so it is stored and delivered like any message. `201 {message_id, seq}`. Each call stores a new message.
+
+- The message is stored with `is_test` set, and `GET /api/inboxes/:id/messages` returns it as `test: true` (`false` for every other message); the inbox page shows a `test` badge. The CloudEvent itself is the sample, unmarked. Only this route sets it: no webhook can.
+- If the inbox's `events` filter rejects the sample's type, the first sample type the inbox accepts is sent instead. If it accepts none: `422 no_accepted_type`.
+- For a source whose sender makes the secret (Linear, Vercel, Granola, Resend) that hasn't been pasted in yet: `409 secret_not_set`.
+- A sample the inbox refuses anyway (a `loopway` inbox whose schema the sample doesn't match) answers what the webhook would: `400` or `422`.
+- `from` (`inbox_page`, `zero_state` or `cli`, default `cli`) only labels the `test_message_sent` / `test_message_failed` metric events.
+
+From the CLI: `loopway inbox test <inbox>`.
 
 ## Messages
 

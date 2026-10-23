@@ -54,3 +54,7 @@ Which options a deploy offers is set by `SCHEDULE_OPTIONS` (`hour`, `day` or `ho
 ## CloudEvent mapping
 
 `id` = `subject` = sha256 of `<type>/<window start ISO>`, `type` = `dev.craftmill.loopway.schedule.<type>`, `source` = `urn:loopway:inbox:<inbox id>`, `time` = window start, `data` = `{ message, created_at }` (`created_at` is the window start).
+
+## Test message
+
+The test message is the first configured message type, as a tick would deliver it, under a fresh id so it is not mistaken for the window's own message.
