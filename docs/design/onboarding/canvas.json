@@ -1,0 +1,26 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-10-22T15:05:00Z" },
+  "title": "Loopway Onboarding Redesign",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1280, "h": 1340, "title": "Step 1 · Get loopway running", "expand": "fill", "is_interactive": true },
+    "Step2.dc.html": { "x": 1360, "y": 0, "w": 1280, "h": 1340, "title": "Step 2 · Make your first bot", "expand": "fill", "is_interactive": true },
+    "Step3.dc.html": { "x": 2720, "y": 0, "w": 1280, "h": 1340, "title": "Step 3 · See it run", "expand": "fill", "is_interactive": true },
+    "Done.dc.html": { "x": 4080, "y": 0, "w": 1280, "h": 980, "title": "Done · You did it", "expand": "fill", "is_interactive": true }
+  },
+  "order": ["Main.dc.html", "Step2.dc.html", "Step3.dc.html", "Done.dc.html"],
+  "notes": {
+    "flow": { "x": 0, "y": -300, "text": "loopway onboarding: one step per screen, the idea drawn once, the page waits for you", "kind": "title1", "maxW": 5360 }
+  },
+  "designSystems": [
+    {
+      "title": "Craftmill Design System",
+      "namespace": "craftmill",
+      "artifact": "https://claude.ai/code/artifact/c29526ae-f6e2-4b1e-933a-50126c3adddd",
+      "version": "1790179859-a118",
+      "copiedAt": "2026-10-22T15:05:00Z"
+    }
+  ]
+}

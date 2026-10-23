@@ -1,0 +1,319 @@
+/* Craftmill Design System — generated from tokens.json */
+:root, [data-theme="default"] {
+  --paper-100: #f2eede;
+  --paper-200: #e4ddc9;
+  --paper-300: #d6cdb4;
+  --paper-400: #c2b899;
+  --ink-900: #16130e;
+  --ink-800: #241f17;
+  --ink-700: #3a352b;
+  --ink-600: #4b4534;
+  --ink-500: #5c5544;
+  --ink-400: #6d6656;
+  --ink-300: #8b8471;
+  --ink-200: #a9a28c;
+  --madder-700: #7a1f12;
+  --madder-600: #9e2b1c;
+  --madder-500: #b8412c;
+  --madder-300: #d08a76;
+  --indigo-700: #1e3b45;
+  --indigo-600: #2c4a53;
+  --indigo-400: #4d6f78;
+  --indigo-200: #9db4ba;
+  --surface-page: var(--paper-200);
+  --surface-raised: var(--paper-100);
+  --surface-sunken: var(--paper-300);
+  --surface-inset: var(--paper-100);
+  --surface-ink: var(--ink-900);
+  --text-strong: var(--ink-900);
+  --text-muted: var(--ink-600);
+  --text-faint: var(--ink-500);
+  --text-inverse: var(--paper-100);
+  --text-inverse-muted: var(--ink-200);
+  --text-link: var(--madder-600);
+  --text-link-hover: var(--ink-900);
+  --text-accent: var(--madder-600);
+  --text-reference: var(--indigo-600);
+  --rule-hair: #16130e29;
+  --rule-soft: #16130e52;
+  --rule-strong: var(--ink-900);
+  --rule-accent: var(--madder-600);
+  --border-hairline: var(--rule-hair);
+  --border-soft: var(--rule-soft);
+  --border-strong: var(--rule-strong);
+  --border-focus: var(--madder-600);
+  --action-primary: var(--ink-900);
+  --action-primary-hover: var(--ink-800);
+  --action-primary-press: #000000;
+  --action-primary-text: var(--paper-100);
+  --action-accent: var(--madder-600);
+  --action-accent-hover: var(--madder-500);
+  --status-positive: var(--indigo-600);
+  --status-caution: var(--madder-500);
+  --status-danger: var(--madder-700);
+  --status-neutral: var(--ink-500);
+  --highlight: #b8412c2e;
+  --scrim: #16130e57;
+  --shadow-none: none;
+  --shadow-inset: none;
+  --shadow-raised: none;
+  --shadow-float: 3px 3px 0 #16130e52;
+  --shadow-overlay: 6px 6px 0 #16130e3d;
+  --shadow-focus: none;
+}
+[data-theme="surface-ink"] {
+  --surface-page: var(--ink-900);
+  --surface-raised: var(--ink-800);
+  --surface-sunken: #0d0b08;
+  --surface-inset: var(--ink-800);
+  --surface-ink: var(--ink-900);
+  --text-strong: var(--paper-100);
+  --text-muted: var(--ink-200);
+  --text-faint: var(--ink-300);
+  --text-inverse: var(--paper-100);
+  --text-inverse-muted: var(--ink-200);
+  --text-link: var(--madder-300);
+  --text-link-hover: var(--paper-100);
+  --text-accent: var(--madder-300);
+  --text-reference: var(--indigo-600);
+  --rule-hair: #f2eede29;
+  --rule-soft: #f2eede4d;
+  --rule-strong: var(--paper-300);
+  --rule-accent: var(--madder-600);
+  --border-hairline: var(--rule-hair);
+  --border-soft: var(--rule-soft);
+  --border-strong: var(--rule-strong);
+  --border-focus: var(--madder-600);
+  --action-primary: var(--paper-100);
+  --action-primary-hover: var(--ink-800);
+  --action-primary-text: var(--ink-900);
+  --action-accent: var(--madder-600);
+  --action-accent-hover: var(--madder-500);
+  --status-positive: var(--indigo-600);
+  --status-caution: var(--madder-500);
+  --status-danger: var(--madder-700);
+  --status-neutral: var(--ink-500);
+}
+:root {
+  --space-0: 0;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+  --gutter: 1.25rem;
+  --measure-page: 1100px;
+  --measure-page-narrow: 720px;
+  --control-sm: 28px;
+  --control-md: 36px;
+  --control-lg: 44px;
+  --control-pad-x-sm: 0.75rem;
+  --control-pad-x-md: 1rem;
+  --control-pad-x-lg: 1.5rem;
+  --border-width: 1px;
+  --border-width-thick: 2px;
+  --border-width-rule: 3px;
+  --ornament-tile-river: 320px;
+  --ornament-tile-floral: 300px;
+  --pattern-tile: 96px;
+  --pattern-tile-lg: 160px;
+  --press-tile: 180px;
+  --radius-none: 0px;
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-round: 50%;
+  --ease-standard: cubic-bezier(.2,0,.2,1);
+  --ease-out: cubic-bezier(0,0,.2,1);
+  --ease-in: cubic-bezier(.4,0,1,1);
+  --dur-instant: 0ms;
+  --dur-fast: 0ms;
+  --dur-normal: 0ms;
+  --dur-slow: 0ms;
+  --dur-ambient: 0ms;
+  --text-display-1: clamp(2.75rem,5.6vw,4.75rem);
+  --text-display-2: clamp(2.25rem,3.8vw,3.25rem);
+  --section-y: 3rem;
+  --section-y-tight: 2rem;
+  --stack-tight: 0.5rem;
+  --stack: 0.75rem;
+  --stack-loose: 1.5rem;
+  --rule: 1px solid color-mix(in oklab, #16130e 16%, transparent);
+  --rule-heavy: 2px solid #16130e;
+  --rule-double: 3px double #16130e;
+  --blur-overlay: none;
+  --transition-control: color 0ms cubic-bezier(.2,0,.2,1),background-color 0ms cubic-bezier(.2,0,.2,1),border-color 0ms cubic-bezier(.2,0,.2,1);
+  --transition-surface: opacity 0ms cubic-bezier(0,0,.2,1);
+  --pattern-opacity-ghost: .06;
+  --pattern-opacity-quiet: .12;
+  --pattern-opacity-present: .24;
+  --pattern-opacity-art: .4;
+  --leading-tight: 1.02;
+  --leading-snug: 1.16;
+  --leading-normal: 1.5;
+  --leading-loose: 1.62;
+  --tracking-display: -0.021em;
+  --tracking-normal: 0em;
+  --tracking-wide: 0.04em;
+  --tracking-masthead: 0.06em;
+  --weight-display: 400;
+  --weight-light: 300;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 400;
+  --weight-bold: 700;
+  --font-text: "Craftmill Text","Sorts Mill Goudy",Georgia,"Times New Roman",serif;
+  --font-type: "Craftmill Typewriter","Courier Prime",Courier,ui-monospace,monospace;
+  --text-text-body: 400 1.0625rem/1.4 var(--font-text);
+  --text-text-display-3: 400 1.875rem/1.4 var(--font-text);
+  --text-text-title: 400 1.375rem/1.4 var(--font-text);
+  --text-text-subtitle: 400 1.1875rem/1.4 var(--font-text);
+  --text-text-lead: 400 1.1875rem/1.4 var(--font-text);
+  --text-text-small: 400 0.9375rem/1.4 var(--font-text);
+  --text-text-fine: 400 0.8125rem/1.4 var(--font-text);
+  --text-text-eyebrow: 400 0.6875rem/1.4 var(--font-text);
+  --text-text-label: 400 0.75rem/1.4 var(--font-text);
+  --text-text-code: 400 0.8125rem/1.4 var(--font-text);
+  --text-text-figure: 400 1rem/1.4 var(--font-text);
+  --text-body: 400 17px/1.5 var(--font-text); /* From `body` in tokens/base.css. */
+  --text-h4: 400 12px/1.5 var(--font-type); /* From `h4,h5,h6` in tokens/base.css — uppercase. */
+  --text-h5: 400 12px/1.5 var(--font-type); /* From `h4,h5,h6` in tokens/base.css — uppercase. */
+  --text-h6: 400 12px/1.5 var(--font-type); /* From `h4,h5,h6` in tokens/base.css — uppercase. */
+  --text-code: 400 13px/1.5 var(--font-type); /* From `code,pre,kbd,samp` in tokens/base.css. */
+  --text-pre: 400 13px/1.5 var(--font-type); /* From `code,pre,kbd,samp` in tokens/base.css. */
+  --text-kbd: 400 13px/1.5 var(--font-type); /* From `code,pre,kbd,samp` in tokens/base.css. */
+}
+.text-body {
+  font-family: var(--font-text);
+  font-size: 1.0625rem;
+  line-height: 1.4;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.text-display-3 {
+  font-family: var(--font-text);
+  font-size: 1.875rem;
+  line-height: 1.4;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.text-title {
+  font-family: var(--font-text);
+  font-size: 1.375rem;
+  line-height: 1.4;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.text-subtitle {
+  font-family: var(--font-text);
+  font-size: 1.1875rem;
+  line-height: 1.4;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.text-lead {
+  font-family: var(--font-text);
+  font-size: 1.1875rem;
+  line-height: 1.4;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.text-small {
+  font-family: var(--font-text);
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.text-fine {
+  font-family: var(--font-text);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.text-eyebrow {
+  font-family: var(--font-text);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+}
+.text-label {
+  font-family: var(--font-text);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+}
+.text-code {
+  font-family: var(--font-text);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.text-figure {
+  font-family: var(--font-text);
+  font-size: 1rem;
+  line-height: 1.4;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.body {
+  font-family: var(--font-text);
+  font-size: 17px;
+  line-height: 1.5;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.h4 {
+  font-family: var(--font-type);
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+}
+.h5 {
+  font-family: var(--font-type);
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+}
+.h6 {
+  font-family: var(--font-type);
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+}
+.code {
+  font-family: var(--font-type);
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.pre {
+  font-family: var(--font-type);
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.kbd {
+  font-family: var(--font-type);
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 400;
+  letter-spacing: 0;
+}

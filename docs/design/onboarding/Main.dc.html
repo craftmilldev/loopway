@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Get loopway running</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/craftmill/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sorts+Mill+Goudy:ital@0;1&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+body{margin:0;background:#e4ddc9}
+a{color:#9e2b1c}a:hover{color:#16130e}
+.toile{position:absolute;inset:0;pointer-events:none;background-image:url("ds/craftmill/assets/ornament/craftmill-river-toile.svg");background-size:320px 320px;opacity:.09;-webkit-mask-image:linear-gradient(to bottom,#000 20%,transparent 95%);mask-image:linear-gradient(to bottom,#000 20%,transparent 95%)}
+button{cursor:pointer}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #e4ddc9; color: #16130e; font-family: 'Sorts Mill Goudy', Georgia, serif; font-size: 17px; line-height: 1.5;">
+
+  <header style="border-bottom: 3px double #16130e;">
+    <div style="max-width: 1100px; margin: 0 auto; padding: 18px 24px 14px; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 12px 24px;">
+      <a href="#" style="text-decoration: none; color: #16130e; font-size: 26px; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1;"><span style="color: #9e2b1c;">L</span>oopway</a>
+      <nav aria-label="Account" style="display: flex; flex-wrap: wrap; gap: 8px 28px; font-family: 'Courier Prime', Courier, monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;">
+        <a href="#" style="color: #16130e; text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">mcwhittemore <svg aria-hidden="true" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="#16130e" stroke-width="1.2"></path></svg></a>
+        <a href="#" style="color: #16130e; text-decoration: none;">members</a>
+        <a href="#" style="color: #16130e; text-decoration: none;">log out</a>
+      </nav>
+    </div>
+  </header>
+
+  <nav aria-label="Setup progress" style="border-bottom: 1px solid #16130e;">
+    <ol style="list-style: none; margin: 0 auto; padding: 0; max-width: 1100px; display: flex; flex-wrap: wrap;">
+      <li style="flex: 1 1 220px; display: flex;">
+        <a href="Main.dc.html" aria-current="step" style="flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 14px 16px 16px 24px; text-decoration: none; color: #f2eede; background: #16130e;">
+          <span style="display: flex; justify-content: space-between; align-items: baseline; font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #a9a28c;">Step 1 <span style="color: #f2eede;">now</span></span>
+          <span style="font-size: 18px; line-height: 1.2;">Get loopway running</span>
+        </a>
+      </li>
+      <li style="flex: 1 1 220px; display: flex;">
+        <a href="Step2.dc.html" style="flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 14px 16px 16px; text-decoration: none; color: #4b4534; border-left: 1px solid #16130e29;">
+          <span style="display: flex; justify-content: space-between; align-items: baseline; font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #5c5544;">Step 2 <span>next</span></span>
+          <span style="font-size: 18px; line-height: 1.2;">Make your first bot</span>
+        </a>
+      </li>
+      <li style="flex: 1 1 220px; display: flex;">
+        <a href="Step3.dc.html" style="flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 14px 24px 16px 16px; text-decoration: none; color: #4b4534; border-left: 1px solid #16130e29;">
+          <span style="display: flex; justify-content: space-between; align-items: baseline; font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #5c5544;">Step 3 <span>after that</span></span>
+          <span style="font-size: 18px; line-height: 1.2;">See it run</span>
+        </a>
+      </li>
+    </ol>
+  </nav>
+
+  <section aria-labelledby="lede-title" style="position: relative; border-bottom: 1px solid #16130e; overflow: hidden;">
+    <div class="toile" aria-hidden="true"></div>
+    <div style="position: relative; max-width: 1100px; margin: 0 auto; padding: 40px 24px 44px; display: flex; flex-direction: column; gap: 18px;">
+      <p style="margin: 0; font-family: 'Courier Prime', Courier, monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #4b4534;">Getting started · the whole idea</p>
+      <h1 id="lede-title" style="margin: 0; font-size: 44px; line-height: 1.1; letter-spacing: -0.021em; max-width: 22ch;">Services send webhooks. loopway hands them to a bot on your machine.</h1>
+      <p style="margin: 0; font-size: 19px; line-height: 1.45; max-width: 66ch; color: #241f17;">A bot is a coding agent, Claude Code or Codex say, running where your code and credentials already are. loopway keeps an inbox in front of it, and a runner on your machine picks each message up. Three steps, and the first is three commands.</p>
+      <div style="overflow-x: auto; margin-top: 10px;">
+        <div style="min-width: 820px; display: flex; align-items: stretch;">
+          <div style="flex: 1 1 0; border: 1px solid #16130e; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; background: #f2eede;">
+            <span style="font-size: 18px; line-height: 1.2;">GitHub, Linear, Vercel…</span>
+            <span style="font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #4b4534;">sends a webhook</span>
+          </div>
+          <div aria-hidden="true" style="flex: 0 0 44px; display: flex; align-items: center;">
+            <span style="flex: 1; height: 1px; background: #16130e;"></span>
+            <svg width="8" height="12" viewBox="0 0 8 12"><path d="M1 1l6 5-6 5" fill="none" stroke="#16130e" stroke-width="1.2"></path></svg>
+          </div>
+          <div style="flex: 1 1 0; border: 1px solid #16130e; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; background: #f2eede;">
+            <span style="font-size: 18px; line-height: 1.2;">loopway inbox</span>
+            <span style="font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #4b4534;">keeps the message</span>
+          </div>
+          <div aria-hidden="true" style="flex: 0 0 44px; display: flex; align-items: center;">
+            <span style="flex: 1; height: 1px; background: #16130e;"></span>
+            <svg width="8" height="12" viewBox="0 0 8 12"><path d="M1 1l6 5-6 5" fill="none" stroke="#16130e" stroke-width="1.2"></path></svg>
+          </div>
+          <div style="flex: 1 1 0; border: 1px solid #16130e; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; background: #16130e; color: #f2eede;">
+            <span style="font-size: 18px; line-height: 1.2;">runner on your machine</span>
+            <span style="font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #a9a28c;">step 1 · this page</span>
+          </div>
+          <div aria-hidden="true" style="flex: 0 0 44px; display: flex; align-items: center;">
+            <span style="flex: 1; height: 1px; background: #16130e;"></span>
+            <svg width="8" height="12" viewBox="0 0 8 12"><path d="M1 1l6 5-6 5" fill="none" stroke="#16130e" stroke-width="1.2"></path></svg>
+          </div>
+          <div style="flex: 1 1 0; border: 1px solid #16130e; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; background: #f2eede;">
+            <span style="font-size: 18px; line-height: 1.2;">your coding agent</span>
+            <span style="font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #4b4534;">does the work</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="step-title" style="border-bottom: 1px solid #16130e;">
+    <div style="max-width: 1100px; margin: 0 auto; padding: 36px 24px 40px; display: flex; flex-direction: column; gap: 24px;">
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <p style="margin: 0; font-family: 'Courier Prime', Courier, monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #4b4534;">Step 1 of 3 · on the machine where your code lives</p>
+        <h2 id="step-title" style="margin: 0; font-size: 32px; line-height: 1.15; letter-spacing: -0.01em;">Start a runner</h2>
+        <p style="margin: 0; color: #4b4534; max-width: 66ch;">Three commands. The last one stays open: it is the runner, and it waits for messages.</p>
+      </div>
+
+      <ol style="list-style: none; margin: 0; padding: 0; border-top: 1px solid #16130e29;">
+        <li style="display: flex; flex-wrap: wrap; gap: 8px 32px; padding: 18px 0; border-bottom: 1px solid #16130e29;">
+          <div style="flex: 0 1 220px; display: flex; flex-direction: column; gap: 4px;">
+            <span style="font-family: 'Courier Prime', Courier, monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;">1 · Install</span>
+            <span style="color: #4b4534; font-size: 15px; line-height: 1.4;">Puts the loopway command on this machine. Needs Node 22 or newer.</span>
+          </div>
+          <div style="flex: 1 1 440px; min-width: 0; display: flex; align-items: center; gap: 14px; background: #16130e; color: #f2eede; padding: 8px 8px 8px 16px; font-family: 'Courier Prime', Courier, monospace; font-size: 14px; line-height: 1.5; min-height: 44px; box-sizing: border-box;">
+            <span aria-hidden="true" style="color: #a9a28c;">$</span>
+            <code style="flex: 1; min-width: 0; font-family: inherit; overflow-x: auto; white-space: nowrap;">curl -fsSL https://loopway.craftmill.dev/install.sh | sh</code>
+            <button type="button" style="font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; background: transparent; color: #f2eede; border: 1px solid #f2eede66; border-radius: 0; height: 28px; padding: 0 10px;">Copy</button>
+          </div>
+        </li>
+        <li style="display: flex; flex-wrap: wrap; gap: 8px 32px; padding: 18px 0; border-bottom: 1px solid #16130e29;">
+          <div style="flex: 0 1 220px; display: flex; flex-direction: column; gap: 4px;">
+            <span style="font-family: 'Courier Prime', Courier, monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;">2 · Log in</span>
+            <span style="color: #4b4534; font-size: 15px; line-height: 1.4;">Emails you a one-time code. Paste it back in the terminal.</span>
+          </div>
+          <div style="flex: 1 1 440px; min-width: 0; display: flex; align-items: center; gap: 14px; background: #16130e; color: #f2eede; padding: 8px 8px 8px 16px; font-family: 'Courier Prime', Courier, monospace; font-size: 14px; line-height: 1.5; min-height: 44px; box-sizing: border-box;">
+            <span aria-hidden="true" style="color: #a9a28c;">$</span>
+            <code style="flex: 1; min-width: 0; font-family: inherit; overflow-x: auto; white-space: nowrap;">loopway login</code>
+            <button type="button" style="font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; background: transparent; color: #f2eede; border: 1px solid #f2eede66; border-radius: 0; height: 28px; padding: 0 10px;">Copy</button>
+          </div>
+        </li>
+        <li style="display: flex; flex-wrap: wrap; gap: 8px 32px; padding: 18px 0; border-bottom: 1px solid #16130e29;">
+          <div style="flex: 0 1 220px; display: flex; flex-direction: column; gap: 4px;">
+            <span style="font-family: 'Courier Prime', Courier, monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;">3 · Run</span>
+            <span style="color: #4b4534; font-size: 15px; line-height: 1.4;">Starts the runner. Run it inside the repo your bots should work in, and leave it open.</span>
+          </div>
+          <div style="flex: 1 1 440px; min-width: 0; display: flex; align-items: center; gap: 14px; background: #16130e; color: #f2eede; padding: 8px 8px 8px 16px; font-family: 'Courier Prime', Courier, monospace; font-size: 14px; line-height: 1.5; min-height: 44px; box-sizing: border-box;">
+            <span style="color: #a9a28c; white-space: nowrap;">~/code/your-repo $</span>
+            <code style="flex: 1; min-width: 0; font-family: inherit; overflow-x: auto; white-space: nowrap;">loopway bots run --org mcwhittemore</code>
+            <button type="button" style="font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; background: transparent; color: #f2eede; border: 1px solid #f2eede66; border-radius: 0; height: 28px; padding: 0 10px;">Copy</button>
+          </div>
+        </li>
+      </ol>
+
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px;">
+        <button type="button" style="font-family: 'Courier Prime', Courier, monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; background: transparent; color: #16130e; border: 1px solid #16130e52; border-radius: 0; height: 36px; padding: 0 16px;">Copy all three</button>
+        <span style="color: #4b4534; font-size: 15px;">Prefer to read first? The <a href="#">README</a> covers the same ground.</span>
+      </div>
+
+      <div role="status" style="border-top: 2px solid #16130e; padding-top: 14px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 20px;">
+        <span style="display: inline-flex; align-items: center; gap: 10px; font-family: 'Courier Prime', Courier, monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #9e2b1c;"><span aria-hidden="true" style="display: inline-block; width: 8px; height: 8px; background: #9e2b1c;"></span>Waiting for a runner on mcwhittemore</span>
+        <span style="color: #4b4534; font-size: 15px;">This page moves on by itself when the runner connects. Nothing to click.</span>
+      </div>
+    </div>
+  </section>
+
+  <section aria-label="Notes" style="background: #d6cdb4;">
+    <div style="max-width: 1100px; margin: 0 auto; padding: 24px 24px 36px; display: flex; flex-wrap: wrap; gap: 20px 48px;">
+      <div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #3a352b;">You're in your personal org</span>
+        <p style="margin: 0; font-size: 15px; line-height: 1.45; color: #3a352b;">mcwhittemore is yours alone and has no members, which makes it the simplest place to try things. To work with others, make a shared org first with <code style="font-family: 'Courier Prime', Courier, monospace; font-size: 13px;">loopway orgs create &lt;slug&gt;</code>; bots and inboxes don't move between orgs.</p>
+      </div>
+      <div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #3a352b;">Stuck on a command</span>
+        <p style="margin: 0; font-size: 15px; line-height: 1.45; color: #3a352b;">The <a href="#">README</a> walks through each one, and <a href="#">llms.txt</a> is the same guide written for your agent, so you can hand the whole step to it.</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1340}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

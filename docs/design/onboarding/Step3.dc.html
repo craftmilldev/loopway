@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>See it run</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/craftmill/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sorts+Mill+Goudy:ital@0;1&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+body{margin:0;background:#e4ddc9}
+a{color:#9e2b1c}a:hover{color:#16130e}
+.toile{position:absolute;inset:0;pointer-events:none;background-image:url("ds/craftmill/assets/ornament/craftmill-river-toile.svg");background-size:320px auto;opacity:.09;-webkit-mask-image:linear-gradient(to bottom,#000 20%,transparent 95%);mask-image:linear-gradient(to bottom,#000 20%,transparent 95%)}
+button{cursor:pointer}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #e4ddc9; color: #16130e; font-family: 'Sorts Mill Goudy', Georgia, serif; font-size: 17px; line-height: 1.5;">
+
+  <header style="border-bottom: 3px double #16130e;">
+    <div style="max-width: 1100px; margin: 0 auto; padding: 18px 24px 14px; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 12px 24px;">
+      <a href="#" style="text-decoration: none; color: #16130e; font-size: 26px; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1;"><span style="color: #9e2b1c;">L</span>oopway</a>
+      <nav aria-label="Account" style="display: flex; flex-wrap: wrap; gap: 8px 28px; font-family: 'Courier Prime', Courier, monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;">
+        <a href="#" style="color: #16130e; text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">mcwhittemore <svg aria-hidden="true" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="#16130e" stroke-width="1.2"></path></svg></a>
+        <a href="#" style="color: #16130e; text-decoration: none;">members</a>
+        <a href="#" style="color: #16130e; text-decoration: none;">log out</a>
+      </nav>
+    </div>
+  </header>
+
+  <nav aria-label="Setup progress" style="border-bottom: 1px solid #16130e;">
+    <ol style="list-style: none; margin: 0 auto; padding: 0; max-width: 1100px; display: flex; flex-wrap: wrap;">
+      <li style="flex: 1 1 220px; display: flex;">
+        <a href="Main.dc.html" style="flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 14px 16px 16px 24px; text-decoration: none; color: #4b4534;">
+          <span style="display: flex; justify-content: space-between; align-items: baseline; font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #5c5544;">Step 1 <span style="display: inline-flex; align-items: center; gap: 6px; color: #2c4a53;"><svg aria-hidden="true" width="11" height="9" viewBox="0 0 11 9"><path d="M1 4.5l3 3 6-6" fill="none" stroke="#2c4a53" stroke-width="1.4"></path></svg>done</span></span>
+          <span style="font-size: 18px; line-height: 1.2;">Get loopway running</span>
+        </a>
+      </li>
+      <li style="flex: 1 1 220px; display: flex;">
+        <a href="Step2.dc.html" style="flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 14px 16px 16px; text-decoration: none; color: #4b4534; border-left: 1px solid #16130e29;">
+          <span style="display: flex; justify-content: space-between; align-items: baseline; font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #5c5544;">Step 2 <span style="display: inline-flex; align-items: center; gap: 6px; color: #2c4a53;"><svg aria-hidden="true" width="11" height="9" viewBox="0 0 11 9"><path d="M1 4.5l3 3 6-6" fill="none" stroke="#2c4a53" stroke-width="1.4"></path></svg>done</span></span>
+          <span style="font-size: 18px; line-height: 1.2;">Make your first bot</span>
+        </a>
+      </li>
+      <li style="flex: 1 1 220px; display: flex;">
+        <a href="Step3.dc.html" aria-current="step" style="flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 14px 24px 16px 16px; text-decoration: none; color: #f2eede; background: #16130e;">
+          <span style="display: flex; justify-content: space-between; align-items: baseline; font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #a9a28c;">Step 3 <span style="color: #f2eede;">now</span></span>
+          <span style="font-size: 18px; line-height: 1.2;">See it run</span>
+        </a>
+      </li>
+    </ol>
+  </nav>
+
+  <section aria-labelledby="lede-title" style="position: relative; border-bottom: 1px solid #16130e; overflow: hidden;">
+    <div class="toile" aria-hidden="true"></div>
+    <div style="position: relative; max-width: 1100px; margin: 0 auto; padding: 40px 24px 44px; display: flex; flex-direction: column; gap: 18px;">
+      <p style="margin: 0; font-family: 'Courier Prime', Courier, monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #4b4534;">Step 3 of 3 · bot pr-review hears inbox github</p>
+      <h1 id="lede-title" style="margin: 0; font-size: 44px; line-height: 1.1; letter-spacing: -0.021em; max-width: 22ch;">Your bot is ready. Send it something.</h1>
+      <p style="margin: 0; font-size: 19px; line-height: 1.45; max-width: 66ch; color: #241f17;">The runner starts an agent session the moment a message lands in the bot's inbox. You can wait for GitHub to send one, or send a test message now and watch the first run in a few seconds.</p>
+      <div style="overflow-x: auto; margin-top: 10px;">
+        <div style="min-width: 820px; display: flex; align-items: stretch;">
+          <div style="flex: 1 1 0; border: 1px solid #16130e; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; background: #16130e; color: #f2eede;">
+            <span style="font-size: 18px; line-height: 1.2;">GitHub, or you</span>
+            <span style="font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #a9a28c;">step 3 · send a message</span>
+          </div>
+          <div aria-hidden="true" style="flex: 0 0 44px; display: flex; align-items: center;">
+            <span style="flex: 1; height: 1px; background: #16130e;"></span>
+            <svg width="8" height="12" viewBox="0 0 8 12"><path d="M1 1l6 5-6 5" fill="none" stroke="#16130e" stroke-width="1.2"></path></svg>
+          </div>
+          <div style="flex: 1 1 0; border: 1px solid #16130e; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; background: #f2eede;">
+            <span style="font-size: 18px; line-height: 1.2;">inbox github</span>
+            <span style="font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #2c4a53;">ready</span>
+          </div>
+          <div aria-hidden="true" style="flex: 0 0 44px; display: flex; align-items: center;">
+            <span style="flex: 1; height: 1px; background: #16130e;"></span>
+            <svg width="8" height="12" viewBox="0 0 8 12"><path d="M1 1l6 5-6 5" fill="none" stroke="#16130e" stroke-width="1.2"></path></svg>
+          </div>
+          <div style="flex: 1 1 0; border: 1px solid #16130e; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; background: #f2eede;">
+            <span style="font-size: 18px; line-height: 1.2;">runner matthews-mbp</span>
+            <span style="font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #2c4a53;">online</span>
+          </div>
+          <div aria-hidden="true" style="flex: 0 0 44px; display: flex; align-items: center;">
+            <span style="flex: 1; height: 1px; background: #16130e;"></span>
+            <svg width="8" height="12" viewBox="0 0 8 12"><path d="M1 1l6 5-6 5" fill="none" stroke="#16130e" stroke-width="1.2"></path></svg>
+          </div>
+          <div style="flex: 1 1 0; border: 1px solid #16130e; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; background: #f2eede;">
+            <span style="font-size: 18px; line-height: 1.2;">bot pr-review</span>
+            <span style="font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #2c4a53;">ready</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="step-title" style="border-bottom: 1px solid #16130e;">
+    <div style="max-width: 1100px; margin: 0 auto; padding: 36px 24px 40px; display: flex; flex-direction: column; gap: 28px;">
+      <div style="display: flex; flex-wrap: wrap; gap: 28px 0;">
+
+        <div style="flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; gap: 16px; padding-right: 40px; box-sizing: border-box;">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <p style="margin: 0; font-family: 'Courier Prime', Courier, monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #4b4534;">The quick way</p>
+            <h2 id="step-title" style="margin: 0; font-size: 32px; line-height: 1.15; letter-spacing: -0.01em;">Send a test message</h2>
+            <p style="margin: 0; color: #4b4534; max-width: 52ch;">loopway posts a sample pull_request event to github, signed the way GitHub would sign it. The bot treats it like any other message, and the inbox marks it as a test.</p>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px;">
+            <button type="button" style="font-family: 'Courier Prime', Courier, monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; background: #16130e; color: #f2eede; border: 1px solid #16130e; border-radius: 0; height: 36px; padding: 0 18px;">Send a test message</button>
+            <span style="color: #4b4534; font-size: 15px;">About ten seconds to the first run.</span>
+          </div>
+        </div>
+
+        <div style="flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 16px; padding-left: 40px; border-left: 1px solid #16130e29; box-sizing: border-box;">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <p style="margin: 0; font-family: 'Courier Prime', Courier, monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #4b4534;">The real thing</p>
+            <h2 style="margin: 0; font-size: 24px; line-height: 1.2;">Add the webhook in GitHub</h2>
+            <p style="margin: 0; color: #4b4534; font-size: 15px;">In the repo, under Settings, then Webhooks. Content type is JSON.</p>
+          </div>
+          <dl style="margin: 0; display: flex; flex-direction: column; border-top: 1px solid #16130e29;">
+            <div style="display: flex; flex-direction: column; gap: 6px; padding: 14px 0; border-bottom: 1px solid #16130e29;">
+              <dt style="font-family: 'Courier Prime', Courier, monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;">Payload URL</dt>
+              <dd style="margin: 0; min-width: 0; display: flex; align-items: center; gap: 14px; background: #16130e; color: #f2eede; padding: 8px 8px 8px 16px; font-family: 'Courier Prime', Courier, monospace; font-size: 13px; line-height: 1.5; min-height: 44px; box-sizing: border-box;">
+                <code style="flex: 1; min-width: 0; font-family: inherit; overflow-x: auto; white-space: nowrap;">https://loopway.craftmill.dev/api/webhooks/inb_7f3a9c</code>
+                <button type="button" style="font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; background: transparent; color: #f2eede; border: 1px solid #f2eede66; border-radius: 0; height: 28px; padding: 0 10px;">Copy</button>
+              </dd>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px; padding: 14px 0; border-bottom: 1px solid #16130e29;">
+              <dt style="font-family: 'Courier Prime', Courier, monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;">Secret</dt>
+              <dd style="margin: 0; color: #4b4534; font-size: 15px; line-height: 1.4;">Shown once when the inbox was made; your agent has it. Lost it? Set a new one with <code style="font-family: 'Courier Prime', Courier, monospace; font-size: 13px; color: #16130e;">loopway inbox update github --secret</code> and paste the same value in GitHub.</dd>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px; padding: 14px 0; border-bottom: 1px solid #16130e29;">
+              <dt style="font-family: 'Courier Prime', Courier, monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;">Events</dt>
+              <dd style="margin: 0; color: #4b4534; font-size: 15px; line-height: 1.4;">Pull requests and pushes. Anything else answers 422 and GitHub shows it as a failed delivery.</dd>
+            </div>
+          </dl>
+        </div>
+
+      </div>
+
+      <div role="status" style="border-top: 2px solid #16130e; padding-top: 14px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 20px;">
+        <span style="display: inline-flex; align-items: center; gap: 10px; font-family: 'Courier Prime', Courier, monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #9e2b1c;"><span aria-hidden="true" style="display: inline-block; width: 8px; height: 8px; background: #9e2b1c;"></span>Waiting for the first message to pr-review</span>
+        <span style="color: #4b4534; font-size: 15px;">When it arrives you will see the run here and in the terminal you left open.</span>
+      </div>
+
+      <table style="width: 100%; border-collapse: collapse; font-size: 15px;">
+        <thead>
+          <tr style="font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #4b4534; text-align: left;">
+            <th scope="col" style="font-weight: 400; padding: 0 0 8px; border-bottom: 1px solid #16130e;">Time</th>
+            <th scope="col" style="font-weight: 400; padding: 0 0 8px; border-bottom: 1px solid #16130e;">Inbox</th>
+            <th scope="col" style="font-weight: 400; padding: 0 0 8px; border-bottom: 1px solid #16130e;">Subject</th>
+            <th scope="col" style="font-weight: 400; padding: 0 0 8px; border-bottom: 1px solid #16130e; text-align: right;">Run</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td colspan="4" style="padding: 14px 0; color: #5c5544; border-bottom: 1px solid #16130e29;">Runs appear here once a message arrives.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-label="Notes" style="background: #d6cdb4;">
+    <div style="max-width: 1100px; margin: 0 auto; padding: 24px 24px 36px; display: flex; flex-wrap: wrap; gap: 20px 48px;">
+      <div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #3a352b;">What a run looks like</span>
+        <p style="margin: 0; font-size: 15px; line-height: 1.45; color: #3a352b;">The runner opens a session with the bot's prompt and the message, in the repo it started in. The transcript stays on your machine; this page shows the thread, who holds it and what was delivered.</p>
+      </div>
+      <div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-family: 'Courier Prime', Courier, monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #3a352b;">If nothing happens</span>
+        <p style="margin: 0; font-size: 15px; line-height: 1.45; color: #3a352b;">Check the terminal the runner is in: it logs each message it picks up. A delivery GitHub marks as failed usually means the secret differs or the event type is not one the inbox takes.</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1340}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
