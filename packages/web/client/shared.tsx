@@ -9,6 +9,9 @@ export interface Inbox {
   name: string;
   source_type: string;
   webhook_url: string;
+  /** When a sender last reached the inbox, and how it went; null until one has. */
+  last_delivery_at?: string | null;
+  last_delivery_outcome?: string | null;
   config?: {
     secret_set?: boolean;
     events?: string[];
@@ -274,3 +277,7 @@ export function CreateInbox({ onCreated }: { onCreated: (inbox: Inbox) => void }
     </form>
   );
 }
+
+/** Whether an inbox takes webhooks from a sender that hasn't reached it yet: what "waiting for GitHub" is about. */
+export const waitingForSender = (inbox: Inbox, source: lw.Source | undefined) =>
+  !!source && source.secret.from !== "none" && !inbox.last_delivery_at;

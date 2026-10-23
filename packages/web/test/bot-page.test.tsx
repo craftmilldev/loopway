@@ -46,6 +46,7 @@ let threads: object[];
 let botList: object[];
 let requests: string[];
 let runnerLeased: string | null;
+let reached: string | null = null;
 
 function stubFetch() {
   vi.stubGlobal(
@@ -62,7 +63,12 @@ function stubFetch() {
         return json({
           data: [{ id: "r1", name: "laptop", last_seen_at: "", leased_until: runnerLeased, bots: [], threads: 1 }],
         });
-      if (p === "/inboxes") return json({ data: [{ id: "i1", name: "github" }] });
+      if (p === "/sources")
+        return json({ can_request: false, data: [{ type: "github", label: "GitHub", secret: { from: "loopway" } }] });
+      if (p === "/inboxes")
+        return json({
+          data: [{ id: "i1", name: "github", source_type: "github", last_delivery_at: reached }],
+        });
       if (p.endsWith("/threads")) {
         const status = new URLSearchParams(query).get("status");
         return json({
@@ -85,6 +91,7 @@ function at(search: string) {
 beforeEach(() => {
   localStorage.setItem("loopway_token", "t");
   threads = [thread()];
+  reached = "2026-10-13T10:00:00Z";
   botList = [bot, { ...bot, id: "b2", name: "other" }];
   requests = [];
   runnerLeased = "2026-10-13T00:00:00Z";
@@ -233,6 +240,23 @@ describe("Bot page", () => {
     render(<Bot id="b1" />);
     await screen.findByText("Right now");
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("warns, with a link to the inbox, while no sender has reached its inbox", async () => {
+    reached = null;
+    at("");
+    render(<Bot id="b1" />);
+    const note = await screen.findByRole("status");
+    expect(note.textContent).toContain('Nothing has reached its inbox "github" yet: GitHub isn\'t sending.');
+    expect(note.querySelector("a")!.getAttribute("href")).toBe("/acme/inboxes/i1");
+  });
+
+  it("shows no warning once its inbox has been reached", async () => {
+    reached = "2026-10-13T10:00:00Z";
+    at("");
+    render(<Bot id="b1" />);
+    await screen.findByText("Right now");
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("shows a banner when stranded", async () => {

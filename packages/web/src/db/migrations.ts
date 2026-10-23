@@ -694,4 +694,19 @@ ALTER TABLE loopway.threads ADD CONSTRAINT threads_kind_bot_check CHECK ((kind =
 CREATE INDEX threads_org_kind_idx ON loopway.threads (org_id, kind, created_at);
 `,
   },
+  {
+    // When a sender last reached an inbox, and how it went (accepted, ignored:<reason>, rejected:<status>), so a
+    // webhook that was never added in the sender can be told from one that is just quiet. Inboxes that already hold
+    // messages start as reached at the time of their newest one.
+    version: "034_inbox_last_delivery",
+    sql: `
+ALTER TABLE loopway.inboxes
+  ADD COLUMN last_delivery_at timestamptz,
+  ADD COLUMN last_delivery_outcome text;
+UPDATE loopway.inboxes i
+  SET last_delivery_at = m.last, last_delivery_outcome = 'accepted'
+  FROM (SELECT inbox_id, max(received_at) AS last FROM loopway.messages GROUP BY inbox_id) m
+  WHERE m.inbox_id = i.id;
+`,
+  },
 ];

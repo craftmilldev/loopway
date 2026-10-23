@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import type { Inbox as InboxInfo } from "./shared.js";
+import { waitingForSender, type Inbox as InboxInfo } from "./shared.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
@@ -82,10 +82,29 @@ export function Inbox({ id }: { id: string }) {
 
   // A source that makes the secret on its side leaves the inbox rejecting deliveries until it's pasted in.
   const unfinished = !!inbox && !!source && source.secret.from !== "none" && !inbox.config?.secret_set;
-  const loaded = !!inbox;
+  const waiting = !!inbox && waitingForSender(inbox, source);
+  const loaded = !!inbox && !!source;
   useEffect(() => {
-    if (loaded) track("inbox_viewed", { setup_unfinished: unfinished });
-  }, [loaded, unfinished]);
+    if (loaded) track("inbox_viewed", { setup_unfinished: unfinished, waiting_for_sender: waiting });
+  }, [loaded, unfinished]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Only the delivery fields are taken from a refresh: the forms keep what they hold. Quick while the first delivery
+  // is awaited, since the page turns to "connected" when the sender's test ping arrives.
+  lw.usePoll(
+    async () => {
+      const r = await lw.api("/inboxes/" + encodeURIComponent(id));
+      if (!r.ok) return false;
+      const fresh = (await r.json()) as InboxInfo;
+      setInbox((now) =>
+        now &&
+        (now.last_delivery_at !== fresh.last_delivery_at || now.last_delivery_outcome !== fresh.last_delivery_outcome)
+          ? { ...now, last_delivery_at: fresh.last_delivery_at, last_delivery_outcome: fresh.last_delivery_outcome }
+          : now,
+      );
+      return true;
+    },
+    !!inbox,
+    waiting ? 5_000 : lw.POLL_MS,
+  );
   useEffect(() => {
     if (missing) track("inbox_not_found");
   }, [missing]);
@@ -97,8 +116,15 @@ export function Inbox({ id }: { id: string }) {
           <span className="lbl">{inbox && (source?.label ?? inbox.source_type)}</span>
           <h1>{missing ? "Inbox not found" : (inbox?.name ?? "Inbox")}</h1>
         </div>
-        {unfinished && <span className="state state-limited">rejecting deliveries</span>}
+        {unfinished ? (
+          <span className="state state-limited">rejecting deliveries</span>
+        ) : waiting ? (
+          <span className="state state-limited">waiting for {source?.label}</span>
+        ) : (
+          inbox && source?.secret.from !== "none" && <span className="muted">{connectedText(inbox)}</span>
+        )}
       </div>
+      {inbox && source && waiting && !unfinished && <Connect inbox={inbox} source={source} onSaved={setInbox} />}
       {inbox && source?.secret.from !== "none" && (
         <Setup inbox={inbox} source={source} unfinished={unfinished} onSaved={setInbox} />
       )}
@@ -136,6 +162,21 @@ export function Inbox({ id }: { id: string }) {
   );
 }
 
+/** "connected · last delivery 12 s ago (ping)", and why the last one failed if it did. */
+function connectedText(inbox: InboxInfo) {
+  const outcome = inbox.last_delivery_outcome ?? "";
+  const [kind, detail] = outcome.split(":");
+  const what =
+    kind === "rejected"
+      ? detail === "401"
+        ? "rejected: the signature didn't match, check the Secret"
+        : `rejected: ${detail}`
+      : kind === "ignored"
+        ? `ignored: ${detail}`
+        : kind;
+  return `${kind === "rejected" ? "last delivery failed" : "connected"} · last delivery ${lw.ago(inbox.last_delivery_at ?? null)} (${what})`;
+}
+
 // A divider above the message a bot has read up to: messages with seq <= its cursor are read, and the list is newest
 // first, so it sits between `newer` (unread) and `seq` (read). A bot that has read everything shown sits at the top.
 function ReadMarkers({ readers, seq, newer }: { readers: lw.Bot[]; seq: number; newer: number | undefined }) {
@@ -164,6 +205,114 @@ async function patch(inbox: InboxInfo, what: string, body: object): Promise<Inbo
   }
   track("inbox_saved", { what });
   return { ...inbox, ...((await r.json()) as InboxInfo) };
+}
+
+/** Numbered steps to add the webhook in the sender, until the sender has reached the inbox. */
+function Connect({
+  inbox,
+  source,
+  onSaved,
+}: {
+  inbox: InboxInfo;
+  source: lw.Source;
+  onSaved: (inbox: InboxInfo) => void;
+}) {
+  const [secret, setSecret] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const github = source.type === "github";
+  const events = inbox.config?.events ?? ["*"];
+
+  async function copy(text: string, kind: "url" | "secret" | "gh") {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      return track("inbox_url_copy_failed");
+    }
+    track("inbox_setup_command_copied", { source_type: source.type, kind });
+  }
+
+  // The secret is shown once, when the inbox is made, and kept encrypted after that. Anyone who didn't keep it makes
+  // a new one here: it replaces the stored one and is shown until the page is left.
+  async function newSecret() {
+    setError(null);
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    const made = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    const saved = await patch(inbox, "secret", { config: { secret: made } });
+    if (typeof saved === "string") return setError(saved);
+    setSecret(made);
+    onSaved(saved);
+  }
+
+  const gh =
+    `gh api repos/OWNER/REPO/hooks -f name=web -F active=true -f 'config[url]=${inbox.webhook_url}'` +
+    ` -f 'config[content_type]=json' -f 'config[secret]=${secret ?? "SECRET"}'` +
+    events.map((e) => ` -f 'events[]=${e}'`).join("");
+
+  return (
+    <section className="panel setup">
+      <h2>Connect {source.label} to this inbox</h2>
+      <ol className="steps">
+        <li>
+          <span className="step-n">1</span>
+          <div>In {source.webhook_settings}, add a webhook.</div>
+        </li>
+        <li>
+          <span className="step-n">2</span>
+          <div>
+            <UrlField
+              inbox={inbox}
+              hint={null}
+              onCopy={() => track("inbox_setup_command_copied", { source_type: source.type, kind: "url" })}
+            />
+            {github && <p className="hint">Content type: application/json.</p>}
+            {source.secret.from === "loopway" && (
+              <div className="field">
+                <label>Secret</label>
+                {secret ? (
+                  <div className="input-wrap">
+                    <input readOnly value={secret} onFocus={(e) => e.currentTarget.select()} />
+                    <button className="btn btn-sm btn-quiet" type="button" onClick={() => void copy(secret, "secret")}>
+                      Copy
+                    </button>
+                  </div>
+                ) : (
+                  <p className="hint">
+                    It was shown once, when the inbox was made. Use that one, or{" "}
+                    <button className="btn btn-sm btn-quiet" type="button" onClick={() => void newSecret()}>
+                      make a new secret
+                    </button>{" "}
+                    and use it instead.
+                  </p>
+                )}
+                {error && <p className="error">{error}</p>}
+              </div>
+            )}
+          </div>
+        </li>
+        <li>
+          <span className="step-n">3</span>
+          <div>Events: {events.includes("*") ? `"Send me everything"` : events.join(", ")}.</div>
+        </li>
+        <li>
+          <span className="step-n">4</span>
+          <div>
+            Save. {source.label} sends a test ping; this page turns to connected when it arrives.
+            {github && (
+              <div className="field">
+                <label>Or run</label>
+                <div className="input-wrap">
+                  <input readOnly value={gh} onFocus={(e) => e.currentTarget.select()} />
+                  <button className="btn btn-sm btn-quiet" type="button" onClick={() => void copy(gh, "gh")}>
+                    Copy
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </li>
+      </ol>
+    </section>
+  );
 }
 
 /** The webhook URL, the secret and the events: numbered steps while the inbox can't accept deliveries yet. */
@@ -209,7 +358,7 @@ function Setup({
   );
 }
 
-function UrlField({ inbox, hint }: { inbox: InboxInfo; hint: string | null }) {
+function UrlField({ inbox, hint, onCopy }: { inbox: InboxInfo; hint: string | null; onCopy?: () => void }) {
   const [copied, setCopied] = useState(false);
   async function copy() {
     try {
@@ -218,6 +367,7 @@ function UrlField({ inbox, hint }: { inbox: InboxInfo; hint: string | null }) {
       return track("inbox_url_copy_failed");
     }
     track("inbox_url_copied");
+    onCopy?.();
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }

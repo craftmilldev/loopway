@@ -9,7 +9,7 @@ import { SourceRegistry } from "@loopway/sources";
 import { sources } from "../src/sources.js";
 import { createUser } from "../src/store.js";
 import { signSessionToken, verifyToken } from "../src/tokens.js";
-import { app, call, db, newInbox, newUser, prPayload, SECRET, sendGithub } from "./helpers.js";
+import { app, call, db, events, newInbox, newUser, prPayload, SECRET, sendGithub } from "./helpers.js";
 
 // Source-specific webhook tests live in ./sources/<type>.test.ts.
 
@@ -50,6 +50,29 @@ describe("inboxes", () => {
     expect(inbox.webhook_url).toBe(`https://loopway.test/api/webhooks/${inbox.id}`);
     const list = await call("GET", "/inboxes", { key });
     expect(list.body.data).toHaveLength(1);
+  });
+  it("notes when a sender first reaches an inbox, and how the last delivery went", async () => {
+    const key = await newUser();
+    const inbox = await newInbox(key);
+    const before = await call("GET", `/inboxes/${inbox.id}`, { key });
+    expect(before.body).toMatchObject({ last_delivery_at: null, last_delivery_outcome: null });
+
+    const ping = await sendGithub(inbox, "ping", { zen: "Keep it logically awesome." });
+    expect(ping.status).toBe(200);
+    const pinged = await call("GET", `/inboxes/${inbox.id}`, { key });
+    expect(pinged.body.last_delivery_at).toEqual(expect.any(String));
+    expect(pinged.body.last_delivery_outcome).toBe("ignored:ping");
+    expect(
+      events.filter((e) => e.event === "inbox_first_delivery" && e.properties?.outcome === "ignored"),
+    ).toHaveLength(1);
+
+    const bad = await sendGithub(inbox, "pull_request", prPayload(1), { secret: "not-the-secret-at-all" });
+    expect(bad.status).toBe(401);
+    expect((await call("GET", `/inboxes/${inbox.id}`, { key })).body.last_delivery_outcome).toBe("rejected:401");
+
+    await sendGithub(inbox, "pull_request", prPayload(1));
+    expect((await call("GET", `/inboxes/${inbox.id}`, { key })).body.last_delivery_outcome).toBe("accepted");
+    expect(events.filter((e) => e.event === "inbox_first_delivery")).toHaveLength(1);
   });
   it("rejects unknown source types and bad config", async () => {
     const key = await newUser();

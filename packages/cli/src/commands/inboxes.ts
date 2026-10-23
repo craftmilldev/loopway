@@ -34,6 +34,12 @@ export async function showInbox(ctx: Context, ref: string, opts: { json?: boolea
         ["source", inbox.source_type],
         ["created", `${inbox.created_at} ${dim(`(${ago(inbox.created_at)})`)}`],
         ["messages", stats.messages],
+        [
+          "last delivery",
+          inbox.last_delivery_at
+            ? `${inbox.last_delivery_at} ${dim(`(${ago(inbox.last_delivery_at)}, ${inbox.last_delivery_outcome})`)}`
+            : "none yet: the sender hasn't reached this inbox",
+        ],
       ]),
       "",
       inbox.source_type === "schedule" ? scheduleText(inbox.config) : setupText(inbox),
@@ -73,7 +79,7 @@ export async function createInbox(ctx: Context, opts: CreateOptions) {
   if (opts.json) return ctx.out(json(inbox));
   if (!ctx.interactive) {
     const body = inbox.source_type === "schedule" ? scheduleText(inbox.config) : setupText(inbox);
-    ctx.out(`Created inbox ${bold(inbox.name)} (${inbox.id})\n\n${body}`);
+    ctx.out(`Created inbox ${bold(inbox.name)} (${inbox.id})\n\n${body}${nextStep(inbox)}`);
   }
 }
 
@@ -205,7 +211,7 @@ async function createInteractive(ctx: Context, client: LoopwayClient, opts: Crea
   }
   spin.stop(`Created ${bold(inbox.name)} ${dim(inbox.id)}`);
 
-  p.note(setupText(inbox), `Add this webhook in ${source.webhook_settings}`);
+  p.note(setupText(inbox) + nextStep(inbox), `Add this webhook in ${source.webhook_settings}`);
   if (source.secret.from === "sender" && !config.secret) {
     p.outro(`Then paste the secret ${source.label} shows with ${bold(`loopway inbox update ${inbox.id}`)}`);
   } else {
@@ -650,6 +656,21 @@ export function setupText(inbox: Inbox): string {
       Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : JSON.stringify(v),
     ]),
   );
+}
+
+/**
+ * What still has to be done after a GitHub inbox is made: GitHub sends nothing until the webhook is added there. The
+ * `gh` line does it with the real URL and secret (OWNER/REPO and the secret, if it wasn't shown, are left to fill in).
+ */
+export function nextStep(inbox: Inbox): string {
+  if (inbox.source_type !== "github") return "";
+  const secret = typeof inbox.config.secret === "string" ? inbox.config.secret : "SECRET";
+  const events = Array.isArray(inbox.config.events) ? (inbox.config.events as string[]) : ["*"];
+  const gh =
+    `gh api repos/OWNER/REPO/hooks -f name=web -F active=true -f 'config[url]=${inbox.webhook_url}'` +
+    ` -f 'config[content_type]=json' -f 'config[secret]=${secret}'` +
+    events.map((e) => ` -f 'events[]=${e}'`).join("");
+  return `\n\nNext: GitHub sends nothing until the webhook is added. Add it in GitHub → Settings → Webhooks (content type application/json), or run:\n  ${gh}`;
 }
 
 /** Reads a `--schema` file: a JSON Schema object. */
