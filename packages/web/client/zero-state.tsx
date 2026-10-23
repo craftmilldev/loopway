@@ -543,7 +543,7 @@ function StepOne({ org }: { org: string }) {
 }
 
 function StepTwo({ org, facts }: { org: string; facts: Facts }) {
-  const prompt = agentPrompt(org, location.origin);
+  const prompt = agentPrompt(org, location.origin, { runner: true, bot: false, ran: false });
   return (
     <>
       <Lede

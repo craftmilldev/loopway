@@ -41,6 +41,22 @@ describe("agentPrompt", () => {
     expect(text).toContain("--org acme");
     expect(text).toContain("loopway bots run");
   });
+
+  it("skips install, login and the runner once a runner is online", () => {
+    const text = agentPrompt("acme", "https://lw.test", { runner: true, bot: false, ran: false });
+    expect(text).toContain('org "acme"');
+    expect(text).toContain("https://lw.test/llms.txt");
+    expect(text).toContain("--org acme");
+    expect(text).toContain("runner online");
+    expect(text).not.toMatch(/install/i);
+    expect(text).not.toContain("one-time code");
+    expect(text).not.toContain("loopway bots run");
+  });
+
+  it("keeps the full prompt while no runner is online", () => {
+    const progress = { runner: false, bot: false, ran: false };
+    expect(agentPrompt("acme", "https://lw.test", progress)).toBe(agentPrompt("acme", "https://lw.test"));
+  });
 });
 
 describe("AgentPrompt", () => {
@@ -65,6 +81,18 @@ describe("AgentPrompt", () => {
     fireEvent.click(screen.getByText("Copy prompt"));
     await waitFor(() => expect(track).toHaveBeenCalledWith("agent_prompt_copy_failed", { from: "bots" }));
     expect(screen.queryByText("Copied")).toBeNull();
+  });
+});
+
+describe("AgentPrompt by step", () => {
+  it("shows and copies the step 2 variant", async () => {
+    const writeText = vi.fn(async () => {});
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    const { container } = render(<AgentPrompt from="zero" progress={{ runner: true, bot: false, ran: false }} />);
+    const shown = container.querySelector("pre")?.textContent ?? "";
+    expect(shown).not.toContain("loopway bots run");
+    fireEvent.click(screen.getByText("Copy prompt"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(shown));
   });
 });
 
