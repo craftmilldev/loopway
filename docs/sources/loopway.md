@@ -28,3 +28,7 @@ Messages are authenticated by `Authorization: Bearer <inbox token>`. A body that
 ## CloudEvent mapping
 
 `id` = a new UUID per message, `type` = body `type`, `source` = the inbox's webhook URL, `subject` = `<type>/<id>` with body `id` (so every message about the same thing shares a subject), `time` = receive time, `data` = body `data`.
+
+## Test message
+
+The test message is `{"type": "test", "id": "test-1", "data": {"message": "A test message from loopway"}}`, sent with the inbox token. If `config.events` leaves out `test`, its `type` is the first type the inbox accepts. A message the inbox schema refuses is refused for the test too.

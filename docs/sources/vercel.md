@@ -19,3 +19,7 @@ Deliveries are authenticated by `X-Vercel-Signature` (HMAC-SHA1 over the raw bod
 ## CloudEvent mapping
 
 `id` = body `id`, `type` = `com.vercel.<type>` (e.g. `com.vercel.deployment.error`), `source` = the project's API URL (`https://api.vercel.com/v9/projects/<id>`, else the team's), `subject` = what the event is about (the deployment id for `deployment.*`, the project id for `project.*`, the domain name for `domain.*`, …, else the event id, so every event has one), `time` = `createdAt`, `data` = the whole body.
+
+## Test message
+
+The test message is a `deployment.created` event for a made-up project, `hello-world`. If `config.events` leaves out `deployment.created`, it is `deployment.succeeded` or `deployment.error`. It needs the secret to be set first (`409 secret_not_set` otherwise).

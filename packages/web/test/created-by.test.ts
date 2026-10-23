@@ -131,6 +131,7 @@ describe("migration 022_created_by", () => {
         "031_thread_metadata",
         "032_join_table_timestamps",
         "033_manager_threads",
+        "034_message_is_test",
       ]);
 
       const by = async (table: string, id: string) =>

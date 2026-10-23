@@ -118,6 +118,34 @@ export const vercel = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter
     };
   },
 
+  sampleTypes: () => ["deployment.created", "deployment.succeeded", "deployment.error"],
+
+  sample(config, { type, id, now }) {
+    const rawBody = JSON.stringify({
+      id,
+      type,
+      createdAt: now.getTime(),
+      region: "iad1",
+      payload: {
+        team: { id: "team_loopwaytest" },
+        project: { id: "prj_loopwaytest" },
+        deployment: {
+          id: "dpl_loopwaytest",
+          name: "hello-world",
+          url: "hello-world-loopwaytest.vercel.app",
+          meta: { githubCommitMessage: "A test commit from loopway" },
+        },
+      },
+    });
+    return {
+      headers: {
+        "content-type": "application/json",
+        "x-vercel-signature": createHmac("sha1", config.secret!).update(rawBody, "utf8").digest("hex"),
+      },
+      rawBody,
+    };
+  },
+
   summarize(event) {
     const type = event.type.replace(/^com\.vercel\./, "");
     const payload = get(event.data, "payload");

@@ -51,6 +51,7 @@ loopway orgs leave <slug>              # an org's last member can't leave
 loopway inbox create                   # interactive: name → source → events → secret → confirm
 loopway inbox list
 loopway inbox show <inbox>             # webhook setup + message count
+loopway inbox test <inbox>             # send the inbox a sample message of its source, to see a bot run before the sender is set up
 loopway inbox update <inbox> [--name n] [--events a,b] [--secret s] [--schema file.json]   # with no flags in a terminal, asks for the secret
 loopway inbox update <schedule-inbox> [--every hour|day] [--hour 0-23] [--message type=text] [--message-file type=path] [--remove-message type] [--config file.json]   # see docs/sources/schedule.md
 

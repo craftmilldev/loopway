@@ -177,6 +177,21 @@ export const github = ({ newSecret, safeEqual, makeCloudEvent }: SourceDeps): So
   summarize: githubSummary,
   title: githubTitle,
 
+  sampleTypes: () => ["pull_request", "issues", "push"],
+
+  sample(config, { type, id, now }) {
+    const rawBody = JSON.stringify(githubSample(type, now));
+    return {
+      headers: {
+        "content-type": "application/json",
+        "x-github-event": type,
+        "x-github-delivery": id,
+        "x-hub-signature-256": "sha256=" + createHmac("sha256", config.secret).update(rawBody, "utf8").digest("hex"),
+      },
+      rawBody,
+    };
+  },
+
   receive({ headers, rawBody, receivedAt }, config) {
     const event = headers.get("x-github-event");
     if (!event) return { kind: "rejected", status: 400, message: "Missing X-GitHub-Event header" };
@@ -316,4 +331,56 @@ function githubSummary(event: CloudEvent): string | null {
     default:
       return `${actor} ${kind}${action ? " " + action : ""}`;
   }
+}
+
+/** A small but realistic payload for `event`, from a made-up repository. */
+function githubSample(event: string, now: Date): Payload {
+  const time = now.toISOString();
+  const repo = "https://api.github.com/repos/loopway-test/hello-world";
+  const base = {
+    repository: {
+      id: 1,
+      name: "hello-world",
+      full_name: "loopway-test/hello-world",
+      url: repo,
+      html_url: "https://github.com/loopway-test/hello-world",
+      default_branch: "main",
+    },
+    sender: { login: "loopway-test", url: "https://api.github.com/users/loopway-test" },
+  };
+  if (event === "issues") {
+    return {
+      ...base,
+      action: "opened",
+      issue: {
+        number: 1,
+        title: "A test issue from loopway",
+        state: "open",
+        html_url: "https://github.com/loopway-test/hello-world/issues/1",
+        updated_at: time,
+      },
+    };
+  }
+  if (event === "push") {
+    return {
+      ...base,
+      ref: "refs/heads/main",
+      commits: [{ id: "0000000000000000000000000000000000000001", message: "A test commit from loopway" }],
+    };
+  }
+  return {
+    ...base,
+    action: "opened",
+    number: 1,
+    pull_request: {
+      number: 1,
+      title: "A test pull request from loopway",
+      state: "open",
+      merged: false,
+      html_url: "https://github.com/loopway-test/hello-world/pull/1",
+      head: { ref: "test-branch" },
+      base: { ref: "main" },
+      updated_at: time,
+    },
+  };
 }

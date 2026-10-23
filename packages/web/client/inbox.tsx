@@ -3,11 +3,13 @@ import type { Inbox as InboxInfo } from "./shared.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
+import { TestMessageButton } from "./test-message.js";
 
 interface InboxMessage {
   id: string;
   received_at: string;
   seq: number;
+  test: boolean;
   event: { type: string; subject?: string };
 }
 
@@ -103,6 +105,7 @@ export function Inbox({ id }: { id: string }) {
         <Setup inbox={inbox} source={source} unfinished={unfinished} onSaved={setInbox} />
       )}
       {inbox && <Settings inbox={inbox} onSaved={setInbox} />}
+      {inbox && <TestMessageButton inboxId={inbox.id} from="inbox_page" />}
       {inbox && <h2 className="inbox-recent">Recent messages</h2>}
       <div>
         {messages?.map((e, i) => (
@@ -112,6 +115,7 @@ export function Inbox({ id }: { id: string }) {
               <summary>
                 <span className="muted">#{e.seq}</span>
                 <span className="type">{e.event.type}</span>
+                {e.test && <span className="badge">test</span>}
                 <span className="muted">{e.event.subject || ""}</span>
                 <span className="when">{new Date(e.received_at).toLocaleString()}</span>
               </summary>

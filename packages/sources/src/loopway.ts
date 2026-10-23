@@ -110,6 +110,16 @@ export const loopway = ({
     };
   },
 
+  // The types the inbox accepts, so a filter never leaves it without one; the first is the default.
+  sampleTypes: (config) => ["test", ...config.events.filter((e) => e !== "*" && e !== "test")],
+
+  sample(config, { type }) {
+    return {
+      headers: { authorization: `Bearer ${config.secret}`, "content-type": "application/json" },
+      rawBody: JSON.stringify({ type, id: "test-1", data: { message: "A test message from loopway" } }),
+    };
+  },
+
   summarize(event) {
     const id = event.subject?.slice(event.type.length + 1);
     return withText(id ? `${event.type} ${id}` : event.type, str(get(event.data, "title")));

@@ -21,3 +21,7 @@ Deliveries are authenticated by `X-Hub-Signature-256` (HMAC-SHA256 over the raw 
 ## CloudEvent mapping
 
 Follows the [CloudEvents GitHub adapter spec](https://github.com/cloudevents/spec/blob/main/cloudevents/adapters/github.md): `id` = `X-GitHub-Delivery`, `type` = `com.github.<event>.<action>` (e.g. `com.github.pull_request.opened`), `source`/`subject`/`time` per event, `data` = payload.
+
+## Test message
+
+The test message (`loopway inbox test`, or the dashboard button) is a `pull_request` `opened` event for a made-up repository, `loopway-test/hello-world`: number, title, `html_url`, and `head`/`base` refs. If `config.events` leaves out `pull_request`, it is an `issues` `opened` or a `push` instead, whichever the inbox accepts first.
