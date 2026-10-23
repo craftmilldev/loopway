@@ -4,7 +4,7 @@ import { BotSwitcher } from "./bot-switcher.js";
 import { DeliveryBars } from "./delivery-bars.js";
 import { LevelPie } from "./level-pie.js";
 import { StateBadge } from "./overview.js";
-import { leaseText, type Inbox } from "./shared.js";
+import { leaseText, waitingForSender, type Inbox } from "./shared.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
@@ -57,6 +57,7 @@ export function Bot({ id, view }: { id: string; view?: Tab }) {
   // load once. The bots, runners and open threads, which give the state, are what refreshes.
   lw.usePoll(bots.reload, ready);
   lw.usePoll(runners.reload, ready);
+  lw.usePoll(inboxes.reload, ready);
   lw.usePoll(open.reload, ready);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +66,21 @@ export function Bot({ id, view }: { id: string; view?: Tab }) {
   const state = open.data && runners.data ? botState(open.data, runners.data) : null;
   const waiting = countThreads(open.data ?? []).waiting;
   const stopped = state === "limited" || state === "stranded";
+  const sources = lw.useSources();
+  // The first of its inboxes that no sender has reached yet: nothing will happen until one does.
+  const unreached = b
+    ? b.inbox_ids
+        .map((i) => inboxes.data?.find((x) => x.id === i))
+        .find(
+          (x) =>
+            x &&
+            waitingForSender(
+              x,
+              sources?.data.find((s) => s.type === x.source_type),
+            ),
+        )
+    : undefined;
+  const unreachedLabel = sources?.data.find((s) => s.type === unreached?.source_type)?.label;
 
   useEffect(() => {
     if (b) track("bot_tab_viewed", { tab });
@@ -72,6 +88,9 @@ export function Bot({ id, view }: { id: string; view?: Tab }) {
   useEffect(() => {
     if (bot.missing) track("bot_not_found");
   }, [bot.missing]);
+  useEffect(() => {
+    if (unreached) track("bot_waiting_inbox_shown", { source_type: unreached.source_type });
+  }, [unreached?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (stopped) track("bot_banner_shown", { state });
   }, [stopped, state]);
@@ -138,6 +157,14 @@ export function Bot({ id, view }: { id: string; view?: Tab }) {
           <strong>{state === "limited" ? "Stopped at its usage limit." : "Stranded: its runner is offline."}</strong>{" "}
           {state === "limited" ? "It carries on when the limit resets." : "It carries on when a runner holds it again."}{" "}
           {plural(waiting, "message")} waiting.
+        </div>
+      )}
+      {unreached && (
+        <div className="banner" role="status">
+          <strong>
+            Nothing has reached its inbox "{unreached.name}" yet: {unreachedLabel} isn't sending.
+          </strong>{" "}
+          <a href={lw.orgBase() + "/inboxes/" + unreached.id}>Finish connecting it →</a>
         </div>
       )}
       {error && <p className="error">{error}</p>}

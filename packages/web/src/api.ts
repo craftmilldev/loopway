@@ -197,13 +197,18 @@ export function createApi(opts: ApiOptions) {
   ): Promise<{ kind: "ignored"; reason: string } | { kind: "stored"; id: string; seq: number; duplicate: boolean }> {
     const source = sources.get(inbox.source_type);
     if (!source) throw new ApiError(500, "internal", `Unknown source type ${inbox.source_type}`);
-    const received = (outcome: string, extra?: Record<string, unknown>) =>
-      metrics.capture("webhook_received", inbox.org_id, {
+    const received = async (outcome: string, extra?: Record<string, unknown>) => {
+      await metrics.capture("webhook_received", inbox.org_id, {
         source_type: inbox.source_type,
         outcome,
         test,
         ...extra,
       });
+      // Anything that got as far as being checked shows the sender is connected, a rejected delivery included.
+      if (outcome === "failed") return;
+      const detail = outcome === "rejected" ? extra?.status : outcome === "ignored" ? extra?.reason : undefined;
+      await recordDelivery(c.var.db, inbox, detail === undefined ? outcome : `${outcome}:${detail as string | number}`);
+    };
 
     let config: unknown;
     try {
@@ -1192,6 +1197,7 @@ export function createApi(opts: ApiOptions) {
       }),
       false,
     );
+    await store.recordDelivery(c.var.db, inboxId, "accepted");
     await metrics.capture("thread_message_sent", c.var.user.id, { thread_status: thread.status });
     return c.json({ id: sent.id, inbox_id: inboxId }, 201);
   });
@@ -1470,6 +1476,18 @@ export function createApi(opts: ApiOptions) {
     }
   }
 
+  /** Notes a delivery on the inbox; the first one is a metric, since it's the step that gets a bot its first message. */
+  async function recordDelivery(db: Db, inbox: Inbox, outcome: string) {
+    const stored = outcome === "duplicate" ? "accepted" : outcome;
+    await store.recordDelivery(db, inbox.id, stored);
+    if (inbox.last_delivery_at !== null) return;
+    await metrics.capture("inbox_first_delivery", inbox.org_id, {
+      source_type: inbox.source_type,
+      outcome: stored.split(":")[0],
+      seconds_since_created: Math.round((Date.now() - inbox.created_at.getTime()) / 1000),
+    });
+  }
+
   /**
    * The inbox as the API shows it. The secret is never part of it, only whether one is set (`secret_set`), unless
    * `revealed` (the one just made) is passed.
@@ -1491,6 +1509,8 @@ export function createApi(opts: ApiOptions) {
       webhook_url: url,
       setup: source?.setup?.(shown, url),
       created_at: iso(inbox.created_at),
+      last_delivery_at: iso(inbox.last_delivery_at),
+      last_delivery_outcome: inbox.last_delivery_outcome,
     };
   }
 }

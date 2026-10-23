@@ -53,6 +53,9 @@ export interface Inbox {
   webhook_url: string;
   setup?: Record<string, unknown>;
   created_at: string;
+  /** When a sender last reached the inbox, and how it went; null until one has. */
+  last_delivery_at?: string | null;
+  last_delivery_outcome?: string | null;
 }
 
 export interface InboxStats {

@@ -11,6 +11,8 @@ const inbox = (over: object = {}) => ({
   source_type: "github",
   webhook_url: "https://loopway.test/api/webhooks/i1",
   config: { secret_set: true, events: ["issues", "push"] },
+  last_delivery_at: "2026-10-13T10:00:00Z",
+  last_delivery_outcome: "accepted",
   ...over,
 });
 const vercel = inbox({
@@ -163,6 +165,25 @@ describe("Inbox page", () => {
     expect([on("issues"), on("push"), on("release")]).toEqual([true, true, false]);
     // A finished inbox has no setup steps.
     expect(screen.queryByText("Finish setting up this inbox")).toBeNull();
+  });
+
+  it("waits for the sender with the steps to connect it, then turns connected when a delivery arrives", async () => {
+    inboxes = [inbox({ last_delivery_at: null, last_delivery_outcome: null }), vercel];
+    render(<Inbox id="i1" />);
+    expect(await screen.findByText("waiting for GitHub")).toBeTruthy();
+    expect(screen.getByText("Connect GitHub to this inbox")).toBeTruthy();
+    const gh = screen.getByDisplayValue<HTMLInputElement>(/^gh api repos\/OWNER\/REPO\/hooks/);
+    expect(gh.value).toContain("'config[url]=https://loopway.test/api/webhooks/i1'");
+    expect(gh.value).toContain("'events[]=issues'");
+  });
+
+  it("says the last delivery failed, and why, when the signature didn't match", async () => {
+    inboxes = [inbox({ last_delivery_outcome: "rejected:401" }), vercel];
+    render(<Inbox id="i1" />);
+    expect(
+      await screen.findByText(/last delivery failed · last delivery .* \(rejected: the signature didn't match/),
+    ).toBeTruthy();
+    expect(screen.queryByText("Connect GitHub to this inbox")).toBeNull();
   });
 
   it("saves the toggled events", async () => {

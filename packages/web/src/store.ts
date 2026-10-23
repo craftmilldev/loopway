@@ -276,6 +276,18 @@ export interface Inbox {
   /** The webhook secret, sealed by secrets.ts with the inbox id as context. Null for an inbox with none. */
   secret_enc: string | null;
   created_at: Date;
+  /** When a sender last reached the inbox, whatever came of it. Null until it has. */
+  last_delivery_at: Date | null;
+  /** `accepted`, `ignored:<reason>` or `rejected:<status>`. */
+  last_delivery_outcome: string | null;
+}
+
+/** Notes that a sender reached the inbox just now, with how it went. */
+export async function recordDelivery(db: Db, id: string, outcome: string): Promise<void> {
+  await db.query(`UPDATE loopway.inboxes SET last_delivery_at = now(), last_delivery_outcome = $2 WHERE id = $1`, [
+    id,
+    outcome,
+  ]);
 }
 
 export async function createInbox(
