@@ -695,10 +695,17 @@ CREATE INDEX threads_org_kind_idx ON loopway.threads (org_id, kind, created_at);
 `,
   },
   {
+    // Messages made by the "send a test message" action, so the inbox page can badge them.
+    version: "034_message_is_test",
+    sql: `
+ALTER TABLE loopway.messages ADD COLUMN is_test boolean NOT NULL DEFAULT false;
+`,
+  },
+  {
     // When a sender last reached an inbox, and how it went (accepted, ignored:<reason>, rejected:<status>), so a
     // webhook that was never added in the sender can be told from one that is just quiet. Inboxes that already hold
     // messages start as reached at the time of their newest one.
-    version: "034_inbox_last_delivery",
+    version: "035_inbox_last_delivery",
     sql: `
 ALTER TABLE loopway.inboxes
   ADD COLUMN last_delivery_at timestamptz,

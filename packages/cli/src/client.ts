@@ -321,6 +321,11 @@ export class LoopwayClient {
     return this.request<Inbox>("PATCH", `/inboxes/${enc(inboxId)}`, input);
   }
 
+  /** Sends the inbox a sample message of its source, signed and stored like a real delivery. */
+  testInbox(inboxId: string) {
+    return this.request<{ message_id: string; seq: number }>("POST", `/inboxes/${enc(inboxId)}/test`, { from: "cli" });
+  }
+
   // ---------- messages ----------
 
   listMessages(inboxId: string, q: ListMessagesQuery = {}) {

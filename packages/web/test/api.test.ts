@@ -157,7 +157,7 @@ describe("messages", () => {
     const p3 = await call("GET", `${base}?limit=2&cursor=${p2.body.next_cursor}`, { key });
     expect(p3.body.next_cursor).toBeNull();
     // An event is just a stored message: no per-event status.
-    expect(Object.keys(p1.body.data[0]).sort()).toEqual(["event", "id", "inbox_id", "received_at", "seq"]);
+    expect(Object.keys(p1.body.data[0]).sort()).toEqual(["event", "id", "inbox_id", "received_at", "seq", "test"]);
   });
 
   it("counts an inbox's messages", async () => {

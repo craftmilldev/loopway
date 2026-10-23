@@ -28,6 +28,18 @@ export class SourceRegistry {
     return this.byType.get(type)?.title(event) ?? null;
   }
 
+  /**
+   * The event name for a test message to an inbox: the source's first sample type the inbox's `events` filter lets
+   * through. Undefined when the source has no sample or the filter lets none through.
+   */
+  sampleType(type: string, config: { events?: string[] }): string | undefined {
+    const events = config.events ?? ["*"];
+    return this.byType
+      .get(type)
+      ?.sampleTypes?.(config)
+      .find((t) => events.includes("*") || events.includes(t));
+  }
+
   types(): string[] {
     return [...this.byType.keys()];
   }

@@ -26,3 +26,7 @@ Deliveries are authenticated by the [Standard Webhooks](https://www.standardwebh
 ## CloudEvent mapping
 
 `id` = `webhook-id`, `type` = `ai.granola.<event_type>` (e.g. `ai.granola.note.generated`), `source` = `https://public-api.granola.ai/v1/notes/<note_id>`, `subject` = `note_id`, `time` = `occurred_at`, `data` = payload.
+
+## Test message
+
+The test message is a `note.generated` event for a made-up note titled "A test note from loopway". If `config.events` leaves out `note.generated`, it is `note.edited` or `note.access_granted`. It needs the signing secret to be set first (`409 secret_not_set` otherwise).

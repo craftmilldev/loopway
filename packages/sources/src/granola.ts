@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { z } from "zod";
-import { firstLine, get, str, withText } from "./payload.js";
+import { firstLine, get, standardWebhookSignature, str, withText } from "./payload.js";
 import type { CloudEvent, SourceAdapter, SourceDeps } from "./types.js";
 
 /** The note's title, when the webhook carries one. */
@@ -71,6 +71,28 @@ export const granola = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapte
       secret: config.secret
         ? "set"
         : "not set yet: paste the whsec_… secret Granola shows on the inbox page, or run `loopway inbox update <inbox> --secret whsec_…`",
+    };
+  },
+
+  sampleTypes: () => GRANOLA_EVENTS,
+
+  sample(config, { type, id, now }) {
+    const rawBody = JSON.stringify({
+      event_id: id,
+      event_type: type,
+      note_id: "not_loopwaytest00",
+      title: "A test note from loopway",
+      occurred_at: now.toISOString(),
+    });
+    const timestamp = String(Math.floor(now.getTime() / 1000));
+    return {
+      headers: {
+        "content-type": "application/json",
+        "webhook-id": id,
+        "webhook-timestamp": timestamp,
+        "webhook-signature": standardWebhookSignature(config.secret!, id, timestamp, rawBody),
+      },
+      rawBody,
     };
   },
 

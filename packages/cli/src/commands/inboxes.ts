@@ -47,6 +47,13 @@ export async function showInbox(ctx: Context, ref: string, opts: { json?: boolea
   );
 }
 
+export async function testInbox(ctx: Context, ref: string, opts: { json?: boolean; org?: string }) {
+  const client = await authedClient(ctx);
+  const sent = await client.testInbox(await resolveInbox(ctx, client, ref, opts.org));
+  if (opts.json) return ctx.out(json(sent));
+  ctx.out(`Sent test message ${sent.message_id} (seq ${sent.seq}).`);
+}
+
 // ---------- create ----------
 
 export interface CreateOptions {
