@@ -3,6 +3,8 @@ import { createApi } from "../src/api.js";
 import { MIN_CLI_VERSION_FLOOR, minCliVersion, olderThan } from "../src/cli-version.js";
 import { type Db } from "../src/db/index.js";
 import { openTestDb, TEST_INBOX_KEY } from "../src/db/testing.js";
+import { createUser } from "../src/store.js";
+import { signSessionToken } from "../src/tokens.js";
 import { createWeb } from "../src/ui.js";
 import type { Metrics } from "../src/metrics.js";
 
@@ -59,8 +61,10 @@ describe("the floor in code", () => {
 
 describe("minimum CLI version", () => {
   let db: Db;
-  const events: { event: string; properties?: Record<string, unknown> }[] = [];
-  const metrics: Metrics = { capture: async (event, _id, properties) => void events.push({ event, properties }) };
+  const events: { event: string; distinctId: string; properties?: Record<string, unknown> }[] = [];
+  const metrics: Metrics = {
+    capture: async (event, distinctId, properties) => void events.push({ event, distinctId, properties }),
+  };
   let app: ReturnType<typeof createApi>;
   beforeAll(async () => {
     db = await openTestDb();
@@ -87,6 +91,20 @@ describe("minimum CLI version", () => {
     expect(events.at(-1)).toMatchObject({
       event: "api_error",
       properties: { code: "cli_outdated", status: 426, cli_version: "0.1.0" },
+    });
+  });
+
+  it("counts the rejection under the user whose token came with it, and names the path", async () => {
+    const { user } = await createUser(db, { name: "Outdated" });
+    const { token } = signSessionToken(user.id, "test-secret");
+    const res = await app.request(`/api/inboxes/${user.id}/messages`, {
+      headers: { "x-loopway-cli-version": "0.1.0", authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(426);
+    expect(events.at(-1)).toMatchObject({
+      event: "api_error",
+      distinctId: user.id,
+      properties: { code: "cli_outdated", path: "/api/inboxes/:id/messages" },
     });
   });
 

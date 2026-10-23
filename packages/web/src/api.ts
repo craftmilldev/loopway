@@ -102,6 +102,7 @@ export function createApi(opts: ApiOptions) {
       cli_version: cliVersion(c),
       method: c.req.method,
       route: c.req.routePath,
+      ...(c.get("path") && { path: c.get("path") }),
     });
 
   app.onError(async (err, c) => {
@@ -141,6 +142,11 @@ export function createApi(opts: ApiOptions) {
   api.use(async (c, next) => {
     const version = cliVersion(c);
     if (opts.minCliVersion && version !== "none" && olderThan(version, opts.minCliVersion)) {
+      // This runs before auth, so look the token up here (never failing) to count the rejection under its user.
+      const token = bearer(c);
+      const user = token ? await userForToken(c.var.db, token).catch(() => undefined) : undefined;
+      if (user) c.set("user", user);
+      c.set("path", c.req.path.replace(/\/(?:[0-9a-f]{8}-[0-9a-f-]{27}|\d+)(?=\/|$)/gi, "/:id"));
       throw new ApiError(
         426,
         "cli_outdated",

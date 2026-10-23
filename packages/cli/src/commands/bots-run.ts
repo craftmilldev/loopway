@@ -1,7 +1,13 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { runHarness } from "@loopway/harnesses";
 import { ApiError, type ThreadPatch } from "../client.js";
-import { applyUpdate, availableUpdate as availableUpdateNow } from "../update.js";
+import {
+  applyUpdate,
+  availableUpdate as availableUpdateNow,
+  minimumFrom,
+  outdatedNotice,
+  whyNoUpdate,
+} from "../update.js";
 import { loadConfig } from "../config.js";
 import { authedClient, type Context } from "../context.js";
 import { DEFAULTS, Dispatcher, MAX_POLL_INTERVAL, type ThreadsOptions } from "../bots/dispatcher.js";
@@ -64,13 +70,14 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     const dispatcher = await Dispatcher.start(ctx, client, bots, dispatcherOpts);
     const release = releaseOnExit(dispatcher);
     ctx.out(`${watching} Ctrl-C to stop.`);
-    let version: string;
+    let result: Awaited<ReturnType<typeof pollUntilUpdate>>;
     try {
-      version = await pollUntilUpdate(ctx, dispatcher, interval);
+      result = await pollUntilUpdate(ctx, dispatcher, interval);
     } finally {
       await release();
     }
-    return applyUpdate(ctx, version, ctx.out);
+    if (typeof result !== "string") return void (process.exitCode = 1);
+    return applyUpdate(ctx, result, ctx.out);
   }
 
   // The dispatcher's log lines go to the TUI's status line instead of scrolling under it.
@@ -123,8 +130,10 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
   // An update closes the TUI, as quitting does; then it runs again on the new version.
   const closeTui = new AbortController();
   let version: string | undefined;
+  let notice: string | undefined;
   void pollUntilUpdate(quiet, dispatcher, interval).then((v) => {
-    version = v;
+    if (typeof v === "string") version = v;
+    else notice = v.notice;
     closeTui.abort();
   });
   // How often the TUI's colors fall back to the 256-color palette, or go without.
@@ -169,6 +178,9 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     await release();
   }
   if (version) return applyUpdate(ctx, version, ctx.out);
+  // The status line went with the TUI, so the notice is printed here.
+  if (notice)
+    return void (ctx.out(`${notice}\nStopped; running sessions were left to finish.`), (process.exitCode = 1));
   // Quitting stops everything, as Ctrl-C does without the TUI: interrupt the whole process group so
   // the claude sessions this dispatcher started stop with it.
   process.kill(0, "SIGINT");
@@ -223,33 +235,57 @@ function releaseOnExit(dispatcher: Dispatcher, before?: () => Promise<void>): ()
   return release;
 }
 
+/** What `pollUntilUpdate` returns when the server turned this CLI away and it can't update itself: the notice to show. */
+export interface OutdatedStop {
+  notice: string;
+}
+
 /**
  * Polls until a newer release of the CLI is out and the sessions running have finished, then returns its version.
  * On finding one it stops taking on work, so the sessions in flight can end. The server turning this version away
- * (`cli_outdated`) is a reason to look right away; otherwise the lookup is the update module's cached one.
+ * (`cli_outdated`) is a reason to look right away; otherwise the lookup is the update module's cached one. If it does
+ * that and there is nothing to update to, or updates are off, it says so once, drains the same way and returns the
+ * notice instead.
  */
 export async function pollUntilUpdate(
   ctx: Context,
   dispatcher: Dispatcher,
   interval: number,
   availableUpdate: typeof availableUpdateNow = availableUpdateNow,
-): Promise<string> {
+  why: typeof whyNoUpdate = whyNoUpdate,
+): Promise<string | OutdatedStop> {
   let updating: string | undefined;
+  let stopping: string | undefined;
   let outdated = false;
+  let message = "";
   let forced = false;
   let capped = false;
   for (;;) {
     try {
       await dispatcher.tick();
     } catch (err) {
-      outdated ||= err instanceof ApiError && err.code === "cli_outdated";
-      // A flaky network shouldn't take down running sessions; try again next tick.
-      ctx.out(`error: ${err instanceof Error ? err.message : String(err)}`);
+      const turnedAway = err instanceof ApiError && err.code === "cli_outdated";
+      outdated ||= turnedAway;
+      if (turnedAway) message = err.message;
+      // A flaky network shouldn't take down running sessions; try again next tick. Once stopping, the notice said it.
+      if (!(turnedAway && stopping)) ctx.out(`error: ${err instanceof Error ? err.message : String(err)}`);
     }
-    if (!updating && (updating = await availableUpdate(ctx, { force: outdated && !forced }))) {
+    // A session's tool call can get turned away too.
+    outdated = dispatcher.takeOutdated() || outdated;
+    if (!updating && !stopping && (updating = await availableUpdate(ctx, { force: outdated && !forced }))) {
+      if (outdated) void ctx.metrics?.capture("cli_outdated_seen", { where: "bots_run", reason: "updating" });
       ctx.out(`loopway ${updating} is out: finishing the running sessions, then updating.`);
       dispatcher.drain();
+    } else if (!updating && !stopping && outdated) {
+      const reason = await why(ctx);
+      if (reason) {
+        void ctx.metrics?.capture("cli_outdated_seen", { where: "bots_run", reason });
+        stopping = outdatedNotice(reason, minimumFrom(message));
+        ctx.out(`${stopping}\nStopping now; running sessions are left to finish.`);
+        dispatcher.drain();
+      }
     }
+    if (stopping && !dispatcher.busy) return { notice: stopping };
     // Forced once: if GitHub has nothing newer, asking again every poll won't change that.
     forced ||= outdated;
     outdated = false;

@@ -192,11 +192,81 @@ export async function applyUpdate(
   reexec(installed ? "1" : "failed");
 }
 
-/** After the server turned this version away (`cli_outdated`): updates now, whatever the last lookup said, and runs the command again. */
-export async function updateAfterOutdated(ctx: Context, deps: UpdateDeps = defaultDeps): Promise<void> {
-  if (ctx.env[UPDATED_ENV]) return;
-  const version = await availableUpdate(ctx, { force: true }, deps);
-  if (version && (await installRelease(ctx, version, deps))) reexec();
+/** Why a CLI the server turned away can't update itself. */
+export type NoUpdateReason =
+  | "already_updated"
+  | "update_failed_before"
+  | "auto_update_off"
+  | "not_installed"
+  | "lookup_failed"
+  | "no_newer_release";
+
+type UpdatePlan = { version: string } | { reason: NoUpdateReason };
+
+async function planUpdate(ctx: Context, force: boolean, deps: UpdateDeps): Promise<UpdatePlan> {
+  const marked = ctx.env[UPDATED_ENV];
+  if (marked === "failed") return { reason: "update_failed_before" };
+  if (marked) return { reason: "already_updated" };
+  if (!deps.installed) return { reason: "not_installed" };
+  if (!(await loadConfig(ctx.configDir, ctx.env)).auto_update) return { reason: "auto_update_off" };
+  const latest = await latestVersion(ctx, force, deps);
+  if (!latest) return { reason: "lookup_failed" };
+  return isNewer(latest, CLI_VERSION) ? { version: latest } : { reason: "no_newer_release" };
+}
+
+/** Why this CLI can't update itself now, or undefined when an update can go ahead. `force` skips the cached release lookup. */
+export async function whyNoUpdate(
+  ctx: Context,
+  deps: UpdateDeps = defaultDeps,
+  opts: { force?: boolean } = {},
+): Promise<NoUpdateReason | undefined> {
+  const plan = await planUpdate(ctx, opts.force ?? false, deps);
+  return "reason" in plan ? plan.reason : undefined;
+}
+
+const INSTALL_SH = "curl -fsSL https://loopway.craftmill.dev/install.sh | sh";
+
+/** What to tell whoever runs a CLI the server turned away and that can't update itself: why, and the one command that fixes it. */
+export function outdatedNotice(reason: NoUpdateReason, minimum?: string): string {
+  const need = minimum ? ` (${minimum} or newer is needed)` : "";
+  const why: Record<NoUpdateReason, string> = {
+    already_updated: "it was just updated and is still too old",
+    update_failed_before: "its last update failed",
+    auto_update_off: "auto-update is off (auto_update: false in ~/.loopway/config.json, or LOOPWAY_NO_UPDATE is set)",
+    not_installed: "it runs from a git checkout",
+    lookup_failed: "it could not look up the newest release (offline or rate limited by GitHub)",
+    no_newer_release: "GitHub has no newer release than this one",
+  };
+  const fix =
+    reason === "not_installed"
+      ? "Run `npm run update` in the checkout"
+      : reason === "already_updated" || reason === "update_failed_before"
+        ? `Run \`${INSTALL_SH}\``
+        : "Run `loopway update`";
+  return `loopway ${CLI_VERSION} is too old for this server${need}, and it can't update itself:\n  ${why[reason]}.\n${fix}, then run this again.`;
+}
+
+/** The minimum version a `cli_outdated` message names, if it does. */
+export const minimumFrom = (message: string) => /(\d+\.\d+\.\d+) or newer/.exec(message)?.[1];
+
+/**
+ * After the server turned this version away (`cli_outdated`): updates now, whatever the last lookup said, and runs
+ * the command again. When it can't, records why and returns the notice that says how to fix it.
+ */
+export async function updateAfterOutdated(
+  ctx: Context,
+  message: string,
+  deps: UpdateDeps = defaultDeps,
+): Promise<string | undefined> {
+  const plan = await planUpdate(ctx, true, deps);
+  if ("reason" in plan) {
+    await ctx.metrics?.capture("cli_outdated_seen", { where: "command", reason: plan.reason });
+    process.exitCode = 1;
+    return outdatedNotice(plan.reason, minimumFrom(message));
+  }
+  await ctx.metrics?.capture("cli_outdated_seen", { where: "command", reason: "updating" });
+  // Records cli_self_update and runs the command again; after a failed install, on this version with updates paused.
+  return applyUpdate(ctx, plan.version, console.error, deps);
 }
 
 /**

@@ -3,7 +3,7 @@ import type { Db } from "./db/index.js";
 import type { User } from "./store.js";
 
 /** What the authenticated routes read from the Hono context. */
-export type Env = { Variables: { db: Db; user: User } };
+export type Env = { Variables: { db: Db; user: User; path?: string } };
 
 export class ApiError extends Error {
   constructor(

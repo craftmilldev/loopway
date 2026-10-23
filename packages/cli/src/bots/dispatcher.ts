@@ -186,6 +186,7 @@ export class Dispatcher {
         patch: (id, patch) => later.dispatcher!.patchThread(id, patch),
       },
       ctx.metrics,
+      () => later.dispatcher?.markOutdated(),
     );
     const mcp = await startMcpServer("loopway", tools);
     const dispatcher = (later.dispatcher = new Dispatcher(ctx, client, bots, rules, prompts, opts, mcp, tools, env));
@@ -238,6 +239,20 @@ export class Dispatcher {
     this.ctx.out(
       on ? "taking bot leases again" : "giving back the bot leases: only delivering to this runner's threads now",
     );
+  }
+
+  private outdated = false;
+
+  /** Notes that the server turned this CLI away on a request other than a tick, so the runner looks for an update. */
+  markOutdated(): void {
+    this.outdated = true;
+  }
+
+  /** Whether the server has turned this CLI away since the last call. */
+  takeOutdated(): boolean {
+    const was = this.outdated;
+    this.outdated = false;
+    return was;
   }
 
   /** Whether any session is running. */
