@@ -464,7 +464,7 @@ export interface MessageRow {
 const MESSAGE_COLS = `id, inbox_id, seq, cloudevent, received_at, is_test`;
 
 /** Returns the stored message and whether it was a redelivery of one we already had (same CE source+id). */
-export async function insertMessage(db: Db, inboxId: string, ce: CloudEvent, test = false) {
+export async function insertMessage(db: Db, inboxId: string, ce: CloudEvent, test: boolean) {
   const [inserted] = await db.query<{ id: string; seq: string | bigint }>(
     `INSERT INTO loopway.messages (id, inbox_id, ce_id, ce_source, ce_type, ce_subject, ce_time, cloudevent, is_test)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)

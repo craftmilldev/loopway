@@ -258,7 +258,7 @@ export function createApi(opts: ApiOptions) {
       }
       try {
         for (const event of sources.get(inbox.source_type)!.tick!(inbox.config, inbox.id, now)) {
-          const { duplicate } = await store.insertMessage(c.var.db, inbox.id, event);
+          const { duplicate } = await store.insertMessage(c.var.db, inbox.id, event, false);
           total[duplicate ? "duplicate" : "accepted"]++;
           await metrics.capture("schedule_message", inbox.org_id, { outcome: duplicate ? "duplicate" : "accepted" });
         }
@@ -1190,6 +1190,7 @@ export function createApi(opts: ApiOptions) {
         datacontenttype: "application/json",
         data: { thread_id: thread.id, bot_id: bot.id, text: parsed.data.text, user_id: c.var.user.id },
       }),
+      false,
     );
     await metrics.capture("thread_message_sent", c.var.user.id, { thread_status: thread.status });
     return c.json({ id: sent.id, inbox_id: inboxId }, 201);
