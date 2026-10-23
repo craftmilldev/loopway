@@ -69,9 +69,23 @@ describe("plan usage over OTLP", () => {
       "plan.status",
     ]);
     expect(points[1]!.attributes.map((a) => a.key)).not.toContain("plan.status");
-    // A rejected event with no per-window data still reports the full window.
-    const full = planUsageBody({ status: "rejected", resetsAt: 5, rateLimitType: "seven_day" }, "s1", {}, 1)!;
-    expect(full.resourceMetrics[0]!.scopeMetrics[0]!.metrics[0]!.gauge.dataPoints[0]!.asDouble).toBe(1);
+    // A rejected event with no per-window data and a reset still ahead reports the full window.
+    const point = (i: object, now: number) =>
+      planUsageBody(i, "s1", {}, now)?.resourceMetrics[0]!.scopeMetrics[0]!.metrics[0]!.gauge.dataPoints[0]?.asDouble;
+    const real = {
+      status: "rejected",
+      resetsAt: 1791565200,
+      rateLimitType: "five_hour",
+      overageStatus: "rejected",
+      overageDisabledReason: "org_level_disabled",
+      isUsingOverage: false,
+    };
+    expect(point(real, 1791565200 * 1000 - 3600_000)).toBe(1);
+    // The same event days after its reset is stale: no point.
+    expect(point(real, 1791565200 * 1000 + 3 * 86_400_000)).toBeUndefined();
+    expect(point({ ...real, resetsAt: undefined }, 1)).toBeUndefined();
+    // A rejected overage allowance is not the window being full.
+    expect(point({ ...real, rateLimitType: "overage" }, 1)).toBeUndefined();
     expect(planUsageBody({ status: "allowed" }, "s1", {}, 1)).toBeUndefined();
   });
 
