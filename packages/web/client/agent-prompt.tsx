@@ -18,12 +18,12 @@ First read ${origin}/llms.txt: it explains loopway and its CLI.`;
 I'm already logged in to org "${org}" and have a runner online for it. Check with \`loopway login\` status and \`loopway runners\`, and only fix it if it's wrong.
 
 1. Ask me what I want the bot to do and which service it should hear from.
-2. Create the inbox and the bot with \`--org ${org}\`, and tell me the inbox name and the webhook URL to add in that service. Don't repeat the secret back to me; I'll get it myself with \`loopway inbox update <inbox> --secret\` or on the inbox page in the web app. The runner picks the new bot up by itself.`;
+2. Create the inbox and the bot with \`--org ${org}\`, and tell me the inbox name and the webhook URL to add in that service. Don't repeat the secret back to me: \`loopway inbox create\` shows it once in the terminal, so point me to that output to copy it. The runner picks the new bot up by itself.`;
   }
   return `${intro}
 
 1. If \`loopway\` isn't installed, install it (needs Node 22+). Run \`loopway login\`; it emails me a one-time code, so ask me for it.
-2. Ask me what I want the bot to do and which service it should hear from. Then create the inbox and the bot with \`--org ${org}\`, and tell me the inbox name and the webhook URL to add in that service. Don't repeat the secret back to me; I'll get it myself with \`loopway inbox update <inbox> --secret\` or on the inbox page in the web app.
+2. Ask me what I want the bot to do and which service it should hear from. Then create the inbox and the bot with \`--org ${org}\`, and tell me the inbox name and the webhook URL to add in that service. Don't repeat the secret back to me: \`loopway inbox create\` shows it once in the terminal, so point me to that output to copy it.
 3. Check \`loopway runners\`. A runner already online for this org picks the new bot up by itself; if there is none, start one with \`loopway bots run --org ${org}\` in the directory the bot should work in, and leave it running.`;
 }
 

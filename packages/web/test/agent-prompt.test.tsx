@@ -57,7 +57,7 @@ describe("agentPrompt", () => {
     for (const progress of [undefined, { runner: true, bot: false, ran: false }]) {
       const text = agentPrompt("acme", "https://lw.test", progress);
       expect(text).not.toContain("webhook URL and secret");
-      expect(text).toContain("loopway inbox update <inbox> --secret");
+      expect(text).toContain("Don't repeat the secret");
     }
   });
 
