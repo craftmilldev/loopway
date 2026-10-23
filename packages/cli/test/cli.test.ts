@@ -959,8 +959,8 @@ describe("runners", () => {
     const first = await ensure(client);
     expect((await ensure(client)).id).toBe(first.id);
     expect(JSON.parse(await readFile(join(configDir, "runner.json"), "utf8"))).toEqual({
-      id: first.id,
       org: first.org,
+      runners: { [first.org]: first.id },
     });
 
     const inbox = await inboxWithEvents(0);
@@ -2514,7 +2514,8 @@ describe("threads", () => {
     it("uses the only org, and remembers it", async () => {
       const key = await configured();
       expect(await run("bots", "run", "--no-tui")).toMatch(/No bots to run/);
-      expect(await saved()).toEqual({ id: expect.any(String), org: await personalSlug(key) });
+      const org = await personalSlug(key);
+      expect(await saved()).toEqual({ org, runners: { [org]: expect.any(String) } });
     });
 
     it("needs --org when there are several orgs and no terminal, then remembers the choice", async () => {
@@ -2523,19 +2524,40 @@ describe("threads", () => {
       await run("bots", "run", "--no-tui", "--org", shared);
       const first = await saved();
       expect(first.org).toBe(shared);
-      expect((await client.listRunners(shared)).map((r) => [r.id, r.org])).toEqual([[first.id, shared]]);
+      const firstId = first.runners[shared];
+      expect((await client.listRunners(shared)).map((r) => [r.id, r.org])).toEqual([[firstId, shared]]);
 
       // Later runs in the same config dir don't ask again.
       await run("bots", "run", "--no-tui");
       expect(await saved()).toEqual(first);
-      expect(await run("runners")).toMatch(new RegExp(`${first.id}.*${shared}`));
+      expect(await run("runners")).toMatch(new RegExp(`${firstId}.*${shared}`));
 
       // Another --org starts a runner of its own; the first one stays where it was.
       await run("bots", "run", "--no-tui", "--org", personal);
       const second = await saved();
-      expect(second.id).not.toBe(first.id);
-      expect((await client.listRunners(shared)).map((r) => [r.id, r.org])).toEqual([[first.id, shared]]);
-      expect((await client.listRunners(personal)).map((r) => [r.id, r.org])).toEqual([[second.id, personal]]);
+      expect(second.org).toBe(personal);
+      expect(second.runners[shared]).toBe(firstId);
+      expect(second.runners[personal]).not.toBe(firstId);
+      expect((await client.listRunners(shared)).map((r) => [r.id, r.org])).toEqual([[firstId, shared]]);
+      expect((await client.listRunners(personal)).map((r) => [r.id, r.org])).toEqual([
+        [second.runners[personal], personal],
+      ]);
+
+      // Going back to the first org picks its runner up again instead of making a third.
+      await run("bots", "run", "--no-tui", "--org", shared);
+      expect((await saved()).runners).toEqual(second.runners);
+      expect((await client.listRunners(shared)).map((r) => r.id)).toEqual([firstId]);
+    });
+
+    it("reads a runner.json from before one runner per org", async () => {
+      const { client, personal, shared } = await inTwoOrgs();
+      const id = randomUUID();
+      await writeFile(join(configDir, "runner.json"), JSON.stringify({ id, org: shared }));
+      await run("bots", "run", "--no-tui");
+      expect(await saved()).toEqual({ org: shared, runners: { [shared]: id } });
+      expect((await client.listRunners(shared)).map((r) => r.id)).toEqual([id]);
+      await run("bots", "run", "--no-tui", "--org", personal);
+      expect((await saved()).runners[shared]).toBe(id);
     });
 
     it("lists in the org `orgs use` chose, says so, and lets --org override it", async () => {
@@ -2616,14 +2638,14 @@ describe("threads", () => {
     it("says which org a runner from before orgs belongs to", async () => {
       const { personal, shared } = await inTwoOrgs();
       await run("bots", "run", "--no-tui", "--org", shared);
-      const { id } = await saved();
+      const id = (await saved()).runners[shared];
       await writeFile(join(configDir, "runner.json"), JSON.stringify({ id }));
       await expect(run("bots", "run", "--no-tui", "--org", personal)).rejects.toThrow(
         new RegExp(`belongs to the org ${shared}.*--org ${shared}.*runner.json`),
       );
       expect(await saved()).toEqual({ id });
       await run("bots", "run", "--no-tui", "--org", shared);
-      expect(await saved()).toEqual({ id, org: shared });
+      expect(await saved()).toEqual({ org: shared, runners: { [shared]: id } });
     });
   });
 });

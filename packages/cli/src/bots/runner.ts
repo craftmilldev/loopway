@@ -7,12 +7,27 @@ import { UsageError, type Context } from "../context.js";
 
 const runnerPath = (dir: string) => join(dir, "runner.json");
 
-async function readSaved(dir: string): Promise<{ id?: string; org?: string }> {
-  const saved = (await readJson(runnerPath(dir))) as { id?: unknown; org?: unknown } | undefined;
-  return {
-    id: typeof saved?.id === "string" ? saved.id : undefined,
-    org: typeof saved?.org === "string" ? saved.org : undefined,
-  };
+interface Saved {
+  /** The org this machine ran last: the default for the next run. */
+  org?: string;
+  /** The runner id for each org slug. */
+  runners: Record<string, string>;
+  /** A runner id from before orgs were saved: its org is unknown. */
+  legacyId?: string;
+}
+
+async function readSaved(dir: string): Promise<Saved> {
+  const saved = (await readJson(runnerPath(dir))) as { id?: unknown; org?: unknown; runners?: unknown } | undefined;
+  const id = typeof saved?.id === "string" ? saved.id : undefined;
+  const org = typeof saved?.org === "string" ? saved.org : undefined;
+  const runners: Record<string, string> = {};
+  if (saved?.runners && typeof saved.runners === "object") {
+    for (const [slug, value] of Object.entries(saved.runners)) {
+      if (typeof value === "string") runners[slug] = value;
+    }
+  }
+  if (id && org && !runners[org]) runners[org] = id;
+  return { org, runners, legacyId: id && !org ? id : undefined };
 }
 
 /** The slug of the org this machine's runner was started for, if it has been remembered. */
@@ -21,10 +36,10 @@ export async function savedRunnerOrg(dir: string): Promise<string | undefined> {
 }
 
 /**
- * This machine's runner for the org: its id is made once and kept with the org in ~/.loopway/runner.json, and the
- * server is told about it (named after the host) every time, which also marks it as seen. A runner never changes org,
- * so asking for another org makes a new runner. A runner from before orgs were chosen has no org saved yet: if the
- * server says it belongs to another org, so does the error.
+ * This machine's runner for the org: one id per org, made once and kept in ~/.loopway/runner.json, and the server is
+ * told about it (named after the host) every time, which also marks it as seen. A runner never changes org, so asking
+ * for another org uses (or makes) that org's own runner and leaves the others alone. A runner from before orgs were
+ * chosen has no org saved yet: if the server says it belongs to another org, so does the error.
  */
 export async function ensureRunner(
   ctx: Context,
@@ -33,15 +48,15 @@ export async function ensureRunner(
   name = hostname(),
 ): Promise<Runner> {
   const saved = await readSaved(ctx.configDir);
-  let id = saved.id;
-  if (id && saved.org && saved.org !== org) {
-    await ctx.metrics?.capture("runner_org_switched", {});
-    id = undefined;
+  if (saved.org && saved.org !== org) await ctx.metrics?.capture("runner_org_switched", {});
+  let id = saved.runners[org] ?? saved.legacyId;
+  if (!id) {
+    id = randomUUID();
+    await ctx.metrics?.capture("runner_created", {});
   }
-  id ??= randomUUID();
   try {
     const runner = await client.registerRunner({ org, id, name });
-    await writeJson(runnerPath(ctx.configDir), { id, org });
+    await writeJson(runnerPath(ctx.configDir), { org, runners: { ...saved.runners, [org]: id } });
     return runner;
   } catch (err) {
     if (err instanceof ApiError && err.code === "runner_org_mismatch") {

@@ -97,7 +97,7 @@ Message shape:
 
 ## Runners
 
-A runner is a machine running loopway, and belongs to one org for good: it only leases and runs the bots of that org, and only claims their threads (`400 runner_org_mismatch` otherwise, even for a user who is in both orgs). The CLI makes its id (kept in `~/.loopway/runner.json`) and registers it on startup. A process leases its runner while it runs, so only one process uses a runner id at a time. A bot lease records which runner holds it, and a thread belongs to the runner that claimed it (see [Threads](#threads)).
+A runner is a machine running loopway, and belongs to one org for good: it only leases and runs the bots of that org, and only claims their threads (`400 runner_org_mismatch` otherwise, even for a user who is in both orgs). The CLI makes its id (one per org, kept in `~/.loopway/runner.json`) and registers it on startup. A process leases its runner while it runs, so only one process uses a runner id at a time. A bot lease records which runner holds it, and a thread belongs to the runner that claimed it (see [Threads](#threads)).
 
 | Endpoint | |
 | --- | --- |
