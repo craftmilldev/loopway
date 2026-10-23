@@ -53,6 +53,14 @@ describe("agentPrompt", () => {
     expect(text).not.toContain("loopway bots run");
   });
 
+  it("keeps the secret out of the agent's reply in both variants", () => {
+    for (const progress of [undefined, { runner: true, bot: false, ran: false }]) {
+      const text = agentPrompt("acme", "https://lw.test", progress);
+      expect(text).not.toContain("webhook URL and secret");
+      expect(text).toContain("loopway inbox update <inbox> --secret");
+    }
+  });
+
   it("keeps the full prompt while no runner is online", () => {
     const progress = { runner: false, bot: false, ran: false };
     expect(agentPrompt("acme", "https://lw.test", progress)).toBe(agentPrompt("acme", "https://lw.test"));
