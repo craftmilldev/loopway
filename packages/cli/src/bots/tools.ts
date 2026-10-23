@@ -1,6 +1,7 @@
 import { ApiError, type Thread, type ThreadPatch } from "../client.js";
 import type { McpTool } from "../mcp.js";
 import { noopMetrics, type Metrics } from "../metrics.js";
+import { CLI_VERSION } from "../version.js";
 
 /** What the tools do to a session's thread: the dispatcher answers with its runner's lease token. */
 export interface ThreadApi {
@@ -9,8 +10,14 @@ export interface ThreadApi {
 }
 
 /** The MCP tools each session gets for talking back to the dispatcher. */
-export function sessionTools(api: ThreadApi, metrics: Metrics = noopMetrics): McpTool[] {
-  return [
+export function sessionTools(
+  api: ThreadApi,
+  metrics: Metrics = noopMetrics,
+  /** Called when the server turns this CLI away (`cli_outdated`) on a tool's request. */
+  onOutdated: () => void = () => {},
+): McpTool[] {
+  let seen = false;
+  const tools: McpTool[] = [
     {
       name: "link",
       description:
@@ -127,4 +134,24 @@ export function sessionTools(api: ThreadApi, metrics: Metrics = noopMetrics): Mc
       },
     },
   ];
+  // A runner too old for the server can't serve its sessions: say so in a line they can act on, and note it for the runner.
+  return tools.map((tool) => ({
+    ...tool,
+    call: async (sessionId, args) => {
+      try {
+        return await tool.call(sessionId, args);
+      } catch (err) {
+        if (!(err instanceof ApiError && err.code === "cli_outdated")) throw err;
+        onOutdated();
+        if (!seen) {
+          seen = true;
+          await metrics.capture("cli_outdated_seen", { where: "mcp" });
+        }
+        throw new Error(
+          `This runner's loopway ${CLI_VERSION} is too old for the server: ask its owner to run \`loopway update\`.`,
+          { cause: err },
+        );
+      }
+    },
+  }));
 }

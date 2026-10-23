@@ -1247,7 +1247,7 @@ describe("threads", () => {
     const polling = pollUntilUpdate(ctxOf(out), d, 1, async () => {
       if (checks++ === 0) await send(inbox, "issue_comment", comment(1));
       return "9.9.9";
-    }).then((v) => (version = v));
+    }).then((v) => (version = v as string));
     await new Promise((r) => setTimeout(r, 1500));
     // Found the release, but a session is still running, and the new comment isn't read or delivered.
     expect(checks).toBeGreaterThan(0);
@@ -1269,6 +1269,7 @@ describe("threads", () => {
       const d = {
         tick: async () => {},
         drain: () => {},
+        takeOutdated: () => false,
         busy: false,
         slotFreed: async () => {},
         idleMs: () => idle[Math.min(i, idle.length - 1)]!,
@@ -1288,12 +1289,56 @@ describe("threads", () => {
     const { d, out } = await setup(3);
     const forced: (boolean | undefined)[] = [];
     vi.spyOn(d, "tick").mockRejectedValue(new ApiError(426, "cli_outdated", "update the CLI"));
-    const polling = pollUntilUpdate(ctxOf(out), d, 1, async (_, opts) => {
-      forced.push(opts?.force);
-      return forced.length >= 3 ? "9.9.9" : undefined;
-    });
+    const polling = pollUntilUpdate(
+      ctxOf(out),
+      d,
+      1,
+      async (_, opts) => {
+        forced.push(opts?.force);
+        return forced.length >= 3 ? "9.9.9" : undefined;
+      },
+      async () => undefined,
+    );
     expect(await polling).toBe("9.9.9");
     expect(forced).toEqual([true, false, false]);
+  });
+
+  it("stops after a 426 it can't update past: says why once, drains, and returns the notice", async () => {
+    const { d, out } = await setup(3);
+    const events: { e: string; p?: Record<string, unknown> }[] = [];
+    const ctx = {
+      ...ctxOf(out),
+      metrics: { capture: async (e: string, p?: Record<string, unknown>) => void events.push({ e, p }) },
+    } as Context;
+    const tick = vi
+      .spyOn(d, "tick")
+      .mockRejectedValue(new ApiError(426, "cli_outdated", "too old; 9.9.9 or newer is needed."));
+    const drain = vi.spyOn(d, "drain");
+    const result = await pollUntilUpdate(
+      ctx,
+      d,
+      1,
+      async () => undefined,
+      async () => "auto_update_off",
+    );
+    expect(result).toMatchObject({ notice: expect.stringContaining("loopway update") });
+    expect((result as { notice: string }).notice).toContain("9.9.9 or newer is needed");
+    expect(drain).toHaveBeenCalledOnce();
+    expect(tick).toHaveBeenCalledOnce();
+    expect(out.filter((l) => l.startsWith("error:"))).toEqual(out.filter((l) => l.startsWith("error:")).slice(0, 1));
+    expect(events).toEqual([{ e: "cli_outdated_seen", p: { where: "bots_run", reason: "auto_update_off" } }]);
+  });
+
+  it("looks for an update when a session's tool call was turned away", async () => {
+    const { d, out } = await setup(3);
+    d.markOutdated();
+    const forced: (boolean | undefined)[] = [];
+    const version = await pollUntilUpdate(ctxOf(out), d, 1, async (_, opts) => {
+      forced.push(opts?.force);
+      return "9.9.9";
+    });
+    expect(version).toBe("9.9.9");
+    expect(forced).toEqual([true]);
   });
 
   it("routes messages by issue/PR, batches while busy, follows Closes #N, and ends when the session says so", async () => {

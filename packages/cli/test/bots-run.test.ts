@@ -15,7 +15,13 @@ vi.mock("../src/bots/runner.js", () => ({
   ensureRunner: async () => ({ id: "r1", org_id: "o1", org: "acme" }),
   savedRunnerOrg: async () => undefined,
 }));
-vi.mock("../src/update.js", () => ({ availableUpdate: async () => undefined, applyUpdate: async () => {} }));
+vi.mock("../src/update.js", () => ({
+  availableUpdate: async () => undefined,
+  applyUpdate: async () => {},
+  whyNoUpdate: async () => undefined,
+  outdatedNotice: () => "",
+  minimumFrom: () => undefined,
+}));
 vi.mock("../src/context.js", async (orig) => ({
   ...(await orig<typeof import("../src/context.js")>()),
   authedClient: async () => ({ listBots: async () => [] }),
@@ -28,6 +34,7 @@ const dispatcher = () => ({
   tick: async () => {},
   close: async () => {},
   drain: () => {},
+  takeOutdated: () => false,
   busy: false,
   idleMs: () => 0,
   slotFreed: () => new Promise<void>(() => {}),

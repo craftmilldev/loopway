@@ -11,8 +11,11 @@ import {
   isNewer,
   reexec,
   releaseVersion,
+  outdatedNotice,
+  updateAfterOutdated,
   updateCommand,
   updatesEnabled,
+  whyNoUpdate,
   type UpdateDeps,
 } from "../src/update.js";
 import { CLI_VERSION } from "../src/version.js";
@@ -265,5 +268,42 @@ describe("reexec", () => {
       exit.mockRestore();
       process.argv = argv;
     }
+  });
+});
+
+describe("a CLI the server turned away", () => {
+  const why = async (opts: Parameters<typeof setup>[0], deps: Partial<UpdateDeps> = {}) => {
+    const t = setup(opts);
+    await rm(join(dir, "update-check.json"), { force: true });
+    return whyNoUpdate(t.ctx, { ...t.deps, ...deps });
+  };
+
+  it("says why it can't update, for each reason", async () => {
+    expect(await why({ latest: NEWER, env: { LOOPWAY_UPDATED: "1" } })).toBe("already_updated");
+    expect(await why({ latest: NEWER, env: { LOOPWAY_UPDATED: "failed" } })).toBe("update_failed_before");
+    expect(await why({ latest: NEWER, env: { LOOPWAY_NO_UPDATE: "1" } })).toBe("auto_update_off");
+    expect(await why({ latest: NEWER }, { installed: false })).toBe("not_installed");
+    expect(await why({})).toBe("lookup_failed");
+    expect(await why({ latest: CLI_VERSION })).toBe("no_newer_release");
+    expect(await why({ latest: NEWER })).toBeUndefined();
+  });
+
+  it("records the reason and returns the fix instead of updating", async () => {
+    const { ctx, deps, installed } = setup({ latest: NEWER, env: { LOOPWAY_NO_UPDATE: "1" } });
+    const events: unknown[][] = [];
+    ctx.metrics = { capture: async (...a) => void events.push(a) };
+    const notice = await updateAfterOutdated(ctx, "too old; 9.9.9 or newer is needed.", deps);
+    expect(notice).toContain("auto-update is off");
+    expect(notice).toContain("`loopway update`");
+    expect(notice).toContain("9.9.9 or newer is needed");
+    expect(events).toEqual([["cli_outdated_seen", { where: "command", reason: "auto_update_off" }]]);
+    expect(installed).toEqual([]);
+    expect(process.exitCode).toBe(1);
+    process.exitCode = undefined;
+  });
+
+  it("names the right fix for a checkout and for a failed update", () => {
+    expect(outdatedNotice("not_installed")).toContain("npm run update");
+    expect(outdatedNotice("update_failed_before")).toContain("install.sh");
   });
 });

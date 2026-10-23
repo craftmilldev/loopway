@@ -26,7 +26,13 @@ try {
   const kind = err instanceof ApiError ? `api:${err.code}` : err instanceof Error ? err.constructor.name : "unknown";
   await metrics.capture("cli_error", { kind });
   // The server turned this version away: update now and run the command again on the new one.
-  if (err instanceof ApiError && err.code === "cli_outdated") await updateAfterOutdated(ctx);
+  if (err instanceof ApiError && err.code === "cli_outdated") {
+    const notice = await updateAfterOutdated(ctx, err.message);
+    if (notice) {
+      console.error(red(notice));
+      process.exit(1);
+    }
+  }
   if (err instanceof CancelledError) process.exit(130);
   if (err instanceof ApiError) {
     console.error(
