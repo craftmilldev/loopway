@@ -49,6 +49,7 @@ export class SourceRegistry {
     return [...this.byType.values()].map((s) => ({
       type: s.type,
       label: s.label,
+      type_prefix: s.typePrefix,
       description: s.description,
       events: s.events,
       secret:

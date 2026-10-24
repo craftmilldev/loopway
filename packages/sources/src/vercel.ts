@@ -78,6 +78,7 @@ const API = "https://api.vercel.com";
 export const vercel = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter<VercelConfig> => ({
   type: "vercel",
   label: "Vercel",
+  typePrefix: "com.vercel.",
   description: "Vercel account/integration webhooks, verified with X-Vercel-Signature.",
   events: [
     "deployment.created",

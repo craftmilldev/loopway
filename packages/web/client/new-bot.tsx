@@ -40,8 +40,10 @@ export function NewBot() {
   const [preset, setPreset] = useState(Object.keys(PRESETS)[0]!);
   const [blankPrompt, setBlankPrompt] = useState("");
   const [blankRules, setBlankRules] = useState<RuleDraft[]>([]);
+  const [blankNote, setBlankNote] = useState("");
   const [name, setName] = useState("");
   const [model, setModel] = useState("sonnet");
+  const sources = lw.useSources();
   const bot = lw.useGet<lw.Bot>(botId ? "/bots/" + encodeURIComponent(botId) : null, ready);
 
   // A reload or a link with `?bot=` lands on the first step that still has something to do.
@@ -102,6 +104,10 @@ export function NewBot() {
               setPrompt={setBlankPrompt}
               rules={blankRules}
               setRules={setBlankRules}
+              note={blankNote}
+              setNote={setBlankNote}
+              inboxes={inboxes.data.filter((i) => picked.has(i.id))}
+              sources={sources?.data ?? null}
               back={() => setStep(1)}
               next={() => setStep(3)}
             />
@@ -247,6 +253,10 @@ function Job({
   setPrompt,
   rules,
   setRules,
+  note,
+  setNote,
+  inboxes,
+  sources,
   back,
   next,
 }: {
@@ -256,11 +266,40 @@ function Job({
   setPrompt: (p: string) => void;
   rules: RuleDraft[];
   setRules: (r: RuleDraft[]) => void;
+  note: string;
+  setNote: (n: string) => void;
+  /** The inboxes picked in step 1. */
+  inboxes: Inbox[];
+  sources: lw.Source[] | null;
   back: () => void;
   next: () => void;
 }) {
   const [editing, setEditing] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Blank starts with one rule that sends every message from the picked inboxes to the bot. Filled once, and only
+  // while there are no rules, so a user's own edits (or removal of it) stand.
+  const [prefilled, setPrefilled] = useState(false);
+  useEffect(() => {
+    if (preset !== BLANK || prefilled || !sources || rules.length) return;
+    const types = new Set<string>();
+    for (const i of inboxes) {
+      const prefix = sources.find((s) => s.type === i.source_type)?.type_prefix ?? "";
+      for (const t of i.config?.events?.filter((e) => e !== "*") ?? [prefix + "*"]) types.add(t);
+    }
+    setPrefilled(true);
+    setRules([{ types: [...types].join("\n"), subject: "", related: "", authorKind: "", action: "'attach'" }]);
+    setNote(`Starts with one rule: every message from "${inboxes.map((i) => i.name).join('", "')}" goes to the bot.`);
+    track("new_bot_blank_rule_prefilled", {
+      sources: [...new Set(inboxes.map((i) => i.source_type))].sort().join(","),
+      rule_count: 1,
+    });
+  }, [preset, prefilled, sources, rules.length, inboxes, setRules, setNote]);
+
+  function pick(p: string) {
+    if (p === BLANK) track("new_bot_blank_picked");
+    setPreset(p);
+  }
 
   function submit() {
     if (preset === BLANK) {
@@ -285,7 +324,7 @@ function Job({
         <legend className="lbl">Starting point</legend>
         {Object.entries(PRESETS).map(([k, p]) => (
           <label key={k} className="opt">
-            <input type="radio" name="preset" checked={preset === k} onChange={() => setPreset(k)} />
+            <input type="radio" name="preset" checked={preset === k} onChange={() => pick(k)} />
             <span>
               {p.label}
               <span className="muted"> {p.description}</span>
@@ -293,7 +332,7 @@ function Job({
           </label>
         ))}
         <label className="opt">
-          <input type="radio" name="preset" checked={preset === BLANK} onChange={() => setPreset(BLANK)} />
+          <input type="radio" name="preset" checked={preset === BLANK} onChange={() => pick(BLANK)} />
           <span>
             Blank
             <span className="muted"> Write the prompt and the routing rules yourself.</span>
@@ -308,6 +347,8 @@ function Job({
           setRules={setRules}
           editing={editing}
           setEditing={setEditing}
+          from="new_bot"
+          note={note}
         />
       )}
       {error && preset === BLANK && (

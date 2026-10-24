@@ -23,7 +23,14 @@ const EXPRESSIONS = [
   { key: "action", label: "Action", hint: "CEL, required: 'attach' or 'skip'." },
 ] as const;
 
-const blankRule = (): RuleDraft => ({ types: "", subject: "", related: "", authorKind: "", action: "" });
+/** The two actions with a radio of their own; any other action is an expression. */
+const ACTIONS = [
+  { choice: "attach", label: "Attach", value: "'attach'" },
+  { choice: "skip", label: "Skip", value: "'skip'" },
+] as const;
+
+/** A new rule sends its matching messages to the bot. */
+const blankRule = (): RuleDraft => ({ types: "", subject: "", related: "", authorKind: "", action: "'attach'" });
 
 export const toDrafts = (rules: lw.BotRule[] | null): RuleDraft[] =>
   (rules ?? []).map((r) => ({
@@ -87,7 +94,11 @@ export function problem(prompt: string, rules: lw.BotRule[]): { reason: string; 
   const empty = rules.findIndex((r) => !r.types.length);
   if (empty >= 0) return { reason: "rule_missing_types", message: `Rule ${empty + 1} needs at least one event type.` };
   const noAction = rules.findIndex((r) => !r.action);
-  if (noAction >= 0) return { reason: "rule_missing_action", message: `Rule ${noAction + 1} needs an action.` };
+  if (noAction >= 0)
+    return {
+      reason: "rule_missing_action",
+      message: `Rule ${noAction + 1} needs an action: choose Attach to send matching messages to the bot.`,
+    };
   return null;
 }
 
@@ -112,6 +123,8 @@ export function PromptEditor({
   setRules,
   editing,
   setEditing,
+  from,
+  note,
 }: {
   prompt: string;
   setPrompt: (p: string) => void;
@@ -119,6 +132,10 @@ export function PromptEditor({
   setRules: (r: RuleDraft[]) => void;
   editing: number | null;
   setEditing: (i: number | null) => void;
+  /** Where the editor is, for metrics. */
+  from: "new_bot" | "prompt_tab";
+  /** A line under the rules, e.g. on where the first one came from. */
+  note?: string;
 }) {
   const parsed = fromDrafts(rules);
 
@@ -159,6 +176,7 @@ export function PromptEditor({
           spellCheck={false}
           maxLength={100_000}
           value={prompt}
+          placeholder="What should this bot do with each message?"
           onChange={(e) => setPrompt(e.target.value)}
         />
       </div>
@@ -173,12 +191,13 @@ export function PromptEditor({
         The first rule whose event types match a message applies. The expressions are checked when you save.
       </p>
       {rules.length === 0 && <p className="muted">No rules.</p>}
+      {rules.length > 0 && note && <p className="hint">{note}</p>}
       {rules.map((rule, i) => (
         <div className="rule" key={i}>
           <span className="rule-n">{i + 1}</span>
           <div className="rule-body">
             {editing === i ? (
-              <RuleForm index={i} rule={rule} onChange={(patch) => setRule(i, patch)} />
+              <RuleForm index={i} rule={rule} from={from} onChange={(patch) => setRule(i, patch)} />
             ) : (
               <RuleBlock rule={parsed[i]!} />
             )}
@@ -337,6 +356,7 @@ export function PromptTab({
             setRules={setRules}
             editing={editing}
             setEditing={setEditing}
+            from="prompt_tab"
           />
         </div>
         <aside className="ov-side">
@@ -428,12 +448,40 @@ function RuleBlock({ rule }: { rule: lw.BotRule }) {
 function RuleForm({
   index,
   rule,
+  from,
   onChange,
 }: {
   index: number;
   rule: RuleDraft;
+  from: "new_bot" | "prompt_tab";
   onChange: (patch: Partial<RuleDraft>) => void;
 }) {
+  // Set by the Expression radio, so typing `'attach'` into the box doesn't swap it for the Attach radio mid-edit.
+  const [expression, setExpression] = useState(!ACTIONS.some((a) => a.value === rule.action.trim()));
+  const isExpression = expression || !ACTIONS.some((a) => a.value === rule.action.trim());
+
+  function choose(choice: "attach" | "skip" | "expression", action: string) {
+    track("bot_rule_action_chosen", { choice, from });
+    setExpression(choice === "expression");
+    onChange({ action });
+  }
+
+  const field = ({ key, label, hint }: (typeof EXPRESSIONS)[number]) => (
+    <div className="field" key={key}>
+      <label htmlFor={`rule-${index}-${key}`}>{label}</label>
+      <div className="input-wrap">
+        <input
+          id={`rule-${index}-${key}`}
+          spellCheck={false}
+          maxLength={2000}
+          value={rule[key]}
+          onChange={(e) => onChange({ [key]: e.target.value })}
+        />
+      </div>
+      <p className="hint">{hint}</p>
+    </div>
+  );
+
   return (
     <>
       <div className="field">
@@ -448,21 +496,34 @@ function RuleForm({
         />
         <p className="hint">One glob per line; * is any run of characters.</p>
       </div>
-      {EXPRESSIONS.map(({ key, label, hint }) => (
-        <div className="field" key={key}>
-          <label htmlFor={`rule-${index}-${key}`}>{label}</label>
-          <div className="input-wrap">
+      <fieldset className="options">
+        <legend className="lbl">Action</legend>
+        {ACTIONS.map(({ choice, label, value }) => (
+          <label key={choice} className="opt">
             <input
-              id={`rule-${index}-${key}`}
-              spellCheck={false}
-              maxLength={2000}
-              value={rule[key]}
-              onChange={(e) => onChange({ [key]: e.target.value })}
+              type="radio"
+              name={`rule-${index}-action`}
+              checked={!isExpression && rule.action.trim() === value}
+              onChange={() => choose(choice, value)}
             />
-          </div>
-          <p className="hint">{hint}</p>
-        </div>
-      ))}
+            <span>{label}</span>
+          </label>
+        ))}
+        <label className="opt">
+          <input
+            type="radio"
+            name={`rule-${index}-action`}
+            checked={isExpression}
+            onChange={() => choose("expression", "")}
+          />
+          <span>Expression…</span>
+        </label>
+      </fieldset>
+      {isExpression && field(EXPRESSIONS[3])}
+      <details>
+        <summary>Thread grouping (optional)</summary>
+        {EXPRESSIONS.slice(0, 3).map(field)}
+      </details>
     </>
   );
 }

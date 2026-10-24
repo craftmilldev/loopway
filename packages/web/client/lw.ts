@@ -96,6 +96,7 @@ export function logout() {
 export interface Source {
   type: string;
   label: string;
+  type_prefix: string;
   description: string;
   events: string[];
   secret: { from: "loopway"; min_length: number } | { from: "sender" } | { from: "none" };

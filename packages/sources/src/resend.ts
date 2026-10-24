@@ -65,6 +65,7 @@ const configInput = z
 export const resend = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter<ResendConfig> => ({
   type: "resend",
   label: "Resend",
+  typePrefix: "com.resend.",
   description: "Resend email, contact and domain webhooks, verified with the svix-signature header.",
   events: RESEND_EVENTS,
   secret: { from: "sender" },

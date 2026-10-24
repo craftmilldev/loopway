@@ -83,6 +83,7 @@ export const loopway = ({
 }: SourceDeps): SourceAdapter<LoopwayConfig> => ({
   type: "loopway",
   label: "Loopway",
+  typePrefix: "",
   description: "Messages from your own bots and backends, checked against the inbox's JSON Schema.",
   events: [],
   secret: { from: "loopway", minLength: MIN_SECRET },

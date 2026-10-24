@@ -46,6 +46,7 @@ const configInput = z
 export const granola = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter<GranolaConfig> => ({
   type: "granola",
   label: "Granola",
+  typePrefix: "ai.granola.",
   description: "Granola note webhooks (Business/Enterprise plans), verified with the webhook-signature header.",
   events: GRANOLA_EVENTS,
   secret: { from: "sender" },

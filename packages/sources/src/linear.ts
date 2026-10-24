@@ -52,6 +52,7 @@ const ACTIONS = ["create", "update", "remove"];
 export const linear = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter<LinearConfig> => ({
   type: "linear",
   label: "Linear",
+  typePrefix: "com.linear.",
   description: "Linear webhooks, verified with Linear-Signature.",
   events: RESOURCES.flatMap((r) => ACTIONS.map((a) => `${r}.${a}`)),
   // Linear makes the secret when the webhook is added, so it's set afterwards.
