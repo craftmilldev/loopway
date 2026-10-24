@@ -25,6 +25,19 @@ function stubFetch() {
       }
       if (path === "/me") return json({ id: "u1", email: null, name: "Me" });
       if (path === "/orgs") return json({ data: orgs });
+      if (path === "/sources")
+        return json({
+          data: [
+            {
+              type: "github",
+              label: "GitHub",
+              type_prefix: "com.github.",
+              events: [],
+              secret: { from: "loopway", min_length: 16 },
+            },
+          ],
+          can_request: false,
+        });
       if (path === "/inboxes") return json({ data: [inbox] });
       if (path === "/bots/b1") return json(bot);
       if (path === "/bots/b1/threads") return json({ data: threads });
@@ -97,24 +110,18 @@ describe("New bot flow", () => {
     expect(await screen.findByText("Waiting for the first thread…")).toBeTruthy();
   });
 
-  it("makes you write a prompt and a rule before a blank bot can be created", async () => {
+  it("starts a blank bot with one rule that attaches every message, so only the prompt is left to write", async () => {
     at("");
     render(<NewBot />);
     fireEvent.click(await screen.findByLabelText(/github/));
     fireEvent.click(screen.getByText("Continue"));
     fireEvent.click(await screen.findByRole("radio", { name: /^Blank/ }));
 
+    expect(await screen.findByText('Starts with one rule: every message from "github" goes to the bot.')).toBeTruthy();
+    expect(screen.getByText("com.github.*")).toBeTruthy();
     fireEvent.click(screen.getByText("Continue"));
     expect(await screen.findByText("Write a prompt.")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Triage issues." } });
-    fireEvent.click(screen.getByText("Continue"));
-    expect(await screen.findByText("Add at least one rule.")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Add rule" }));
-    fireEvent.change(screen.getByLabelText("Rule 1 · event types"), { target: { value: "com.github.*" } });
-    fireEvent.click(screen.getByText("Continue"));
-    expect(await screen.findByText("Rule 1 needs an action.")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Action"), { target: { value: "'skip'" } });
     fireEvent.click(screen.getByText("Continue"));
 
     fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "dev" } });
@@ -122,8 +129,41 @@ describe("New bot flow", () => {
     await screen.findByText("Listening for a runner to take the lease…");
     expect(posts[0]!.body).toMatchObject({
       prompt: "Triage issues.",
-      rules: [{ types: ["com.github.*"], action: "'skip'" }],
+      rules: [{ types: ["com.github.*"], action: "'attach'" }],
     });
+  });
+
+  it("doesn't bring the starting rule back once it is removed and the user returns to the step", async () => {
+    at("");
+    render(<NewBot />);
+    fireEvent.click(await screen.findByLabelText(/github/));
+    fireEvent.click(screen.getByText("Continue"));
+    fireEvent.click(await screen.findByRole("radio", { name: /^Blank/ }));
+    await screen.findByText("com.github.*");
+    fireEvent.click(screen.getByRole("button", { name: /Remove.*rule 1/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /^GitHub threads/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /^Blank/ }));
+    expect(screen.getByText("No rules.")).toBeTruthy();
+    fireEvent.click(screen.getByText("Continue"));
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "x" } });
+    fireEvent.click(screen.getByText("Continue"));
+    expect(await screen.findByText("Add at least one rule.")).toBeTruthy();
+  });
+
+  it("tells a new rule without an action what to choose", async () => {
+    at("");
+    render(<NewBot />);
+    fireEvent.click(await screen.findByLabelText(/github/));
+    fireEvent.click(screen.getByText("Continue"));
+    fireEvent.click(await screen.findByRole("radio", { name: /^Blank/ }));
+    await screen.findByText("com.github.*");
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "x" } });
+    fireEvent.click(screen.getByRole("button", { name: /Edit.*rule 1/ }));
+    fireEvent.click(screen.getByRole("radio", { name: "Expression…" }));
+    fireEvent.click(screen.getByText("Continue"));
+    expect(
+      await screen.findByText("Rule 1 needs an action: choose Attach to send matching messages to the bot."),
+    ).toBeTruthy();
   });
 
   it("uses the org in the URL, with no org picker, and lists only its inboxes", async () => {

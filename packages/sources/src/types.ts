@@ -74,6 +74,8 @@ export interface SourceAdapter<Config = unknown> {
   type: string;
   /** Display name, e.g. "GitHub". */
   label: string;
+  /** What every CloudEvent type this source makes starts with, e.g. "com.github."; empty when the sender picks the types. */
+  typePrefix: string;
   description: string;
   /** Common event names, offered as choices when creating an inbox. Others can still be typed in. */
   events: string[];

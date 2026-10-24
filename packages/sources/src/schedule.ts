@@ -69,6 +69,7 @@ export function windowStart(every: Every, now: Date): Date {
 export const schedule = ({ makeCloudEvent }: SourceDeps): SourceAdapter<ScheduleConfig> => ({
   type: "schedule",
   label: "Schedule",
+  typePrefix: "dev.craftmill.loopway.schedule.",
   description: "Messages with text you set, sent every hour or once a day at an hour you pick (UTC).",
   events: [],
   secret: { from: "none" },

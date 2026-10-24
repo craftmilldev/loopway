@@ -77,7 +77,9 @@ describe("helpers", () => {
     expect(problem("p", [rule, { types: [], action: "'attach'" }])?.message).toBe(
       "Rule 2 needs at least one event type.",
     );
-    expect(problem("p", [rule, { types: ["x"], action: "" }])?.message).toBe("Rule 2 needs an action.");
+    expect(problem("p", [rule, { types: ["x"], action: "" }])?.message).toBe(
+      "Rule 2 needs an action: choose Attach to send matching messages to the bot.",
+    );
     expect(problem("p", [rule])).toBeNull();
   });
 
@@ -176,7 +178,7 @@ describe("Prompt and rules tab", () => {
     type(screen.getByLabelText("Subject"), "data.other");
     fireEvent.click(screen.getByRole("button", { name: "Add rule" }));
     type(screen.getByLabelText("Rule 2 · event types"), "second.*");
-    type(screen.getAllByLabelText("Action")[0]!, "'skip'");
+    fireEvent.click(screen.getByRole("radio", { name: "Skip" }));
     fireEvent.click(screen.getByRole("button", { name: "Move rule 2 up" }));
     fireEvent.click(screen.getByRole("button", { name: "Save as version 3" }));
     await waitFor(() => expect(posts).toHaveLength(1));
@@ -184,6 +186,29 @@ describe("Prompt and rules tab", () => {
       { types: ["second.*"], action: "'skip'" },
       { ...rule, subject: "data.other" },
     ]);
+  });
+
+  it("shows the action as a choice and keeps any other expression as text", async () => {
+    render(<Bot id="b1" view="prompt" />);
+    await editor();
+    fireEvent.click(screen.getByRole("button", { name: /Edit.*rule 1/ }));
+    const checked = () =>
+      screen
+        .getAllByRole("radio")
+        .filter((r) => (r as HTMLInputElement).checked)
+        .map((r) => r.parentElement!.textContent);
+    expect(checked()).toEqual(["Attach"]);
+    expect(screen.queryByLabelText("Action")).toBeNull();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Skip" }));
+    expect(checked()).toEqual(["Skip"]);
+    fireEvent.click(screen.getByRole("radio", { name: "Expression…" }));
+    expect(checked()).toEqual(["Expression…"]);
+    type(screen.getByLabelText("Action"), "data.draft ? 'skip' : 'attach'");
+    expect(checked()).toEqual(["Expression…"]);
+    fireEvent.click(screen.getByRole("radio", { name: "Attach" }));
+    expect(checked()).toEqual(["Attach"]);
+    expect(screen.queryByLabelText("Action")).toBeNull();
   });
 
   it("removes a rule", async () => {

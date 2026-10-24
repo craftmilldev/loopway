@@ -130,6 +130,7 @@ const RULES: Record<string, Rule> = {
 export const github = ({ newSecret, safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter<GithubConfig> => ({
   type: "github",
   label: "GitHub",
+  typePrefix: "com.github.",
   description: "GitHub repository/org/app webhooks, verified with X-Hub-Signature-256.",
   events: [
     "push",
