@@ -456,8 +456,13 @@ function RuleForm({
   from: "new_bot" | "prompt_tab";
   onChange: (patch: Partial<RuleDraft>) => void;
 }) {
+  // Set by the Expression radio, so typing `'attach'` into the box doesn't swap it for the Attach radio mid-edit.
+  const [expression, setExpression] = useState(!ACTIONS.some((a) => a.value === rule.action.trim()));
+  const isExpression = expression || !ACTIONS.some((a) => a.value === rule.action.trim());
+
   function choose(choice: "attach" | "skip" | "expression", action: string) {
     track("bot_rule_action_chosen", { choice, from });
+    setExpression(choice === "expression");
     onChange({ action });
   }
 
@@ -498,7 +503,7 @@ function RuleForm({
             <input
               type="radio"
               name={`rule-${index}-action`}
-              checked={rule.action.trim() === value}
+              checked={!isExpression && rule.action.trim() === value}
               onChange={() => choose(choice, value)}
             />
             <span>{label}</span>
@@ -508,13 +513,13 @@ function RuleForm({
           <input
             type="radio"
             name={`rule-${index}-action`}
-            checked={!ACTIONS.some((a) => a.value === rule.action.trim())}
+            checked={isExpression}
             onChange={() => choose("expression", "")}
           />
           <span>Expression…</span>
         </label>
       </fieldset>
-      {!ACTIONS.some((a) => a.value === rule.action.trim()) && field(EXPRESSIONS[3])}
+      {isExpression && field(EXPRESSIONS[3])}
       <details>
         <summary>Thread grouping (optional)</summary>
         {EXPRESSIONS.slice(0, 3).map(field)}
