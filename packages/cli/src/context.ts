@@ -15,7 +15,7 @@ export interface Context {
   /** Writes one line to stderr: notes about what a command is doing that shouldn't end up in piped output. */
   err?: (text: string) => void;
   fetch?: typeof fetch;
-  /** Runs one `loopway bots run` agent turn; defaults to headless `claude -p`. */
+  /** Runs one `loopway bots run` agent turn; defaults to `runHarness`, which starts the bot's harness. */
   runAgent?: (run: AgentRun) => Promise<RunOutcome>;
   /** Product metrics; records nothing when unset. */
   metrics?: Metrics;

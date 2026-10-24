@@ -382,7 +382,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
 
   bots
     .command("update")
-    .description("rename a bot, change its model, or replace its inboxes")
+    .description("rename a bot, change its model or harness, or replace its inboxes")
     .argument("<bot>", "bot id or name")
     .addOption(botOrgOpt())
     .option("--name <name>", "new name")
@@ -487,7 +487,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
   bots
     .command("run")
     .description(
-      "run your bots: read each one's messages and hand them to a Claude Code session per issue/PR thread, starting one if none matches",
+      "run your bots: read each one's messages and hand each to a session in the bot's harness, one per thread as the bot's rules group them, starting one if none matches",
     )
     .option(
       "--max <n>",

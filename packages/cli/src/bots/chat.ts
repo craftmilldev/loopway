@@ -239,7 +239,7 @@ export class ManagerChat implements ChatBackend {
         tell = `The user approved it and it ran: ${proposal.command}\nOutput:\n${shown}\nTell the user how it went.`;
       } else {
         this.opts.capture?.("manager_change_failed", { kind, target, reason: outcome.reason });
-        // An approved command that failed changed nothing the log should count.
+        // Recorded with `ok: false`: an approved command that failed changed nothing.
         await this.record({ kind, target, name: proposal.name, ok: false, at: new Date().toISOString() });
         report = { from: "manager", text: `failed: ${proposal.command}\n${shown}`, kind: "error" };
         tell = `The user approved it but it failed: ${proposal.command}\nOutput:\n${shown}\nTell the user what went wrong.`;

@@ -98,7 +98,7 @@ export interface Bot {
   created_by: string;
   org_id: string;
   name: string;
-  /** The model its sessions run on, as `claude --model` takes it. */
+  /** The model its sessions run on, as the bot's harness takes it. */
   model: string;
   /** The coding-agent CLI its sessions run in: `claude`, `cursor`, `codex`, `hermes` or `script`. */
   harness: string;
@@ -139,7 +139,7 @@ export interface ThreadMessage {
 }
 
 export interface Thread {
-  /** The Claude session id. */
+  /** The agent session's id. */
   id: string;
   bot_id: string;
   /** The runner that assigned it for the bot (`runner:<id>`), or `bot:<uuid>` if the lease named no runner. Informational. */
@@ -438,8 +438,12 @@ export class LoopwayClient {
   }
 
   // ---------- threads ----------
+  // `assign` needs the bot's live lease token; thread writes need the live lease token of the runner that owns the thread.
 
-  /** `assign` needs the bot's live lease token; thread writes need the live lease token of the runner that owns the thread. */
+  /**
+   * The bot's threads by `status`; `pending` is the active ones plus any ended one with a message still waiting
+   * or in flight. `titles` (default true) asks the server to work out each thread's title.
+   */
   async listThreads(botId: string, status: "active" | "ended" | "all" | "pending" = "active", titles = true) {
     return (
       await this.request<{ data: Thread[] }>("GET", `/bots/${enc(botId)}/threads?status=${status}&titles=${titles}`)
@@ -506,7 +510,7 @@ export class LoopwayClient {
   }
 
   /**
-   * Moves a subject (`owner/repo#number`) from one thread of the bot to another, with its waiting messages, and
+   * Moves a subject from one thread of the bot to another, with its waiting messages, and
    * resumes the target if it ended. Needs no lease. 404 if the subject isn't on `fromThreadId` or a thread isn't the bot's.
    */
   moveSubject(botId: string, subject: string, fromThreadId: string, toThreadId: string) {

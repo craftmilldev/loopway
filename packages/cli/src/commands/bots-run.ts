@@ -44,7 +44,7 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
   const chatOn = config.manager_enabled && opts.tui !== false && ctx.interactive;
   if (!bots.length && !chatOn) {
     ctx.out(
-      `No bots to run. Create one with \`loopway bots create --name <name> --preset <preset> --model <model> --inbox <inbox>\`.`,
+      `No bots to run. Create one with \`loopway bots create --name <name> --preset <preset> --model <model> --harness <harness> --inbox <inbox>\`.`,
     );
     return;
   }
@@ -182,7 +182,7 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
   if (notice)
     return void (ctx.out(`${notice}\nStopped; running sessions were left to finish.`), (process.exitCode = 1));
   // Quitting stops everything, as Ctrl-C does without the TUI: interrupt the whole process group so
-  // the claude sessions this dispatcher started stop with it.
+  // the sessions this dispatcher started stop with it.
   process.kill(0, "SIGINT");
 }
 
