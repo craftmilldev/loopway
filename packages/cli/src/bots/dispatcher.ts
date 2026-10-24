@@ -28,7 +28,7 @@ export interface ThreadsOptions {
   ttl?: number;
   /**
    * false runs without bot leases (see setLeaseBots): the runner only delivers to the threads it already owns.
-   * True unless this is false.
+   * Default true.
    */
   leaseBots?: boolean;
 }
@@ -43,10 +43,6 @@ interface StartOptions extends ThreadsOptions {
   workdirs?: Map<string, string>;
 }
 
-/**
- * The lease TTL is short on purpose: the bots of a runner that died without releasing them (killed,
- * crashed, power lost) come free in well under a minute instead of blocking the next runner.
- */
 /** API-error retries per session before giving up, and the first backoff, which doubles each time. */
 export const API_ERROR_RETRIES = 3;
 export const API_ERROR_BACKOFF_MS = 60_000;
@@ -58,6 +54,11 @@ export function isNetworkError(error: string): boolean {
   return /Can't reach the API server|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH/.test(error);
 }
 
+/**
+ * The lease TTL is short on purpose: the bots of a runner that died without releasing them (killed, crashed,
+ * power lost) come free soon instead of blocking the next runner. `bots run` raises it to at least three
+ * minutes (`defaultTtl`).
+ */
 export const DEFAULTS = { max: 3, interval: 5, ttl: 30 };
 
 /** The longest the runner waits between polls once nothing has happened for a while. */
@@ -102,12 +103,12 @@ export interface DispatcherState {
 }
 
 /**
- * Runs the bots of this account: hands their messages to Claude Code sessions, one per thread. Threads
+ * Runs the bots of this account: hands their messages to agent sessions in the bot's harness, one per thread. Threads
  * live on the server and belong to the runner that claimed them; this runner only touches its own.
  * Each tick, per bot it holds a lease on:
  *
  * 1. reads the messages after the bot's cursor,
- * 2. routes each one to a thread with the bot's stored rules (see `route` in rules.ts), and hands them to the server
+ * 2. routes each one to a thread with the bot's stored rules (see `route` in @loopway/rules), and hands them to the server
  *    with `assign`, which moves the cursor past them; threads that creates are claimed right away;
  *
  * then starts or resumes, in the background, every thread of this runner that has waiting messages and no run
