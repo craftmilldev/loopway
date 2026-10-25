@@ -14,6 +14,35 @@ import { migrate, openDb, type Db } from "./index.js";
 /** The docker-compose.yml Postgres; CI sets TEST_DATABASE_URL to its service container. */
 const DEFAULT_TEST_DATABASE_URL = "postgres://postgres:postgres@localhost:54329/postgres";
 
+/** Test databases older than this were left by a run that died before drop(); nothing still uses them. */
+const STALE_TEST_DATABASE_AGE = "1 hour";
+
+let swept: Promise<void> | undefined;
+
+/**
+ * Drops the test databases older than STALE_TEST_DATABASE_AGE, once per process. Postgres doesn't keep a
+ * database's creation time, but PG_VERSION is written when it's created and never again. Best effort:
+ * another run may be sweeping too, and a server where we can't read files just keeps its leftovers.
+ */
+function sweepStaleTestDatabases(adminDb: Db): Promise<void> {
+  swept ??= (async () => {
+    try {
+      const stale = await adminDb.query<{ datname: string }>(
+        `SELECT datname FROM pg_database
+         WHERE datname ~ '^loopway_test_[0-9a-f]+$'
+           AND (pg_stat_file('base/' || oid || '/PG_VERSION')).modification < now() - $1::interval`,
+        [STALE_TEST_DATABASE_AGE],
+      );
+      for (const { datname } of stale) {
+        await adminDb.query(`DROP DATABASE IF EXISTS ${datname} WITH (FORCE)`).catch(() => {});
+      }
+    } catch {
+      // Not allowed to read PG_VERSION, or a database vanished mid-query: leave the leftovers.
+    }
+  })();
+  return swept;
+}
+
 /**
  * An empty throwaway database on the test Postgres server: its URL, and drop() to remove it.
  * For tests that need to connect by URL themselves; most want openTestDb().
@@ -23,6 +52,7 @@ export async function createTestDatabase(): Promise<{ url: string; drop(): Promi
   const name = `loopway_test_${randomBytes(6).toString("hex")}`;
   const adminDb = await openDb({ databaseUrl: admin.toString() });
   try {
+    await sweepStaleTestDatabases(adminDb);
     await adminDb.query(`CREATE DATABASE ${name}`);
   } catch (err) {
     await adminDb.close();
