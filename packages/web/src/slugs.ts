@@ -1,12 +1,10 @@
 import { RESERVED_SLUGS } from "./reserved-slugs.js";
 
-/**
- * Org slugs, which are also usernames: a user's personal org has their username as its slug, so both share one
- * namespace. The reserved names are in reserved-slugs.ts.
- */
+// Org slugs, which are also usernames: a user's personal org has their username as its slug, so both share one
+// namespace. The reserved names are in reserved-slugs.ts.
 
-export const SLUG_MIN = 2;
-export const SLUG_MAX = 39;
+const SLUG_MIN = 2;
+const SLUG_MAX = 39;
 
 /** Why a slug can't be used. `taken` isn't something slugProblem can see: it takes the database (see usernameProblem). */
 export type SlugProblem = "too_short" | "too_long" | "invalid_chars" | "edge_hyphen" | "reserved" | "taken";

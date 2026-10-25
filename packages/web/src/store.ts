@@ -61,7 +61,7 @@ export async function createLoginCode(db: Db, email: string): Promise<{ email: s
 }
 
 /** Why a code could not be redeemed: it is wrong or expired, or the email is new and needs a username. */
-export type RedeemResult =
+type RedeemResult =
   | { ok: true; user: User; created: boolean; joined: number }
   | { ok: false; problem: "invalid_code" | "username_required" | SlugProblem };
 
@@ -143,7 +143,7 @@ export async function usernameProblem(db: Q, username: string, userId?: string):
 }
 
 /** A pending membership lapses this long after it was added; adding the email again starts a new one. */
-export const INVITE_TTL_DAYS = 7;
+const INVITE_TTL_DAYS = 7;
 const LIVE_INVITE = `created_at > now() - make_interval(days => ${INVITE_TTL_DAYS})`;
 
 /**
@@ -203,16 +203,6 @@ export async function setUsername(
     if ((err as { code?: string }).code === "23505") return { ok: false, problem: "taken" };
     throw err;
   }
-}
-
-/**
- * The org new things are written into: the user's personal org, which choosing a username makes. Until then there is
- * none, and nothing can be created.
- */
-export async function personalOrgId(db: Q, userId: string): Promise<string> {
-  const [org] = await db.query<{ id: string }>(`SELECT id FROM loopway.orgs WHERE personal_user_id = $1`, [userId]);
-  if (!org) throw new ApiError(403, "username_required", "Choose a username before creating anything");
-  return org.id;
 }
 
 export async function listOrgs(db: Q, userId: string): Promise<Org[]> {
@@ -574,7 +564,7 @@ const BOT_COLS = `
  * Messages that commit out of seq order (two webhooks landing at once) would be skipped by a cursor that had
  * passed them, so bots don't read anything received this recently, nor anything after it.
  */
-export const MESSAGE_HOLDBACK_SECONDS = 5;
+const MESSAGE_HOLDBACK_SECONDS = 5;
 
 // Inbox ids go in as a jsonb array, which both drivers serialize the same way.
 const inboxIds = (param: string) => `(SELECT value::uuid FROM jsonb_array_elements_text(${param}::jsonb))`;
@@ -1016,7 +1006,7 @@ export interface Thread {
   updated_at: Date;
 }
 
-export type ThreadMessageState = "waiting" | "inflight" | "delivered";
+type ThreadMessageState = "waiting" | "inflight" | "delivered";
 
 const threadMessages = (state: ThreadMessageState) => `
   COALESCE((SELECT jsonb_agg(jsonb_build_object('id', m.id, 'inbox_id', m.inbox_id, 'type', m.ce_type, 'subject', tm.subject)
@@ -1268,7 +1258,7 @@ export async function endThread(db: Db, botId: string, id: string): Promise<void
   });
 }
 
-export type ThreadEventKind = "created" | "started" | "ended" | "interrupted" | "limited" | "limit_cleared";
+type ThreadEventKind = "created" | "started" | "ended" | "interrupted" | "limited" | "limit_cleared";
 
 /** Writes one event per kind, for a thread's transitions. */
 async function recordThreadEvents(
@@ -1573,7 +1563,7 @@ export async function finishThread(
 // ---------- Org members ----------
 
 /** Emails are keyed the way login keys them: trimmed (by the API) and lowercased. */
-export const normalizeEmail = (email: string) => email.trim().toLowerCase();
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
 export interface OrgMember {
   id: string;
