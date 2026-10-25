@@ -195,6 +195,25 @@ describe("auth", () => {
     expect(await runJson("whoami")).toMatchObject({ username: "nouser-2" });
   });
 
+  it("login says how to get a first bot running: after a signup, and on a login while no org has a bot", async () => {
+    const login = async (email: string, ...extra: string[]) => {
+      await expect(run("login", "--url", API, "--email", email)).rejects.toThrow(/--code is required/);
+      const code = emails.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
+      return run("login", "--url", API, "--email", email, "--code", code, ...extra);
+    };
+    const signup = await login("next@example.com", "--username", "next-1");
+    expect(signup).toMatch(/Next, get your first bot running in org next-1/);
+    expect(signup).toContain("loopway bots run --org next-1");
+    expect(signup).toContain(`${API}/llms.txt`);
+    expect(signup).toContain(`${API}/next-1`);
+
+    expect(await login("next@example.com")).toMatch(/Next, get your first bot running in org next-1/);
+
+    const inbox = await runJson("inbox", "create", "--name", "gh", "--source", "github");
+    await run("bots", "create", "--name", "dev", "--inbox", inbox.name);
+    expect(await login("next@example.com")).not.toMatch(/Next, get your first bot/);
+  });
+
   it("login refuses a taken username without using up the code", async () => {
     await configured("Holder");
     const [row] = await db.query<{ slug: string }>(`SELECT slug FROM loopway.orgs ORDER BY id DESC LIMIT 1`);

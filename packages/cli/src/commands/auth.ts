@@ -169,9 +169,41 @@ export async function login(ctx: Context, opts: { url?: string; email?: string; 
   ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
 
   // Signup asks for the username, so only an account from before that can lack one. The token is already saved.
-  if (!user.username) {
-    const authed = new LoopwayClient({ baseUrl: url, apiKey: token, fetch: ctx.fetch });
-    await chooseUsername(ctx, authed, opts.username);
+  const authed = new LoopwayClient({ baseUrl: url, apiKey: token, fetch: ctx.fetch });
+  let org = user.username;
+  if (!org) org = await chooseUsername(ctx, authed, opts.username);
+  await showNextSteps(ctx, authed, url, org, created);
+}
+
+/**
+ * After a signup, or a login while the user has no bot in any org, says how to get a first bot running: the same
+ * three steps as the dashboard's zero state. Never fails the login.
+ */
+async function showNextSteps(ctx: Context, client: LoopwayClient, url: string, org: string, created: boolean) {
+  try {
+    if (!created) {
+      const orgs = await client.listOrgs();
+      const bots = await Promise.all(orgs.map((o) => client.listBots(o.slug)));
+      if (bots.some((b) => b.length > 0)) return;
+    }
+    const base = url.replace(/\/+$/, "");
+    ctx.out(
+      [
+        "",
+        bold(`Next, get your first bot running in org ${org}:`),
+        "  1. Start a runner on this machine, in the directory your bots should work in, and leave it running:",
+        `       loopway bots run --org ${org}`,
+        "  2. Make an inbox and a bot:",
+        `       loopway inbox create --org ${org}`,
+        `       loopway bots create --org ${org} --name <name> --inbox <inbox>`,
+        "     Or hand this to your coding agent:",
+        dim(`       Read ${base}/llms.txt and set up a loopway bot for me in org "${org}".`),
+        `  3. Watch it run: ${base}/${org}`,
+      ].join("\n"),
+    );
+    await ctx.metrics?.capture("login_next_steps_shown", { created });
+  } catch {
+    // The login worked; the hint is a bonus.
   }
 }
 
@@ -218,14 +250,14 @@ export const USERNAME_ERRORS = ["invalid_username", "username_reserved", "userna
  * Saves `name`, or prompts for one until the server accepts it. Without a terminal and a name there is nothing to
  * ask, so that's a usage error that says how to finish.
  */
-async function chooseUsername(ctx: Context, client: LoopwayClient, name: string | undefined) {
+async function chooseUsername(ctx: Context, client: LoopwayClient, name: string | undefined): Promise<string> {
   for (let attempt = name; ; attempt = undefined) {
     const wanted = attempt ?? (ctx.interactive ? await promptUsername() : undefined);
     if (!wanted) throw new UsageError("A username is required: run `loopway username <name>` (or pass --username).");
     try {
       const user = await client.setUsername(wanted);
       ctx.out(`Your username is ${bold(user.username ?? wanted)}.`);
-      return;
+      return user.username ?? wanted;
     } catch (err) {
       if (!(err instanceof ApiError) || !USERNAME_ERRORS.includes(err.code)) throw err;
       await ctx.metrics?.capture("username_rejected", { reason: err.code });
