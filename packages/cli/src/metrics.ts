@@ -47,7 +47,7 @@ export function createMetrics(dir: string, env: NodeJS.ProcessEnv = process.env)
     // Sent right away, not batched: the CLI exits as soon as its command is done.
     async capture(event, properties) {
       try {
-        // The host comes from config.json (or POSTHOG_HOST), defaulting to PostHog US cloud.
+        // The host comes from `loadConfig`: config.json, else POSTHOG_HOST, else the API's `/api/ingest` proxy.
         const { api_key, posthog_host } = await loadConfig(dir, env);
         client ??= new PostHog(apiKey, { host: posthog_host });
         await client.captureImmediate({

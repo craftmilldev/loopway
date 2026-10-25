@@ -16,7 +16,8 @@ import { authedClient, CancelledError, UsageError, type Context } from "../conte
 import { bold, dim, fields, json } from "../format.js";
 
 /**
- * Sets the API URL and the GitHub bot: flags, else prompts (starting from what's saved), else what's set.
+ * Sets the API URL, PostHog host, GitHub bot, auto-update and manager settings: flags, else prompts for the API
+ * URL and the GitHub bot (starting from what's saved), else what's set.
  * Tokens are `loopway login`'s job, so it's the next step.
  */
 export async function configure(
