@@ -1,18 +1,16 @@
 import { createHmac } from "node:crypto";
 import { safeEqual } from "./ids.js";
 
-export const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
+const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 /**
  * What a bearer token carries. `exp` is optional so a token can be short-lived (sessions) or not (robots).
- * `scope` is reserved for later and not read anywhere yet.
  */
 export interface TokenClaims {
   sub: string;
   typ: "session";
   iat: number;
   exp?: number;
-  scope?: string[];
 }
 
 const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");

@@ -12,7 +12,7 @@ import {
 import { migrate, openDb, type Db } from "./index.js";
 
 /** The docker-compose.yml Postgres; CI sets TEST_DATABASE_URL to its service container. */
-export const DEFAULT_TEST_DATABASE_URL = "postgres://postgres:postgres@localhost:54329/postgres";
+const DEFAULT_TEST_DATABASE_URL = "postgres://postgres:postgres@localhost:54329/postgres";
 
 /**
  * An empty throwaway database on the test Postgres server: its URL, and drop() to remove it.
