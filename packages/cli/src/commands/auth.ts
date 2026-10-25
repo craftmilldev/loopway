@@ -195,7 +195,7 @@ async function showNextSteps(ctx: Context, client: LoopwayClient, url: string, o
         `       loopway bots run --org ${org}`,
         "  2. Make an inbox and a bot:",
         `       loopway inbox create --org ${org}`,
-        `       loopway bots create --org ${org} --name <name> --inbox <inbox>`,
+        `       loopway bots create --org ${org} --name <name> --inbox <inbox> --harness <harness> --preset <preset> --model <model>`,
         "     Or hand this to your coding agent:",
         dim(`       Read ${base}/llms.txt and set up a loopway bot for me in org "${org}".`),
         `  3. Watch it run: ${base}/${org}`,

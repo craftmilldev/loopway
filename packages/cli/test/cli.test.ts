@@ -210,7 +210,20 @@ describe("auth", () => {
     expect(await login("next@example.com")).toMatch(/Next, get your first bot running in org next-1/);
 
     const inbox = await runJson("inbox", "create", "--name", "gh", "--source", "github");
-    await run("bots", "create", "--name", "dev", "--inbox", inbox.name);
+    await run(
+      "bots",
+      "create",
+      "--name",
+      "dev",
+      "--inbox",
+      inbox.name,
+      "--harness",
+      "claude",
+      "--preset",
+      "github-threads",
+      "--model",
+      "sonnet",
+    );
     expect(await login("next@example.com")).not.toMatch(/Next, get your first bot/);
   });
 
