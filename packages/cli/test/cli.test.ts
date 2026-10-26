@@ -1864,6 +1864,11 @@ describe("threads", () => {
     // The server refuses a harness change while a started thread is active, so the runner is shown one directly.
     const getBot = client.getBot.bind(client);
     client.getBot = async (id) => ({ ...(await getBot(id)), harness: "codex", model: "gpt-6-sol" });
+    const pollRunner = client.pollRunner.bind(client);
+    client.pollRunner = async (...args) => {
+      const polled = await pollRunner(...args);
+      return { ...polled, bots: polled.bots.map((b) => ({ ...b, harness: "codex", model: "gpt-6-sol" })) };
+    };
     await send(inbox, "issues", issue("opened", 2));
     await send(inbox, "issue_comment", comment(1));
     await d.tick();
@@ -1966,6 +1971,58 @@ describe("threads", () => {
     expect(out.filter((l) => l.includes("foreign"))).toEqual([]);
     expect(out.filter((l) => l.startsWith("error:"))).toEqual([]);
     expect((await d.state()).bots.held.map((b) => b.id).sort()).toEqual([bot.id, local.id].sort());
+  });
+
+  /** Counts the API calls the client makes from now on, by method name. */
+  function countCalls(client: LoopwayClient) {
+    const calls: string[] = [];
+    for (const name of Object.getOwnPropertyNames(LoopwayClient.prototype)) {
+      const fn = (client as any)[name];
+      if (name === "constructor" || name === "request" || typeof fn !== "function") continue;
+      (client as any)[name] = (...args: unknown[]) => (calls.push(name), fn.apply(client, args));
+    }
+    return calls;
+  }
+
+  it("makes one API call for an idle tick, however many bots it runs, and only the calls work needs otherwise", async () => {
+    const { inbox, client, runs, d, finish } = await setup(3, {}, 3);
+    await d.tick(); // the first tick looks at every bot's threads once
+    const calls = countCalls(client);
+    await d.tick();
+    await d.tick();
+    expect(calls).toEqual(["pollRunner", "pollRunner"]);
+
+    calls.length = 0;
+    await send(inbox, "issues", issue("opened", 1));
+    await d.tick();
+    expect(runs).toHaveLength(1);
+    expect(calls.filter((c) => c === "pollRunner")).toHaveLength(1);
+    expect(calls).not.toContain("listBots");
+    expect(calls).not.toContain("leaseBot");
+    expect(calls).not.toContain("getBot");
+    // Only the bot that had a message is read; the other two aren't asked about.
+    expect(calls.filter((c) => c === "botMessages").length).toBeGreaterThan(0);
+    await finish();
+  });
+
+  it("goes on bot by bot against a server without the runner poll", async () => {
+    const { inbox, client, runs, out, d, finish } = await setup(3);
+    let asked = 0;
+    client.pollRunner = async () => {
+      asked++;
+      throw new ApiError(404, "not_found", "Route not found");
+    };
+    const calls = countCalls(client);
+    await send(inbox, "issues", issue("opened", 1));
+    await d.tick();
+    await d.tick();
+    expect(runs).toHaveLength(1);
+    expect(out.filter((l) => l.startsWith("error:"))).toEqual([]);
+    // It asked once, then stopped asking.
+    expect(asked).toBe(1);
+    expect(calls).toContain("leaseRunner");
+    expect(calls).toContain("leaseBot");
+    await finish();
   });
 
   it("stops running a bot deleted while the runner runs, and still delivers to the others", async () => {

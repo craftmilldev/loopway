@@ -236,4 +236,69 @@ describe("a runner's org", () => {
     const ok = await call("POST", `/bots/${bot.id}/threads/${thread}/claim`, { key, body: { lease_token: ownToken } });
     expect(ok.status).toBe(200);
   });
+
+  describe("poll", () => {
+    it("renews the runner's lease, leases the bots it asks for and reports what waits, in one call", async () => {
+      const { key, base, bot, runner, thread, claim, messages, newRunner } = await setup();
+      const poll = (id: string, body: object) => call("POST", `/runners/${id}/poll`, { key, body });
+
+      const first = await poll(runner, { ttl_seconds: 60, bots: [{ id: bot.id }] });
+      expect(first.status).toBe(200);
+      const token = first.body.lease.token as string;
+      const bots = first.body.bots as any[];
+      expect(bots).toHaveLength(1);
+      // The test's own lease on the bot was taken without a runner, so it holds the bot until it ends.
+      expect(bots[0]).toMatchObject({ id: bot.id, name: "b", harness: "claude", unread: false, lease: null });
+      expect(bots[0].leased_until).toBeTruthy();
+      expect(first.body.threads).toEqual([]);
+
+      // Another process can't use the runner while it's leased, and the poll says so like the lease call.
+      const taken = await poll(runner, { bots: [] });
+      expect(taken.status).toBe(409);
+      expect(taken.body.error.code).toBe("runner_leased");
+      expect((await poll(runner, { lease_token: token, bots: [] })).body.lease.token).toBe(token);
+
+      // Free the bot, and the poll takes its lease for the runner, then renews it with the token.
+      await call("POST", `${base}/release`, { key, body: { force: true } });
+      const leased = await poll(runner, { lease_token: token, bots: [{ id: bot.id }] });
+      const lease = leased.body.bots[0].lease;
+      expect(lease.token).toBeTruthy();
+      expect(leased.body.bots[0].leased_until).toBeNull();
+      const again = await poll(runner, { lease_token: token, bots: [{ id: bot.id, lease_token: lease.token }] });
+      expect(again.body.bots[0].lease.token).toBe(lease.token);
+      // Another runner doesn't get it, and is told until when.
+      const other = await newRunner("other");
+      const refused = await poll(other, { bots: [{ id: bot.id }] });
+      const otherToken = refused.body.lease.token as string;
+      expect(refused.body.bots[0]).toMatchObject({ lease: null });
+      expect(refused.body.bots[0].leased_until).toBeTruthy();
+      // `lease: false` only reports.
+      const peek = await poll(runner, { lease_token: token, bots: [{ id: bot.id, lease: false }] });
+      expect(peek.body.bots[0].lease).toBeNull();
+
+      // The second message is unread (the first was assigned, but the cursor is still at 0), once past the holdback.
+      await db.query(`UPDATE loopway.messages SET received_at = received_at - interval '1 minute'`);
+      expect((await poll(runner, { lease_token: token, bots: [] })).body.bots[0].unread).toBe(true);
+
+      // The runner's threads with a message waiting come with the poll, and not with draining.
+      await claim(token);
+      const work = await poll(runner, { lease_token: token, bots: [] });
+      expect(work.body.threads.map((t: { id: string }) => t.id)).toEqual([thread]);
+      expect(work.body.threads[0].waiting).toHaveLength(1);
+      expect(work.body.threads[0].waiting[0].id).toBe(messages[0]);
+      expect((await poll(runner, { lease_token: token, bots: [], draining: true })).body.threads).toEqual([]);
+      expect((await poll(other, { lease_token: otherToken, bots: [] })).body.threads).toEqual([]);
+    });
+
+    it("skips bots of other orgs and refuses a runner that isn't yours", async () => {
+      const { key, bot, runner } = await setup();
+      const stranger = await newUser("Other");
+      expect((await call("POST", `/runners/${runner}/poll`, { key: stranger, body: { bots: [] } })).status).toBe(404);
+      const theirs = (await call("POST", "/runners", { key: stranger, body: { id: randomUUID(), name: "t" } })).body;
+      const res = await call("POST", `/runners/${theirs.id}/poll`, { key: stranger, body: { bots: [{ id: bot.id }] } });
+      expect(res.status).toBe(200);
+      expect(res.body.bots).toEqual([]);
+      expect((await call("GET", `/bots/${bot.id}`, { key })).body.runner_id).toBeNull();
+    });
+  });
 });

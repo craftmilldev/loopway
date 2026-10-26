@@ -841,6 +841,43 @@ export async function botMessages(db: Db, botId: string, limit: number): Promise
   );
 }
 
+/** A bot as the runner's poll sees it: no prompt or rules, just what says whether anything changed. */
+export interface BotPoll {
+  id: string;
+  name: string;
+  model: string;
+  harness: string;
+  /** The newest prompt version's number; null if it has none yet. */
+  version: number | null;
+  locked_until: Date | null;
+  /** Whether the bot has a message past its cursor that's old enough to read (see botMessages). */
+  unread: boolean;
+}
+
+/** The ids of the org's bots. */
+export async function orgBotIds(db: Db, orgId: string): Promise<string[]> {
+  return (
+    await db.query<{ id: string }>(`SELECT id FROM loopway.bots WHERE org_id = $1 AND deleted_at IS NULL`, [orgId])
+  ).map((r) => r.id);
+}
+
+/** The org's bots with what a runner needs to know to decide on work, in one query. */
+export async function pollBots(db: Db, orgId: string): Promise<BotPoll[]> {
+  return db.query<BotPoll>(
+    `SELECT b.id, b.name, b.model, b.harness, b.locked_until,
+       (SELECT max(v.version) FROM loopway.bot_versions v WHERE v.bot_id = b.id) AS version,
+       EXISTS (
+         SELECT 1 FROM loopway.messages e JOIN loopway.bot_inboxes bi ON bi.inbox_id = e.inbox_id
+         WHERE bi.bot_id = b.id AND e.seq > b.cursor AND e.received_at <= now() - $2::int * interval '1 second'
+           AND NOT EXISTS (
+             SELECT 1 FROM loopway.messages f JOIN loopway.bot_inboxes fi ON fi.inbox_id = f.inbox_id
+             WHERE fi.bot_id = b.id AND f.seq > b.cursor AND f.seq < e.seq
+               AND f.received_at > now() - $2::int * interval '1 second')) AS unread
+     FROM loopway.bots b WHERE b.org_id = $1 AND b.deleted_at IS NULL ORDER BY b.id`,
+    [orgId, MESSAGE_HOLDBACK_SECONDS],
+  );
+}
+
 // ---------- Runners ----------
 
 export interface Runner {
@@ -1056,6 +1093,23 @@ export async function listThreads(
          SELECT 1 FROM loopway.thread_messages tm WHERE tm.thread_id = t.id AND tm.state <> 'delivered'))))
      ORDER BY t.created_at, t.id`,
     [botId, status],
+  );
+}
+
+/**
+ * The threads of `runnerId` that have work for it (a message waiting, or a stop by the usage limit or an
+ * interruption to resume), across the org's bots: what listThreads `pending` gives per bot, narrowed to these.
+ */
+export async function runnerWork(db: Db, runnerId: string): Promise<Thread[]> {
+  return db.query<Thread>(
+    `SELECT ${THREAD_COLS} FROM loopway.threads t
+     JOIN loopway.bots b ON b.id = t.bot_id AND b.deleted_at IS NULL
+     WHERE t.runner_id = $1 AND (
+       EXISTS (SELECT 1 FROM loopway.thread_messages tm WHERE tm.thread_id = t.id AND tm.state = 'waiting')
+       OR ((t.limited OR t.interrupted) AND (t.status = 'active' OR EXISTS (
+         SELECT 1 FROM loopway.thread_messages tm WHERE tm.thread_id = t.id AND tm.state <> 'delivered'))))
+     ORDER BY t.created_at, t.id`,
+    [runnerId],
   );
 }
 

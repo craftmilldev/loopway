@@ -859,6 +859,65 @@ export function createApi(opts: ApiOptions) {
     return c.json({ lease: { token: row.lock_token, expires_at: iso(row.locked_until) } });
   });
 
+  // A whole idle tick of a runner in one request: renews its lease, takes or renews the leases it asks for, and says
+  // what changed or is waiting, so it only makes the calls for work that exists. The per-bot endpoints stay for that work.
+  authed.post("/runners/:runnerId/poll", async (c) => {
+    const runner = await routeRunner(c);
+    const input = ttlBody
+      .extend({
+        lease_token: z.string().optional(),
+        // `lease: false` reports on a bot without taking its lease (a runner that doesn't lease bots).
+        bots: z
+          .array(z.object({ id: z.string(), lease_token: z.string().optional(), lease: z.boolean().default(true) }))
+          .max(1000)
+          .default([]),
+        draining: z.boolean().default(false),
+      })
+      .parse(await jsonBody(c));
+    const row = await store.leaseRunner(
+      c.var.db,
+      c.var.user.id,
+      runner.id,
+      input.ttl_seconds,
+      input.lease_token ?? null,
+    );
+    if (!row) {
+      const until = iso(runner.locked_until);
+      await metrics.capture("runner_lease_rejected", runner.org_id, { reason: "leased", via: "poll" });
+      throw new ApiError(409, "runner_leased", `Runner is leased until ${until} by another process`, {
+        expires_at: until,
+      });
+    }
+    const leases = new Map<string, { token: string; expires_at: string | null }>();
+    const asked = new Map(input.bots.map((b) => [b.id.toLowerCase(), b]));
+    const mine = new Set(await store.orgBotIds(c.var.db, runner.org_id));
+    for (const [id, b] of asked) {
+      if (!b.lease || !mine.has(id)) continue;
+      const leased = await store.leaseBot(c.var.db, id, input.ttl_seconds, b.lease_token ?? null, runner.id);
+      if (leased) leases.set(id, { token: leased.lock_token!, expires_at: iso(leased.locked_until) });
+    }
+    const bots = await store.pollBots(c.var.db, runner.org_id);
+    const threads = input.draining ? [] : await store.runnerWork(c.var.db, runner.id);
+    return c.json({
+      lease: { token: row.lock_token, expires_at: iso(row.locked_until) },
+      bots: bots.map((b) => {
+        const lease = leases.get(b.id);
+        return {
+          id: b.id,
+          name: b.name,
+          model: b.model,
+          harness: b.harness,
+          version: b.version,
+          unread: b.unread,
+          lease: lease ?? null,
+          // When another runner holds the bot, until when.
+          leased_until: !lease && b.locked_until && new Date(b.locked_until) > new Date() ? iso(b.locked_until) : null,
+        };
+      }),
+      threads: await serializeThreads(c.var.db, threads, false),
+    });
+  });
+
   authed.post("/runners/:runnerId/release", async (c) => {
     const runner = await routeRunner(c);
     const { lease_token, force } = z

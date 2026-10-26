@@ -208,6 +208,27 @@ export interface Lease {
   expires_at: string;
 }
 
+/** What pollRunner() returns. */
+export interface RunnerPoll {
+  lease: Lease;
+  bots: {
+    id: string;
+    name: string;
+    model: string;
+    harness: string;
+    /** The number of the bot's newest prompt version; null if it has none yet. */
+    version: number | null;
+    /** Whether it has a message past its cursor ready to read. */
+    unread: boolean;
+    /** The runner's lease on it, if it asked for one and got it. */
+    lease: Lease | null;
+    /** Until when another runner holds it, if that's why there's no lease. */
+    leased_until: string | null;
+  }[];
+  /** This runner's threads with a message waiting, or to resume after the usage limit or an interruption. */
+  threads: Thread[];
+}
+
 export interface ListMessagesQuery {
   type?: string;
   limit?: number;
@@ -352,6 +373,24 @@ export class LoopwayClient {
    */
   leaseRunner(runnerId: string, opts: { ttl_seconds?: number; lease_token?: string } = {}) {
     return this.request<{ lease: Lease }>("POST", `/runners/${enc(runnerId)}/lease`, opts);
+  }
+
+  /**
+   * A whole idle tick in one request: renews the runner's lease (409 `runner_leased` like leaseRunner), takes or renews
+   * the lease of each of `bots` (`lease: false` to only report on it), and returns every bot of the runner's org with
+   * what changed or waits, plus the threads of this runner that have work. 404 `not_found` ("Route not found") on a
+   * server from before it existed.
+   */
+  pollRunner(
+    runnerId: string,
+    input: {
+      ttl_seconds?: number;
+      lease_token?: string;
+      bots: { id: string; lease_token?: string; lease?: boolean }[];
+      draining?: boolean;
+    },
+  ) {
+    return this.request<RunnerPoll>("POST", `/runners/${enc(runnerId)}/poll`, input);
   }
 
   async releaseRunner(runnerId: string, leaseToken: string) {

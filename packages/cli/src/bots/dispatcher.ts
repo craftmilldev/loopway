@@ -7,6 +7,7 @@ import {
   type LoopwayClient,
   type ManagerThread,
   type Message,
+  type RunnerPoll,
   type Thread,
   type ThreadMessage,
   type ThreadPatch,
@@ -132,6 +133,8 @@ export class Dispatcher {
   /** Bots whose unclaimed threads this runner has already claimed, which it does once it holds their lease. */
   private readonly claimed = new Set<string>();
   private leaseBots: boolean;
+  /** Whether the server has the runner poll; false once it said it hasn't. */
+  private pollSupported = true;
   /** Ids of the bots not running that were already reported, so each is announced once. */
   private readonly seen = new Set<string>();
   private closing?: Promise<void>;
@@ -268,6 +271,10 @@ export class Dispatcher {
 
   async tick(): Promise<void> {
     this.freed = false;
+    if (this.pollSupported) {
+      const polled = await this.pollRunner();
+      if (polled) return this.tickFrom(polled);
+    }
     await this.leaseRunner();
     if (!this.draining)
       await this.syncBots().catch((err) =>
@@ -296,6 +303,106 @@ export class Dispatcher {
       }
     }
     if (!this.draining) await this.deliverAll();
+  }
+
+  /**
+   * The runner's poll: renews its lease and the bots', and says what changed. A server from before the poll is
+   * remembered, and the tick goes on bot by bot as it always did. Undefined then.
+   */
+  private async pollRunner(): Promise<RunnerPoll | undefined> {
+    try {
+      const polled = await this.client.pollRunner(this.runnerId, {
+        ttl_seconds: this.ttl,
+        lease_token: this.runnerLease?.token,
+        bots: this.bots.map((b) => ({ id: b.id, lease_token: this.leases.get(b.id)?.token, lease: this.leaseBots })),
+        draining: this.draining,
+      });
+      this.runnerLease = polled.lease;
+      // Kept at once, as a second poll in the same tick renews them with these tokens.
+      for (const b of polled.bots) if (b.lease) this.leases.set(b.id, b.lease);
+      return polled;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404 && err.message === "Route not found") {
+        this.pollSupported = false;
+        void this.ctx.metrics?.capture("runner_poll_unsupported");
+        return undefined;
+      }
+      throw this.runnerLeasedError(err);
+    }
+  }
+
+  /**
+   * A tick from the poll's answer: only the bots with something to do cost more calls (a new prompt version to load,
+   * messages to assign, threads to repair or claim), and deliveries use the threads the poll returned unless this tick
+   * changed a bot's.
+   */
+  private async tickFrom(first: RunnerPoll): Promise<void> {
+    let polled = first;
+    for (const bot of [...this.bots]) if (!polled.bots.some((b) => b.id === bot.id)) this.dropBot(bot, "deleted");
+    if (!this.draining) {
+      // Only a bot that isn't running and not yet reported (or rejected at this version) is worth listing in full.
+      const news = polled.bots.some(
+        (b) =>
+          !this.rules.has(b.id) && (b.version === null ? !this.seen.has(b.id) : this.rejected.get(b.id) !== b.version),
+      );
+      if (news) {
+        const before = this.bots.length;
+        await this.syncBots().catch((err) =>
+          this.ctx.out(`error: looking for new bots: ${err instanceof Error ? err.message : String(err)}`),
+        );
+        // The bots it started running get their lease and a first look this tick, as they always did.
+        if (this.bots.length > before) polled = (await this.pollRunner()) ?? polled;
+      }
+    }
+    const info = new Map(polled.bots.map((b) => [b.id, b]));
+    // Bots whose threads this tick changed, so delivery asks for them again.
+    const changed = new Set<string>();
+    for (const bot of [...this.bots]) {
+      const now = info.get(bot.id);
+      if (!now) continue;
+      try {
+        let leased = false;
+        if (!this.leaseBots) await this.release(bot);
+        else if (now.lease) {
+          this.leases.set(bot.id, now.lease);
+          if (this.skipped.delete(bot.id)) this.ctx.out(`bot ${bot.name}: lease taken`);
+          leased = true;
+        } else {
+          this.leases.delete(bot.id);
+          const until = now.leased_until ?? undefined;
+          if (!this.skipped.has(bot.id)) {
+            const when = until ? ` until ${clock(until)}` : "";
+            this.ctx.out(`bot ${bot.name} is leased by another runner${when}; skipping it until that lease ends.`);
+          }
+          this.skipped.set(bot.id, until);
+        }
+        if (this.draining) continue;
+        const repair = !this.repaired.has(bot.id);
+        const claim = leased && !this.claimed.has(bot.id);
+        if (
+          leased &&
+          now.version !== this.rejected.get(bot.id) &&
+          (now.version !== (bot.prompt_version?.version ?? null) ||
+            now.harness !== bot.harness ||
+            now.model !== bot.model)
+        )
+          await this.refreshVersion(bot);
+        if (repair || claim) {
+          changed.add(bot.id);
+          await this.reconcile(bot, { repair, claim });
+          if (repair) this.repaired.add(bot.id);
+          if (claim) this.claimed.add(bot.id);
+        }
+        if (leased && now.unread) {
+          changed.add(bot.id);
+          await this.poll(bot);
+        }
+      } catch (err) {
+        if (this.dropIfGone(bot, err)) continue;
+        this.ctx.out(`error: bot ${bot.name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    if (!this.draining) await this.deliverAll({ threads: polled.threads, changed });
   }
 
   /**
@@ -472,14 +579,19 @@ export class Dispatcher {
       });
       this.runnerLease = lease;
     } catch (err) {
-      if (!(err instanceof ApiError && err.code === "runner_leased")) throw err;
-      const until = leasedUntil(err);
-      // A UsageError, so the CLI prints just the message rather than a stack trace.
-      throw new UsageError(
-        `This machine's runner is already in use by another \`loopway bots run\`${until ? ` (its lease lasts until ${clock(until)})` : ""}. Stop that one, or wait for its lease to end.`,
-        { cause: err },
-      );
+      throw this.runnerLeasedError(err);
     }
+  }
+
+  /** `err` as the message for a runner another process holds, or itself if it's something else. */
+  private runnerLeasedError(err: unknown): unknown {
+    if (!(err instanceof ApiError && err.code === "runner_leased")) return err;
+    const until = leasedUntil(err);
+    // A UsageError, so the CLI prints just the message rather than a stack trace.
+    return new UsageError(
+      `This machine's runner is already in use by another \`loopway bots run\`${until ? ` (its lease lasts until ${clock(until)})` : ""}. Stop that one, or wait for its lease to end.`,
+      { cause: err },
+    );
   }
 
   /** Gives back the bot's lease, if this runner holds it. */
@@ -603,10 +715,11 @@ export class Dispatcher {
 
   /**
    * Starts or resumes every thread of this runner with waiting messages and no run in flight, oldest first, while
-   * --max allows. Delivers nothing while the usage limit a run hit hasn't reset yet; messages keep
+   * --max allows. `polled` has the threads the runner poll returned, used for the bots it says weren't changed since.
+   * Delivers nothing while the usage limit a run hit hasn't reset yet; messages keep
    * queueing up and go out on the first tick after it does.
    */
-  private async deliverAll(): Promise<void> {
+  private async deliverAll(polled?: { threads: Thread[]; changed: Set<string> }): Promise<void> {
     if (Date.now() < this.limitedUntil) return;
     if (this.limitedUntil) {
       this.limitedUntil = 0;
@@ -617,7 +730,11 @@ export class Dispatcher {
     const ready: Thread[] = [];
     for (const bot of [...this.bots]) {
       try {
-        for (const t of await this.client.listThreads(bot.id, "pending", false)) {
+        const threads =
+          polled && !polled.changed.has(bot.id)
+            ? polled.threads.filter((t) => t.bot_id === bot.id)
+            : await this.client.listThreads(bot.id, "pending", false);
+        for (const t of threads) {
           if (t.runner_id !== this.runnerId || running.has(t.id)) continue;
           if (!(t.waiting.length || t.limited || t.interrupted)) continue;
           if ((this.errored.get(t.id)?.after ?? 0) > Date.now()) continue;
