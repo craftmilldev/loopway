@@ -442,16 +442,6 @@ pre {
   padding: 16px 0;
   border-bottom: 1px solid var(--rule-hair);
 }
-.list .title {
-  font-size: 1.1875rem;
-}
-.list .meta {
-  margin-top: 4px;
-  font-family: var(--font-type);
-  font-size: 0.75rem;
-  color: var(--ink-400);
-  word-break: break-all;
-}
 .panel {
   margin-top: 24px;
   padding: 20px;
