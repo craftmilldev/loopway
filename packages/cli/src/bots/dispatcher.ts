@@ -7,6 +7,7 @@ import {
   type LoopwayClient,
   type ManagerThread,
   type Message,
+  type Runner,
   type Thread,
   type ThreadMessage,
   type ThreadPatch,
@@ -156,6 +157,8 @@ export class Dispatcher {
   private readonly rejected = new Map<string, number>();
   /** Thread id → consecutive API-error retries so far, and when the next one may start (ms). */
   private readonly errored = new Map<string, { retries: number; after: number }>();
+  /** What `state()` shows: filled by `refresh()`, never by `state()` itself. */
+  private snapshot: { threads: Record<string, Thread>; runners: Runner[] } = { threads: {}, runners: [] };
   /** Whether a run has exited since the last tick started, and who to tell when one does. */
   private freed = false;
   private onFreed?: () => void;
@@ -296,6 +299,21 @@ export class Dispatcher {
       }
     }
     if (!this.draining) await this.deliverAll();
+    await this.refresh();
+  }
+
+  /**
+   * Re-reads the threads of this runner's bots and the account's runners into the snapshot `state()` returns. Once
+   * per tick, and after a send or end from the TUI; a failure leaves the last snapshot in place.
+   */
+  async refresh(): Promise<void> {
+    try {
+      const threads: Record<string, Thread> = {};
+      for (const bot of this.bots) for (const t of await this.client.listThreads(bot.id, "all")) threads[t.id] = t;
+      this.snapshot = { threads, runners: await this.client.listRunners(this.org) };
+    } catch (err) {
+      this.ctx.out(`error: refreshing the thread list: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /**
@@ -385,11 +403,12 @@ export class Dispatcher {
     this.ctx.out(`bot ${bot.name}: now on version ${version.version}`);
   }
 
-  /** The threads of this runner's bots, and the messages waiting on this runner's, as of now. */
+  /**
+   * The threads of this runner's bots, and the messages waiting on this runner's, as of the last refresh. Reads
+   * memory only, so the TUI can redraw as often as it likes without calling the server.
+   */
   async state(): Promise<DispatcherState> {
-    const threads: Record<string, Thread> = {};
-    for (const bot of this.bots) for (const t of await this.client.listThreads(bot.id, "all")) threads[t.id] = t;
-    const all = await this.client.listRunners(this.org);
+    const { threads, runners: all } = this.snapshot;
     const runners = Object.fromEntries(all.map((r) => [r.id, r.name]));
     const names = new Map(this.bots.map((b) => [b.id, b.name]));
     const waiting = Object.values(threads)
