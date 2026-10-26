@@ -157,9 +157,8 @@ export class Dispatcher {
   private readonly rejected = new Map<string, number>();
   /** Thread id → consecutive API-error retries so far, and when the next one may start (ms). */
   private readonly errored = new Map<string, { retries: number; after: number }>();
-  /** The fetch `refresh()` has in flight, and the one queued behind it. */
+  /** The fetch `refresh()` has in flight. */
   private refreshing?: Promise<void>;
-  private refreshNext?: Promise<void>;
   /** What `state()` shows: filled by `refresh()`, never by `state()` itself. */
   private snapshot: { threads: Record<string, Thread>; runners: Runner[] } = { threads: {}, runners: [] };
   /** Whether a run has exited since the last tick started, and who to tell when one does. */
@@ -308,19 +307,11 @@ export class Dispatcher {
   /**
    * Re-reads the threads of this runner's bots and the account's runners into the snapshot `state()` returns. Once
    * per tick, and after a send or end from the TUI; a failure leaves the last snapshot in place. Calls that arrive
-   * while a fetch is running share one more fetch that starts when it ends, so a burst costs two fetches at most and
-   * every caller sees data read after it asked.
+   * while a fetch is running share it.
    */
   refresh(): Promise<void> {
-    if (!this.refreshing) {
-      this.refreshing = this.fetchSnapshot().finally(() => (this.refreshing = undefined));
-      return this.refreshing;
-    }
-    this.refreshNext ??= this.refreshing.then(() => {
-      this.refreshNext = undefined;
-      return this.refresh();
-    });
-    return this.refreshNext;
+    this.refreshing ??= this.fetchSnapshot().finally(() => (this.refreshing = undefined));
+    return this.refreshing;
   }
 
   private async fetchSnapshot(): Promise<void> {
