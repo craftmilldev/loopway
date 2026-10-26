@@ -38,7 +38,7 @@ export interface ApiOptions extends EeOptions {
   posthogUiHost?: string;
   /** Vercel Cron's bearer token (`CRON_SECRET`). Unset, /cron/schedules refuses every call. */
   cronSecret?: string;
-  /** The schedule options (`hour`, `day`) this deploy offers. Defaults to both. */
+  /** The schedule options (`hour`, `day`, `week`) this deploy offers. Defaults to both. */
   scheduleOptions?: ScheduleOption[];
   /** Signs session tokens (JWTs). */
   tokenSecret: string;
@@ -53,10 +53,10 @@ export interface ApiOptions extends EeOptions {
 const DEFAULT_TTL = 300;
 const MAX_TTL = 12 * 60 * 60;
 
-export const SCHEDULE_OPTIONS = ["hour", "day"] as const;
+export const SCHEDULE_OPTIONS = ["hour", "day", "week"] as const;
 export type ScheduleOption = (typeof SCHEDULE_OPTIONS)[number];
 
-/** Reads `SCHEDULE_OPTIONS` (e.g. "hour,day"). Unset or empty means just `day`, which a Vercel Hobby cron can drive. */
+/** Reads `SCHEDULE_OPTIONS` (e.g. "hour,day,week"). Unset or empty means `day,week`, which a Vercel Hobby cron can drive. */
 export function parseScheduleOptions(value: string | undefined): ScheduleOption[] {
   const names = (value ?? "")
     .split(",")
@@ -64,7 +64,7 @@ export function parseScheduleOptions(value: string | undefined): ScheduleOption[
     .filter(Boolean);
   const bad = names.find((n) => !SCHEDULE_OPTIONS.includes(n as ScheduleOption));
   if (bad) throw new Error(`SCHEDULE_OPTIONS: unknown option "${bad}" (use ${SCHEDULE_OPTIONS.join(", ")})`);
-  return names.length ? SCHEDULE_OPTIONS.filter((o) => names.includes(o)) : ["day"];
+  return names.length ? SCHEDULE_OPTIONS.filter((o) => names.includes(o)) : ["day", "week"];
 }
 
 /** How often a schedule inbox's config runs, if it has one. */

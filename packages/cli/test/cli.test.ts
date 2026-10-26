@@ -661,6 +661,10 @@ describe("inboxes", () => {
       expect(updated.config.schedule).toEqual({ every: "day", hour: 9 });
       updated = await runJson("inbox", "update", "clock", "--hour", "14");
       expect(updated.config.schedule).toEqual({ every: "day", hour: 14 });
+      updated = await runJson("inbox", "update", "clock", "--every", "week", "--day", "mon");
+      expect(updated.config.schedule).toEqual({ every: "week", day: 1, hour: 14 });
+      updated = await runJson("inbox", "update", "clock", "--day", "6", "--hour", "13");
+      expect(updated.config.schedule).toEqual({ every: "week", day: 6, hour: 13 });
       updated = await runJson("inbox", "update", "clock", "--every", "hour");
       expect(updated.config.schedule).toEqual({ every: "hour" });
 
@@ -677,6 +681,12 @@ describe("inboxes", () => {
       expect(out).toMatch(/Check codex/);
     });
 
+    it("shows a weekly schedule in words", async () => {
+      await scheduleInbox();
+      await run("inbox", "update", "clock", "--every", "week", "--day", "mon", "--hour", "13");
+      expect(await run("inbox", "show", "clock")).toMatch(/schedule\s+weekly on Monday at 13:00 UTC/);
+    });
+
     it("shows the schedule and each message", async () => {
       await scheduleInbox();
       const shown = await run("inbox", "show", "clock");
@@ -690,8 +700,14 @@ describe("inboxes", () => {
       await expect(run("inbox", "update", "clock")).rejects.toThrow(/Pass --name, --every/);
       await expect(run("inbox", "update", "clock", "--every", "day")).rejects.toThrow(/needs --hour/);
       await expect(run("inbox", "update", "clock", "--hour", "24")).rejects.toThrow(/0 to 23/);
-      await expect(run("inbox", "update", "clock", "--hour", "5")).rejects.toThrow(/only applies with --every day/);
-      await expect(run("inbox", "update", "clock", "--every", "week")).rejects.toThrow(/"hour" or "day"/);
+      await expect(run("inbox", "update", "clock", "--hour", "5")).rejects.toThrow(
+        /only applies with --every day or week/,
+      );
+      await expect(run("inbox", "update", "clock", "--every", "month")).rejects.toThrow(/"hour", "day" or "week"/);
+      await expect(run("inbox", "update", "clock", "--every", "week", "--hour", "9")).rejects.toThrow(/needs --day/);
+      await expect(run("inbox", "update", "clock", "--every", "week", "--day", "9")).rejects.toThrow(/mon\.\.sun/);
+      await expect(run("inbox", "update", "clock", "--every", "week", "--day", "funday")).rejects.toThrow(/mon\.\.sun/);
+      await expect(run("inbox", "update", "clock", "--day", "1")).rejects.toThrow(/only applies with --every week/);
       await expect(run("inbox", "update", "clock", "--message", "nope")).rejects.toThrow(/<type>=<value>/);
       await expect(run("inbox", "update", "clock", "--message", "Bad Type=x")).rejects.toThrow(/lowercase/);
       await expect(run("inbox", "update", "clock", "--message", "x=")).rejects.toThrow(/needs some text/);
@@ -749,6 +765,27 @@ describe("inboxes", () => {
         { type: "standup", message: "Write the standup" },
         { type: "report", message: "line one\nline two" },
       ]);
+    });
+
+    it("creates a weekly one with --day", async () => {
+      await configured();
+      const inbox = await runJson(
+        "inbox",
+        "create",
+        "--name",
+        "clock",
+        "--source",
+        "schedule",
+        "--every",
+        "week",
+        "--day",
+        "mon",
+        "--hour",
+        "13",
+        "--message",
+        "a=b",
+      );
+      expect(inbox.config.schedule).toEqual({ every: "week", day: 1, hour: 13 });
     });
 
     it("creates one from --config, with flags applied on top", async () => {

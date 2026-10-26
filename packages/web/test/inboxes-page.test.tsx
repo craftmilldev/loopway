@@ -287,8 +287,8 @@ describe("CreateInbox schedule options", () => {
     expect(await options()).toEqual(["Every day"]);
   });
 
-  it("offers both when both are on", async () => {
-    withSchedule(["hour", "day"]);
-    expect(await options()).toEqual(["Every hour", "Every day"]);
+  it("offers every option the deploy has on", async () => {
+    withSchedule(["hour", "day", "week"]);
+    expect(await options()).toEqual(["Every hour", "Every day", "Every week"]);
   });
 });

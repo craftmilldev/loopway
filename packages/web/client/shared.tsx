@@ -3,6 +3,8 @@ import { useSourceRequest } from "../ee/client/source-request.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
 
+export const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
 export interface Inbox {
   id: string;
   org_id: string;
@@ -15,7 +17,7 @@ export interface Inbox {
   config?: {
     secret_set?: boolean;
     events?: string[];
-    schedule?: { every: "hour" } | { every: "day"; hour: number };
+    schedule?: { every: "hour" } | { every: "day"; hour: number } | { every: "week"; day: number; hour: number };
     messages?: { type: string; message: string }[];
   };
 }
@@ -36,14 +38,15 @@ export function CreateInbox({ onCreated }: { onCreated: (inbox: Inbox) => void }
   const {
     data: sources = [],
     can_request,
-    schedule_options: scheduleOptions = ["hour", "day"],
+    schedule_options: scheduleOptions = ["hour", "day", "week"],
   } = lw.useSources() ?? {};
   const [name, setName] = useState("");
   const [type, setType] = useState("");
   const [all, setAll] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [secret, setSecret] = useState("");
-  const [every, setEvery] = useState<"hour" | "day">("hour");
+  const [every, setEvery] = useState<"hour" | "day" | "week">("hour");
+  const [day, setDay] = useState(1);
   const [hour, setHour] = useState(9);
   const [messages, setMessages] = useState<{ type: string; message: string }[]>([{ type: "", message: "" }]);
   const [error, setError] = useState<string | null>(null);
@@ -83,7 +86,12 @@ export function CreateInbox({ onCreated }: { onCreated: (inbox: Inbox) => void }
     // A schedule has no webhook: its config is a clock and the messages it sends.
     if (source.secret.from === "none") {
       const config = {
-        schedule: chosenEvery === "hour" ? { every: chosenEvery } : { every: chosenEvery, hour },
+        schedule:
+          chosenEvery === "hour"
+            ? { every: chosenEvery }
+            : chosenEvery === "day"
+              ? { every: chosenEvery, hour }
+              : { every: chosenEvery, day, hour },
         messages,
       };
       return create(config);
@@ -146,11 +154,25 @@ export function CreateInbox({ onCreated }: { onCreated: (inbox: Inbox) => void }
           <div className="field">
             <label htmlFor="every">Runs</label>
             <div className="input-wrap">
-              <select id="every" value={chosenEvery} onChange={(e) => setEvery(e.target.value as "hour" | "day")}>
+              <select
+                id="every"
+                value={chosenEvery}
+                onChange={(e) => setEvery(e.target.value as "hour" | "day" | "week")}
+              >
                 {scheduleOptions.includes("hour") && <option value="hour">Every hour</option>}
                 {scheduleOptions.includes("day") && <option value="day">Every day</option>}
+                {scheduleOptions.includes("week") && <option value="week">Every week</option>}
               </select>
-              {chosenEvery === "day" && (
+              {chosenEvery === "week" && (
+                <select aria-label="Weekday (UTC)" value={day} onChange={(e) => setDay(Number(e.target.value))}>
+                  {WEEKDAYS.map((name, d) => (
+                    <option key={d} value={d}>
+                      on {name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {chosenEvery !== "hour" && (
                 <select aria-label="Hour (UTC)" value={hour} onChange={(e) => setHour(Number(e.target.value))}>
                   {Array.from({ length: 24 }, (_, h) => (
                     <option key={h} value={h}>
