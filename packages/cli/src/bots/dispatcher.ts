@@ -45,6 +45,9 @@ interface StartOptions extends ThreadsOptions {
   workdirs?: Map<string, string>;
 }
 
+/** How long a quiet runner goes without re-reading the threads and runners it shows. */
+export const SNAPSHOT_MAX_AGE_MS = 60_000;
+
 /** API-error retries per session before giving up, and the first backoff, which doubles each time. */
 export const API_ERROR_RETRIES = 3;
 export const API_ERROR_BACKOFF_MS = 60_000;
@@ -162,6 +165,8 @@ export class Dispatcher {
   private readonly errored = new Map<string, { retries: number; after: number }>();
   /** The fetch `refresh()` has in flight. */
   private refreshing?: Promise<void>;
+  /** When the snapshot was last fetched, so a quiet tick can leave it be. */
+  private refreshedAt = 0;
   /** What `state()` shows: filled by `refresh()`, never by `state()` itself. */
   private snapshot: { threads: Record<string, Thread>; runners: Runner[] } = { threads: {}, runners: [] };
   /** Whether a run has exited since the last tick started, and who to tell when one does. */
@@ -322,6 +327,7 @@ export class Dispatcher {
   }
 
   private async fetchSnapshot(): Promise<void> {
+    this.refreshedAt = Date.now();
     try {
       const threads: Record<string, Thread> = {};
       for (const bot of this.bots) for (const t of await this.client.listThreads(bot.id, "all")) threads[t.id] = t;
@@ -429,6 +435,10 @@ export class Dispatcher {
       }
     }
     if (!this.draining) await this.deliverAll({ threads: polled.threads, changed });
+    // An idle tick is the poll alone: the snapshot is fetched when this runner did something since the last one, and
+    // otherwise now and then, to show what other runners and the web app changed.
+    if (changed.size || this.lastActivity > this.refreshedAt || Date.now() - this.refreshedAt > SNAPSHOT_MAX_AGE_MS)
+      await this.refresh();
   }
 
   /**
