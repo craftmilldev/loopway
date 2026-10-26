@@ -39,6 +39,7 @@ const dispatcher = () => ({
   idleMs: () => 0,
   slotFreed: () => new Promise<void>(() => {}),
   state: async () => ({}),
+  refresh: async () => {},
 });
 
 describe("bots run with no bots", () => {

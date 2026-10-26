@@ -336,6 +336,7 @@ export function createApi(opts: ApiOptions) {
     // Person properties go with the event so CLI-only users get an email and name too, not just dashboard visitors.
     await metrics.capture(result.created ? "signed_up" : "logged_in", result.user.id, {
       $set: { email: result.user.email, name: result.user.name },
+      client: cliVersion(c) === "none" ? "web" : "cli",
     });
     if (result.joined) await metrics.capture("org_invites_claimed", result.user.id, { orgs: result.joined });
     const { token, expiresAt } = signSessionToken(result.user.id, opts.tokenSecret);

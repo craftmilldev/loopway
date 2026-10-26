@@ -23,6 +23,8 @@ loopway login                 # emails you a one-time code; new emails get an ac
 loopway inbox create          # name → source → events → secret → confirm
 loopway inbox show <inbox>    # the webhook URL to add in the sender (a secret is shown once, by `inbox create`)
 loopway messages list <inbox>
+loopway bots run --org <you>  # a runner on this machine; leave it running (your org is your username)
+loopway bots create --org <you> --name <name> --inbox <inbox> --harness <harness> --preset <preset> --model <model>   # a bot for the runner to run
 ```
 
 ## CLI

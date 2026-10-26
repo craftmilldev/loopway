@@ -20,7 +20,7 @@ interface Tip {
 }
 
 /** The days of counts the bars draw: a bot's deliveries, or an inbox's received messages as `delivered`. */
-export interface BarDays {
+interface BarDays {
   days: { date: string; delivered: number }[];
 }
 

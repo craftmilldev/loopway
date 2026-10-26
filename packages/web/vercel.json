@@ -1,7 +1,16 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "ignoreCommand": "node scripts/should-build.mjs",
   "git": {
-    "deploymentEnabled": { "**": false, "main": true }
+    "deploymentEnabled": {
+      "**": false,
+      "main": true
+    }
   },
-  "crons": [{ "path": "/api/cron/schedules", "schedule": "0 0 * * *" }]
+  "crons": [
+    {
+      "path": "/api/cron/schedules",
+      "schedule": "0 0 * * *"
+    }
+  ]
 }

@@ -8,7 +8,7 @@ import { track } from "./metrics.js";
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : one + "s"}`;
 
 /** What a schedule inbox sends and when, in place of the events a webhook inbox takes. */
-export function scheduleText(schedule: NonNullable<NonNullable<Inbox["config"]>["schedule"]>, messages: number) {
+function scheduleText(schedule: NonNullable<NonNullable<Inbox["config"]>["schedule"]>, messages: number) {
   const when = schedule.every === "hour" ? "every hour" : `daily at ${String(schedule.hour).padStart(2, "0")}:00 UTC`;
   return `${when} · ${plural(messages, "message type")}`;
 }

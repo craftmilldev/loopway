@@ -44,6 +44,7 @@ describe("metrics", () => {
     const { user } = await signup.json();
     expect(events.find((e) => e.event === "signed_up" && e.distinctId === user.id)?.properties).toMatchObject({
       $set: { email, name: user.name },
+      client: "web",
     });
     expect((await verify({})).status).toBe(201);
     expect(events.findLast((e) => e.event === "logged_in" && e.distinctId === user.id)?.properties).toMatchObject({
