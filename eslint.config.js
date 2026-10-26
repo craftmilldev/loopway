@@ -26,6 +26,8 @@ export default defineConfig(
     plugins: { "react-hooks": reactHooks },
     rules: { "react-hooks/rules-of-hooks": "error", "react-hooks/exhaustive-deps": "warn" },
   },
+  // Plain .mjs so Vercel can run it before `npm install`; it has no tsconfig, so no type-aware rules.
+  { files: ["packages/web/scripts/should-build.mjs"], extends: [tseslint.configs.disableTypeChecked] },
   // Commander types action arguments as `any`; the command functions declare the option shapes.
   { files: ["packages/cli/src/program.ts"], rules: { "@typescript-eslint/no-unsafe-argument": "off" } },
   // Tests read JSON responses as `any` all over; checking those types would mean a cast per assertion.
