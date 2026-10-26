@@ -1521,6 +1521,11 @@ describe("threads", () => {
       await d.tick();
       expect(Object.keys((await d.state()).threads)).toHaveLength(2);
       expect(runners).toHaveBeenCalledTimes(1);
+
+      // A burst of refreshes (a loop of sends, say) shares one fetch in flight and one after it.
+      runners.mockClear();
+      await Promise.all(Array.from({ length: 6 }, () => d.refresh()));
+      expect(runners).toHaveBeenCalledTimes(2);
     } finally {
       threads.mockRestore();
       runners.mockRestore();
