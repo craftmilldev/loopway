@@ -65,6 +65,7 @@ export interface CreateOptions {
   schema?: Record<string, unknown>;
   every?: string;
   hour?: number;
+  day?: number;
   message?: string[];
   messageFile?: string[];
   config?: ScheduleConfig;
@@ -103,7 +104,9 @@ async function createFromFlags(ctx: Context, client: LoopwayClient, opts: Create
     );
     if (scheduleFlags.length) {
       await ctx.metrics?.capture("inbox_create_rejected", { source, reason: "schedule_flag_on_other_source" });
-      throw new UsageError("--every, --hour, --message, --message-file and --config only work with --source schedule");
+      throw new UsageError(
+        "--every, --hour, --day, --message, --message-file and --config only work with --source schedule",
+      );
     }
     return client.createInbox({ org: opts.org!, name: opts.name, source_type: source, config: flagConfig(opts) });
   }
@@ -123,7 +126,10 @@ async function createFromFlags(ctx: Context, client: LoopwayClient, opts: Create
     throw err;
   }
   if (!config.schedule)
-    return reject("no_schedule", "A schedule inbox needs --every hour, or --every day with --hour <0-23>");
+    return reject(
+      "no_schedule",
+      "A schedule inbox needs --every hour, --every day with --hour <0-23>, or --every week with --day and --hour",
+    );
   return createScheduleInbox(ctx, client, opts.org!, opts.name, config);
 }
 
@@ -338,6 +344,7 @@ export interface UpdateOptions {
   schema?: Record<string, unknown>;
   every?: string;
   hour?: number;
+  day?: number;
   message?: string[];
   messageFile?: string[];
   removeMessage?: string[];
@@ -345,14 +352,17 @@ export interface UpdateOptions {
   json?: boolean;
 }
 
-type ScheduleFlags = Pick<UpdateOptions, "every" | "hour" | "message" | "messageFile" | "removeMessage" | "config">;
+type ScheduleFlags = Pick<
+  UpdateOptions,
+  "every" | "hour" | "day" | "message" | "messageFile" | "removeMessage" | "config"
+>;
 
-const SCHEDULE_FLAGS = ["every", "hour", "message", "messageFile", "removeMessage", "config"] as const;
-const SCHEDULE_FLAG_NAMES = "--every, --hour, --message, --message-file, --remove-message or --config";
+const SCHEDULE_FLAGS = ["every", "hour", "day", "message", "messageFile", "removeMessage", "config"] as const;
+const SCHEDULE_FLAG_NAMES = "--every, --hour, --day, --message, --message-file, --remove-message or --config";
 
 /**
  * Changes the name, events, secret or schema. In a terminal with no flags, asks for the secret (a schedule inbox
- * is edited interactively instead). A schedule inbox's `--every`, `--hour`, `--message`, `--message-file`,
+ * is edited interactively instead). A schedule inbox's `--every`, `--hour`, `--day`, `--message`, `--message-file`,
  * `--remove-message` and `--config` are applied to its current config, and the whole config is sent.
  */
 export async function updateInbox(ctx: Context, ref: string, opts: UpdateOptions) {
@@ -422,7 +432,7 @@ export async function updateInbox(ctx: Context, ref: string, opts: UpdateOptions
 // ---------- schedule inboxes ----------
 
 export interface ScheduleConfig {
-  schedule: { every: "hour" } | { every: "day"; hour: number };
+  schedule: { every: "hour" } | { every: "day"; hour: number } | { every: "week"; day: number; hour: number };
   messages: { type: string; message: string }[];
 }
 
@@ -448,6 +458,18 @@ export function parseHour(value: string): number {
   if (!/^\d+$/.test(value) || hour > 23)
     throw new UsageError(`--hour must be a whole number from 0 to 23, got "${value}"`);
   return hour;
+}
+
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** A UTC weekday as 0-6 (0 = Sunday) or its name or three-letter short form. */
+export function parseDay(value: string): number {
+  const named = WEEKDAYS.findIndex(
+    (d) => d.toLowerCase() === value.toLowerCase() || d.slice(0, 3).toLowerCase() === value.toLowerCase(),
+  );
+  if (named >= 0) return named;
+  if (/^[0-6]$/.test(value)) return Number(value);
+  throw new UsageError(`--day must be 0-6 (0 is Sunday) or mon..sun, got "${value}"`);
 }
 
 export function readScheduleConfig(path: string): ScheduleConfig {
@@ -478,17 +500,30 @@ export function applyScheduleFlags(current: ScheduleConfig, opts: ScheduleFlags)
   let schedule = base.schedule;
   const messages = new Map((base.messages ?? []).map((m) => [m.type, m.message]));
 
-  if (opts.every !== undefined || opts.hour !== undefined) {
+  if (opts.every !== undefined || opts.hour !== undefined || opts.day !== undefined) {
     const every = opts.every ?? schedule?.every;
+    // Switching between daily and weekly keeps the hour.
+    const hourOf = () => opts.hour ?? (schedule && schedule.every !== "hour" ? schedule.hour : undefined);
     if (every === "hour") {
-      if (opts.hour !== undefined) throw new ScheduleFlagError("bad_schedule", "--hour only applies with --every day");
+      if (opts.hour !== undefined) {
+        throw new ScheduleFlagError("bad_schedule", "--hour only applies with --every day or week");
+      }
+      if (opts.day !== undefined) throw new ScheduleFlagError("bad_schedule", "--day only applies with --every week");
       schedule = { every: "hour" };
     } else if (every === "day") {
-      const hour = opts.hour ?? (schedule?.every === "day" ? schedule.hour : undefined);
+      const hour = hourOf();
+      if (opts.day !== undefined) throw new ScheduleFlagError("bad_schedule", "--day only applies with --every week");
       if (hour === undefined) throw new ScheduleFlagError("bad_schedule", "--every day needs --hour <0-23> (UTC)");
       schedule = { every: "day", hour };
+    } else if (every === "week") {
+      const hour = hourOf();
+      const day = opts.day ?? (schedule?.every === "week" ? schedule.day : undefined);
+      if (day === undefined || hour === undefined) {
+        throw new ScheduleFlagError("bad_schedule", "--every week needs --day <0-6|mon..sun> and --hour <0-23> (UTC)");
+      }
+      schedule = { every: "week", day, hour };
     } else {
-      throw new ScheduleFlagError("bad_schedule", `--every must be "hour" or "day", got "${every}"`);
+      throw new ScheduleFlagError("bad_schedule", `--every must be "hour", "day" or "week", got "${every}"`);
     }
   }
 
@@ -539,7 +574,11 @@ export function applyScheduleFlags(current: ScheduleConfig, opts: ScheduleFlags)
 }
 
 const everyText = (s: ScheduleConfig["schedule"] | undefined) =>
-  s?.every === "day" ? `daily at ${s.hour}:00 UTC` : "every hour";
+  s?.every === "week"
+    ? `weekly on ${WEEKDAYS[s.day]} at ${String(s.hour).padStart(2, "0")}:00 UTC`
+    : s?.every === "day"
+      ? `daily at ${s.hour}:00 UTC`
+      : "every hour";
 
 /** What `inbox show` prints for a schedule inbox: the schedule, then each message type with its text. */
 export function scheduleText(config: Partial<ScheduleConfig>): string {
@@ -561,19 +600,31 @@ async function editScheduleInteractive(current: ScheduleConfig): Promise<Record<
       options: [
         { value: "hour", label: "Every hour" },
         { value: "day", label: "Once a day (UTC)" },
+        { value: "week", label: "Once a week (UTC)" },
       ],
     }),
   );
   if (every === "hour") schedule = { every: "hour" };
   else {
+    let weekday = 1;
+    if (every === "week") {
+      weekday = ask(
+        await p.select({
+          message: "Which day?",
+          initialValue: schedule.every === "week" ? schedule.day : 1,
+          options: WEEKDAYS.map((label, value) => ({ value, label })),
+        }),
+      );
+    }
     const hour = ask(
       await p.text({
         message: "Which hour (0-23, UTC)?",
-        initialValue: String(schedule.every === "day" ? schedule.hour : 9),
+        initialValue: String(schedule.every === "hour" ? 9 : schedule.hour),
         validate: (v) => (/^\d+$/.test(v ?? "") && Number(v) <= 23 ? undefined : "A whole number from 0 to 23"),
       }),
     );
-    schedule = { every: "day", hour: Number(hour) };
+    schedule =
+      every === "day" ? { every: "day", hour: Number(hour) } : { every: "week", day: weekday, hour: Number(hour) };
   }
 
   for (;;) {

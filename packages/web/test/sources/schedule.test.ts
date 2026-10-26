@@ -24,6 +24,20 @@ function scheduleInbox(key: string, c: unknown = config) {
 }
 
 describe("schedule inboxes", () => {
+  it("computes the window a weekly schedule is in", () => {
+    const week = (day: number, hour: number, at: string) =>
+      windowStart({ every: "week", day, hour }, new Date(at)).toISOString();
+    // 2026-10-14 is a Wednesday; the Monday 13:00 window starts 2026-10-12.
+    expect(week(1, 13, "2026-10-14T08:00:00Z")).toBe("2026-10-12T13:00:00.000Z");
+    expect(week(1, 13, "2026-10-18T23:59:59Z")).toBe("2026-10-12T13:00:00.000Z");
+    // The boundary hour opens the window; a tick just before it is still in the last one.
+    expect(week(1, 13, "2026-10-19T13:00:00Z")).toBe("2026-10-19T13:00:00.000Z");
+    expect(week(1, 13, "2026-10-19T12:59:59Z")).toBe("2026-10-12T13:00:00.000Z");
+    // Sunday (0) and Saturday (6).
+    expect(week(0, 0, "2026-10-14T08:00:00Z")).toBe("2026-10-11T00:00:00.000Z");
+    expect(week(6, 23, "2026-10-14T08:00:00Z")).toBe("2026-10-10T23:00:00.000Z");
+  });
+
   it("computes the window an hourly or daily schedule is in", () => {
     const at = new Date("2026-10-15T11:15:30Z");
     expect(windowStart({ every: "hour" }, at).toISOString()).toBe("2026-10-15T11:00:00.000Z");
@@ -35,6 +49,10 @@ describe("schedule inboxes", () => {
     const key = await newUser();
     expect((await scheduleInbox(key, {})).status).toBe(400);
     expect((await scheduleInbox(key, { ...config, schedule: { every: "week" } })).status).toBe(400);
+    expect((await scheduleInbox(key, { ...config, schedule: { every: "week", hour: 9 } })).status).toBe(400);
+    expect((await scheduleInbox(key, { ...config, schedule: { every: "week", day: 7, hour: 9 } })).status).toBe(400);
+    expect((await scheduleInbox(key, { ...config, schedule: { every: "week", day: 1, hour: 24 } })).status).toBe(400);
+    expect((await scheduleInbox(key, { ...config, schedule: { every: "month" } })).status).toBe(400);
     expect((await scheduleInbox(key, { ...config, schedule: { every: "day", hour: 24 } })).status).toBe(400);
     expect((await scheduleInbox(key, { ...config, messages: [] })).status).toBe(400);
     expect((await scheduleInbox(key, { ...config, messages: [config.messages[0], config.messages[0]] })).status).toBe(
@@ -43,6 +61,15 @@ describe("schedule inboxes", () => {
     const ok = await scheduleInbox(key);
     expect(ok.status).toBe(201);
     expect(ok.body.config).toEqual(config);
+  });
+
+  it("accepts a weekly schedule and stores one message for the week", async () => {
+    const key = await newUser();
+    const weekly = { schedule: { every: "week", day: 1, hour: 13 }, messages: [config.messages[0]] };
+    const inbox = await scheduleInbox(key, weekly);
+    expect(inbox.status).toBe(201);
+    expect(inbox.body.config).toEqual(weekly);
+    expect((await call("POST", `/inboxes/${inbox.body.id}/test`, { key })).status).toBeLessThan(500);
   });
 
   it("stores one message per type per window, and a second run in the window is a duplicate", async () => {
@@ -114,17 +141,17 @@ describe("schedule inboxes", () => {
       });
     const daily = { schedule: { every: "day", hour: 9 }, messages: [config.messages[0]] };
 
-    it("reads SCHEDULE_OPTIONS, defaulting to day", () => {
-      expect(parseScheduleOptions(undefined)).toEqual(["day"]);
-      expect(parseScheduleOptions("")).toEqual(["day"]);
-      expect(parseScheduleOptions("day,hour")).toEqual(["hour", "day"]);
+    it("reads SCHEDULE_OPTIONS, defaulting to day and week", () => {
+      expect(parseScheduleOptions(undefined)).toEqual(["day", "week"]);
+      expect(parseScheduleOptions("")).toEqual(["day", "week"]);
+      expect(parseScheduleOptions("week,day,hour")).toEqual(["hour", "day", "week"]);
       expect(parseScheduleOptions(" hour ")).toEqual(["hour"]);
-      expect(() => parseScheduleOptions("week")).toThrow(/week/);
+      expect(() => parseScheduleOptions("month")).toThrow(/month/);
     });
 
     it("lists the enabled options with the sources", async () => {
       const key = await newUser();
-      expect((await call("GET", "/sources", { key })).body.schedule_options).toEqual(["hour", "day"]);
+      expect((await call("GET", "/sources", { key })).body.schedule_options).toEqual(["hour", "day", "week"]);
       const r = await dayOnly().request("/api/sources", { headers: { authorization: `Bearer ${key}` } });
       expect((await r.json()).schedule_options).toEqual(["day"]);
     });
@@ -186,9 +213,10 @@ describe("schedule inboxes", () => {
       events.length = 0;
       const result = await (await tick(CRON, dayOnly())).json();
       expect(result.disabled).toBeGreaterThanOrEqual(1);
-      expect(events.filter((e) => e.event === "schedule_tick_rejected")).toEqual([
-        { event: "schedule_tick_rejected", properties: { reason: "option_disabled", option: "hour" } },
-      ]);
+      expect(events.filter((e) => e.event === "schedule_tick_rejected")).toContainEqual({
+        event: "schedule_tick_rejected",
+        properties: { reason: "option_disabled", option: "hour" },
+      });
       expect((await call("GET", `/inboxes/${hourly.id}/messages`, { key })).body.data).toHaveLength(0);
       expect((await call("GET", `/inboxes/${dailyInbox.id}/messages`, { key })).body.data).toHaveLength(1);
     });

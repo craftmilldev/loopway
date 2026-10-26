@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CreateInbox, type Inbox } from "./shared.js";
+import { CreateInbox, WEEKDAYS, type Inbox } from "./shared.js";
 import { BAR_DAYS, DeliveryBars } from "./delivery-bars.js";
 import { DashLayout, MembersHint } from "./layout.js";
 import * as lw from "./lw.js";
@@ -9,7 +9,13 @@ const plural = (n: number, one: string) => `${n} ${n === 1 ? one : one + "s"}`;
 
 /** What a schedule inbox sends and when, in place of the events a webhook inbox takes. */
 function scheduleText(schedule: NonNullable<NonNullable<Inbox["config"]>["schedule"]>, messages: number) {
-  const when = schedule.every === "hour" ? "every hour" : `daily at ${String(schedule.hour).padStart(2, "0")}:00 UTC`;
+  const at = schedule.every === "hour" ? "" : `${String(schedule.hour).padStart(2, "0")}:00 UTC`;
+  const when =
+    schedule.every === "hour"
+      ? "every hour"
+      : schedule.every === "day"
+        ? `daily at ${at}`
+        : `weekly on ${WEEKDAYS[schedule.day]} at ${at}`;
   return `${when} · ${plural(messages, "message type")}`;
 }
 

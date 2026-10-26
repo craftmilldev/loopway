@@ -50,7 +50,7 @@ loopway inbox create --name <n> --source github --events issues,pull_request --s
 loopway inbox list
 loopway inbox show <inbox>                    # webhook URL, secret setup, message count
 loopway inbox update <inbox> [--name n] [--events a,b] [--secret s]
-loopway inbox update <inbox> --every hour|day [--hour <0-23, UTC>] --message <type>=<text>   # a schedule inbox's rhythm and messages
+loopway inbox update <inbox> --every hour|day|week [--day <0-6|mon..sun>] [--hour <0-23, UTC>] --message <type>=<text>   # a schedule inbox's rhythm and messages
 
 loopway messages list <inbox> [--type 'com.github.pull_request.*'] [--limit 20]
 loopway messages get <inbox> <message> --data
