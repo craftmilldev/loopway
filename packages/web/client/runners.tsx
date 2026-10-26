@@ -23,13 +23,7 @@ export const commands = (org: string) => [
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : one + "s"}`;
 
-export function CopyCommand({
-  command,
-  from = "runners",
-}: {
-  command: ReturnType<typeof commands>[number];
-  from?: string;
-}) {
+function CopyCommand({ command, from = "runners" }: { command: ReturnType<typeof commands>[number]; from?: string }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
@@ -51,7 +45,7 @@ export function CopyCommand({
 }
 
 /** The commands that start a runner. */
-export function SetupPanel() {
+function SetupPanel() {
   return (
     <section className="runner-setup" aria-label="Start a runner">
       <span className="lbl">Add a runner</span>

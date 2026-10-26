@@ -4,7 +4,7 @@ import * as lw from "./lw.js";
 import { track } from "./metrics.js";
 
 /** With more bots than this the list gets a find box. */
-export const FIND_AFTER = 8;
+const FIND_AFTER = 8;
 
 const Dot = ({ state }: { state: BotState | null }) =>
   state ? <span className={"dot state-" + state} title={state} /> : <span className="dot" aria-hidden="true" />;

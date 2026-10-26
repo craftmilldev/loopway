@@ -7,7 +7,7 @@ import * as lw from "./lw.js";
 import { track } from "./metrics.js";
 import { fromDrafts, problem, PromptEditor, type RuleDraft } from "./prompt.js";
 
-export const STEPS = ["Connect a source", "Choose its job", "Name and model", "Start a runner", "Watch the first run"];
+const STEPS = ["Connect a source", "Choose its job", "Name and model", "Start a runner", "Watch the first run"];
 
 /** When to pick each model alias. */
 const MODEL_USE: Record<string, string> = {
