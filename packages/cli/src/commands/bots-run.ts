@@ -136,6 +136,8 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
     else notice = v.notice;
     closeTui.abort();
   });
+  // The TUI reads the dispatcher's snapshot, so fill it before the first draw.
+  await dispatcher.refresh();
   // How often the TUI's colors fall back to the 256-color palette, or go without.
   void ctx.metrics?.capture("bots_run_tui_opened", { colors: colorSupport() });
   try {
@@ -158,6 +160,7 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
             throw err;
           }
           void ctx.metrics?.capture("thread_message_sent", { surface: "tui" });
+          await dispatcher.refresh();
         },
         end: async (threadId) => {
           const botId = (await dispatcher.state()).threads[threadId]?.bot_id;
@@ -165,6 +168,7 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
           try {
             await client.endThread(botId, threadId);
             void ctx.metrics?.capture("thread_ended", { surface: "tui" });
+            await dispatcher.refresh();
           } catch (err) {
             const reason = err instanceof ApiError ? err.code : "error";
             void ctx.metrics?.capture("thread_end_failed", { surface: "tui", reason });
