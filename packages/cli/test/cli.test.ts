@@ -1573,6 +1573,35 @@ describe("threads", () => {
     await finish();
   });
 
+  it("serves the TUI's state from memory, calling the server once per tick", async () => {
+    const { inbox, d, finish } = await setup(2);
+    await send(inbox, "issues", issue("opened", 1));
+    await d.tick();
+    const threads = vi.spyOn(LoopwayClient.prototype, "listThreads");
+    const runners = vi.spyOn(LoopwayClient.prototype, "listRunners");
+    try {
+      // Redrawing as often as the TUI likes costs no calls.
+      for (let i = 0; i < 5; i++) expect(Object.keys((await d.state()).threads)).toHaveLength(1);
+      expect(threads).not.toHaveBeenCalled();
+      expect(runners).not.toHaveBeenCalled();
+
+      // A new thread shows up with the tick that routes it, which fetches the snapshot once.
+      await send(inbox, "issues", issue("opened", 2));
+      await d.tick();
+      expect(Object.keys((await d.state()).threads)).toHaveLength(2);
+      expect(runners).toHaveBeenCalledTimes(1);
+
+      // A burst of refreshes (a loop of sends, say) shares the fetch in flight.
+      runners.mockClear();
+      await Promise.all(Array.from({ length: 6 }, () => d.refresh()));
+      expect(runners).toHaveBeenCalledTimes(1);
+    } finally {
+      threads.mockRestore();
+      runners.mockRestore();
+    }
+    await finish();
+  });
+
   it("holds every delivery after a run hits the usage limit, then resumes the session where it was", async () => {
     const { inbox, runs, out, d, finish, list } = await setup(3);
     await send(inbox, "issues", issue("opened", 1));
@@ -1668,6 +1697,7 @@ describe("threads", () => {
 
     // The first run took its messages, then the network dropped: nothing starts until the backoff passes.
     await finish({ code: 0, delivered: true, apiError: error });
+    await d.refresh();
     expect(out.join("\n")).toMatch(/hit an API error .*Overloaded.*retry 1\/3/);
     expect((await d.state()).threads[first!.sessionId]!.interrupted).toBe(true);
     await d.tick();
@@ -1736,6 +1766,7 @@ describe("threads", () => {
     await send(inbox, "issues", issue("opened", 1));
     await d.tick();
     await finish({ code: 0, delivered: false, apiError: "API Error: offline" });
+    await d.refresh();
     expect((await d.state()).waiting.map((m) => m.subject)).toEqual(["a/b#1"]);
     const real = Date.now;
     vi.spyOn(Date, "now").mockImplementation(() => real() + API_ERROR_BACKOFF_MS + 1000);
@@ -2255,6 +2286,7 @@ describe("threads", () => {
     expect((await d.state()).bots.held).toEqual([]);
     // The TUI says who holds it, and which runners no process holds, whose threads are stranded.
     const idle = await client.registerRunner({ org: second.org, id: randomUUID(), name: "idle" });
+    await d.refresh();
     const state = await d.state();
     expect(state.bots.skipped).toMatchObject([{ name: "dev1", held_by: "other" }]);
     expect(state.offline.has(idle.id)).toBe(true);

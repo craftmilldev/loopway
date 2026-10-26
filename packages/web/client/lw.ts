@@ -103,7 +103,7 @@ export interface Source {
 }
 
 /** `GET /sources`: the source types, and whether this deployment takes requests for new ones. */
-export interface Sources {
+interface Sources {
   data: Source[];
   can_request: boolean;
   /** The schedule options this deploy offers. */
@@ -322,7 +322,7 @@ export function mergeNewest<T extends { id: string }>(shown: T[] | null, fresh: 
 // When any load last succeeded. The "updated 12 s ago" label reads it without the pages re-rendering.
 let updatedAt: number | null = null;
 const updatedListeners = new Set<() => void>();
-export function markUpdated() {
+function markUpdated() {
   updatedAt = Date.now();
   updatedListeners.forEach((l) => l());
 }
