@@ -13,6 +13,11 @@ export const SECRET = "test-secret";
 export let db: Db;
 export let app: ReturnType<typeof createApi>;
 /** The metrics events the API has recorded in this file's tests. */
+/** The routing the API deferred until after a response (see `defer` in ApiOptions); `settled()` waits for it. */
+const deferred: Promise<unknown>[] = [];
+export async function settled() {
+  while (deferred.length) await deferred.shift();
+}
 export const events: { event: string; distinctId: string; properties?: Record<string, unknown> }[] = [];
 
 // Each test file gets its own migrated database on the local Postgres (`npm run db:up`).
@@ -23,6 +28,7 @@ beforeAll(async () => {
     publicBaseUrl: "https://loopway.test",
     tokenSecret: SECRET,
     inboxSecretKey: TEST_INBOX_KEY,
+    defer: (work) => void deferred.push(work),
     metrics: { capture: async (event, distinctId, properties) => void events.push({ event, distinctId, properties }) },
   });
 });

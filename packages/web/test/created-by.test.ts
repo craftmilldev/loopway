@@ -38,22 +38,23 @@ describe("created_by through the API", () => {
     expect(runner.created_by).toBe(me);
 
     await sendGithub(inbox, "pull_request", prPayload(1));
+    await sendGithub(inbox, "pull_request", prPayload(2));
     const messages = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data;
-    const assignAs = async (runnerId: string | undefined) => {
+    const assignAs = async (runnerId: string | undefined, message: { id: string }) => {
       const lease = (
         await call("POST", `/bots/${bot.id}/lease`, { key, body: { ttl_seconds: 60, runner_id: runnerId } })
       ).body.lease.token;
       const id = randomUUID();
       await call("POST", `/bots/${bot.id}/assign`, {
         key,
-        body: { lease_token: lease, cursor: 0, assignments: [{ message_id: messages[0].id, thread_id: id }] },
+        body: { lease_token: lease, cursor: 0, assignments: [{ message_id: message.id, thread_id: id }] },
       });
       await call("POST", `/bots/${bot.id}/release`, { key, body: { lease_token: lease } });
       return id;
     };
-    const threadId = await assignAs(undefined);
+    const threadId = await assignAs(undefined, messages[0]);
     expect((await call("GET", `/bots/${bot.id}/threads/${threadId}`, { key })).body.created_by).toBe(`bot:${bot.id}`);
-    const byRunner = await assignAs(runner.id);
+    const byRunner = await assignAs(runner.id, messages[1]);
     expect((await call("GET", `/bots/${bot.id}/threads/${byRunner}`, { key })).body.created_by).toBe(
       `runner:${runner.id}`,
     );
