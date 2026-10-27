@@ -29,12 +29,7 @@ const info: RunnerInfo = { org: "craftmill", runnerId: "r1", projectId: "proj_1"
 describe("buildSnapshot", () => {
   it("lists this runner's threads with their bb threads, running first", () => {
     const state: DispatcherState = {
-      bots: {
-        held: [bot("b1", "reviewer")],
-        unleased: [bot("b3", "parked")],
-        skipped: [{ ...bot("b2", "triager"), leased_until: "2026-10-15T01:00:00Z" }],
-      },
-      leaseBots: true,
+      bots: [bot("b1", "reviewer"), bot("b2", "triager")],
       waiting: [],
       threads: {
         ended: thread("ended", { status: "ended", updated_at: "2026-10-15T03:00:00Z" }),
@@ -68,12 +63,10 @@ describe("buildSnapshot", () => {
       runnerId: "r1",
       interval: 5,
       max: 3,
-      leaseBots: true,
     });
     expect(snap.bots).toEqual([
-      { name: "reviewer", harness: "claude", model: "opus", lease: "held", leasedUntil: null },
-      { name: "triager", harness: "claude", model: "opus", lease: "elsewhere", leasedUntil: "2026-10-15T01:00:00Z" },
-      { name: "parked", harness: "claude", model: "opus", lease: "none", leasedUntil: null },
+      { name: "reviewer", harness: "claude", model: "opus" },
+      { name: "triager", harness: "claude", model: "opus" },
     ]);
     expect(snap.threads.map((t) => [t.id, t.status])).toEqual([
       ["busy", "running"],

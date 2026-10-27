@@ -26,7 +26,7 @@ const runnerDir = () => join(defaultConfigDir(), "bb-runner");
 /** Providers to give loopway threads' environment to, beside the ones bb lists when the plugin loads. */
 const KNOWN_PROVIDERS = ["claude-code", "codex", "pi", "acp-cursor"];
 
-/** The CLI's lease TTL default (see `defaultTtl` in bots-run.ts): several polls, at least 30s. */
+/** The CLI's runner lease TTL default (see `defaultTtl` in bots-run.ts): several polls, at least 30s. */
 const ttlFor = (interval: number) => Math.max(DEFAULTS.ttl, 6 * interval);
 
 /** What the Loopway page, `bb loopway status` and the agent tools reach while the runner is going. */
@@ -61,11 +61,6 @@ export default async function plugin(bb: BbPluginApi) {
       label: "Loopway API key (defaults to `loopway login`'s)",
       secret: true,
     },
-    leaseBots: {
-      type: "boolean",
-      label: "Take bot leases (read new messages and start threads); off, only deliver to this runner's threads",
-      default: true,
-    },
   });
 
   let running: Running | undefined;
@@ -84,15 +79,7 @@ export default async function plugin(bb: BbPluginApi) {
   };
   /** Aborted when the settings change, so the runner starts again with them. */
   let restart = new AbortController();
-  settings.onChange((next, prev) => {
-    // Bot leases switch on the running dispatcher, so the runs in flight carry on undisturbed.
-    const changed = (Object.keys(next) as (keyof typeof next)[]).filter((k) => next[k] !== prev[k]);
-    if (running && changed.length === 1 && changed[0] === "leaseBots") {
-      running.dispatcher.setLeaseBots(next.leaseBots);
-      return;
-    }
-    restart.abort();
-  });
+  settings.onChange(() => restart.abort());
 
   const initial = await settings.get();
   if (!initial.project)
@@ -142,7 +129,7 @@ export default async function plugin(bb: BbPluginApi) {
     const org = await pickOrg(client, s.org);
     const runner = await ensureRunner(ctx, client, org, `${hostname()} (bb)`);
     const all = await client.listBots(runner.org);
-    const bots = all.filter((b) => b.prompt_version?.rules);
+    const bots = all.filter((b) => b.prompt_version);
 
     const sessions = new BbSessions({
       threads: bb.sdk.threads,
@@ -160,7 +147,6 @@ export default async function plugin(bb: BbPluginApi) {
       runnerId: runner.id,
       org: runner.org,
       seen: all.map((b) => b.id),
-      leaseBots: s.leaseBots,
     });
     running = {
       info: { org, runnerId: runner.id, projectId: s.project, interval, max: s.max },
@@ -187,7 +173,7 @@ export default async function plugin(bb: BbPluginApi) {
         timer.abort();
       }
     } finally {
-      // Gives the leases back so the CLI, or this plugin's next start, needn't wait out the TTL. bb threads
+      // Gives the runner lease back so the CLI, or this plugin's next start, needn't wait out the TTL. bb threads
       // mid-turn carry on; the next start requeues what they were handed (see sessions.ts).
       await dispatcher.close();
     }
@@ -312,27 +298,15 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.rpc.register(rpcContract, {
     state: () => snapshot(),
-    async setLeaseBots({ on }) {
-      const { leaseBots } = await settings.experimental_set({ leaseBots: on });
-      return { leaseBots };
-    },
   });
 
   async function statusText(): Promise<string> {
     const { runner, bots, threads, moreThreads, stateError } = await snapshot();
     if (runner.phase !== "running")
       return `The loopway runner is ${runner.phase}${runner.message ? `: ${runner.message}` : "."}\n`;
-    const names = (lease: string) =>
-      bots
-        .filter((b) => b.lease === lease)
-        .map((b) => b.name)
-        .join(", ");
     const lines = [
       `org ${runner.org}, runner ${runner.runnerId}`,
-      runner.leaseBots
-        ? `bots: ${names("held") || "none"}`
-        : `not taking bot leases: only delivering to this runner's threads`,
-      ...bots.filter((b) => b.lease === "elsewhere").map((b) => `skipped ${b.name}: another runner holds its lease`),
+      `bots: ${bots.map((b) => b.name).join(", ") || "none"}`,
       ...(stateError ? [`couldn't read the threads: ${stateError}`] : []),
       "",
       "loopway thread  status   bb thread         subjects",

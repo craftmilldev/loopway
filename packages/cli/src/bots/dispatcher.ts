@@ -1,12 +1,10 @@
 import { readFile } from "node:fs/promises";
 import {
   ApiError,
-  type Assignment,
   type Bot,
   type Lease,
   type LoopwayClient,
   type ManagerThread,
-  type Message,
   type Runner,
   type Thread,
   type ThreadMessage,
@@ -18,20 +16,14 @@ import { clock, dim } from "../format.js";
 import { startMcpServer, type McpServer, type McpTool } from "../mcp.js";
 import { getHarness, runHarness, type RunAgent, type RunOutcome } from "@loopway/harnesses";
 import { botEnv } from "./github.js";
-import { ANY_RUNNER, checkRules, route, type BotRule } from "@loopway/rules";
 import { sessionTools } from "./tools.js";
 import { sessionLogPath } from "./transcript.js";
 
 export interface ThreadsOptions {
   max?: number;
   interval?: number;
-  /** How long each bot lease lasts; it's renewed every tick. */
+  /** How long the runner's lease lasts; it's renewed every tick. */
   ttl?: number;
-  /**
-   * false runs without bot leases (see setLeaseBots): the runner only delivers to the threads it already owns.
-   * Default true.
-   */
-  leaseBots?: boolean;
 }
 
 interface StartOptions extends ThreadsOptions {
@@ -56,22 +48,14 @@ export function isNetworkError(error: string): boolean {
 }
 
 /**
- * The lease TTL is short on purpose: the bots of a runner that died without releasing them (killed, crashed,
- * power lost) come free soon instead of blocking the next runner. `bots run` raises it to at least three
+ * The lease TTL is short on purpose: a runner that died without releasing its lease (killed, crashed, power lost)
+ * comes free soon instead of blocking the next process on the machine. `bots run` raises it to at least three
  * minutes (`defaultTtl`).
  */
 export const DEFAULTS = { max: 3, interval: 5, ttl: 30 };
 
 /** The longest the runner waits between polls once nothing has happened for a while. */
 export const MAX_POLL_INTERVAL = 60;
-
-/** A bot another runner holds the lease on. */
-export interface SkippedBot extends Bot {
-  /** When that lease expires, if the server said. */
-  leased_until?: string;
-  /** The name of the runner that holds it, if the server said. */
-  held_by?: string;
-}
 
 /** A message waiting on one of this runner's threads. The same message can wait on a thread of each bot. */
 export interface WaitingMessage extends ThreadMessage {
@@ -81,13 +65,8 @@ export interface WaitingMessage extends ThreadMessage {
 
 /** What a dispatcher is doing right now, for the TUI. */
 export interface DispatcherState {
-  /**
-   * The bots this runner holds a lease on, the ones it skipped because another runner holds theirs, and the rest:
-   * ones it hasn't tried to lease, as with bot leases off.
-   */
-  bots: { held: Bot[]; skipped: SkippedBot[]; unleased: Bot[] };
-  /** Whether this runner takes bot leases; without them it only delivers to its own threads. */
-  leaseBots: boolean;
+  /** The bots this runner runs. */
+  bots: Bot[];
   /** Messages assigned to this runner's threads but not delivered yet, oldest first. */
   waiting: WaitingMessage[];
   /** Every thread of the bots, this runner's and other runners', by id. */
@@ -104,20 +83,12 @@ export interface DispatcherState {
 }
 
 /**
- * Runs the bots of this account: hands their messages to agent sessions in the bot's harness, one per thread. Threads
- * live on the server and belong to the runner that claimed them; this runner only touches its own.
- * Each tick, per bot it holds a lease on:
- *
- * 1. reads the messages after the bot's cursor,
- * 2. routes each one to a thread with the bot's stored rules (see `route` in @loopway/rules), and hands them to the server
- *    with `assign`, which moves the cursor past them; threads that creates are claimed right away;
- *
- * then starts or resumes, in the background, every thread of this runner that has waiting messages and no run
- * in flight, as far as --max allows.
- *
- * On a server that routes messages itself, a tick is one request instead (the runner's work feed): the runner's own
- * threads with waiting messages and the unowned ones it can claim, which it claims while --max has room, then delivers.
- * No bot leases, no reading of messages. An older server, or one with routing off, has no feed, and the tick above runs.
+ * Runs the bots of this account: hands their messages to agent sessions in the bot's harness, one per thread. The
+ * server routes each message to a thread as it arrives; threads belong to the runner that claimed them, and this
+ * runner only touches its own. Each tick is one request, the runner's work feed: its own threads with waiting
+ * messages and the unowned ones it can claim, which it claims while --max has room. It then starts or resumes, in
+ * the background, every thread of this runner that has waiting messages and no run in flight, as far as --max allows.
+ * Runners don't contend for bots: any number can run the same ones, and the first to claim a thread owns it.
  *
  * Delivered messages are context for the session, not tasks it has to mark done; the inbox's messages
  * are left alone. Sessions talk back through the MCP tools in tools.ts, and `end` is what finishes
@@ -128,17 +99,8 @@ export class Dispatcher {
   private readonly running = new Map<string, Promise<void>>();
   /** Thread id → the bot it belongs to, for the MCP tools of the runs in flight. */
   private readonly threadBots = new Map<string, string>();
-  /** Bot id → the lease this runner holds. */
-  private readonly leases = new Map<string, Lease>();
-  /** Bots skipped last tick because another runner holds their lease → when that lease expires, if known. */
-  private readonly skipped = new Map<string, string | undefined>();
   /** Bots whose threads this runner has already checked for runs cut off by a previous runner. */
   private readonly repaired = new Set<string>();
-  /** Bots whose unclaimed threads this runner has already claimed, which it does once it holds their lease. */
-  private readonly claimed = new Set<string>();
-  private leaseBots: boolean;
-  /** Whether the server has the work feed: "on" until a 404 says it doesn't (an older server). */
-  private feed: "on" | "off" = "on";
   /** When this runner last looked for new bots (ms), in the work tick. */
   private syncedAt = 0;
   /** Whether anything reads the thread snapshot (the TUI does); without it the work tick leaves the threads alone. */
@@ -149,7 +111,7 @@ export class Dispatcher {
   private draining = false;
   private readonly max: number;
   private readonly ttl: number;
-  /** This machine's runner id (see ensureRunner), recorded on the bot leases it takes. */
+  /** This machine's runner id (see ensureRunner). */
   private readonly runnerId: string;
   private readonly org: string;
   /** Thread id → the harness and model its session started on, which a resume keeps even if the bot has moved on. */
@@ -163,8 +125,6 @@ export class Dispatcher {
   private queued = 0;
   /** While a run says the account hit its usage limit: when the limit resets (ms), until which nothing is delivered. */
   private limitedUntil = 0;
-  /** Bot id → the newest version that was ignored because its rules don't parse. */
-  private readonly rejected = new Map<string, number>();
   /** Thread id → consecutive API-error retries so far, and when the next one may start (ms). */
   private readonly errored = new Map<string, { retries: number; after: number }>();
   /** The fetch `refresh()` has in flight. */
@@ -178,16 +138,13 @@ export class Dispatcher {
   private lastActivity = Date.now();
 
   /**
-   * `bots` must all have a prompt version with rules, and `runnerId` is this machine's runner
+   * `bots` must all have a prompt version, and `runnerId` is this machine's runner
    * (see ensureRunner). Takes the runner's lease.
    */
   static async start(ctx: Context, client: LoopwayClient, bots: Bot[], opts: StartOptions): Promise<Dispatcher> {
-    const rules = new Map<string, BotRule[]>();
     const prompts = new Map<string, string>();
     for (const bot of bots) {
-      if (!bot.prompt_version?.rules) throw new Error(`Bot ${bot.name} has no prompt version with rules.`);
-      checkRules(bot.prompt_version.rules);
-      rules.set(bot.id, bot.prompt_version.rules);
+      if (!bot.prompt_version) throw new Error(`Bot ${bot.name} has no prompt version.`);
       prompts.set(bot.id, bot.prompt_version.prompt);
     }
     // With a GitHub bot configured, sessions comment, push and commit as it; otherwise as the user.
@@ -205,7 +162,7 @@ export class Dispatcher {
       () => later.dispatcher?.markOutdated(),
     );
     const mcp = await startMcpServer("loopway", tools);
-    const dispatcher = (later.dispatcher = new Dispatcher(ctx, client, bots, rules, prompts, opts, mcp, tools, env));
+    const dispatcher = (later.dispatcher = new Dispatcher(ctx, client, bots, prompts, opts, mcp, tools, env));
     try {
       await dispatcher.leaseRunner();
     } catch (err) {
@@ -219,7 +176,6 @@ export class Dispatcher {
     private readonly ctx: Context,
     private readonly client: LoopwayClient,
     private readonly bots: Bot[],
-    private readonly rules: Map<string, BotRule[]>,
     private readonly prompts: Map<string, string>,
     opts: StartOptions,
     private readonly mcp: McpServer,
@@ -229,7 +185,6 @@ export class Dispatcher {
   ) {
     for (const id of opts.seen ?? []) this.seen.add(id);
     this.max = opts.max ?? DEFAULTS.max;
-    this.leaseBots = opts.leaseBots !== false;
     this.ttl = opts.ttl ?? DEFAULTS.ttl;
     this.runnerId = opts.runnerId;
     this.org = opts.org;
@@ -238,23 +193,9 @@ export class Dispatcher {
     this.dir = ctx.configDir;
   }
 
-  /** Stops taking on work: ticks only renew the leases, so the sessions in flight can finish. Not undone. */
+  /** Stops taking on work: ticks only renew the runner's lease, so the sessions in flight can finish. Not undone. */
   drain(): void {
     this.draining = true;
-  }
-
-  /**
-   * Turns bot leases off or on. Off, the next tick gives back the leases this runner holds and it stops taking
-   * them, so it no longer reads the bots' messages or starts threads: the runner that leases a bot next routes
-   * them, to this runner's threads too. This runner keeps delivering to its own threads, as delivery needs only
-   * its runner lease. On, it takes the leases again from the next tick.
-   */
-  setLeaseBots(on: boolean): void {
-    if (on === this.leaseBots) return;
-    this.leaseBots = on;
-    this.ctx.out(
-      on ? "taking bot leases again" : "giving back the bot leases: only delivering to this runner's threads now",
-    );
   }
 
   private outdated = false;
@@ -281,51 +222,15 @@ export class Dispatcher {
     return Date.now() - this.lastActivity;
   }
 
+  /**
+   * One tick: renews the runner's lease, then one request says what this runner has to do, so an idle tick makes no
+   * per-bot calls. Claims the unowned threads it has room for, then delivers.
+   */
   async tick(): Promise<void> {
     this.freed = false;
     await this.leaseRunner();
-    if (this.feed === "on" && (await this.workTick())) return;
-    if (!this.draining)
-      await this.syncBots().catch((err) =>
-        this.ctx.out(`error: looking for new bots: ${err instanceof Error ? err.message : String(err)}`),
-      );
-    // A copy, as a bot the server no longer knows is dropped from `this.bots` as it goes.
-    for (const bot of [...this.bots]) {
-      try {
-        const leased = this.leaseBots ? await this.lease(bot) : (await this.release(bot), false);
-        if (this.draining) continue;
-        // This runner's own threads are repaired once whether or not it holds the bot; unclaimed ones are claimed
-        // only by the runner that holds it.
-        const repair = !this.repaired.has(bot.id);
-        const claim = leased && !this.claimed.has(bot.id);
-        // A runner that doesn't hold the bot still runs its threads, which start from the bot's newest prompt.
-        await this.refreshVersion(bot);
-        if (repair || claim) {
-          await this.reconcile(bot, { repair, claim });
-          if (repair) this.repaired.add(bot.id);
-          if (claim) this.claimed.add(bot.id);
-        }
-        if (leased) await this.poll(bot);
-      } catch (err) {
-        if (this.dropIfGone(bot, err)) continue;
-        // One bot's trouble (a flaky network, say) shouldn't stop the others; try again next tick.
-        this.ctx.out(`error: bot ${bot.name}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-    if (!this.draining) await this.deliverAll();
-    await this.fetchSnapshotOnce();
-  }
-
-  /**
-   * The tick for a server with the work feed: one request says what this runner has to do, so an idle tick makes no
-   * per-bot calls and needs no bot leases. Claims the unowned threads it has room for, then delivers. False, having done
-   * nothing, if the server doesn't have the feed (a 404), so the caller runs the tick that reads each bot instead.
-   */
-  private async workTick(): Promise<boolean> {
-    if (this.draining) return true;
-    // Asked first, so a server without the feed is found out before anything else is done this tick.
+    if (this.draining) return void (await this.fetchSnapshotOnce());
     let work = await this.fetchWork();
-    if (!work) return false;
     // The bots this runner runs change rarely; look for new ones about as often as an idle runner polls.
     if (Date.now() - this.syncedAt >= MAX_POLL_INTERVAL * 1000) {
       this.syncedAt = Date.now();
@@ -338,7 +243,7 @@ export class Dispatcher {
     for (const bot of [...this.bots]) {
       if (this.repaired.has(bot.id)) continue;
       try {
-        await this.reconcile(bot, { repair: true, claim: false });
+        await this.reconcile(bot);
         this.repaired.add(bot.id);
         repaired = true;
       } catch (err) {
@@ -346,27 +251,18 @@ export class Dispatcher {
         this.ctx.out(`error: bot ${bot.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    if (repaired) work = (await this.fetchWork()) ?? work;
+    if (repaired) work = await this.fetchWork();
     await this.deliverAll(work);
     if (this.watching) await this.fetchSnapshotOnce();
-    return true;
   }
 
-  /** The work feed for this runner's bots, or undefined (and the feed turned off) if the server has none. */
-  private async fetchWork(): Promise<Thread[] | undefined> {
-    try {
-      return await this.client.runnerWork(
-        this.runnerId,
-        this.token(),
-        this.bots.map((b) => b.id),
-      );
-    } catch (err) {
-      if (!(err instanceof ApiError && err.status === 404)) throw err;
-      this.feed = "off";
-      this.ctx.out(dim("The server has no work feed; reading each bot's messages instead."));
-      void this.ctx.metrics?.capture("work_feed_unsupported");
-      return undefined;
-    }
+  /** The work feed for this runner's bots: its threads with waiting messages, and the unowned ones it can claim. */
+  private fetchWork(): Promise<Thread[]> {
+    return this.client.runnerWork(
+      this.runnerId,
+      this.token(),
+      this.bots.map((b) => b.id),
+    );
   }
 
   /**
@@ -396,34 +292,24 @@ export class Dispatcher {
 
   /**
    * Starts running the bots created since the last tick, so a new bot needs no restart, and stops running the ones
-   * deleted since. One without a prompt and rules yet is reported once and checked again each tick; one whose rules
-   * don't parse is reported once per version. Sessions already running for a deleted bot's threads are left to finish.
+   * deleted since. One without a prompt yet is reported once and checked again each time. Sessions already running
+   * for a deleted bot's threads are left to finish.
    */
   private async syncBots(): Promise<void> {
-    // The runner belongs to one org, so ask for that org's bots only: the server refuses leases on any other's.
+    // The runner belongs to one org, so ask for that org's bots only.
     const listed = await this.client.listBots(this.org);
     const ids = new Set(listed.map((b) => b.id));
     for (const bot of [...this.bots]) if (!ids.has(bot.id)) this.dropBot(bot, "deleted");
     for (const bot of listed) {
-      if (this.rules.has(bot.id)) continue;
+      if (this.prompts.has(bot.id)) continue;
       const version = bot.prompt_version;
-      if (!version?.rules) {
+      if (!version) {
         if (this.seen.has(bot.id)) continue;
         this.seen.add(bot.id);
-        this.ctx.out(`Skipping bot ${bot.name}: it has no prompt and rules yet. Set them with \`loopway bots edit\`.`);
+        this.ctx.out(`Skipping bot ${bot.name}: it has no prompt yet. Set one with \`loopway bots edit\`.`);
         void this.ctx.metrics?.capture("bot_skipped", { reason: "no_version" });
         continue;
       }
-      if (this.rejected.get(bot.id) === version.version) continue;
-      try {
-        checkRules(version.rules);
-      } catch (err) {
-        this.rejected.set(bot.id, version.version);
-        this.ctx.out(`bot ${bot.name}: not running it: ${err instanceof Error ? err.message : String(err)}`);
-        void this.ctx.metrics?.capture("bot_skipped", { reason: "invalid_rules" });
-        continue;
-      }
-      this.rules.set(bot.id, version.rules);
       this.prompts.set(bot.id, version.prompt);
       this.bots.push(bot);
       this.ctx.out(`bot ${bot.name}: found, now running it`);
@@ -436,8 +322,8 @@ export class Dispatcher {
     const i = this.bots.indexOf(bot);
     if (i < 0) return;
     this.bots.splice(i, 1);
-    for (const m of [this.rules, this.prompts, this.leases, this.skipped, this.rejected]) m.delete(bot.id);
-    for (const set of [this.repaired, this.claimed, this.seen]) set.delete(bot.id);
+    this.prompts.delete(bot.id);
+    for (const set of [this.repaired, this.seen]) set.delete(bot.id);
     this.ctx.out(`bot ${bot.name}: deleted, no longer running it`);
     void this.ctx.metrics?.capture("bot_removed", { reason });
   }
@@ -450,9 +336,8 @@ export class Dispatcher {
   }
 
   /**
-   * Switches the bot to its newest version when it has a new one: its rules route the messages from now on, and its
-   * prompt starts the threads that start from now on. A version whose rules don't parse is reported once and ignored,
-   * so the previous one keeps running.
+   * Switches the bot to its newest version when it has a new one, so the threads that start from now on use its
+   * prompt, harness and model.
    */
   private async refreshVersion(bot: Bot): Promise<void> {
     const fresh = await this.client.getBot(bot.id);
@@ -463,19 +348,7 @@ export class Dispatcher {
       this.ctx.out(`bot ${bot.name}: now on harness ${bot.harness} / model ${bot.model}`);
     }
     const version = fresh.prompt_version;
-    if (!version || version.version === bot.prompt_version?.version || version.version === this.rejected.get(bot.id))
-      return;
-    try {
-      if (!version.rules) throw new Error("it has no rules");
-      checkRules(version.rules);
-    } catch (err) {
-      this.rejected.set(bot.id, version.version);
-      this.ctx.out(
-        `bot ${bot.name}: ignoring version ${version.version}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return;
-    }
-    this.rules.set(bot.id, version.rules);
+    if (!version || version.version === bot.prompt_version?.version) return;
     this.prompts.set(bot.id, version.prompt);
     bot.prompt_version = version;
     this.ctx.out(`bot ${bot.name}: now on version ${version.version}`);
@@ -494,18 +367,7 @@ export class Dispatcher {
       .flatMap((t) => t.waiting.map((m) => ({ ...m, thread_id: t.id, bot_name: names.get(t.bot_id) ?? "" })))
       .sort((a, b) => a.id.localeCompare(b.id) || a.thread_id.localeCompare(b.thread_id));
     return {
-      leaseBots: this.leaseBots,
-      bots: {
-        held: this.bots.filter((b) => this.leases.has(b.id)),
-        skipped: this.bots
-          .filter((b) => this.skipped.has(b.id))
-          .map((b) => ({
-            ...b,
-            leased_until: this.skipped.get(b.id),
-            held_by: all.find((r) => r.id !== this.runnerId && r.bots.some((x) => x.id === b.id))?.name,
-          })),
-        unleased: this.bots.filter((b) => !this.leases.has(b.id) && !this.skipped.has(b.id)),
-      },
+      bots: [...this.bots],
       waiting,
       threads,
       runnerId: this.runnerId,
@@ -543,7 +405,7 @@ export class Dispatcher {
   }
 
   /**
-   * Releases the bot leases, so the next runner needn't wait out the TTL, and stops the MCP server.
+   * Releases the runner's lease, so the next process needn't wait out the TTL, and stops the MCP server.
    * Closing again, as a second Ctrl-C does, joins the close in progress.
    */
   close(): Promise<void> {
@@ -551,11 +413,6 @@ export class Dispatcher {
   }
 
   private async doClose(): Promise<void> {
-    for (const [id, lease] of this.leases) {
-      // A lease that expired or was taken over is gone already; nothing to do about it on the way out.
-      await this.client.releaseBot(id, lease.token).catch(() => {});
-      this.leases.delete(id);
-    }
     if (this.runnerLease) await this.client.releaseRunner(this.runnerId, this.runnerLease.token).catch(() => {});
     await this.mcp.close();
   }
@@ -579,57 +436,17 @@ export class Dispatcher {
     }
   }
 
-  /** Gives back the bot's lease, if this runner holds it. */
-  private async release(bot: Bot): Promise<void> {
-    this.skipped.delete(bot.id);
-    const lease = this.leases.get(bot.id);
-    if (!lease) return;
-    this.leases.delete(bot.id);
-    // One that expired or was taken over is gone already.
-    await this.client.releaseBot(bot.id, lease.token).catch(() => {});
-    this.ctx.out(`bot ${bot.name}: lease given back`);
-  }
-
-  /** Takes or renews the bot's lease. False, with a log line the first time, if another runner holds it. */
-  private async lease(bot: Bot): Promise<boolean> {
-    try {
-      const { lease } = await this.client.leaseBot(bot.id, {
-        ttl_seconds: this.ttl,
-        lease_token: this.leases.get(bot.id)?.token,
-        runner_id: this.runnerId,
-      });
-      this.leases.set(bot.id, lease);
-      if (this.skipped.delete(bot.id)) this.ctx.out(`bot ${bot.name}: lease taken`);
-      return true;
-    } catch (err) {
-      if (!(err instanceof ApiError && err.code === "leased")) throw err;
-      this.leases.delete(bot.id);
-      const until = leasedUntil(err);
-      if (!this.skipped.has(bot.id)) {
-        const when = until ? ` until ${clock(until)}` : "";
-        this.ctx.out(`bot ${bot.name} is leased by another runner${when}; skipping it until that lease ends.`);
-      }
-      this.skipped.set(bot.id, until);
-      return false;
-    }
-  }
-
   /**
    * Picks up the threads of this runner a previous runner left mid-run (it died, was restarted, or the machine
    * slept). The session exists in Claude Code once its log has an `init` record, so the thread is marked started;
    * the messages it was handed but never finished go back to waiting, or, for runs from before those were
-   * recorded, the session is told to carry on (`repair`, done once per bot on this runner's first tick, so no run
-   * of this runner is in flight). Threads a runner created with `assign` but died before claiming are claimed
-   * too, if no session ever ran for them (`claim`, once per bot, when this runner first holds its lease).
+   * recorded, the session is told to carry on. Done once per bot on this runner's first tick, so no run of this
+   * runner is in flight.
    */
-  private async reconcile(bot: Bot, { repair, claim }: { repair: boolean; claim: boolean }): Promise<void> {
+  private async reconcile(bot: Bot): Promise<void> {
     let repaired = 0;
     for (const t of await this.client.listThreads(bot.id, "pending", false)) {
-      if (!t.runner_id && !t.started) {
-        if (claim) await this.client.claimThread(bot.id, t.id, this.token());
-        continue;
-      }
-      if (!repair || t.runner_id !== this.runnerId || t.status !== "active") continue;
+      if (t.runner_id !== this.runnerId || t.status !== "active") continue;
       const log = await this.readLog(t.id);
       const inflight = t.inflight.length > 0;
       // A script that died before writing anything leaves no transcript, but its messages are still inflight.
@@ -649,80 +466,6 @@ export class Dispatcher {
       repaired++;
     }
     if (repaired) this.ctx.out(dim(`Bot ${bot.name}: picked up ${repaired} thread(s) a previous runner cut off.`));
-  }
-
-  /** Reads the bot's messages until there are none, assigning each page to threads and moving the cursor past it. */
-  private async poll(bot: Bot): Promise<void> {
-    while (this.leases.has(bot.id)) {
-      const messages = await this.client.botMessages(bot.id, { limit: 100 });
-      if (!messages.length) return;
-      this.lastActivity = Date.now();
-      await this.assign(bot, messages);
-    }
-  }
-
-  /**
-   * Routes each message to a thread (an existing one, or a new one) and has the server assign the page, which also
-   * moves the cursor past it. Messages already assigned are skipped by the server. The threads it creates are
-   * claimed by this runner right away.
-   */
-  private async assign(bot: Bot, messages: Message[]): Promise<void> {
-    const rules = this.rules.get(bot.id)!;
-    const threads = await this.client.listThreads(bot.id, "all");
-    // Who holds each subject, kept up to date as the page is routed so a later message sees an earlier one's threads.
-    const held = new Map(threads.flatMap((t) => t.subjects.map((s) => [s, t.id] as const)));
-    const known = new Set(threads.map((t) => t.id));
-    const created: string[] = [];
-    const assignments: Assignment[] = [];
-    // The org's runners, read once a rule names one.
-    let runners: Runner[] | undefined;
-    for (const m of messages) {
-      const routed = route(rules, held, m, { botId: bot.id, threads: known });
-      if (!routed) continue;
-      for (const s of routed.add_subjects) held.set(s, routed.thread_id);
-      let runnerId: string | undefined;
-      if (!known.has(routed.thread_id)) {
-        known.add(routed.thread_id);
-        if (routed.runner !== ANY_RUNNER) runners ??= await this.client.listRunners(this.org);
-        runnerId = this.ruleRunner(bot, routed.runner, runners ?? []);
-        // A thread made for another runner is theirs from the start, so this one doesn't claim it.
-        if (!runnerId) created.push(routed.thread_id);
-      }
-      assignments.push({
-        message_id: m.id,
-        thread_id: routed.thread_id,
-        ...(routed.add_subjects.length ? { add_subjects: routed.add_subjects } : {}),
-        ...(routed.key ? { subject: routed.key } : {}),
-        ...(routed.author_kind ? { author_kind: routed.author_kind } : {}),
-        ...(runnerId ? { runner_id: runnerId } : {}),
-      });
-    }
-    await this.client.assign(bot.id, {
-      lease_token: this.leases.get(bot.id)!.token,
-      cursor: messages.at(-1)!.seq,
-      assignments,
-    });
-    for (const id of created) await this.client.claimThread(bot.id, id, this.token());
-  }
-
-  /**
-   * The runner a rule's `runner` names, for a new thread: its id, or undefined for any runner (the rule says `*` or
-   * names none, or names a runner the org doesn't have, which is warned about and flagged in metrics).
-   */
-  private ruleRunner(bot: Bot, name: string, runners: Runner[]): string | undefined {
-    if (name === ANY_RUNNER) return undefined;
-    const named = runners.filter((r) => r.name === name);
-    // The most recently seen one, if several share the name.
-    const runner = named.sort((a, b) => b.last_seen_at.localeCompare(a.last_seen_at))[0];
-    if (!runner) {
-      this.ctx.out(
-        `warning: bot ${bot.name}: a rule names runner "${name}", which this org doesn't have; any runner may take the thread.`,
-      );
-      void this.ctx.metrics?.capture("rule_runner_unknown", {});
-      return undefined;
-    }
-    void this.ctx.metrics?.capture("rule_runner_assigned", { self: runner.id === this.runnerId });
-    return runner.id;
   }
 
   /**
@@ -751,10 +494,10 @@ export class Dispatcher {
   /**
    * Starts or resumes every thread of this runner with waiting messages and no run in flight, oldest first, while
    * --max allows. Delivers nothing while the usage limit a run hit hasn't reset yet; messages keep
-   * queueing up and go out on the first tick after it does. With the work feed (`work`), the threads come from it, and
-   * the unowned ones in it are claimed first, as many as there is room for.
+   * queueing up and go out on the first tick after it does. The threads come from the work feed, and the unowned ones
+   * in it are claimed first, as many as there is room for.
    */
-  private async deliverAll(work?: Thread[]): Promise<void> {
+  private async deliverAll(work: Thread[]): Promise<void> {
     if (Date.now() < this.limitedUntil) return;
     if (this.limitedUntil) {
       this.limitedUntil = 0;
@@ -768,23 +511,13 @@ export class Dispatcher {
       !running.has(t.id) &&
       (t.waiting.length || t.limited || t.interrupted) &&
       (this.errored.get(t.id)?.after ?? 0) <= Date.now();
-    if (work) ready.push(...work.filter(isReady));
-    else
-      for (const bot of [...this.bots]) {
-        try {
-          ready.push(...(await this.client.listThreads(bot.id, "pending", false)).filter(isReady));
-        } catch (err) {
-          // One bot's trouble shouldn't stop delivery to the others.
-          if (this.dropIfGone(bot, err)) continue;
-          this.ctx.out(`error: bot ${bot.name}: ${err instanceof Error ? err.message : String(err)}`);
-        }
-      }
-    if (work && this.leaseBots) await this.claimUnowned(work, ready, running.size);
+    ready.push(...work.filter(isReady));
+    await this.claimUnowned(work, ready, running.size);
     ready.sort((a, b) => (a.waiting[0]?.id ?? "").localeCompare(b.waiting[0]?.id ?? ""));
     // A thread starts from its bot's newest prompt.
     for (const botId of new Set(ready.map((t) => t.bot_id))) {
       const bot = this.bots.find((b) => b.id === botId);
-      if (bot && work) await this.refreshVersion(bot).catch(() => {});
+      if (bot) await this.refreshVersion(bot).catch(() => {});
     }
 
     const deliveries: { thread: Thread; messages: ThreadMessage[] }[] = [];

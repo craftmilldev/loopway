@@ -15,7 +15,7 @@ Run your loopway bots in bb instead of in a terminal.
 
 ## How it works
 
-The plugin runs the same dispatcher as `loopway bots run`. It polls loopway, leases the org's bots, and routes
-each message to a loopway thread using the bot's rules. Instead of starting `claude -p`, it starts a bb thread
+The plugin runs the same dispatcher as `loopway bots run`. It polls loopway for the work the server has routed to loopway threads
+(using the bots' rules) and claims what it has room for. Instead of starting `claude -p`, it starts a bb thread
 in the project you choose, or sends the message to the bb thread the loopway thread already has. It uses the
 API key that `loopway login` saved, unless you set one.

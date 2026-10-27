@@ -153,19 +153,6 @@ export async function deleteBot(ctx: Context, ref: string, opts: OrgOpt) {
   ctx.out(`Deleted bot ${id}.`);
 }
 
-/** `loopway bots release <bot> --force`: drops the lease a runner left behind when it died. */
-export async function releaseBot(ctx: Context, ref: string, opts: OrgOpt & { force?: boolean }) {
-  if (!opts.force) {
-    throw new UsageError(
-      "Pass --force to drop the lease. A `loopway bots run` still holding it loses the bot to the next runner.",
-    );
-  }
-  const client = await authedClient(ctx);
-  const id = await resolveBot(ctx, client, ref, opts.org);
-  await client.forceReleaseBot(id);
-  ctx.out(`Released the lease on bot ${id}; the next \`loopway bots run\` can take it.`);
-}
-
 /** What the bot would read next: messages after its cursor, oldest first. */
 export async function botMessages(ctx: Context, ref: string, opts: JsonOpt & OrgOpt & { limit?: number }) {
   const client = await authedClient(ctx);

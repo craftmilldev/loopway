@@ -41,8 +41,8 @@ Set these with `bb plugin config loopway set <key> <value>`:
 - `apiKey`: a loopway API key, if not the one `loopway login` saved.
 
 The runner registers with loopway as `<hostname> (bb)`. It keeps its own runner id in
-`~/.loopway/bb-runner/`, so it is a different runner from the CLI's. A bot runs on one runner at a time:
-while `loopway bots run` holds a bot's lease, the plugin skips that bot, and the other way round.
+`~/.loopway/bb-runner/`, so it is a different runner from the CLI's. The plugin and `loopway bots run` can run the same bots at
+once: each claims the threads it has room for, and a thread stays with the runner that claimed it.
 
 ## In a bb thread that is a loopway thread
 

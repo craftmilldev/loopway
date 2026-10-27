@@ -19,18 +19,12 @@ const snapshotSchema = z.object({
     max: z.number().nullable(),
     startedAt: z.number().nullable(),
     lastTickAt: z.number().nullable(),
-    /** Whether it takes bot leases; without them it only delivers to its own threads. Null until it's going. */
-    leaseBots: z.boolean().nullable(),
   }),
   bots: z.array(
     z.object({
       name: z.string(),
       harness: z.string(),
       model: z.string(),
-      /** `held` by this runner, held `elsewhere` by another one, or `none`: not leased by this runner, as with bot leases off. */
-      lease: z.enum(["held", "elsewhere", "none"]),
-      /** When another runner's lease on it ends, if it holds one and the server said. */
-      leasedUntil: z.string().nullable(),
     }),
   ),
   /** This runner's threads: running ones first, then active, then ended, newest first within each. */
@@ -59,7 +53,6 @@ export type Snapshot = z.infer<typeof snapshotSchema>;
 
 export const rpcContract = defineRpcContract({
   state: { input: z.null(), output: snapshotSchema },
-  setLeaseBots: { input: z.object({ on: z.boolean() }).strict(), output: z.object({ leaseBots: z.boolean() }) },
 });
 
 /** The realtime channel the page refetches on. */
@@ -114,13 +107,7 @@ export function buildSnapshot(input: {
   titles: Map<string, string | null>;
 }): Snapshot {
   const { status, info, state, pairs, titles } = input;
-  const bots = state
-    ? [
-        ...state.bots.held.map((b) => ({ ...b, lease: "held" as const, leasedUntil: null })),
-        ...state.bots.skipped.map((b) => ({ ...b, lease: "elsewhere" as const, leasedUntil: b.leased_until ?? null })),
-        ...state.bots.unleased.map((b) => ({ ...b, lease: "none" as const, leasedUntil: null })),
-      ]
-    : [];
+  const bots = state?.bots ?? [];
   const names = new Map(bots.map((b) => [b.id, b.name]));
   const all = Object.values(state?.threads ?? {});
   const mine = all.filter((t) => t.runner_id === info?.runnerId);
@@ -152,14 +139,11 @@ export function buildSnapshot(input: {
       max: info?.max ?? null,
       startedAt: status.startedAt,
       lastTickAt: status.lastTickAt,
-      leaseBots: state?.leaseBots ?? null,
     },
     bots: bots.map((b) => ({
       name: b.name,
       harness: b.harness,
       model: b.model,
-      lease: b.lease,
-      leasedUntil: b.leasedUntil,
     })),
     threads: threads.slice(0, MAX_THREADS),
     moreThreads: Math.max(0, threads.length - MAX_THREADS),

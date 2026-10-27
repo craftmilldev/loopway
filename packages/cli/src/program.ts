@@ -15,7 +15,6 @@ import {
   editBot,
   deleteBot,
   listBots,
-  releaseBot,
   showBot,
   updateBot,
 } from "./commands/bots.js";
@@ -404,14 +403,6 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .action((ref, opts) => deleteBot(ctx, ref, opts));
 
   bots
-    .command("release")
-    .description("drop the lease a runner left on a bot when it died, so the next `loopway bots run` can take it")
-    .argument("<bot>", "bot id or name")
-    .addOption(botOrgOpt())
-    .option("--force", "confirm: a `loopway bots run` still holding the lease loses the bot")
-    .action((ref, opts) => releaseBot(ctx, ref, opts));
-
-  bots
     .command("messages")
     .description("list the messages the bot would read next (after its cursor, oldest first)")
     .argument("<bot>", "bot id or name")
@@ -505,7 +496,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .addOption(
       new Option(
         "--ttl <seconds>",
-        "how long each bot lease lasts; it is renewed every poll (default 6 × --interval, at least 180; max 43200)",
+        "how long this runner's lease lasts; it is renewed every poll (default 6 × --interval, at least 180; max 43200)",
       ).argParser(positiveInt),
     )
     .option(
