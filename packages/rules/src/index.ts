@@ -32,6 +32,7 @@ export interface Routed {
   /** An existing thread's id, or a new one's (made here; `assign` creates it). */
   thread_id: string;
   add_subjects: string[];
+  /** The message's own subject, when the rule found one. */
   key?: string;
   /** Who made the message, if the rule said: it sets the thread's level of automation. */
   author_kind?: "human" | "bot";
@@ -79,7 +80,7 @@ export function checkRules(rules: BotRule[]): void {
 }
 
 /**
- * Decides which thread a message goes to, given who holds each subject (`owner/repo#number` → thread id) and the
+ * Decides which thread a message goes to, given who holds each subject (subject → thread id) and the
  * bot's rules. The rules whose type globs match the message are tried in order. Each finds a `subject` (the
  * message's own, "" for none) and `related` ones, and its `action` says what to do with them:
  *
@@ -88,8 +89,7 @@ export function checkRules(rules: BotRule[]): void {
  *   order), or to a new thread if none does, and stop.
  *
  * A message that no rule attached is dropped. A message sent to a thread (THREAD_MESSAGE_TYPE) skips the rules.
- * `add_subjects` is every subject the rule found that no thread holds
- * yet. Ones another thread holds stay there.
+ * `add_subjects` is every subject the rule found that no thread holds yet. Ones another thread holds stay there.
  *
  * Doesn't change `held`; the caller adds `add_subjects` to it as it assigns, so later messages see them.
  */

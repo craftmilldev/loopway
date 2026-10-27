@@ -89,7 +89,7 @@ export abstract class Harness {
         });
         child.stdin!.end(launch.stdin);
       }
-      // stdout goes to the log as before, and through the watch on the way.
+      // stdout goes to the log, and through the watch on the way.
       const watch = this.watch(run.onStarted, run);
       createInterface({ input: child.stdout! }).on("line", (l) => watch.line(l));
       const copied = pipeline(child.stdout!, createWriteStream(run.logPath, { flags: "a", mode: 0o600 }));
