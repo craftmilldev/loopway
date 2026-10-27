@@ -1989,6 +1989,35 @@ describe("threads", () => {
     expect(runs.find((r) => r.resume)).toMatchObject({ harness: "claude", model: "sonnet" });
   });
 
+  it("creates a thread on the runner a rule names, and on this one when the name is unknown", async () => {
+    const { inbox, bot, client, runner, out, d } = await setup(0);
+    const other = await client.registerRunner({ org: runner.org, id: randomUUID(), name: "desktop" });
+    const rulesFile = join(configDir, "runner-rules.json");
+    const pick = `data.issue.number == 1 ? '${runner.name}' : data.issue.number == 2 ? 'desktop' : 'ghost'`;
+    await writeFile(
+      rulesFile,
+      JSON.stringify([
+        {
+          types: ["com.github.issues.*"],
+          subject: "'a/b#' + string(data.issue.number)",
+          runner: pick,
+          action: "'attach'",
+        },
+      ]),
+    );
+    await runJson("bots", "edit", bot.id, "--rules-file", rulesFile);
+    for (const n of [1, 2, 3]) await send(inbox, "issues", issue("opened", n));
+    await d.tick();
+    const byIssue = Object.fromEntries(
+      Object.values(await sessions()).map((t: any) => [t.subjects[0], t.runner_id as string | null]),
+    );
+    // Named runners own their threads from the start (this runner never claims the other's); an unknown name
+    // warns and falls back to this runner, which claims the thread.
+    expect(byIssue).toEqual({ "a/b#1": runner.id, "a/b#2": other.id, "a/b#3": runner.id });
+    expect(out.join("\n")).toMatch(/names runner "ghost"/);
+    expect(out.join("\n")).not.toMatch(/error/);
+  });
+
   it("picks up a new version of the bot's prompt and rules, and ignores one whose rules don't parse", async () => {
     const { inbox, bot, client, runs, out, d, finish } = await setup(3);
     const current = await client.getBot(bot.id);
