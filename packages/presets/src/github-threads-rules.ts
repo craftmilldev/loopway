@@ -1,7 +1,7 @@
 import type { BotRule } from "@loopway/rules";
 
 /** Who made a message: a GitHub app (type Bot, or a login ending in [bot]) or a machine user named `-bot` is a bot. */
-const AUTHOR_KIND =
+export const AUTHOR_KIND =
   "has(data.sender) && has(data.sender.login) ? ((has(data.sender.type) && data.sender.type == 'Bot') || data.sender.login.endsWith('[bot]') || data.sender.login.endsWith('-bot') ? 'bot' : 'human') : ''";
 
 /** The assign rules of the default `github-threads` bot. They use the helpers of the GitHub source. */

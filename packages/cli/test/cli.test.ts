@@ -995,7 +995,7 @@ describe("bots", () => {
         "--inbox",
         "a",
       ),
-    ).rejects.toThrow(/Allowed choices are github-threads/);
+    ).rejects.toThrow(/Allowed choices are github-threads, merged-pr-ticket/);
     await expect(run("bots", "create", "--name", "x", "--inbox", "a")).rejects.toThrow(/--preset is required/);
     await expect(run("bots", "create", "--name", "x", "--preset", "github-threads", "--inbox", "a")).rejects.toThrow(
       /--model is required/,
