@@ -61,7 +61,7 @@ describe("the marketing home", () => {
     const { container } = render(marketingPage("/"));
     const links = within(screen.getByRole("navigation")).getAllByRole("link");
     const anchors = links.filter((a) => a.getAttribute("href")!.startsWith("#"));
-    expect(anchors.map((a) => a.getAttribute("href"))).toEqual(["#levels", "#bots", "#how", "#dashboard", "#sources"]);
+    expect(anchors.map((a) => a.getAttribute("href"))).toEqual(["#first", "#levels", "#runners", "#examples"]);
     for (const a of anchors) {
       const section = container.querySelector(a.getAttribute("href")!)!;
       expect(a.textContent).toBe(section.querySelector(".lp-label")!.textContent);

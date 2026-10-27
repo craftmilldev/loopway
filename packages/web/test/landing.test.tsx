@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import home from "../content/home.md";
 import { track } from "../client/metrics.js";
 import { agentList, AGENTS, LandingSections, parseHome } from "../client/landing.js";
-import { SAMPLE_BOTS } from "../client/landing-bots.js";
 
 vi.mock("../client/metrics.js", () => ({ track: vi.fn() }));
 
@@ -179,14 +178,10 @@ describe("content/home.md", () => {
     expect(sections.map((s) => s.id)).toEqual([
       "top",
       "listens",
+      "first",
       "levels",
-      "bots",
-      "how",
-      "threads",
       "runners",
-      "dashboard",
-      "api",
-      "sources",
+      "examples",
       "start",
       "colophon",
     ]);
@@ -202,7 +197,6 @@ describe("content/home.md", () => {
     const link = within(c.querySelector<HTMLElement>("#start")!).getByRole("link", { name: "View on GitHub" });
     expect(link.className).toBe("");
     expect(link.parentElement?.className).toBe("lp-links");
-    expect(c.querySelector(".lp-id-api .lp-well-wrap")).toBeNull();
   });
 
   it("copies exactly the install commands from either well", async () => {
@@ -226,67 +220,13 @@ describe("content/home.md", () => {
   });
 });
 
-describe("the threads figure", () => {
-  it("shows a deploy-medic thread asking a person a question, with none of our real bot names", () => {
-    const figure = draw(home).querySelector('[data-figure="threads"]')!;
-    expect(figure.textContent).toContain("deploy-medic · thread");
-    expect(figure.textContent).toContain("Roll back to eb83c73");
-    expect(figure.textContent).toContain("tail -f ~/.loopway/threads/");
-    for (const name of [
-      "loopway-dev",
-      "loopway-review",
-      "loopway-epic",
-      "loopway-requests",
-      "prod-deploy-errors",
-      "model-updater",
-      "call-learnings",
-    ])
-      expect(figure.textContent).not.toContain(name);
-  });
-});
-
-describe("the dashboard figure", () => {
-  const SAMPLE_NAMES = [
-    "intake",
-    "issue-to-pr",
-    "second-look",
-    "deploy-medic",
-    "backlog-sweep",
-    "notes-to-tasks",
-    "bounce-check",
-  ];
-  const figure = () => draw(home).querySelector<HTMLElement>('#dashboard .lp-figure[data-figure="dashboard"]')!;
-
-  it("lists the sample bots and none of ours", () => {
-    const c = figure();
-    const names = [...c.querySelectorAll("tbody tr .bot-link")].map((e) => e.textContent);
-    expect(names).toEqual(SAMPLE_NAMES);
-    for (const real of [
-      "loopway-dev",
-      "loopway-review",
-      "loopway-epic",
-      "loopway-requests",
-      "prod-deploy-errors",
-      "model-updater",
-      "call-learnings",
-    ])
-      expect(c.textContent).not.toContain(real);
-  });
-
-  it("shows every state with the dashboard's own badge", () => {
-    const states = [...figure().querySelectorAll("tbody .state")].map((e) => e.className.replace("state state-", ""));
-    expect(new Set(states)).toEqual(new Set(["working", "limited", "stranded", "waiting", "idle"]));
-  });
-
-  it("shows bars and a pie for every bot, and every level in the pies", () => {
-    const c = figure();
-    expect(c.querySelectorAll("tbody .bars")).toHaveLength(SAMPLE_BOTS.length);
-    const pies = [...c.querySelectorAll("tbody .level-pie svg")].map((e) => e.getAttribute("aria-label")!);
-    expect(pies).toHaveLength(SAMPLE_BOTS.length);
-    for (const level of [2, 3, 4]) expect(pies.some((p) => new RegExp(`[1-9]\\d*% level ${level}`).test(p))).toBe(true);
-  });
-
-  it("scrolls the table inside its own box", () => {
-    expect(figure().querySelector(".scroll > table.bots-ledger")).not.toBeNull();
+describe("the examples", () => {
+  it("has two captioned rows, one for work and one for code", () => {
+    const c = draw(home).querySelector("#examples")!;
+    expect([...c.querySelectorAll(".lp-caption")].map((e) => e.textContent)).toEqual([
+      "For your work",
+      "For your code",
+    ]);
+    expect([...c.querySelectorAll(".lp-items")].map((l) => l.querySelectorAll("li").length)).toEqual([3, 3]);
   });
 });

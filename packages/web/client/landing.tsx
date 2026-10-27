@@ -1,12 +1,8 @@
 import { HARNESS_LABELS } from "@loopway/harnesses/labels";
-import { STATE_COLORS } from "@loopway/palette";
 import { Marked, type Tokens } from "marked";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BotsTable } from "./bots-table.js";
-import { SAMPLE_BOTS } from "./landing-bots.js";
 import { LedeTerminal } from "./lede-terminal.js";
 import { track } from "./metrics.js";
-import { ThreadFigure } from "./thread-figure.js";
 
 // The landing page, built from content/home.md: its comment says how the markdown maps to the page. Parsing turns
 // the markdown into sections of blocks; the components below lay each section out by its id, and styles.css (the
@@ -126,20 +122,16 @@ export function parseHome(markdown: string, agents: readonly string[] = AGENTS):
 }
 
 /**
- * The figure for a section, by id: the terminal (top), a thread (threads) and the bots table (dashboard).
+ * The figure for a section, by id: the terminal (top).
  */
 export const FIGURES: Record<string, () => ReactNode> = {
   top: () => <LedeTerminal />,
-  threads: () => <ThreadFigure />,
-  dashboard: () => <BotsTable rows={SAMPLE_BOTS} />,
 };
 
 /** How each section lays out, by id. Any other id is "wide": the heading and its prose side by side, then the rest. */
-const LAYOUTS: Record<string, "split" | "strip" | "wells" | "close" | "foot"> = {
+const LAYOUTS: Record<string, "split" | "strip" | "close" | "foot"> = {
   top: "split",
   listens: "strip",
-  threads: "split",
-  api: "wells",
   start: "close",
   colophon: "foot",
 };
@@ -191,7 +183,7 @@ function Buttons({
   );
 }
 
-function List({ section, list }: { section: string; list: Extract<Block, { kind: "list" }> }) {
+function List({ list }: { list: Extract<Block, { kind: "list" }> }) {
   const Tag = list.ordered ? "ol" : "ul";
   return (
     <div className={list.ordered ? "lp-list lp-list-ordered" : "lp-list"}>
@@ -214,11 +206,7 @@ function List({ section, list }: { section: string; list: Extract<Block, { kind:
             {it.title && (
               <h3 className="lp-title">
                 {!it.kicker && <Swatch level={it.level} />}
-                {section === "dashboard" && it.title in STATE_COLORS ? (
-                  <span className={`state state-${it.title}`} dangerouslySetInnerHTML={{ __html: it.title }} />
-                ) : (
-                  <span dangerouslySetInnerHTML={{ __html: it.title }} />
-                )}
+                <span dangerouslySetInnerHTML={{ __html: it.title }} />
               </h3>
             )}
             <Html as="p" className="lp-text" html={it.text} />
@@ -274,7 +262,7 @@ function Blocks({ section, blocks, plain }: { section: string; blocks: Block[]; 
     ) : b.kind === "buttons" ? (
       <Buttons key={i} section={section} links={b.links} plain={plain} />
     ) : b.kind === "list" ? (
-      <List key={i} section={section} list={b} />
+      <List key={i} list={b} />
     ) : (
       <Well key={i} label={b.label} code={b.code} />
     ),
@@ -311,17 +299,6 @@ function SectionView({ s }: { s: Section }) {
           {blocks(s.blocks)}
         </div>
         <Figure id={s.id} />
-      </>
-    );
-  else if (layout === "wells")
-    body = (
-      <>
-        <div className="lp-main">
-          {label}
-          {heading}
-          {blocks(s.blocks.filter((b) => b.kind !== "well"))}
-        </div>
-        <div className="lp-side">{blocks(s.blocks.filter((b) => b.kind === "well"))}</div>
       </>
     );
   else if (layout === "close") {
