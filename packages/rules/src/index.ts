@@ -5,13 +5,15 @@ import { Environment } from "@marcbachmann/cel-js";
  * One assign rule of a bot. The first rule with a type glob matching a message applies; each field is a CEL
  * expression over the message (see `route`): `subject` gives the message's own subject ("" for none), `related`
  * the subjects it also names, `authorKind` whether a person or a bot made the message (`'human'`, `'bot'` or `''` for
- * unknown), and `action` (required) what to do with what they find (`attach` or `skip`).
+ * unknown), `runner` the name of the runner that should run a new thread (`*`, or leaving it out, for any), and
+ * `action` (required) what to do with what they find (`attach` or `skip`).
  */
 export interface BotRule {
   types: string[];
   subject?: string;
   related?: string;
   authorKind?: string;
+  runner?: string;
   action: string;
 }
 
@@ -36,12 +38,23 @@ export interface Routed {
   key?: string;
   /** Who made the message, if the rule said: it sets the thread's level of automation. */
   author_kind?: "human" | "bot";
+  /** The name of the runner the rule wants a new thread to run on, or `*` for any. */
+  runner: string;
 }
+
+/** A runner's name is plain so rules can name it: letters, digits, dots, underscores and dashes, up to 64. Other characters become dashes. */
+export function runnerName(name: string): string {
+  return name.replace(/[^A-Za-z0-9._-]+/g, "-").slice(0, 64) || "runner";
+}
+
+/** What a rule's `runner` says when it names none: any runner may take the thread. */
+export const ANY_RUNNER = "*";
 
 /**
  * The CEL environment rules run in. It is plain CEL plus this small API:
  *
  * - `data`: the event's payload, and `event_type`: its type.
+ * - In `runner`: nothing more; it returns a runner's name, or `'*'` for any runner.
  * - In `authorKind`: nothing more; it returns `'human'`, `'bot'` or `''` when the rule can't tell.
  * - In `action` only: `subject` and `related` (what the rule's other expressions produced) and `held` (whether a
  *   thread already holds one of those subjects).
@@ -74,7 +87,7 @@ export function checkRules(rules: BotRule[]): void {
   rules.forEach((rule, i) => {
     if (typeof rule.action !== "string" || !rule.action)
       throw new Error(`Rule ${i + 1} has no action; every rule needs one, such as "'attach'" or "'skip'".`);
-    for (const field of ["subject", "related", "authorKind", "action"] as const)
+    for (const field of ["subject", "related", "authorKind", "runner", "action"] as const)
       if (rule[field] !== undefined) base.parse(rule[field]);
   });
 }
@@ -86,7 +99,8 @@ export function checkRules(rules: BotRule[]): void {
  *
  * - `skip`: move on to the next rule.
  * - `attach`: attach the message to the thread holding the subject (the own one first, then the related ones in
- *   order), or to a new thread if none does, and stop.
+ *   order), or to a new thread if none does, and stop. The rule's `runner` matters only for a new thread; one that
+ *   exists stays on its runner.
  *
  * A message that no rule attached is dropped. A message sent to a thread (THREAD_MESSAGE_TYPE) skips the rules.
  * `add_subjects` is every subject the rule found that no thread holds yet. Ones another thread holds stay there.
@@ -104,7 +118,7 @@ export function route(
     const data = e.event.data as { thread_id?: unknown; bot_id?: unknown } | undefined;
     const id = data?.thread_id;
     if (typeof id !== "string" || !self || data?.bot_id !== self.botId || !self.threads.has(id)) return undefined;
-    return { thread_id: id, add_subjects: [], author_kind: "human" };
+    return { thread_id: id, add_subjects: [], author_kind: "human", runner: ANY_RUNNER };
   }
   const vars = { event_type: e.event.type, data: e.event.data ?? {} };
   for (const rule of rules) {
@@ -119,7 +133,10 @@ export function route(
     const kind: unknown = rule.authorKind !== undefined ? base.evaluate(rule.authorKind, vars) : "";
     if (kind !== "" && kind !== "human" && kind !== "bot")
       throw new Error(`Unknown author kind "${String(kind)}"; use "human", "bot" or "".`);
+    const runner: unknown = rule.runner !== undefined ? base.evaluate(rule.runner, vars) : ANY_RUNNER;
+    if (typeof runner !== "string") throw new Error(`Unknown runner "${String(runner)}"; use a runner's name or "*".`);
     return {
+      runner,
       thread_id: found ?? randomUUID(),
       add_subjects: [...new Set(subjects)].filter((s) => !held.has(s)),
       key,

@@ -133,6 +133,7 @@ describe("migration 022_created_by", () => {
         "033_manager_threads",
         "034_message_is_test",
         "035_inbox_last_delivery",
+        "036_runner_names",
       ]);
 
       const by = async (table: string, id: string) =>

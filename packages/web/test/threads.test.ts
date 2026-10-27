@@ -72,6 +72,42 @@ describe("thread titles and summaries", () => {
     expect(list[0].waiting[0].summary).toBe("alice opened issue #4: Old title");
   });
 
+  it("creates a thread on the runner the assignment names, and leaves an existing thread where it is", async () => {
+    const { key, inbox, base, assign, thread, runner } = await setup(0);
+    await sendGithub(inbox, "issues", {
+      action: "opened",
+      sender: { login: "alice" },
+      issue: { number: 4, title: "T" },
+      repository: { url: "u" },
+    });
+    const ms = (await call("GET", `/inboxes/${inbox.id}/messages?order=asc`, { key })).body.data as { id: string }[];
+    const id = randomUUID();
+    expect((await assign([{ message_id: ms[0]!.id, thread_id: id, runner_id: runner }])).status).toBe(200);
+    expect((await thread(id)).body.runner_id).toBe(runner);
+
+    const other = randomUUID();
+    await call("POST", "/runners", { key, body: { id: other, name: "desktop" } });
+    await sendGithub(inbox, "issues", {
+      action: "edited",
+      sender: { login: "alice" },
+      issue: { number: 4, title: "T2" },
+      repository: { url: "u" },
+    });
+    const more = (await call("GET", `/inboxes/${inbox.id}/messages?order=asc`, { key })).body.data as { id: string }[];
+    expect((await assign([{ message_id: more[1]!.id, thread_id: id, runner_id: other }], { cursor: 2 })).status).toBe(
+      200,
+    );
+    expect((await thread(id)).body.runner_id).toBe(runner);
+    expect((await call("GET", `${base}/threads`, { key })).status).toBe(200);
+  });
+
+  it("makes runner names plain", async () => {
+    const { key } = await setup(0);
+    const id = randomUUID();
+    const res = await call("POST", "/runners", { key, body: { id, name: "Matt's MacBook (work)" } });
+    expect(res.body.name).toBe("Matt-s-MacBook-work-");
+  });
+
   it("has a null title when no message carries one", async () => {
     const { key, base, messages, assign, thread } = await setup(1);
     const id = randomUUID();

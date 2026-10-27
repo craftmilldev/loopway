@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z, ZodError } from "zod";
-import { checkRules, THREAD_MESSAGE_TYPE } from "@loopway/rules";
+import { checkRules, runnerName, THREAD_MESSAGE_TYPE } from "@loopway/rules";
 import { cliVersion, olderThan } from "./cli-version.js";
 import { eeRoutes, type EeOptions } from "../ee/routes.js";
 import type { Db } from "./db/index.js";
@@ -818,7 +818,7 @@ export function createApi(opts: ApiOptions) {
   // The CLI makes the id and calls this on startup; it is safe to repeat.
   authed.post("/runners", async (c) => {
     const input = z
-      .object({ org: z.string().optional(), id: runnerId, name: z.string().min(1).max(200) })
+      .object({ org: z.string().optional(), id: runnerId, name: z.string().min(1).max(200).transform(runnerName) })
       .parse(await jsonBody(c));
     const org = await createOrg(c, "runner", input.org);
     const runner = await store.upsertRunner(c.var.db, c.var.user.id, org.id, input.id, input.name);
@@ -897,6 +897,7 @@ export function createApi(opts: ApiOptions) {
         subject: expression.optional(),
         related: expression.optional(),
         authorKind: expression.optional(),
+        runner: expression.optional(),
         action: expression,
       }),
     )
@@ -1227,6 +1228,7 @@ export function createApi(opts: ApiOptions) {
               add_subjects: threadSubjects.optional(),
               subject: z.string().min(1).max(500).optional(),
               author_kind: z.enum(["human", "bot"]).optional(),
+              runner_id: runnerId.optional(),
             }),
           )
           .max(100),
@@ -1256,6 +1258,7 @@ export function createApi(opts: ApiOptions) {
     const done = await store.assignMessages(c.var.db, bot.id, input.lease_token, input.cursor, assignments);
     if (!done) throw leaseMismatch(bot);
     for (const level of done.levels) await metrics.capture("thread_automation_level_set", c.var.user.id, { level });
+    if (done.onRunner) await metrics.capture("thread_created_on_runner", c.var.user.id, { threads: done.onRunner });
     return c.json({ assigned: done.assigned });
   });
 

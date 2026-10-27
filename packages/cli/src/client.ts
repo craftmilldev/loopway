@@ -190,6 +190,8 @@ export interface Assignment {
   add_subjects?: string[];
   subject?: string;
   author_kind?: "human" | "bot";
+  /** The runner a new thread is created on, owned by it from the start. */
+  runner_id?: string;
 }
 
 export interface ThreadPatch {

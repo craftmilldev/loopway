@@ -1826,18 +1826,21 @@ describe("threads", () => {
       thread_id: "t1",
       add_subjects: ["a/b#3"],
       key: "a/b#1",
+      runner: "*",
     });
     // A closing keyword right after a quote or backtick is an example, not a reference.
     expect(route(held, message(1, 'Adds a rule for "Closes #2" and `Fixes #2`.'))).toEqual({
       thread_id: "t1",
       add_subjects: [],
       key: "a/b#1",
+      runner: "*",
     });
     // Otherwise the first closed issue a thread holds; the PR joins it, and what t1 holds stays on t1.
     expect(route(held, message(9, "Closes #5, closes #2, closes #1"))).toEqual({
       thread_id: "t2",
       add_subjects: ["a/b#9", "a/b#5"],
       key: "a/b#9",
+      runner: "*",
     });
     // Nothing held: a new thread with every subject.
     const fresh = route(held, message(7, "Closes #8"))!;
@@ -1860,6 +1863,7 @@ describe("threads", () => {
       thread_id: "t9",
       add_subjects: [],
       author_kind: "human",
+      runner: "*",
     });
     expect(to({ bot_id: "b1", text: "no thread" })).toBeUndefined();
     // A bot sharing the inbox drops it: the message names another bot, or a thread this bot doesn't have.
@@ -1899,6 +1903,7 @@ describe("threads", () => {
       thread_id: "t1",
       add_subjects: [],
       key: "a/b#1",
+      runner: "*",
     });
     expect(route(held, "com.github.workflow_run.completed", run([]))).toBeUndefined();
     const future = (n: number) => ({ repository, issue: { number: n, labels: [{ name: "future" }] } });
@@ -1907,6 +1912,16 @@ describe("threads", () => {
     // Pushes have no subject: each is its own thread. Types no rule matches are dropped.
     expect(route(held, "com.github.push", { repository })).toMatchObject({ add_subjects: [], key: undefined });
     expect(route(held, "com.vercel.deployment.created", {})).toBeUndefined();
+  });
+
+  it("route: a rule's runner names where a new thread runs, and is any runner by default", () => {
+    const msg = { event: { type: "x.y", data: { who: "me" } } };
+    const base = { types: ["x.*"], subject: "'s#1'", action: "'attach'" };
+    expect(routeWith([base], new Map(), msg)?.runner).toBe("*");
+    expect(routeWith([{ ...base, runner: "data.who == 'me' ? 'laptop' : '*'" }], new Map(), msg)?.runner).toBe(
+      "laptop",
+    );
+    expect(() => checkRules([{ ...base, runner: "(" }])).toThrow();
   });
 
   it("route: the github-threads rules judge who made a message", () => {

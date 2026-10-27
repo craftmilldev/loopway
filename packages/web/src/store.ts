@@ -1315,6 +1315,8 @@ export interface Assignment {
   subject?: string;
   /** Who made the message, as the bot's rules judged it (see `authorKind` in BotRule). Drives the thread's level. */
   author_kind?: "human" | "bot";
+  /** The runner a new thread is created on (it owns the thread from the start); ignored for a thread that exists. */
+  runner_id?: string;
 }
 
 /**
@@ -1329,7 +1331,7 @@ export async function assignMessages(
   token: string,
   cursor: number,
   assignments: Assignment[],
-): Promise<{ assigned: number; levels: (2 | 3 | 4)[] } | undefined> {
+): Promise<{ assigned: number; levels: (2 | 3 | 4)[]; onRunner: number } | undefined> {
   return db.transaction(async (tx) => {
     const [bot] = await tx.query<{ org_id: string; runner_id: string | null }>(
       `UPDATE loopway.bots b SET cursor = GREATEST(b.cursor, $3::bigint)
@@ -1339,15 +1341,16 @@ export async function assignMessages(
     if (!bot) return undefined;
     // The assignments as rows, shared by the three inserts below.
     const a = `(SELECT (x->>'message_id')::uuid AS message_id, (x->>'thread_id')::uuid AS thread_id,
-                       x->'add_subjects' AS add_subjects, x->>'subject' AS subject, x->>'author_kind' AS author_kind, n
+                       x->'add_subjects' AS add_subjects, x->>'subject' AS subject, x->>'author_kind' AS author_kind, (x->>'runner_id')::uuid AS runner_id, n
                 FROM jsonb_array_elements($1::jsonb) WITH ORDINALITY AS e(x, n))`;
     // A new thread's level comes from its first message's author kind: a person is 2, a bot 4.
-    const created = await tx.query<{ id: string; level: 2 | 4 | null }>(
-      `INSERT INTO loopway.threads (id, bot_id, created_by, org_id, automation_level)
+    const created = await tx.query<{ id: string; level: 2 | 4 | null; runner_id: string | null }>(
+      `INSERT INTO loopway.threads (id, bot_id, created_by, org_id, automation_level, runner_id)
        SELECT DISTINCT ON (a.thread_id) a.thread_id, $2::uuid, $3, $4::uuid,
-              CASE a.author_kind WHEN 'human' THEN 2 WHEN 'bot' THEN 4 END
-       FROM ${a} a ORDER BY a.thread_id, a.n
-       ON CONFLICT (id) DO NOTHING RETURNING id, automation_level AS level`,
+              CASE a.author_kind WHEN 'human' THEN 2 WHEN 'bot' THEN 4 END, r.id
+       FROM ${a} a LEFT JOIN loopway.runners r ON r.id = a.runner_id AND r.org_id = $4::uuid
+       ORDER BY a.thread_id, a.n
+       ON CONFLICT (id) DO NOTHING RETURNING id, automation_level AS level, runner_id`,
       [assignments, botId, bot.runner_id ? runnerActor(bot.runner_id) : botActor(botId), bot.org_id],
     );
     for (const t of created) await recordThreadEvents(tx, bot.org_id, botId, t.id, ["created"]);
@@ -1372,7 +1375,11 @@ export async function assignMessages(
       [assignments],
     );
     const levels = [...created.map((t) => t.level), ...joined.map(() => 3 as const)];
-    return { assigned: msgs.length, levels: levels.filter((l) => l !== null) };
+    return {
+      assigned: msgs.length,
+      levels: levels.filter((l) => l !== null),
+      onRunner: created.filter((t) => t.runner_id).length,
+    };
   });
 }
 
