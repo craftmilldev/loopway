@@ -87,7 +87,6 @@ export function Bots() {
           state,
           reason: stateReason(state, ts),
           inboxes: b.inbox_ids.map(inboxName),
-          runner: runners.data!.find((r) => r.id === b.runner_id)?.name ?? null,
           ...countThreads(ts),
         };
       })
@@ -115,7 +114,6 @@ export function Bots() {
       state: r.state,
       reason: r.reason,
       reads: r.inboxes.join(", "),
-      runner: r.runner,
       open: r.open,
       waiting: r.waiting,
       activity: a,
@@ -196,7 +194,7 @@ export function Bots() {
 
           <section className="bots-note">
             <div>
-              <div className="bots-note-head">A bot only works while a runner holds it.</div>
+              <div className="bots-note-head">A bot only works while a runner is running.</div>
               <div className="muted">
                 Leave <span className="mono">loopway bots run</span> open on a machine with the repository checked out.
               </div>

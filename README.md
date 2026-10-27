@@ -69,7 +69,7 @@ loopway bots messages <bot> [--limit 20]            # what the bot would read ne
 loopway bots threads <bot> [--status active|ended|all]   # the threads the server has for the bot
 loopway bots threads release <bot> <thread>         # give up a thread whose runner is gone, so another can claim it
 loopway bots threads end <bot> <thread>             # end a thread; its next message resumes it
-loopway runners                                     # the machines running your bots, their orgs, and what each holds
+loopway runners                                     # the machines running your bots, their orgs, and how many threads each owns
 loopway bots run --org <slug> [--max 3] [--interval 5] [--ttl <seconds>] [--no-tui]   # run your bots (see below)
 ```
 

@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { call, db, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
+import { assign, call, db, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
 
-/** A user with a leased bot, a runner, and `count` threads (one message each) assigned and claimed. */
+/** A user with a bot, a runner, and `count` threads (one message each) assigned and claimed. */
 async function setup(count = 1) {
   const key = await newUser();
   const inbox = await newInbox(key);
@@ -16,26 +16,16 @@ async function setup(count = 1) {
   const messages = (await call("GET", `/inboxes/${inbox.id}/messages?order=asc`, { key })).body.data as {
     id: string;
   }[];
-  const lease = (await call("POST", `/bots/${bot.id}/lease`, { key, body: { ttl_seconds: 60 } })).body.lease.token;
   const runner = randomUUID();
   await call("POST", "/runners", { key, body: { id: runner, name: "laptop" } });
   const runnerLease = (await call("POST", `/runners/${runner}/lease`, { key, body: { ttl_seconds: 60 } })).body.lease
     .token as string;
   const base = `/bots/${bot.id}`;
   const threads = messages.map(() => randomUUID());
-  const assigned = await call("POST", `${base}/assign`, {
-    key,
-    body: {
-      lease_token: lease,
-      cursor: 0,
-      assignments: messages.map((m, i) => ({
-        message_id: m.id,
-        thread_id: threads[i],
-        add_subjects: [`o/r#${i + 1}`],
-      })),
-    },
-  });
-  expect(assigned.status).toBe(200);
+  await assign(
+    bot.id,
+    messages.map((m, i) => ({ message_id: m.id, thread_id: threads[i]!, add_subjects: [`o/r#${i + 1}`] })),
+  );
   for (const t of threads)
     await call("POST", `${base}/threads/${t}/claim`, { key, body: { lease_token: runnerLease } });
   const patch = (thread: string, body: object) =>

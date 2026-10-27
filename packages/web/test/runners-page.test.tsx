@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Runners } from "../client/runners.js";
 
@@ -10,7 +10,6 @@ const runner = (over: object = {}) => ({
   name: "laptop",
   last_seen_at: new Date().toISOString(),
   leased_until: soon,
-  bots: [{ id: "b1", name: "dev" }],
   threads: 2,
   ...over,
 });
@@ -19,22 +18,12 @@ const offline = runner({
   id: "r2",
   name: "old-box",
   leased_until: null,
-  bots: [{ id: "b2", name: "reviewer" }],
   threads: 1,
 });
-const idle = runner({ id: "r3", name: "spare", bots: [], threads: 0 });
+const idle = runner({ id: "r3", name: "spare", threads: 0 });
 
 let runners: object[];
 let writeText: ReturnType<typeof vi.fn>;
-const thread = (runner_id: string) => ({
-  id: "t",
-  status: "active",
-  runner_id,
-  limited: null,
-  inflight: [],
-  waiting: [],
-});
-
 beforeEach(() => {
   window.history.replaceState(null, "", "/acme/runners");
   localStorage.setItem("loopway_token", "t");
@@ -47,7 +36,6 @@ beforeEach(() => {
       if (p === "/me") return json({ id: "u1", email: null, name: "Me" });
       if (p === "/orgs") return json({ data: [{ id: "o1", slug: "acme", personal: false }] });
       if (p.endsWith("/runners")) return json({ data: runners });
-      if (p === "/bots/b2/threads") return json({ data: [thread("r2")] });
       return json({ data: [] });
     }),
   );
@@ -70,23 +58,20 @@ describe("Runners page", () => {
     expect(screen.queryByRole("table")).toBeNull();
   });
 
-  it("lists online and offline runners with bots, threads and the stranded note", async () => {
+  it("lists online and offline runners with threads and the stranded note", async () => {
     runners = [online, offline];
     render(<Runners />);
     const row = (await screen.findByText("old-box")).closest("tr")!;
     expect(screen.getByText("1 of 2 runners online.")).toBeTruthy();
     expect(within(row).getByText("offline")).toBeTruthy();
     expect(within(row).getByText(/stranded\. Restart the runner/)).toBeTruthy();
-    expect(within(row).getByText("reviewer").getAttribute("href")).toBe("/acme/bots/b2");
-    await waitFor(() => expect(within(row).getByText("stranded", { selector: ".state" })).toBeTruthy());
     const live = screen.getByText("laptop").closest("tr")!;
     expect(within(live).getByText("online")).toBeTruthy();
     expect(within(live).queryByText(/stranded\. Restart/)).toBeNull();
-    expect(within(live).getByText("dev").getAttribute("href")).toBe("/acme/bots/b1");
   });
 
   it("does not flag an offline runner that owns no threads", async () => {
-    runners = [runner({ id: "r4", name: "quiet", leased_until: null, threads: 0, bots: [] })];
+    runners = [runner({ id: "r4", name: "quiet", leased_until: null, threads: 0 })];
     render(<Runners />);
     await screen.findByText("quiet");
     expect(screen.queryByText(/Restart the runner/)).toBeNull();
@@ -104,8 +89,8 @@ describe("Runners page", () => {
     expect(screen.queryByText("old-box")).toBeNull();
     expect(screen.getByText("laptop")).toBeTruthy();
 
-    // Find reaches bot names too, and only within the chosen state.
-    fireEvent.change(screen.getByLabelText("Find"), { target: { value: "REVIEWER" } });
+    // Find only looks within the chosen state.
+    fireEvent.change(screen.getByLabelText("Find"), { target: { value: "OLD-BOX" } });
     expect(screen.getByText("No runners match.")).toBeTruthy();
     fireEvent.click(screen.getByText("All · 3"));
     expect(screen.getByText("old-box")).toBeTruthy();

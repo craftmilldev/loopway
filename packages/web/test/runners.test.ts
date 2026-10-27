@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { call, db, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
+import { assign, call, db, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
 
-/** A user with a bot (its lease held), two messages, a registered runner (not leased) and a thread of the first. */
+/** A user with a bot, two messages, a registered runner (not leased) and a thread of the first. */
 async function setup() {
   const key = await newUser();
   const inbox = await newInbox(key);
@@ -14,15 +14,10 @@ async function setup() {
     (m: { id: string }) => m.id,
   ) as string[];
   const base = `/bots/${bot.id}`;
-  const lease = (await call("POST", `${base}/lease`, { key, body: { ttl_seconds: 60 } })).body.lease.token as string;
   const runner = randomUUID();
   await call("POST", "/runners", { key, body: { id: runner, name: "laptop" } });
   const thread = randomUUID();
-  const assigned = await call("POST", `${base}/assign`, {
-    key,
-    body: { lease_token: lease, cursor: 0, assignments: [{ message_id: messages[0], thread_id: thread }] },
-  });
-  expect(assigned.status).toBe(200);
+  await assign(bot.id, [{ message_id: messages[0]!, thread_id: thread }]);
 
   const newRunner = async (name: string) => {
     const id = randomUUID();
@@ -35,14 +30,14 @@ async function setup() {
   const patch = (token: string) =>
     call("PATCH", `${base}/threads/${thread}`, { key, body: { lease_token: token, status: "ended" } });
   const get = async () => (await call("GET", `${base}/threads/${thread}`, { key })).body;
-  return { key, base, bot, messages, lease, runner, thread, newRunner, leaseRunner, claim, patch, get };
+  return { key, base, bot, messages, runner, thread, newRunner, leaseRunner, claim, patch, get };
 }
 
 describe("runners", () => {
   it("registers idempotently, per user, and lists what they hold", async () => {
-    const { key, base, bot, lease, runner, thread, leaseRunner, claim } = await setup();
+    const { key, base, runner, thread, leaseRunner, claim } = await setup();
     const renamed = await call("POST", "/runners", { key, body: { id: runner, name: "renamed" } });
-    expect(renamed.body).toMatchObject({ id: runner, name: "renamed", leased_until: null, bots: [], threads: 0 });
+    expect(renamed.body).toMatchObject({ id: runner, name: "renamed", leased_until: null, threads: 0 });
     expect((await call("GET", "/runners", { key })).body.data).toHaveLength(1);
     expect((await call("POST", "/runners", { key, body: { id: "nope", name: "x" } })).status).toBe(400);
 
@@ -50,21 +45,13 @@ describe("runners", () => {
     expect((await call("POST", "/runners", { key: stranger, body: { id: runner, name: "mine" } })).status).toBe(409);
     expect((await call("GET", "/runners", { key: stranger })).body.data).toEqual([]);
     expect((await call("POST", `/runners/${runner}/lease`, { key: stranger, body: {} })).status).toBe(404);
-    const theirs = (await call("POST", "/runners", { key: stranger, body: { id: randomUUID(), name: "t" } })).body;
-    const asTheirs = await call("POST", `${base}/lease`, { key, body: { lease_token: lease, runner_id: theirs.id } });
-    expect(asTheirs.status).toBe(404);
 
-    await call("POST", `${base}/lease`, { key, body: { lease_token: lease, runner_id: runner } });
     const token = (await leaseRunner(runner)).body.lease.token;
     await claim(token);
     const listed = (await call("GET", "/runners", { key })).body.data[0];
-    expect(listed).toMatchObject({ bots: [{ id: bot.id, name: "b" }], threads: 1, leased_until: expect.any(String) });
+    expect(listed).toMatchObject({ threads: 1, leased_until: expect.any(String) });
     expect(listed.lock_token).toBeUndefined();
     expect((await call("GET", `${base}/threads/${thread}`, { key })).body.runner_id).toBe(runner);
-
-    // Releasing the bot lease clears who holds it.
-    await call("POST", `${base}/release`, { key, body: { lease_token: lease } });
-    expect((await call("GET", "/runners", { key })).body.data[0].bots).toEqual([]);
   });
 
   it("is leased to one process at a time", async () => {
@@ -195,7 +182,7 @@ describe("a runner's org", () => {
     expect([taken.status, taken.body.error.code]).toEqual([409, "runner_exists"]);
   });
 
-  it("can't lease or claim a bot of another org, even for a user in both", async () => {
+  it("can't claim a thread of a bot of another org, even for a user in both", async () => {
     const { key, shared, personal } = await twoOrgs();
     const inbox = await newInbox(key);
     const bot = (
@@ -206,22 +193,13 @@ describe("a runner's org", () => {
     ).body;
     await sendGithub(inbox, "pull_request", prPayload(1));
     const message = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data[0].id;
-    const lease = (await call("POST", `/bots/${bot.id}/lease`, { key, body: {} })).body.lease.token;
     const thread = randomUUID();
-    await call("POST", `/bots/${bot.id}/assign`, {
-      key,
-      body: { lease_token: lease, cursor: 0, assignments: [{ message_id: message, thread_id: thread }] },
-    });
+    await assign(bot.id, [{ message_id: message, thread_id: thread }]);
 
     const runner = randomUUID();
     await call("POST", "/runners", { key, body: { org: shared, id: runner, name: "laptop" } });
     const token = (await call("POST", `/runners/${runner}/lease`, { key, body: {} })).body.lease.token;
 
-    const leased = await call("POST", `/bots/${bot.id}/lease`, {
-      key,
-      body: { lease_token: lease, runner_id: runner },
-    });
-    expect([leased.status, leased.body.error.code]).toEqual([400, "runner_org_mismatch"]);
     const claimed = await call("POST", `/bots/${bot.id}/threads/${thread}/claim`, {
       key,
       body: { lease_token: token },
@@ -229,7 +207,7 @@ describe("a runner's org", () => {
     expect([claimed.status, claimed.body.error.code]).toEqual([400, "runner_org_mismatch"]);
     expect((await call("GET", `/bots/${bot.id}/threads/${thread}`, { key })).body.runner_id).toBeNull();
 
-    // A runner of the bot's own org does both.
+    // A runner of the bot's own org can.
     const own = randomUUID();
     await call("POST", "/runners", { key, body: { org: personal, id: own, name: "desktop" } });
     const ownToken = (await call("POST", `/runners/${own}/lease`, { key, body: {} })).body.lease.token;

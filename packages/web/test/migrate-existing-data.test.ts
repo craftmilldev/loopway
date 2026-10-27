@@ -101,3 +101,46 @@ describe("the newest migration over existing data", () => {
     }
   });
 });
+
+describe("migration 037_drop_bot_leases", () => {
+  it("drops the bot's lease columns, keeping the bot and its cursor, even for a bot that was leased", async () => {
+    const db = await openTestDb();
+    try {
+      await migrateBefore(db, "037_drop_bot_leases");
+      const id = { user: randomUUID(), org: randomUUID(), bot: randomUUID(), runner: randomUUID() };
+      const actor = `user:${id.user}`;
+      await db.query(`INSERT INTO loopway.users (id, name, email) VALUES ($1, 'u', 'u@example.com')`, [id.user]);
+      await db.query(
+        `INSERT INTO loopway.orgs (id, slug, name, personal_user_id) VALUES ($1, 'existing', 'existing', $2)`,
+        [id.org, id.user],
+      );
+      await db.query(`INSERT INTO loopway.runners (id, created_by, org_id, name) VALUES ($1, $2, $3, 'r')`, [
+        id.runner,
+        actor,
+        id.org,
+      ]);
+      await db.query(
+        `INSERT INTO loopway.bots (id, created_by, org_id, name, model, harness, cursor, lock_token, locked_until, runner_id)
+         VALUES ($1, $2, $3, 'b', 'sonnet', 'claude', 7, 'lk_old', now() + interval '1 hour', $4)`,
+        [id.bot, actor, id.org, id.runner],
+      );
+
+      await migrate(db);
+
+      const columns = (
+        await db.query<{ column_name: string }>(
+          `SELECT column_name FROM information_schema.columns WHERE table_schema = 'loopway' AND table_name = 'bots'`,
+        )
+      ).map((c) => c.column_name);
+      expect(columns).toContain("cursor");
+      for (const gone of ["lock_token", "locked_until", "runner_id"]) expect(columns).not.toContain(gone);
+      const [bot] = await db.query<{ name: string; cursor: string }>(
+        `SELECT name, cursor FROM loopway.bots WHERE id = $1`,
+        [id.bot],
+      );
+      expect(bot).toMatchObject({ name: "b", cursor: "7" });
+    } finally {
+      await db.close();
+    }
+  });
+});

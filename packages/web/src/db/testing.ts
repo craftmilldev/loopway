@@ -1,14 +1,14 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import {
-  assignMessages,
   createBot,
   createInbox,
   createUser,
   insertMessage,
-  leaseBot,
   setUsername,
   upsertRunner,
+  writeAssignments,
 } from "../store.js";
+import { botActor } from "../actor.js";
 import { migrate, openDb, type Db } from "./index.js";
 
 /** The docker-compose.yml Postgres; CI sets TEST_DATABASE_URL to its service container. */
@@ -129,11 +129,12 @@ export async function seedFixtures(db: Db) {
     },
     false,
   );
-  const lease = (await leaseBot(db, bot.id, 60, null, runner!.id))!;
   const threadId = randomUUID();
-  await assignMessages(db, bot.id, lease.lock_token!, 0, [
-    { message_id: message.id, thread_id: threadId, subject: "pull/1", author_kind: "human" },
-  ]);
+  await db.transaction((tx) =>
+    writeAssignments(tx, bot.id, orgId, botActor(bot.id), [
+      { message_id: message.id, thread_id: threadId, subject: "pull/1", author_kind: "human" },
+    ]),
+  );
   return {
     userId: user.id,
     orgId,

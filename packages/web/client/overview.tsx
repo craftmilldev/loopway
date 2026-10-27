@@ -225,7 +225,6 @@ export function Overview() {
   const summary = [...(runners.data ?? [])]
     .sort((a, b) => +!!a.leased_until - +!!b.leased_until)
     .slice(0, SUMMARY_RUNNERS);
-  const botName = (id: string) => bots.data?.find((b) => b.id === id)?.name ?? id;
 
   return (
     <DashLayout title="Dashboard · loopway" me={me}>
@@ -359,7 +358,6 @@ export function Overview() {
                 </span>
               </div>
               <div className="runner-note">
-                {r.bots.length ? "Holds " + r.bots.map((b) => botName(b.id)).join(", ") : "Holds no bots"} ·{" "}
                 {plural(r.threads, "thread")} · seen {lw.ago(r.last_seen_at)}
               </div>
             </div>

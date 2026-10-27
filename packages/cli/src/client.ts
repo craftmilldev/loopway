@@ -124,8 +124,6 @@ export interface Runner {
   last_seen_at: string;
   /** Until when a process holds the runner's lease; null if none does. */
   leased_until: string | null;
-  /** Bots whose live lease it holds. */
-  bots: { id: string; name: string }[];
   /** Threads it owns. */
   threads: number;
 }

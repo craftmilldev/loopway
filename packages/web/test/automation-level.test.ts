@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { call, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
+import { assign as assignTo, call, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
 
 type Kind = "human" | "bot" | undefined;
 
@@ -24,13 +24,7 @@ describe("thread automation level", () => {
       const assignments = [];
       for (const author_kind of kinds)
         assignments.push({ message_id: await message(), thread_id: threadId, author_kind });
-      const lease = (await call("POST", `/bots/${bot.id}/lease`, { key, body: { ttl_seconds: 60 } })).body.lease.token;
-      const r = await call("POST", `/bots/${bot.id}/assign`, {
-        key,
-        body: { lease_token: lease, cursor: 0, assignments },
-      });
-      expect(r.status).toBe(200);
-      await call("POST", `/bots/${bot.id}/release`, { key, body: { lease_token: lease } });
+      await assignTo(bot.id, assignments);
       return (await call("GET", `/bots/${bot.id}/threads/${threadId}`, { key })).body.automation_level;
     };
 
@@ -53,17 +47,5 @@ describe("thread automation level", () => {
 
     // No author kind, no level.
     expect(await assign(randomUUID(), [undefined])).toBeNull();
-
-    // An author kind that isn't human or bot is refused.
-    const lease = (await call("POST", `/bots/${bot.id}/lease`, { key, body: { ttl_seconds: 60 } })).body.lease.token;
-    const refused = await call("POST", `/bots/${bot.id}/assign`, {
-      key,
-      body: {
-        lease_token: lease,
-        cursor: 0,
-        assignments: [{ message_id: await message(), thread_id: randomUUID(), author_kind: "robot" }],
-      },
-    });
-    expect(refused.status).toBe(400);
   });
 });

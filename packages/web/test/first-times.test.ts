@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { call, db, events, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
+import { assign, call, db, events, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
 
 const named = (name: string) => events.filter((e) => e.event === name);
 
@@ -18,12 +18,8 @@ describe("time to runner and time to first bot", () => {
     await sendGithub(inbox, "pull_request", prPayload(1));
     const message = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data[0].id as string;
     const base = `/bots/${bot.id}`;
-    const botLease = (await call("POST", `${base}/lease`, { key, body: { ttl_seconds: 60 } })).body.lease.token;
     const thread = randomUUID();
-    await call("POST", `${base}/assign`, {
-      key,
-      body: { lease_token: botLease, cursor: 0, assignments: [{ message_id: message, thread_id: thread }] },
-    });
+    await assign(bot.id, [{ message_id: message, thread_id: thread }]);
 
     // Back-date the org so the durations are known.
     await db.query(`UPDATE loopway.orgs SET created_at = now() - interval '100 seconds' WHERE id = $1`, [org]);

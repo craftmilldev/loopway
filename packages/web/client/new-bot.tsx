@@ -43,6 +43,8 @@ export function NewBot() {
   const [name, setName] = useState("");
   const [model, setModel] = useState("sonnet");
   const bot = lw.useGet<lw.Bot>(botId ? "/bots/" + encodeURIComponent(botId) : null, ready);
+  const runners = lw.useList<lw.Runner>(lw.inOrg("/runners"), ready);
+  const online = runners.data?.some((r) => r.leased_until) ?? false;
 
   // A reload or a link with `?bot=` lands on the first step that still has something to do.
   const [resumed, setResumed] = useState(false);
@@ -52,13 +54,13 @@ export function NewBot() {
       track("new_bot_resume_failed");
       setBotId(null);
       setResumed(true);
-    } else if (bot.data) {
-      const at = bot.data.leased_until ? 5 : 4;
+    } else if (bot.data && runners.data) {
+      const at = online ? 5 : 4;
       track("new_bot_resumed", { step: at });
       setStep(at);
       setResumed(true);
     }
-  }, [resumeId, resumed, bot.missing, bot.data]);
+  }, [resumeId, resumed, bot.missing, bot.data, runners.data, online]);
 
   const loading = !!resumeId && !resumed;
 
@@ -125,7 +127,7 @@ export function NewBot() {
               }}
             />
           ) : step === 4 ? (
-            <Runner bot={bot.data} reload={bot.reload} back={() => setStep(3)} next={() => setStep(5)} />
+            <Runner online={online} reload={runners.reload} back={() => setStep(3)} next={() => setStep(5)} />
           ) : (
             <FirstRun botId={botId!} />
           )}
@@ -457,22 +459,21 @@ function Identity({
 }
 
 function Runner({
-  bot,
+  online,
   reload,
   back,
   next,
 }: {
-  bot: lw.Bot | null;
+  online: boolean;
   reload: () => Promise<unknown>;
   back: () => void;
   next: () => void;
 }) {
-  const leased = !!bot?.leased_until;
   useEffect(() => {
-    if (leased) return track("new_bot_runner_leased");
+    if (online) return track("new_bot_runner_online");
     const t = setInterval(() => void reload(), POLL);
     return () => clearInterval(t);
-  }, [leased, reload]);
+  }, [online, reload]);
 
   return (
     <section>
@@ -484,7 +485,7 @@ function Runner({
         <code>$ curl -fsSL https://loopway.craftmill.dev/install.sh | sh &amp;&amp; loopway login</code>
         <code>$ cd ~/code/your-repo &amp;&amp; loopway bots run --org {lw.orgSlug()}</code>
         <span className="lbl" role="status">
-          {leased ? "A runner took the lease. Your bot is running." : "Listening for a runner to take the lease…"}
+          {online ? "A runner is online. Your bot can run." : "Listening for a runner…"}
         </span>
       </div>
       <div className="form-actions">
@@ -492,7 +493,7 @@ function Runner({
           Back
         </button>
         <button className="btn" type="button" onClick={next}>
-          {leased ? "Continue" : "Skip for now"}
+          {online ? "Continue" : "Skip for now"}
         </button>
       </div>
     </section>

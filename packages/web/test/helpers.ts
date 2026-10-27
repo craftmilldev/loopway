@@ -5,6 +5,8 @@ import { afterAll, beforeAll, expect } from "vitest";
 import { createApi } from "../src/api.js";
 import { type Db } from "../src/db/index.js";
 import { openTestDb, TEST_INBOX_KEY } from "../src/db/testing.js";
+import { botActor } from "../src/actor.js";
+import * as store from "../src/store.js";
 import { createLoginCode, createUser } from "../src/store.js";
 import { signSessionToken } from "../src/tokens.js";
 
@@ -136,3 +138,16 @@ export const prPayload = (n: number) => ({
   pull_request: { updated_at: "2026-10-01T12:00:00Z" },
   repository: { url: "https://api.github.com/repos/craftmill/loopway" },
 });
+
+/**
+ * Puts messages on threads the way the server's routing does (creating the threads, adding subjects, setting levels)
+ * without needing rules: for tests that start from a thread. `runner_id` on an assignment makes a new thread start on
+ * that runner. Moves the bot's cursor to `cursor` if that is further.
+ */
+export async function assign(botId: string, assignments: store.Assignment[], cursor = 0) {
+  const [bot] = await db.query<{ org_id: string }>(`SELECT org_id FROM loopway.bots WHERE id = $1`, [botId]);
+  return db.transaction(async (tx) => {
+    await tx.query(`UPDATE loopway.bots SET cursor = GREATEST(cursor, $2::bigint) WHERE id = $1`, [botId, cursor]);
+    return store.writeAssignments(tx, botId, bot!.org_id, botActor(botId), assignments);
+  });
+}
