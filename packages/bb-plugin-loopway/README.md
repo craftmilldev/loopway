@@ -49,7 +49,7 @@ runner that claimed it, and only this runner has bb threads to send its messages
 
 ## Stopping and restarting
 
-Stopping the plugin, by disabling or reloading it or by changing a setting, releases the leases. bb threads
+Stopping the plugin, by disabling or reloading it or by changing a setting, releases the runner lease. bb threads
 that are mid-turn keep running. Each run writes an `init` record to its log when the bb thread gets the
 message, and a `result` record when the turn ends. On the next start, the dispatcher's reconcile finds the runs
 that have no `result` and puts their messages back to waiting. Those messages then go to the same bb thread

@@ -184,16 +184,6 @@ export interface ManagerThread {
   updated_at: string;
 }
 
-export interface Assignment {
-  message_id: string;
-  thread_id: string;
-  add_subjects?: string[];
-  subject?: string;
-  author_kind?: "human" | "bot";
-  /** The runner a new thread is created on, owned by it from the start. */
-  runner_id?: string;
-}
-
 export interface ThreadPatch {
   status?: "active" | "ended";
   started?: boolean;
@@ -417,30 +407,8 @@ export class LoopwayClient {
     return (await this.request<{ data: Message[] }>("GET", `/bots/${enc(botId)}/messages${suffix}`)).data;
   }
 
-  /**
-   * Takes the bot's lease, or renews it with the current token. 409 `leased` if another runner holds it,
-   * with `details.expires_at` saying until when.
-   */
-  leaseBot(botId: string, opts: { ttl_seconds?: number; lease_token?: string; runner_id?: string } = {}) {
-    return this.request<{ lease: Lease }>("POST", `/bots/${enc(botId)}/lease`, opts);
-  }
-
-  async releaseBot(botId: string, leaseToken: string) {
-    await this.request("POST", `/bots/${enc(botId)}/release`, { lease_token: leaseToken });
-  }
-
-  /** Drops the bot's lease whoever holds it: for a runner that died without releasing. */
-  async forceReleaseBot(botId: string) {
-    await this.request("POST", `/bots/${enc(botId)}/release`, { force: true });
-  }
-
-  /** Moves the cursor forward to `seq`; it never goes backwards. 409 if the token isn't the live lease. */
-  advanceCursor(botId: string, seq: number, leaseToken: string) {
-    return this.request<Bot>("POST", `/bots/${enc(botId)}/cursor`, { seq, lease_token: leaseToken });
-  }
-
   // ---------- threads ----------
-  // `assign` needs the bot's live lease token; thread writes need the live lease token of the runner that owns the thread.
+  // Thread writes need the live lease token of the runner that owns the thread.
 
   /**
    * The bot's threads by `status`; `pending` is the active ones plus any ended one with a message still waiting
@@ -454,14 +422,6 @@ export class LoopwayClient {
 
   getThread(botId: string, threadId: string) {
     return this.request<Thread>("GET", `/bots/${enc(botId)}/threads/${enc(threadId)}`);
-  }
-
-  /**
-   * Hands messages to threads (creating the ones the bot doesn't have) as waiting, and moves the cursor to `cursor`,
-   * all or nothing. A message that's already assigned is skipped. 409 `subject_taken` if a subject is on another thread.
-   */
-  assign(botId: string, input: { lease_token: string; cursor: number; assignments: Assignment[] }) {
-    return this.request<{ assigned: number }>("POST", `/bots/${enc(botId)}/assign`, input);
   }
 
   /**

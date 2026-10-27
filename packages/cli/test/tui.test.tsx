@@ -9,7 +9,6 @@ import { nearest256, termColor } from "../src/bots/colors.js";
 import type { Chat, ChatBackend } from "../src/bots/chat.js";
 import { transcriptLines } from "../src/bots/transcript.js";
 import { ThreadsTui, type Snapshot, type TuiProps } from "../src/bots/tui.js";
-import { clock } from "../src/format.js";
 import { CLI_VERSION } from "../src/version.js";
 
 const KEYS = { up: "\u001B[A", down: "\u001B[B", right: "\u001B[C", left: "\u001B[D", enter: "\r", tab: "\t" };
@@ -40,16 +39,9 @@ const thread = (
 
 const bot = (name: string) => ({ id: name, name, kind: "github-threads", inbox_ids: [] }) as unknown as Bot;
 
-const LEASED_UNTIL = "2026-01-01T14:32:00Z";
-
 // A thread in each state (working, waiting, limited, stranded, done) and at each level, a/b#2 with none set.
 const snapshot: Snapshot = {
-  bots: {
-    held: [bot("dev")],
-    skipped: [{ ...bot("ci"), leased_until: LEASED_UNTIL, held_by: "laptop" }],
-    unleased: [],
-  },
-  leaseBots: true,
+  bots: [bot("dev"), bot("ci")],
   waiting: [
     { id: "e1", inbox_id: "in", type: "com.github.push", subject: "a/b#9", thread_id: "aaaaaaaa-1", bot_name: "dev" },
   ],
@@ -382,7 +374,7 @@ describe("ThreadsTui", () => {
     const f = frame();
     for (const s of [
       `LOOPWAY · runner desk · org acme · v${CLI_VERSION}`,
-      `holds dev · skipped ci, held by laptop until ${clock(LEASED_UNTIL)}`,
+      "runs dev, ci",
       "WAITING MESSAGES 1 ───",
       "com.github.push on a/b#9",
       "aaaaaaaa working",
@@ -547,8 +539,7 @@ describe("ThreadsTui", () => {
       ]),
     );
     const { frame, selected, press } = await show({
-      bots: { held: [], skipped: [], unleased: [] },
-      leaseBots: true,
+      bots: [],
       waiting: [],
       threads,
       runnerId: "me",
@@ -558,7 +549,7 @@ describe("ThreadsTui", () => {
     });
     const rows = frame().split("\n").length;
     expect(rows).toBeLessThan(200);
-    expect(frame()).toContain("holds no bots");
+    expect(frame()).toContain("runs no bots");
     for (let i = 0; i < 60; i++) await press(KEYS.down);
     // Same height, scrolled past the top, with the selection still on screen.
     expect(frame().split("\n").length).toBe(rows);

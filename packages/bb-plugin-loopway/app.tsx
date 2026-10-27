@@ -134,72 +134,19 @@ function RunnerCard({ runner, now }: { runner: Snapshot["runner"]; now: number }
   );
 }
 
-const LEASE_TITLES: Record<Snapshot["bots"][number]["lease"], string> = {
-  held: "Running here: this runner reads its messages and starts its threads",
-  elsewhere: "Another runner holds it",
-  none: "Not leased by this runner: another runner routes its messages",
-};
-
-/** One small chip per bot; a bot this runner doesn't hold is dimmed, with why on hover. */
+/** One small chip per bot. */
 function Bots({ bots }: { bots: Snapshot["bots"] }) {
-  if (!bots.length) return <EmptyState>No bots yet. Bots with a prompt and rules are picked up each poll.</EmptyState>;
+  if (!bots.length) return <EmptyState>No bots yet. Bots with a prompt are picked up each minute.</EmptyState>;
   return (
     <ul className="flex flex-wrap gap-1.5">
       {bots.map((bot) => (
-        <li
-          key={bot.name}
-          title={LEASE_TITLES[bot.lease] + (bot.leasedUntil ? ` until ${clock(bot.leasedUntil)}` : "")}
-          className={cn(
-            "rounded-md border px-2 py-0.5 text-xs",
-            bot.lease === "held" ? "border-border bg-card" : "border-dashed border-border text-muted-foreground",
-          )}
-        >
+        <li key={bot.name} className="rounded-md border border-border bg-card px-2 py-0.5 text-xs">
           {bot.name}
         </li>
       ))}
     </ul>
   );
 }
-
-/**
- * Whether the runner takes bot leases. Off, it gives them back and only delivers to the threads it owns, which
- * whichever runner holds a bot keeps routing messages to.
- */
-function LeaseSwitch({ on, onChange }: { on: boolean; onChange: (on: boolean) => Promise<void> }) {
-  const [pending, setPending] = useState(false);
-  return (
-    <label className="flex cursor-pointer items-center gap-2" title={on ? LEASE_HELP.on : LEASE_HELP.off}>
-      {on ? "Taking bots" : "Only its own threads"}
-      <button
-        type="button"
-        role="switch"
-        aria-checked={on}
-        aria-label="Take bot leases"
-        disabled={pending}
-        onClick={() => {
-          setPending(true);
-          void onChange(!on).finally(() => setPending(false));
-        }}
-        className={cn(
-          "relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors disabled:opacity-50",
-          on ? "bg-emerald-500" : "bg-muted-foreground/40",
-        )}
-      >
-        <span
-          className={cn(
-            "inline-block size-3 rounded-full bg-background shadow transition-transform",
-            on ? "translate-x-3.5" : "translate-x-0.5",
-          )}
-        />
-      </button>
-    </label>
-  );
-}
-
-const LEASE_HELP = {
-  on: "This runner leases the bots: it reads their new messages and starts new threads. Turn off to only finish this runner's own threads.",
-  off: "This runner holds no bot leases: whichever runner holds a bot routes its messages, and this runner delivers the ones for its own threads. Turn on to take the bots again.",
-};
 
 const STATUS_STYLES: Record<Snapshot["threads"][number]["status"], string> = {
   running: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
@@ -256,17 +203,7 @@ function Threads({ threads }: { threads: Snapshot["threads"] }) {
 }
 
 function LoopwayPage() {
-  const { rpc, snapshot, error, refetch } = useSnapshot();
-  const [switchError, setSwitchError] = useState<string | null>(null);
-  const setLeaseBots = async (on: boolean) => {
-    try {
-      await rpc.call("setLeaseBots", { on });
-      setSwitchError(null);
-    } catch (cause) {
-      setSwitchError(cause instanceof Error ? cause.message : String(cause));
-    }
-    refetch();
-  };
+  const { snapshot, error } = useSnapshot();
   const now = useNow();
   const [showEnded, setShowEnded] = useState(false);
   if (!snapshot) {
@@ -298,11 +235,6 @@ function LoopwayPage() {
             Couldn&apos;t refresh: {error}
           </p>
         ) : null}
-        {switchError ? (
-          <p role="alert" className="text-sm text-destructive">
-            Couldn&apos;t switch bot leases: {switchError}
-          </p>
-        ) : null}
         {stateError ? (
           <p role="alert" className="text-sm text-destructive">
             Couldn&apos;t read the bots and threads: {stateError}
@@ -310,18 +242,7 @@ function LoopwayPage() {
         ) : null}
         {runner.phase === "running" ? (
           <>
-            <Section
-              title="Bots"
-              aside={
-                <span className="flex items-center gap-3">
-                  {(() => {
-                    const elsewhere = bots.filter((b) => b.lease === "elsewhere").length;
-                    return elsewhere ? <span>{elsewhere} held by another runner</span> : null;
-                  })()}
-                  {runner.leaseBots === null ? null : <LeaseSwitch on={runner.leaseBots} onChange={setLeaseBots} />}
-                </span>
-              }
-            >
+            <Section title="Bots">
               <Bots bots={bots} />
             </Section>
             <Section

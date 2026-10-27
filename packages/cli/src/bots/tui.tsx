@@ -2,7 +2,7 @@ import { FAINT, INDIGO, INK, LEVEL_COLORS, MADDER, STATE_COLORS, type Level, typ
 import chalk from "chalk";
 import { Box, render, Text, useApp, useInput, useWindowSize } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ago, clock } from "../format.js";
+import { ago } from "../format.js";
 import { emptyChat, type Chat, type ChatBackend } from "./chat.js";
 import { termColor } from "./colors.js";
 import type { DispatcherState } from "./dispatcher.js";
@@ -189,7 +189,7 @@ const owner = ({ threads, runnerId, runners }: DispatcherState, id: string): str
 
 /** The name of the bot a thread belongs to, to tell the threads of different bots apart. */
 const botName = ({ bots }: Pick<DispatcherState, "bots">, id: string): string =>
-  [...bots.held, ...bots.skipped].find((b) => b.id === id)?.name ?? id.slice(0, 8);
+  bots.find((b) => b.id === id)?.name ?? id.slice(0, 8);
 
 /** What a thread is about: its subjects, then its title. */
 const threadLabel = ({ threads }: Pick<DispatcherState, "threads">, id: string): string => {
@@ -255,11 +255,7 @@ function ListView({ snap, org, selected, onSelect, onOpen, onChat }: ListViewPro
   // The bot and the meta are columns as wide as their longest, so the levels line up.
   const botWidth = Math.min(20, Math.max(0, ...rows.map((r) => r.bot?.length ?? 0))) + 2;
   const metaWidth = Math.min(40, Math.max(0, ...rows.map((r) => (r.bot === undefined ? 0 : (r.meta?.length ?? 0)))));
-  const held = snap.bots.held.map((b) => b.name).join(", ") || "no bots";
-  const skipped = snap.bots.skipped.map(
-    (b) =>
-      `${b.name}, held by ${b.held_by ?? "another runner"}` + (b.leased_until ? ` until ${clock(b.leased_until)}` : ""),
-  );
+  const running = snap.bots.map((b) => b.name).join(", ") || "no bots";
   const sep = <Text color={termColor(DIM)}> · </Text>;
 
   // Scroll just enough to keep the selection on screen, along with its list's heading.
@@ -286,12 +282,7 @@ function ListView({ snap, org, selected, onSelect, onOpen, onChat }: ListViewPro
         <Text color={termColor(DIM)}>v{CLI_VERSION}</Text>
       </Text>
       <Text color={termColor(MUTED)} wrap="truncate-end">
-        holds {held}
-        {skipped.length > 0 && (
-          <>
-            {sep}skipped {skipped.join("; ")}
-          </>
-        )}
+        runs {running}
       </Text>
       <Box flexDirection="column" height={body} overflow="hidden">
         {rows.slice(offset.current, offset.current + body).map((r) => (
@@ -451,9 +442,7 @@ function LogView({ id, snap, readLog, send, end, refreshMs, onBack }: LogViewPro
 
   // The harness this runner ran the session on, else its bot's (a thread of another runner); Claude Code's if neither.
   const botId = snap.threads[id]?.bot_id;
-  const harness =
-    snap.harnesses?.[id] ??
-    [...snap.bots.held, ...snap.bots.skipped, ...snap.bots.unleased].find((b) => b.id === botId)?.harness;
+  const harness = snap.harnesses?.[id] ?? snap.bots.find((b) => b.id === botId)?.harness;
   const lines = useMemo(
     () =>
       transcriptLines(log ?? "", harness ?? "claude").flatMap((l) =>

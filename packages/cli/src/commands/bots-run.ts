@@ -33,10 +33,10 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
   const client = await authedClient(ctx);
   const runner = await ensureRunner(ctx, client, await resolveOrg(ctx, client, opts.org, "runner"));
   const all = await client.listBots(runner.org);
-  const bots = all.filter((b) => b.prompt_version?.rules);
+  const bots = all.filter((b) => b.prompt_version);
   for (const b of all)
-    if (!b.prompt_version?.rules) {
-      ctx.out(`Skipping bot ${b.name}: it has no prompt and rules yet. Set them with \`loopway bots edit\`.`);
+    if (!b.prompt_version) {
+      ctx.out(`Skipping bot ${b.name}: it has no prompt yet. Set one with \`loopway bots edit\`.`);
       void ctx.metrics?.capture("bot_skipped", { reason: "no_version" });
     }
   // The opt-in manager gives the TUI a Chat view, which is also what an empty runner opens in.
@@ -191,7 +191,7 @@ export async function runBots(ctx: Context, opts: RunBotsOptions) {
 }
 
 /**
- * The lease TTL when --ttl isn't given. The lease is renewed every poll, so it lasts several polls: one
+ * The runner lease TTL when --ttl isn't given. The lease is renewed every poll, so it lasts several polls: one
  * slow renewal mustn't lose it. The floor keeps a tiny --interval from making it fragile.
  */
 export const defaultTtl = (interval: number) => Math.max(DEFAULTS.ttl, 6 * interval, 3 * MAX_POLL_INTERVAL);
@@ -212,11 +212,11 @@ export const reservedChatKey = (patch: Pick<ThreadPatch, "metadata_set" | "metad
     RESERVED_CHAT_KEYS.includes(k),
   );
 
-/** How long an exit waits for the leases to be released before going ahead without. */
+/** How long an exit waits for the lease to be released before going ahead without. */
 const RELEASE_TIMEOUT_MS = 5000;
 
 /**
- * Gives the bot leases back however the process ends (Ctrl-C, a SIGTERM or SIGHUP from `kill`, a closed
+ * Gives the runner lease back however the process ends (Ctrl-C, a SIGTERM or SIGHUP from `kill`, a closed
  * terminal or a supervisor, a crash), so the next runner doesn't wait out the TTL. Returns the release
  * itself, for the exit paths that return: it runs once however often it's called, so a second Ctrl-C
  * joins the first instead of skipping it, and gives up after a few seconds so a lost network can't

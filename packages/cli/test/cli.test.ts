@@ -14,7 +14,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { ApiError, LoopwayClient, type Bot, type Message } from "../src/client.js";
 import { checkRules, route as routeWith, THREAD_MESSAGE_TYPE, type BotRule } from "@loopway/rules";
 import { getHarness, type AgentRun, type RunOutcome } from "@loopway/harnesses";
-import { API_ERROR_BACKOFF_MS, Dispatcher, NETWORK_ERROR_MAX_BACKOFF_MS } from "../src/bots/dispatcher.js";
+import {
+  API_ERROR_BACKOFF_MS,
+  Dispatcher,
+  MAX_POLL_INTERVAL,
+  NETWORK_ERROR_MAX_BACKOFF_MS,
+} from "../src/bots/dispatcher.js";
 import { defaultTtl, pollDelay, pollUntilUpdate } from "../src/commands/bots-run.js";
 import { loadConfig, loadGithubBot, writeConfig } from "../src/config.js";
 import { botEnv } from "../src/bots/github.js";
@@ -50,8 +55,6 @@ beforeAll(async () => {
     tokenSecret: SECRET,
     inboxSecretKey: TEST_INBOX_KEY,
     sendEmail: async (e) => void emails.push(e),
-    // These tests are of the runner's own routing.
-    serverRouting: false,
   });
 });
 afterAll(() => db.close());
@@ -138,12 +141,30 @@ async function sendGithub(inbox: { id: string; config: { secret: string } }, eve
   expect(res.status).toBe(202);
 }
 
-const pr = (n: number) => ({ action: "opened", number: n, repository: { url: "https://api.github.com/repos/a/b" } });
+const pr = (n: number) => ({
+  action: "opened",
+  number: n,
+  pull_request: { number: n, body: "" },
+  repository: { full_name: "a/b", url: "https://api.github.com/repos/a/b" },
+});
 
 async function inboxWithEvents(n: number, name = "gh") {
   const inbox = await runJson("inbox", "create", "--name", name, "--source", "github");
   for (let i = 1; i <= n; i++) await sendGithub(inbox, "pull_request", pr(i));
   return inbox as { id: string; name: string; config: { secret: string } };
+}
+
+/**
+ * Has the server route the inbox's messages to threads now, as a runner's work feed does before it answers: waits out
+ * the holdback on messages that are still fresh, then asks for the runner's work, which routes first.
+ */
+async function routeNow(client: LoopwayClient, runnerId: string, inboxId: string, botId: string) {
+  await db.query(`UPDATE loopway.messages SET received_at = received_at - interval '1 minute' WHERE inbox_id = $1`, [
+    inboxId,
+  ]);
+  const { lease } = await client.leaseRunner(runnerId);
+  await client.runnerWork(runnerId, lease.token, [botId]);
+  return lease;
 }
 
 /** A user as the orgs migration leaves existing ones: with a username. */
@@ -880,32 +901,48 @@ describe("bots", () => {
     ]);
 
   it("create → messages shows only events that arrived after the bot was created", async () => {
-    await configured();
-    const inbox = await inboxWithEvents(2);
-    const out = await run(
-      "bots",
-      "create",
-      "--name",
-      "dev",
-      "--preset",
-      "github-threads",
-      "--model",
-      "sonnet",
-      "--harness",
-      "claude",
-      "--inbox",
-      inbox.name,
-    );
-    expect(out).toMatch(/Created bot dev/);
-    expect(out).toContain(inbox.name);
-    expect(await run("bots", "messages", "dev")).toBe("No new messages.");
+    // With the server routing, the cursor moves past messages as they arrive: leave that off to read what's waiting.
+    const saved = app;
+    app = createApi({
+      getDb: async () => db,
+      publicBaseUrl: API,
+      tokenSecret: SECRET,
+      inboxSecretKey: TEST_INBOX_KEY,
+      sendEmail: async (e) => void emails.push(e),
+      serverRouting: false,
+    });
+    try {
+      await configured();
+      const inbox = await inboxWithEvents(2);
+      const out = await run(
+        "bots",
+        "create",
+        "--name",
+        "dev",
+        "--preset",
+        "github-threads",
+        "--model",
+        "sonnet",
+        "--harness",
+        "claude",
+        "--inbox",
+        inbox.name,
+      );
+      expect(out).toMatch(/Created bot dev/);
+      expect(out).toContain(inbox.name);
+      expect(await run("bots", "messages", "dev")).toBe("No new messages.");
 
-    for (const n of [3, 4]) await sendGithub(inbox, "pull_request", pr(n));
-    await settle(inbox.id);
-    const messages = await runJson("bots", "messages", "dev");
-    expect(messages.map((m: any) => m.event.data.number)).toEqual([3, 4]);
-    expect(messages[1].seq).toBeGreaterThan(messages[0].seq);
-    expect(await run("bots", "messages", "dev", "--limit", "1")).toMatch(/SEQ.*\n.*com\.github\.pull_request\.opened/);
+      for (const n of [3, 4]) await sendGithub(inbox, "pull_request", pr(n));
+      await settle(inbox.id);
+      const messages = await runJson("bots", "messages", "dev");
+      expect(messages.map((m: any) => m.event.data.number)).toEqual([3, 4]);
+      expect(messages[1].seq).toBeGreaterThan(messages[0].seq);
+      expect(await run("bots", "messages", "dev", "--limit", "1")).toMatch(
+        /SEQ.*\n.*com\.github\.pull_request\.opened/,
+      );
+    } finally {
+      app = saved;
+    }
   });
 
   it("lists, shows, updates and deletes by name or id", async () => {
@@ -1041,7 +1078,7 @@ describe("runners", () => {
     });
 
     const inbox = await inboxWithEvents(0);
-    const bot = await runJson(
+    await runJson(
       "bots",
       "create",
       "--name",
@@ -1055,9 +1092,7 @@ describe("runners", () => {
       "--inbox",
       inbox.id,
     );
-    await client.leaseBot(bot.id, { runner_id: first.id });
-    expect(await run("runners")).toMatch(new RegExp(`${first.id}\\s+\\S+\\s+\\S+\\s+dev\\s+0`));
-    expect(await runJson("runners")).toMatchObject([{ id: first.id, bots: [{ id: bot.id, name: "dev" }] }]);
+    expect(await runJson("runners")).toMatchObject([{ id: first.id, bots: [] }]);
   });
 
   it("is leased by one bots run at a time, and released when it stops", async () => {
@@ -1100,7 +1135,7 @@ describe("runners", () => {
   it("lists a thread's runner, and a released thread has no owner", async () => {
     const key = await configured();
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
-    const inbox = await inboxWithEvents(1);
+    const inbox = await inboxWithEvents(0);
     const bot = await runJson(
       "bots",
       "create",
@@ -1116,17 +1151,10 @@ describe("runners", () => {
       inbox.id,
     );
     const runner = await ensure(client);
-    const id = randomUUID();
-    const botLease = (await client.leaseBot(bot.id, { runner_id: runner.id })).lease;
-    const runnerLease = (await client.leaseRunner(runner.id)).lease;
-    const [message] = (await client.listMessages(inbox.id)).data;
-    await client.assign(bot.id, {
-      lease_token: botLease.token,
-      cursor: message!.seq,
-      assignments: [{ message_id: message!.id, thread_id: id, add_subjects: ["a/b#1"] }],
-    });
+    await sendGithub(inbox, "pull_request", pr(1));
+    const runnerLease = await routeNow(client, runner.id, inbox.id, bot.id);
+    const id = (await client.listThreads(bot.id, "all"))[0]!.id;
     await client.claimThread(bot.id, id, runnerLease.token);
-    await client.releaseBot(bot.id, botLease.token);
     expect((await runJson("bots", "threads", "dev"))[0].runner_id).toBe(runner.id);
     expect((await runJson("runners"))[0].threads).toBe(1);
     expect(await run("bots", "threads", "dev")).toContain(runner.name);
@@ -1139,7 +1167,7 @@ describe("runners", () => {
   it("ends a thread, even one that already ended, and says so for unknown ones", async () => {
     const key = await configured();
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
-    const inbox = await inboxWithEvents(1);
+    const inbox = await inboxWithEvents(0);
     const bot = await runJson(
       "bots",
       "create",
@@ -1155,15 +1183,9 @@ describe("runners", () => {
       inbox.id,
     );
     const runner = await ensure(client);
-    const id = randomUUID();
-    const botLease = (await client.leaseBot(bot.id, { runner_id: runner.id })).lease;
-    const [message] = (await client.listMessages(inbox.id)).data;
-    await client.assign(bot.id, {
-      lease_token: botLease.token,
-      cursor: message!.seq,
-      assignments: [{ message_id: message!.id, thread_id: id, add_subjects: ["a/b#1"] }],
-    });
-    await client.releaseBot(bot.id, botLease.token);
+    for (let i = 1; i <= 1; i++) await sendGithub(inbox, "pull_request", pr(i));
+    await routeNow(client, runner.id, inbox.id, bot.id);
+    const id = (await client.listThreads(bot.id, "all"))[0]!.id;
 
     expect(await run("bots", "threads", "end", "dev", id)).toBe(`Thread ${id} is ended.`);
     expect((await runJson("bots", "threads", "dev", "--status", "all"))[0].status).toBe("ended");
@@ -1179,7 +1201,7 @@ describe("runners", () => {
   it("moves a subject to another thread, matching the thread by the start of its id", async () => {
     const key = await configured();
     const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
-    const inbox = await inboxWithEvents(2);
+    const inbox = await inboxWithEvents(0);
     const bot = await runJson(
       "bots",
       "create",
@@ -1195,18 +1217,11 @@ describe("runners", () => {
       inbox.id,
     );
     const runner = await ensure(client);
-    const botLease = (await client.leaseBot(bot.id, { runner_id: runner.id })).lease;
-    const [m1, m2] = (await client.listMessages(inbox.id)).data;
-    const [a, b] = [randomUUID(), randomUUID()];
-    await client.assign(bot.id, {
-      lease_token: botLease.token,
-      cursor: m2!.seq,
-      assignments: [
-        { message_id: m1!.id, thread_id: a, add_subjects: ["a/b#1"] },
-        { message_id: m2!.id, thread_id: b, add_subjects: ["a/b#2"] },
-      ],
-    });
-    await client.releaseBot(bot.id, botLease.token);
+    for (let i = 1; i <= 2; i++) await sendGithub(inbox, "pull_request", pr(i));
+    await routeNow(client, runner.id, inbox.id, bot.id);
+    const threads0 = await client.listThreads(bot.id, "all");
+    const a = threads0.find((t) => t.subjects.includes("a/b#1"))!.id;
+    const b = threads0.find((t) => t.subjects.includes("a/b#2"))!.id;
 
     expect(await run("bots", "threads", "move", "dev", "a/b#1", a.slice(0, 8), b.slice(0, 8))).toMatch(
       /Moved a\/b#1 to thread/,
@@ -1262,7 +1277,8 @@ describe("threads", () => {
     ]);
   }
 
-  async function setup(max: number, env: NodeJS.ProcessEnv = {}, inboxes = 1, harness = "claude") {
+  /** `watch` has the dispatcher read the thread snapshot every tick, as the TUI makes it, so `d.state()` is current. */
+  async function setup(max: number, env: NodeJS.ProcessEnv = {}, inboxes = 1, harness = "claude", watch = true) {
     const key = await configured();
     const bots: Bot[] = [];
     const boxes: { id: string; config: { secret: string } }[] = [];
@@ -1306,6 +1322,7 @@ describe("threads", () => {
       runnerId: runner.id,
       org: (await client.listOrgs()).find((o) => o.id === bots[0]!.org_id)!.slug,
     });
+    if (watch) await d.refresh();
     const finish = async (outcome: RunOutcome = { code: 0, delivered: true }) => (
       busy.splice(0).forEach((f) => f(outcome)),
       await d.idle()
@@ -1338,7 +1355,7 @@ describe("threads", () => {
       sendEmail: async (e) => void emails.push(e),
     });
     try {
-      const { inbox, bot, runner, runs, d, finish, client } = await setup(2);
+      const { inbox, bot, runner, runs, d, finish, client } = await setup(2, {}, 1, "claude", false);
       for (const n of [1, 2, 3]) await send(inbox, "issues", issue("opened", n));
       await d.tick();
       // Room for two: the third thread stays unowned for another runner.
@@ -1363,7 +1380,7 @@ describe("threads", () => {
   });
 
   it("keeps sessions from updating the CLI, and drains before an update: no new work, and it waits for running sessions", async () => {
-    const { inbox, runs, out, d, finish, cursor, newest } = await setup(3);
+    const { inbox, bot, client, runs, out, d, finish } = await setup(3);
     await send(inbox, "issues", issue("opened", 1));
     await d.tick();
     expect(runs).toHaveLength(1);
@@ -1381,7 +1398,8 @@ describe("threads", () => {
     expect(checks).toBeGreaterThan(0);
     expect(version).toBeUndefined();
     expect(runs).toHaveLength(1);
-    expect(await cursor()).not.toBe(await newest());
+    const waiting = async () => (await client.listThreads(bot.id, "all"))[0]!.waiting.length;
+    await vi.waitFor(async () => expect(await waiting()).toBe(1));
 
     await finish();
     await polling;
@@ -1559,31 +1577,22 @@ describe("threads", () => {
   });
 
   it("never runs more than --max sessions at once, but sessions waiting on their thread don't count", async () => {
-    const { inbox, runs, out, d, finish, list } = await setup(2);
+    const { inbox, runs, d, finish, list } = await setup(2);
     await send(inbox, "issues", issue("opened", 1));
     await send(inbox, "issues", issue("opened", 2));
     await send(inbox, "issues", issue("opened", 3));
     await d.tick();
     expect(runs).toHaveLength(2);
     expect(new Set(runs.map((r) => r.sessionId)).size).toBe(2);
-    expect(out.join("\n")).toMatch(/1 session\(s\) waiting: 2 sessions are already running/);
-    // The TUI's view: the third issue's message is assigned and waiting, and both sessions are working.
+    // The TUI's view: the third issue's thread is left unclaimed (another runner may take it), and both sessions
+    // are working.
     const state = await d.state();
-    expect(state.bots.held.map((b) => b.name)).toEqual(["dev1"]);
-    expect(state.waiting).toEqual([
-      {
-        id: (await list()).at(-1).id,
-        inbox_id: inbox.id,
-        type: "com.github.issues.opened",
-        subject: "a/b#3",
-        summary: null,
-        thread_id: expect.any(String),
-        bot_name: "dev1",
-      },
-    ]);
+    expect(state.bots.map((b) => b.name)).toEqual(["dev1"]);
+    expect(state.waiting).toEqual([]);
+    expect(Object.values(state.threads).filter((t) => !t.runner_id)).toHaveLength(1);
     expect([...state.running].sort()).toEqual(
       Object.keys(state.threads)
-        .filter((id) => !state.threads[id]!.waiting.length)
+        .filter((id) => state.threads[id]!.runner_id)
         .sort(),
     );
 
@@ -1661,7 +1670,8 @@ describe("threads", () => {
     expect(runs).toHaveLength(1);
     const state = await d.state();
     expect(state.running.size).toBe(0);
-    expect(state.waiting.map((m) => m.subject)).toEqual(["a/b#2", "a/b#1"]);
+    // Only this runner's threads wait on it: the new issue's thread stays unclaimed through the limit.
+    expect(state.waiting.map((m) => m.subject)).toEqual(["a/b#1"]);
     expect(state.threads[first!.sessionId]!.delivered).toBe(delivered.length);
     expect(state.threads[first!.sessionId]!.limited).toBe(true);
 
@@ -1713,7 +1723,7 @@ describe("threads", () => {
     expect(runs).toHaveLength(1);
     const state = await d.state();
     expect(state.running.size).toBe(0);
-    expect(state.waiting.map((m) => m.subject)).toEqual(["a/b#1", "a/b#2"]);
+    expect(state.waiting.map((m) => m.subject)).toEqual(["a/b#1"]);
     expect(state.threads[first!.sessionId]!.delivered).toBe(0);
 
     // Once it resets, the session is resumed with the same messages, and the new thread starts too.
@@ -1822,18 +1832,19 @@ describe("threads", () => {
   });
 
   it("runs every bot, sharing --max across them", async () => {
-    const { boxes, bots, runs, d, finish, cursor, out } = await setup(1, {}, 2);
+    const { boxes, bots, runs, d, finish, cursor } = await setup(1, {}, 2);
     const [a, b] = boxes as [(typeof boxes)[number], (typeof boxes)[number]];
     await send(a, "issues", issue("opened", 1));
     await send(b, "issues", issue("opened", 1));
     await d.tick();
     expect(runs).toHaveLength(1);
     expect(runs[0]!.message).toContain(`loopway messages get ${a.id} `);
-    expect(out.join("\n")).toMatch(/1 session\(s\) waiting/);
     const state = await d.state();
-    expect(state.bots.held.map((x) => x.name)).toEqual(["dev1", "dev2"]);
-    expect(state.waiting.map((m) => m.inbox_id)).toEqual([b.id]);
-    // Both cursors moved: assignment doesn't wait on --max.
+    expect(state.bots.map((x) => x.name)).toEqual(["dev1", "dev2"]);
+    // The second bot's thread is left unclaimed, as --max is full.
+    expect(state.waiting).toEqual([]);
+    expect(Object.values(state.threads).filter((t) => !t.runner_id)).toHaveLength(1);
+    // Both cursors moved: the server routes whatever --max says.
     expect(await cursor(bots[0])).toBeGreaterThan(bots[0]!.cursor);
     expect(await cursor(bots[1])).toBeGreaterThan(bots[1]!.cursor);
     expect(Object.keys(await sessions("dev1"))).toHaveLength(1);
@@ -2032,7 +2043,7 @@ describe("threads", () => {
   });
 
   it("creates a thread on the runner a rule names, and on this one when the name is unknown", async () => {
-    const { inbox, bot, client, runner, out, d } = await setup(0);
+    const { inbox, bot, client, runner, out, d } = await setup(3);
     const other = await client.registerRunner({ org: runner.org, id: randomUUID(), name: "desktop" });
     const rulesFile = join(configDir, "runner-rules.json");
     const pick = `data.issue.number == 1 ? '${runner.name}' : data.issue.number == 2 ? 'desktop' : 'ghost'`;
@@ -2054,13 +2065,21 @@ describe("threads", () => {
       Object.values(await sessions()).map((t: any) => [t.subjects[0], t.runner_id as string | null]),
     );
     // Named runners own their threads from the start (this runner never claims the other's); an unknown name
-    // warns and falls back to this runner, which claims the thread.
+    // leaves the thread to any runner, and this one claims it.
     expect(byIssue).toEqual({ "a/b#1": runner.id, "a/b#2": other.id, "a/b#3": runner.id });
-    expect(out.join("\n")).toMatch(/names runner "ghost"/);
     expect(out.join("\n")).not.toMatch(/error/);
   });
 
-  it("picks up a new version of the bot's prompt and rules, and ignores one whose rules don't parse", async () => {
+  it("renews the runner lease for several polls, and polls less often the longer it is quiet", () => {
+    expect(defaultTtl(5)).toBe(180);
+    expect(defaultTtl(40)).toBe(240);
+    expect(pollDelay(5, 0)).toBe(5);
+    expect(pollDelay(5, 20_000)).toBe(20);
+    expect(pollDelay(5, 600_000)).toBe(60);
+    expect(pollDelay(90, 0)).toBe(90);
+  });
+
+  it("starts new threads on the bot's newest prompt", async () => {
     const { inbox, bot, client, runs, out, d, finish } = await setup(3);
     const current = await client.getBot(bot.id);
     const version = () => current.prompt_version!.version;
@@ -2072,29 +2091,14 @@ describe("threads", () => {
     expect(runs[0]!.message).toContain("Be brief.");
     await finish();
 
-    // The server rejects rules that don't parse.
-    await expect(
-      client.addBotVersion(bot.id, "Broken.", [{ types: ["*"], subject: "data.(", action: "'attach'" }]),
-    ).rejects.toThrow();
-    // One saved before it checked is reported once, and the version before keeps running.
-    await db.query(
-      `INSERT INTO loopway.bot_versions (bot_id, version, prompt, rules)
-       SELECT bot_id, max(version) + 1, 'Broken.', $2::jsonb FROM loopway.bot_versions WHERE bot_id = $1 GROUP BY bot_id`,
-      [bot.id, JSON.stringify([{ types: ["*"], subject: "data.(", action: "'attach'" }])],
-    );
-    await send(inbox, "issues", issue("opened", 2));
-    await d.tick();
-    await d.tick();
-    expect(out.filter((l) => l.startsWith("bot dev1: ignoring version"))).toHaveLength(1);
-    expect(runs).toHaveLength(2);
-    expect(runs[1]!.message).toContain("Be brief.");
-
-    // Rules that route everything to one subject: the next two issues share a thread.
+    // The rules are the server's: a version with new ones changes how the next messages are routed, and the
+    // runner only sees its prompt.
     await client.addBotVersion(bot.id, "Same thread.", [{ types: ["*"], subject: '"one"', action: "'attach'" }]);
     await send(inbox, "issues", issue("opened", 3));
     await send(inbox, "issues", issue("opened", 4));
     await d.tick();
     expect((await client.listThreads(bot.id, "all")).filter((t) => t.subjects.includes("one"))).toHaveLength(1);
+    expect(runs.at(-1)!.message).toContain("Same thread.");
   });
 
   it("starts running a bot created after the runner started, once it has a prompt and rules", async () => {
@@ -2110,12 +2114,15 @@ describe("threads", () => {
     await d.tick();
     await d.tick();
     expect(out.filter((l) => l.startsWith("Skipping bot late"))).toHaveLength(1);
-    expect((await d.state()).bots.held.map((b) => b.id)).toEqual([bot.id]);
+    expect((await d.state()).bots.map((b) => b.id)).toEqual([bot.id]);
 
     await client.addBotVersion(fresh.id, "Late bot.", [{ types: ["*"], subject: '"late"', action: "'attach'" }]);
+    // New bots are looked for about once a minute.
+    skipAhead(MAX_POLL_INTERVAL * 1000);
     await d.tick();
+    vi.useRealTimers();
     expect(out).toContain("bot late: found, now running it");
-    expect((await d.state()).bots.held.map((b) => b.id).sort()).toEqual([bot.id, fresh.id].sort());
+    expect((await d.state()).bots.map((b) => b.id).sort()).toEqual([bot.id, fresh.id].sort());
   });
 
   it("ignores bots of the account's other orgs, whether they existed at startup or came later", async () => {
@@ -2146,12 +2153,13 @@ describe("threads", () => {
       inbox_ids: [inbox.id],
     });
     await client.addBotVersion(local.id, "Local.", [{ types: ["*"], subject: '"l"', action: "'attach'" }]);
+    skipAhead(MAX_POLL_INTERVAL * 1000);
     await d.tick();
-    await d.tick();
+    vi.useRealTimers();
     expect(out).toContain("bot local: found, now running it");
     expect(out.filter((l) => l.includes("foreign"))).toEqual([]);
     expect(out.filter((l) => l.startsWith("error:"))).toEqual([]);
-    expect((await d.state()).bots.held.map((b) => b.id).sort()).toEqual([bot.id, local.id].sort());
+    expect((await d.state()).bots.map((b) => b.id).sort()).toEqual([bot.id, local.id].sort());
   });
 
   it("stops running a bot deleted while the runner runs, and still delivers to the others", async () => {
@@ -2161,13 +2169,14 @@ describe("threads", () => {
     await d.tick();
     await client.deleteBot(gone!);
     await send(inbox, "issues", issue("opened", 1));
+    skipAhead(MAX_POLL_INTERVAL * 1000);
     await d.tick();
-    await d.tick();
+    vi.useRealTimers();
     expect(out.filter((l) => l === "bot dev2: deleted, no longer running it")).toHaveLength(1);
     expect(out.filter((l) => l.startsWith("error:"))).toEqual([]);
     expect(runs).toHaveLength(1);
     const state = await d.state();
-    expect(state.bots.held.map((b) => b.id)).toEqual([keep!]);
+    expect(state.bots.map((b) => b.id)).toEqual([keep!]);
   });
 
   it("drops a bot the server answers not_found for mid-tick, without stopping delivery to the others", async () => {
@@ -2184,33 +2193,7 @@ describe("threads", () => {
     expect(out.filter((l) => l === "bot dev2: deleted, no longer running it")).toHaveLength(1);
     expect(out.some((l) => l.includes("Bot not found"))).toBe(false);
     vi.restoreAllMocks();
-    expect((await d.state()).bots.held.map((b) => b.id)).toEqual([keep!]);
-  });
-
-  it("reports a new bot whose rules don't parse once, and runs it when a valid version arrives", async () => {
-    const { inbox, client, out, d } = await setup(3);
-    const fresh = await client.createBot({
-      org: (await client.listOrgs())[0]!.slug,
-      name: "broken",
-      model: "sonnet",
-      harness: "claude",
-      inbox_ids: [inbox.id],
-      prompt: "Draft.",
-    });
-    // The server rejects rules that don't parse, so save the version straight to the database.
-    await db.query(
-      `INSERT INTO loopway.bot_versions (bot_id, version, prompt, rules)
-       SELECT bot_id, max(version) + 1, 'Broken.', $2::jsonb FROM loopway.bot_versions WHERE bot_id = $1 GROUP BY bot_id`,
-      [fresh.id, JSON.stringify([{ types: ["*"], subject: "data.(", action: "'attach'" }])],
-    );
-    await d.tick();
-    await d.tick();
-    expect(out.filter((l) => l.startsWith("bot broken: not running it"))).toHaveLength(1);
-    expect((await d.state()).bots.held.map((b) => b.id)).not.toContain(fresh.id);
-
-    await client.addBotVersion(fresh.id, "Fixed.", [{ types: ["*"], subject: '"fixed"', action: "'attach'" }]);
-    await d.tick();
-    expect((await d.state()).bots.held.map((b) => b.id)).toContain(fresh.id);
+    expect((await d.state()).bots.map((b) => b.id)).toEqual([keep!]);
   });
 
   it("leaves threads owned by another runner alone, and shows them as on that runner", async () => {
@@ -2222,21 +2205,14 @@ describe("threads", () => {
     });
     // The other runner has a thread on a/b#1.
     await send(inbox, "issue_comment", comment(1));
-    const botLease = (await client.leaseBot(bot.id)).lease;
     const otherLease = (await client.leaseRunner(other.id)).lease;
-    const [seeded] = (await client.listMessages(inbox.id)).data;
-    const threadId = randomUUID();
-    await client.assign(bot.id, {
-      lease_token: botLease.token,
-      cursor: seeded!.seq,
-      assignments: [{ message_id: seeded!.id, thread_id: threadId, add_subjects: ["a/b#1"] }],
-    });
+    await client.runnerWork(other.id, otherLease.token, [bot.id]);
+    const threadId = (await client.listThreads(bot.id, "all"))[0]!.id;
     await client.claimThread(bot.id, threadId, otherLease.token);
-    await client.releaseBot(bot.id, botLease.token);
     await client.patchThread(bot.id, threadId, { lease_token: otherLease.token, started: true });
     await send(inbox, "issue_comment", comment(1));
     await d.tick();
-    // The message is assigned to their thread (behind the one that created it), and this runner doesn't deliver it.
+    // The message is routed to their thread (behind the one that created it), and this runner doesn't deliver it.
     expect(runs).toHaveLength(0);
     const state = await d.state();
     expect(state.waiting).toEqual([]);
@@ -2244,6 +2220,32 @@ describe("threads", () => {
       { runner_id: other.id, waiting: [{ type: expect.any(String) }, { type: expect.any(String) }] },
     ]);
     expect(state.runners[other.id]).toBe("desktop");
+  });
+
+  it("runs a bot on two runners at once, with no bot lease or assign call: each claims what it has room for", async () => {
+    const { inbox, bot, client, runner, runs, d, finish } = await setup(1);
+    const second = await client.registerRunner({ org: runner.org, id: randomUUID(), name: "desktop" });
+    const theirs: AgentRun[] = [];
+    const other = await Dispatcher.start(
+      { ...ctxOf([]), runAgent: async (r) => (theirs.push(r), { code: 0, delivered: true }) },
+      client,
+      [{ ...bot }],
+      { max: 1, ttl: 60, runnerId: second.id, org: runner.org },
+    );
+    closers.push(() => other.close());
+    for (const n of [1, 2]) await send(inbox, "issues", issue("opened", n));
+    requests.length = 0;
+    await d.tick();
+    await other.tick();
+    await other.idle();
+    // Each runner took one of the two threads, a new thread started a session on each, and neither was refused a bot.
+    expect(runs).toHaveLength(1);
+    expect(theirs).toHaveLength(1);
+    expect(new Set((await client.listThreads(bot.id, "all")).map((t) => t.runner_id))).toEqual(
+      new Set([runner.id, second.id]),
+    );
+    expect(requests.filter((r) => /\/bots\/[^/]+\/(lease|assign|release|cursor)/.test(r))).toEqual([]);
+    await finish();
   });
 
   it("ignores issues labeled future that have no session, but not ones already being worked", async () => {
@@ -2261,126 +2263,6 @@ describe("threads", () => {
     await send(inbox, "issues", { action: "labeled", issue: { number: 2, labels }, repository });
     await d.tick();
     expect((await sessions())[runs[0]!.sessionId].waiting).toHaveLength(1);
-  });
-
-  it("skips a bot leased by another runner, and picks it up once released", async () => {
-    const { inbox, bot, client, runs, out, d, cursor } = await setup(3);
-    const other = (await client.leaseBot(bot.id, { ttl_seconds: 60 })).lease;
-    await send(inbox, "issues", issue("opened", 1));
-    const before = await cursor();
-    await d.tick();
-    await d.tick();
-    expect(runs).toHaveLength(0);
-    expect(await cursor()).toBe(before);
-    expect(out.filter((l) => /dev1 is leased by another runner until \d\d:\d\d; skipping/.test(l))).toHaveLength(1);
-    expect((await d.state()).bots).toMatchObject({
-      held: [],
-      skipped: [{ name: "dev1", leased_until: other.expires_at }],
-    });
-
-    await client.releaseBot(bot.id, other.token);
-    await d.tick();
-    expect(runs).toHaveLength(1);
-    expect(out.at(-2)).toBe("bot dev1: lease taken");
-    expect((await d.state()).bots).toMatchObject({ held: [{ name: "dev1" }], skipped: [] });
-    // Now this runner holds it, and keeps it across ticks.
-    await expect(client.leaseBot(bot.id)).rejects.toMatchObject({ code: "leased" });
-    await d.tick();
-    await expect(client.leaseBot(bot.id)).rejects.toMatchObject({ code: "leased" });
-
-    // Closing gives it back right away, and closing again is fine.
-    await Promise.all([d.close(), d.close()]);
-    closers.splice(0);
-    expect((await client.leaseBot(bot.id)).lease.token).not.toBe(other.token);
-  });
-
-  it("without bot leases, still delivers to its own threads while another runner routes to them", async () => {
-    const { inbox, bot, client, runs, out, d, finish } = await setup(3);
-    await send(inbox, "issues", issue("opened", 1));
-    await d.tick();
-    const mine = runs[0]!.sessionId;
-    await finish();
-
-    d.setLeaseBots(false);
-    await d.tick();
-    expect(out).toContain("bot dev1: lease given back");
-    expect(await d.state()).toMatchObject({
-      leaseBots: false,
-      bots: { held: [], skipped: [], unleased: [{ name: "dev1" }] },
-    });
-
-    // Another runner takes the bot and routes its messages, to this runner's thread too.
-    const second = await client.registerRunner({
-      org: (await client.listOrgs())[0]!.slug,
-      id: randomUUID(),
-      name: "other",
-    });
-    const theirs: AgentRun[] = [];
-    const other = await Dispatcher.start(
-      { ...ctxOf([]), runAgent: async (r) => (theirs.push(r), { code: 0, delivered: true }) },
-      client,
-      [bot],
-      { runnerId: second.id, org: second.org },
-    );
-    closers.push(() => other.close());
-    await send(inbox, "issue_comment", comment(1));
-    await send(inbox, "issues", issue("opened", 2));
-    await other.tick();
-    await other.idle();
-    expect(theirs.map((r) => r.resume)).toEqual([false]);
-    expect(theirs[0]!.sessionId).not.toBe(mine);
-
-    // This runner delivers the comment to its own thread, and leaves the new one alone.
-    await d.tick();
-    expect(runs.slice(1)).toMatchObject([{ sessionId: mine, resume: true }]);
-    await finish();
-    await d.tick();
-    expect(runs).toHaveLength(2);
-
-    // Back on, it waits for the other runner's lease like any runner.
-    d.setLeaseBots(true);
-    await d.tick();
-    expect((await d.state()).bots).toMatchObject({ held: [], skipped: [{ name: "dev1" }] });
-  });
-
-  it("leases are short by default, and `bots release --force` drops one a dead runner left", async () => {
-    expect(defaultTtl(5)).toBe(180);
-    expect(defaultTtl(40)).toBe(240);
-    expect(pollDelay(5, 0)).toBe(5);
-    expect(pollDelay(5, 20_000)).toBe(20);
-    expect(pollDelay(5, 600_000)).toBe(60);
-    expect(pollDelay(90, 0)).toBe(90);
-    const { bot, client, d } = await setup(3);
-    const second = await client.registerRunner({
-      org: (await client.listOrgs())[0]!.slug,
-      id: randomUUID(),
-      name: "other",
-    });
-    const other = await Dispatcher.start(ctxOf([]), client, [bot], { runnerId: second.id, org: second.org });
-    closers.push(() => other.close());
-    const before = Date.now();
-    await other.tick();
-    const leased = await client.leaseBot(bot.id).catch((e) => e);
-    expect(leased).toMatchObject({ code: "leased" });
-    const until = Date.parse(leased.details.expires_at);
-    expect(until).toBeGreaterThan(before + 20_000);
-    expect(until).toBeLessThanOrEqual(Date.now() + 30_000);
-
-    // That runner "dies": without --force its lease stays, with it the next runner takes the bot right away.
-    await expect(run("bots", "release", bot.id)).rejects.toThrow(/Pass --force/);
-    await d.tick();
-    expect((await d.state()).bots.held).toEqual([]);
-    // The TUI says who holds it, and which runners no process holds, whose threads are stranded.
-    const idle = await client.registerRunner({ org: second.org, id: randomUUID(), name: "idle" });
-    await d.refresh();
-    const state = await d.state();
-    expect(state.bots.skipped).toMatchObject([{ name: "dev1", held_by: "other" }]);
-    expect(state.offline.has(idle.id)).toBe(true);
-    expect(state.offline.has(second.id)).toBe(false);
-    expect(state.offline.has(state.runnerId)).toBe(false);
-    expect(await run("bots", "release", bot.id, "--force")).toMatch(/Released the lease/);
-    await d.tick();
-    expect((await d.state()).bots).toMatchObject({ held: [{ name: "dev1" }], skipped: [] });
   });
 
   it("picks up a run a previous runner left cut off, and marks sessions started on init", async () => {
@@ -2401,7 +2283,6 @@ describe("threads", () => {
       join(configDir, "threads", `${id}.log`),
       `{"type":"system","subtype":"init"}\n{"type":"assistant","message":{}}\n`,
     );
-    await run("bots", "release", bot.id, "--force");
     await client.forceReleaseRunner(runnerId);
 
     const runs2: AgentRun[] = [];
@@ -2443,7 +2324,6 @@ describe("threads", () => {
       await mkdir(join(configDir, "threads"), { recursive: true });
       await writeFile(join(configDir, "threads", `${id}.log`), "");
     }
-    await run("bots", "release", bot.id, "--force");
     await client.forceReleaseRunner(runnerId);
 
     const runs2: AgentRun[] = [];
@@ -2484,7 +2364,6 @@ describe("threads", () => {
     await finish();
     await mkdir(join(configDir, "threads"), { recursive: true });
     await writeFile(join(configDir, "threads", `${id}.log`), `{"type":"thread.started"}\n${last}\n`);
-    await run("bots", "release", bot.id, "--force");
     await client.forceReleaseRunner(runnerId);
 
     const runs2: AgentRun[] = [];
