@@ -28,6 +28,16 @@ export interface ApiOptions extends EeOptions {
   enterpriseLicense?: string;
   /** `/` redirects to `/login` instead of serving the landing page. */
   selfHosted?: boolean;
+  /**
+   * Whether the server routes stored messages to threads (default true). Off, only runners do: a switch for a rollout
+   * (`SERVER_ROUTING=off`), and for tests of the runner's own routing.
+   */
+  serverRouting?: boolean;
+  /**
+   * Keeps the invocation alive for work that continues after the response (Vercel's `waitUntil`): routing a stored
+   * message to its bot's threads. Defaults to letting the promise run on its own, which is all a long-lived server needs.
+   */
+  defer?: (work: Promise<unknown>) => void;
   /** Delivers login codes. Defaults to printing them to the console. */
   sendEmail?: SendEmail;
   /** PostHog cloud region the /api/ingest proxy forwards to. Defaults to "us". */
@@ -75,6 +85,45 @@ export function createApi(opts: ApiOptions) {
   const app = new Hono<Env>();
   const metrics = opts.metrics ?? noopMetrics;
   const scheduleOptions = opts.scheduleOptions ?? [...SCHEDULE_OPTIONS];
+
+  /**
+   * Routes the bots' messages to threads (see store.routeBot) and records how it went. Never throws: storing a message
+   * and answering never depend on routing, and a message routing missed stays past the bot's cursor for the next try.
+   */
+  async function routeBots(db: Db, botIds: string[], trigger: "ingest" | "catch_up") {
+    if (opts.serverRouting === false) return;
+    for (const botId of botIds) {
+      try {
+        const r = await store.routeBot(db, botId, trigger === "ingest");
+        if (!r || (r.assigned + r.dropped + r.failed.length === 0 && !r.bad_rules)) continue;
+        for (const f of r.failed) console.error(`Routing message ${f.message_id} of bot ${botId} failed: ${f.error}`);
+        if (r.bad_rules) console.error(`Bot ${botId} has rules that don't parse, so it isn't routed: ${r.bad_rules}`);
+        await metrics.capture("messages_routed", r.org_id, {
+          trigger,
+          assigned: r.assigned,
+          dropped: r.dropped,
+          rule_errors: r.failed.length,
+          bad_rules: !!r.bad_rules,
+        });
+      } catch (err) {
+        console.error(err);
+        await metrics.capture("message_routing_failed", ANONYMOUS, { trigger }).catch(() => {});
+      }
+    }
+  }
+
+  /** After the response, routes what was just stored in these inboxes to the threads of the bots that read them. */
+  function routeAfter(db: Db, inboxIds: string[]) {
+    if (opts.serverRouting === false) return;
+    const work = store
+      .botsOfInboxes(db, inboxIds)
+      .then((botIds) => routeBots(db, botIds, "ingest"))
+      .catch(async (err) => {
+        console.error(err);
+        await metrics.capture("message_routing_failed", ANONYMOUS, { trigger: "ingest" }).catch(() => {});
+      });
+    (opts.defer ?? ((p) => void p))(work);
+  }
 
   /** Refuses a schedule config whose option this deploy has turned off. Keeping an inbox's current option is fine. */
   async function requireScheduleOption(
@@ -234,6 +283,7 @@ export function createApi(opts: ApiOptions) {
     }
     const stored = await store.insertMessage(c.var.db, inbox.id, result.event, test);
     await received(stored.duplicate ? "duplicate" : "accepted");
+    if (!stored.duplicate) routeAfter(c.var.db, [inbox.id]);
     return { kind: "stored", ...stored };
   }
 
@@ -249,6 +299,7 @@ export function createApi(opts: ApiOptions) {
     const now = new Date();
     const total = { inboxes: 0, accepted: 0, duplicate: 0, failed: 0, disabled: 0 };
     const rejected = new Set<string>();
+    const routed = new Set<string>();
     for (const inbox of await store.inboxesOfSource(c.var.db, "schedule")) {
       total.inboxes++;
       // An inbox made before its option was turned off is skipped, once per option per tick in the metrics.
@@ -265,6 +316,7 @@ export function createApi(opts: ApiOptions) {
         for (const event of sources.get(inbox.source_type)!.tick!(inbox.config, inbox.id, now)) {
           const { duplicate } = await store.insertMessage(c.var.db, inbox.id, event, false);
           total[duplicate ? "duplicate" : "accepted"]++;
+          if (!duplicate) routed.add(inbox.id);
           await metrics.capture("schedule_message", inbox.org_id, { outcome: duplicate ? "duplicate" : "accepted" });
         }
       } catch (err) {
@@ -274,6 +326,7 @@ export function createApi(opts: ApiOptions) {
         await metrics.capture("schedule_message", inbox.org_id, { outcome: "failed" });
       }
     }
+    if (routed.size) routeAfter(c.var.db, [...routed]);
     await metrics.capture("schedule_ticked", ANONYMOUS, total);
     return c.json(total);
   });
@@ -786,6 +839,7 @@ export function createApi(opts: ApiOptions) {
         );
       }
       message = await store.insertMessage(c.var.db, inbox.id, makeCloudEvent({ ...event, id }), true);
+      routeAfter(c.var.db, [inbox.id]);
     } else {
       const type = sources.sampleType(inbox.source_type, config);
       if (!type) {
@@ -1085,6 +1139,7 @@ export function createApi(opts: ApiOptions) {
       .extend({ lease_token: z.string().optional(), runner_id: runnerId.optional() })
       .parse(await jsonBody(c));
     if (input.runner_id) await sameOrgRunner(c, bot, input.runner_id);
+    await routeBots(c.var.db, [bot.id], "catch_up");
     const row = await store.leaseBot(c.var.db, bot.id, input.ttl_seconds, input.lease_token ?? null, input.runner_id);
     if (!row) {
       const until = iso(bot.locked_until);
@@ -1118,6 +1173,7 @@ export function createApi(opts: ApiOptions) {
   authed.get("/bots/:botId/messages", async (c) => {
     const bot = await memberBot(c);
     const q = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(c.req.query());
+    await routeBots(c.var.db, [bot.id], "catch_up");
     const rows = await store.botMessages(c.var.db, bot.id, q.limit);
     return c.json({ data: rows.map((e) => serializeMessage(e)) });
   });
@@ -1139,6 +1195,7 @@ export function createApi(opts: ApiOptions) {
         titles: z.enum(["true", "false"]).default("true"),
       })
       .parse(c.req.query());
+    await routeBots(c.var.db, [bot.id], "catch_up");
     const rows = await store.listThreads(c.var.db, bot.id, q.status);
     return c.json({ data: await serializeThreads(c.var.db, rows, q.titles === "true") });
   });
@@ -1199,6 +1256,7 @@ export function createApi(opts: ApiOptions) {
       false,
     );
     await store.recordDelivery(c.var.db, inboxId, "accepted");
+    routeAfter(c.var.db, [inboxId]);
     await metrics.capture("thread_message_sent", c.var.user.id, { thread_status: thread.status });
     return c.json({ id: sent.id, inbox_id: inboxId }, 201);
   });

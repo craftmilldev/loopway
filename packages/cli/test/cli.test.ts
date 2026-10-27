@@ -44,6 +44,8 @@ beforeAll(async () => {
     tokenSecret: SECRET,
     inboxSecretKey: TEST_INBOX_KEY,
     sendEmail: async (e) => void emails.push(e),
+    // These tests are of the runner's own routing.
+    serverRouting: false,
   });
 });
 afterAll(() => db.close());
