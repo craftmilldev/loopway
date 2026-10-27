@@ -54,14 +54,17 @@ export function webClosure(root) {
 // Returns { build, reason }. `git(...args)` runs git in the repo and returns stdout, throwing on failure.
 export function decide({ root, previousSha, git }) {
   if (!previousSha) return { build: true, reason: "VERCEL_GIT_PREVIOUS_SHA is not set" };
+  // Vercel runs the ignore command in its root directory (packages/web), and git resolves pathspecs against the
+  // cwd, so every call is pinned to the repo root: from packages/web, `packages/web` would match nothing.
+  const atRoot = (...args) => git("-C", root, ...args);
   try {
     const paths = [...webClosure(root), ...ROOT_INPUTS];
     try {
-      git("cat-file", "-e", `${previousSha}^{commit}`);
+      atRoot("cat-file", "-e", `${previousSha}^{commit}`);
     } catch {
-      git("fetch", "--depth=1", "origin", previousSha);
+      atRoot("fetch", "--depth=1", "origin", previousSha);
     }
-    const changed = git("diff", "--name-only", previousSha, "HEAD", "--", ...paths)
+    const changed = atRoot("diff", "--name-only", previousSha, "HEAD", "--", ...paths)
       .split("\n")
       .filter(Boolean);
     if (changed.length) return { build: true, reason: `changed since ${previousSha}:\n${changed.join("\n")}` };
