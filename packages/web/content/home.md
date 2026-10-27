@@ -13,7 +13,7 @@ How the page reads it:
 - A fenced code block is a terminal well. Its info string is the well's label (`install`, `cli`, `http`). The
   `install` well wraps a long command onto a second line; the others scroll sideways.
 - `{agents}` is replaced with the coding agents a bot can run on (the harness labels in packages/harnesses).
-- Sample data in the figures (the terminal, the thread, the bots table) lives in the page code, not here.
+- Sample data in the figure (the terminal) lives in the page code, not here.
 -->
 
 ## For the one who is always the trigger {#top}
