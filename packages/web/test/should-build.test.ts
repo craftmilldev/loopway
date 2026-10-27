@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -56,11 +57,17 @@ describe("webClosure", () => {
 });
 
 describe("decide", () => {
+  // decide pins every git call to the repo root (`git -C <root> ...`); the fakes check that and record the rest.
+  const unpin = (args: string[]) => {
+    expect(args.slice(0, 2)).toEqual(["-C", root]);
+    return args.slice(2);
+  };
   const run = (changed: string[], previousSha: string | undefined) => {
     const calls: string[][] = [];
     const git = (...args: string[]) => {
-      calls.push(args);
-      return args[0] === "diff" ? changed.join("\n") : "";
+      const cmd = unpin(args);
+      calls.push(cmd);
+      return cmd[0] === "diff" ? changed.join("\n") : "";
     };
     return { ...decide({ root, previousSha, git }), calls };
   };
@@ -91,8 +98,9 @@ describe("decide", () => {
   it("fetches the previous sha when it is not present", () => {
     const calls: string[][] = [];
     const git = (...args: string[]) => {
-      calls.push(args);
-      if (args[0] === "cat-file") throw new Error("missing");
+      const cmd = unpin(args);
+      calls.push(cmd);
+      if (cmd[0] === "cat-file") throw new Error("missing");
       return "";
     };
     expect(decide({ root, previousSha: "abc", git }).build).toBe(false);
@@ -109,5 +117,36 @@ describe("decide", () => {
   it("builds when a package.json cannot be read", () => {
     writeFileSync(join(root, "packages/web/package.json"), "{");
     expect(run([], "abc").build).toBe(true);
+  });
+});
+
+// Vercel runs the ignore command in its root directory, packages/web. Git resolves pathspecs against the cwd, so a
+// diff run there with `packages/web` as the pathspec matched nothing and every web-only change was skipped.
+describe("decide with real git from packages/web", () => {
+  const gitIn =
+    (cwd: string) =>
+    (...args: string[]) =>
+      execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const commit = (git: (...args: string[]) => string, message: string) => {
+    git("add", "-A");
+    git("-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-q", "-m", message);
+    return git("rev-parse", "HEAD").trim();
+  };
+
+  it("builds for a web change and skips a cli-only one", () => {
+    const atRoot = gitIn(root);
+    atRoot("init", "-q");
+    const base = commit(atRoot, "base");
+    mkdirSync(join(root, "packages/web/src"), { recursive: true });
+    writeFileSync(join(root, "packages/web/src/api.ts"), "export {};\n");
+    const web = commit(atRoot, "web change");
+    writeFileSync(join(root, "packages/cli/index.ts"), "export {};\n");
+    commit(atRoot, "cli change");
+
+    const fromWeb = gitIn(join(root, "packages/web"));
+    const result = decide({ root, previousSha: base, git: fromWeb });
+    expect(result.build).toBe(true);
+    expect(result.reason).toContain("packages/web/src/api.ts");
+    expect(decide({ root, previousSha: web, git: fromWeb }).build).toBe(false);
   });
 });
