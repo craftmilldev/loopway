@@ -44,8 +44,8 @@ describe("the floor in code", () => {
     });
     const get = (version?: string) =>
       app.request("/api/health", { headers: version ? { "x-loopway-cli-version": version } : {} });
-    expect((await get("0.3.53")).status).toBe(426);
-    expect((await get("0.3.54")).status).toBe(200);
+    expect((await get("0.3.54")).status).toBe(426);
+    expect((await get("0.4.0")).status).toBe(200);
     expect((await get()).status).toBe(200);
     // An env value below the floor can't let 0.3.53 back in; one above it raises the minimum.
     const lowered = createApi({
