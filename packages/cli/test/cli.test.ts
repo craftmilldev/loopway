@@ -1828,18 +1828,21 @@ describe("threads", () => {
       thread_id: "t1",
       add_subjects: ["a/b#3"],
       key: "a/b#1",
+      runner: "*",
     });
     // A closing keyword right after a quote or backtick is an example, not a reference.
     expect(route(held, message(1, 'Adds a rule for "Closes #2" and `Fixes #2`.'))).toEqual({
       thread_id: "t1",
       add_subjects: [],
       key: "a/b#1",
+      runner: "*",
     });
     // Otherwise the first closed issue a thread holds; the PR joins it, and what t1 holds stays on t1.
     expect(route(held, message(9, "Closes #5, closes #2, closes #1"))).toEqual({
       thread_id: "t2",
       add_subjects: ["a/b#9", "a/b#5"],
       key: "a/b#9",
+      runner: "*",
     });
     // Nothing held: a new thread with every subject.
     const fresh = route(held, message(7, "Closes #8"))!;
@@ -1862,6 +1865,7 @@ describe("threads", () => {
       thread_id: "t9",
       add_subjects: [],
       author_kind: "human",
+      runner: "*",
     });
     expect(to({ bot_id: "b1", text: "no thread" })).toBeUndefined();
     // A bot sharing the inbox drops it: the message names another bot, or a thread this bot doesn't have.
@@ -1901,6 +1905,7 @@ describe("threads", () => {
       thread_id: "t1",
       add_subjects: [],
       key: "a/b#1",
+      runner: "*",
     });
     expect(route(held, "com.github.workflow_run.completed", run([]))).toBeUndefined();
     const future = (n: number) => ({ repository, issue: { number: n, labels: [{ name: "future" }] } });
@@ -1909,6 +1914,16 @@ describe("threads", () => {
     // Pushes have no subject: each is its own thread. Types no rule matches are dropped.
     expect(route(held, "com.github.push", { repository })).toMatchObject({ add_subjects: [], key: undefined });
     expect(route(held, "com.vercel.deployment.created", {})).toBeUndefined();
+  });
+
+  it("route: a rule's runner names where a new thread runs, and is any runner by default", () => {
+    const msg = { event: { type: "x.y", data: { who: "me" } } };
+    const base = { types: ["x.*"], subject: "'s#1'", action: "'attach'" };
+    expect(routeWith([base], new Map(), msg)?.runner).toBe("*");
+    expect(routeWith([{ ...base, runner: "data.who == 'me' ? 'laptop' : '*'" }], new Map(), msg)?.runner).toBe(
+      "laptop",
+    );
+    expect(() => checkRules([{ ...base, runner: "(" }])).toThrow();
   });
 
   it("route: the github-threads rules judge who made a message", () => {
@@ -1974,6 +1989,35 @@ describe("threads", () => {
     const fresh = runs.find((r) => !r.resume && r.harness === "codex");
     expect(fresh).toMatchObject({ harness: "codex", model: "gpt-6-sol" });
     expect(runs.find((r) => r.resume)).toMatchObject({ harness: "claude", model: "sonnet" });
+  });
+
+  it("creates a thread on the runner a rule names, and on this one when the name is unknown", async () => {
+    const { inbox, bot, client, runner, out, d } = await setup(0);
+    const other = await client.registerRunner({ org: runner.org, id: randomUUID(), name: "desktop" });
+    const rulesFile = join(configDir, "runner-rules.json");
+    const pick = `data.issue.number == 1 ? '${runner.name}' : data.issue.number == 2 ? 'desktop' : 'ghost'`;
+    await writeFile(
+      rulesFile,
+      JSON.stringify([
+        {
+          types: ["com.github.issues.*"],
+          subject: "'a/b#' + string(data.issue.number)",
+          runner: pick,
+          action: "'attach'",
+        },
+      ]),
+    );
+    await runJson("bots", "edit", bot.id, "--rules-file", rulesFile);
+    for (const n of [1, 2, 3]) await send(inbox, "issues", issue("opened", n));
+    await d.tick();
+    const byIssue = Object.fromEntries(
+      Object.values(await sessions()).map((t: any) => [t.subjects[0], t.runner_id as string | null]),
+    );
+    // Named runners own their threads from the start (this runner never claims the other's); an unknown name
+    // warns and falls back to this runner, which claims the thread.
+    expect(byIssue).toEqual({ "a/b#1": runner.id, "a/b#2": other.id, "a/b#3": runner.id });
+    expect(out.join("\n")).toMatch(/names runner "ghost"/);
+    expect(out.join("\n")).not.toMatch(/error/);
   });
 
   it("picks up a new version of the bot's prompt and rules, and ignores one whose rules don't parse", async () => {

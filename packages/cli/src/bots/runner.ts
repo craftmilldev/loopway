@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
+import { runnerName } from "@loopway/rules";
 import { join } from "node:path";
 import { ApiError, type LoopwayClient, type Runner } from "../client.js";
 import { readJson, writeJson } from "../config.js";
@@ -45,7 +46,7 @@ export async function ensureRunner(
   ctx: Context,
   client: LoopwayClient,
   org: string,
-  name = hostname(),
+  name = runnerName(hostname()),
 ): Promise<Runner> {
   const saved = await readSaved(ctx.configDir);
   if (saved.org && saved.org !== org) await ctx.metrics?.capture("runner_org_switched", {});

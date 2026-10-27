@@ -48,6 +48,18 @@ describe("server routing", () => {
     expect(events.some((e) => e.event === "messages_routed" && e.properties?.assigned === 1)).toBe(true);
   });
 
+  it("creates a new thread on the runner a rule names, or on none when the org has no such runner", async () => {
+    const runnerRules = [{ ...RULES[0]!, runner: "data.number == 1 ? 'laptop' : data.number == 2 ? 'ghost' : '*'" }];
+    const { key, inbox, threads } = await setup(runnerRules);
+    const runner = randomUUID();
+    await call("POST", "/runners", { key, body: { id: runner, name: "laptop" } });
+    for (const n of [1, 2, 3]) await sendGithub(inbox, "pull_request", prPayload(n));
+    await settled();
+    const byPr = Object.fromEntries((await threads()).map((t) => [t.subjects[0], t.runner_id]));
+    expect(byPr).toEqual({ "pr-1": runner, "pr-2": null, "pr-3": null });
+    expect(events.some((e) => e.event === "messages_routed" && e.properties?.unknown_runner === 1)).toBe(true);
+  });
+
   it("routes nothing for a bot with no rules and leaves its cursor", async () => {
     const key = await newUser();
     const inbox = await newInbox(key);

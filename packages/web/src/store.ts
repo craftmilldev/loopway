@@ -1,4 +1,4 @@
-import { checkRules, route, type BotRule } from "@loopway/rules";
+import { ANY_RUNNER, checkRules, route, type BotRule } from "@loopway/rules";
 import { botActor, runnerActor, userActor } from "./actor.js";
 import type { CloudEvent } from "./cloudevents.js";
 import { MIGRATE_LOCK, type Db } from "./db/index.js";
@@ -1320,6 +1320,8 @@ export interface Assignment {
   subject?: string;
   /** Who made the message, as the bot's rules judged it (see `authorKind` in BotRule). Drives the thread's level. */
   author_kind?: "human" | "bot";
+  /** The runner a new thread is created on (it owns the thread from the start); ignored for a thread that exists. */
+  runner_id?: string;
 }
 
 /** Takes turns between everything that assigns the bot's messages (server routing and a runner's `assign`). */
@@ -1338,7 +1340,7 @@ export async function assignMessages(
   token: string,
   cursor: number,
   assignments: Assignment[],
-): Promise<{ assigned: number; levels: (2 | 3 | 4)[] } | undefined> {
+): Promise<{ assigned: number; levels: (2 | 3 | 4)[]; onRunner: number } | undefined> {
   return db.transaction(async (tx) => {
     await assignLock(tx, botId);
     const [bot] = await tx.query<{ org_id: string; runner_id: string | null }>(
@@ -1368,18 +1370,19 @@ async function writeAssignments(tx: Pick<Db, "query">, botId: string, orgId: str
   );
   const taken = new Set(done.map((r) => r.message_id));
   const assignments = all.filter((x) => !taken.has(x.message_id));
-  if (!assignments.length) return { assigned: 0, levels: [] as (2 | 3 | 4)[] };
+  if (!assignments.length) return { assigned: 0, levels: [] as (2 | 3 | 4)[], onRunner: 0 };
   // The assignments as rows, shared by the three inserts below.
   const a = `(SELECT (x->>'message_id')::uuid AS message_id, (x->>'thread_id')::uuid AS thread_id,
-                     x->'add_subjects' AS add_subjects, x->>'subject' AS subject, x->>'author_kind' AS author_kind, n
+                     x->'add_subjects' AS add_subjects, x->>'subject' AS subject, x->>'author_kind' AS author_kind, (x->>'runner_id')::uuid AS runner_id, n
               FROM jsonb_array_elements($1::jsonb) WITH ORDINALITY AS e(x, n))`;
   // A new thread's level comes from its first message's author kind: a person is 2, a bot 4.
-  const created = await tx.query<{ id: string; level: 2 | 4 | null }>(
-    `INSERT INTO loopway.threads (id, bot_id, created_by, org_id, automation_level)
+  const created = await tx.query<{ id: string; level: 2 | 4 | null; runner_id: string | null }>(
+    `INSERT INTO loopway.threads (id, bot_id, created_by, org_id, automation_level, runner_id)
      SELECT DISTINCT ON (a.thread_id) a.thread_id, $2::uuid, $3, $4::uuid,
-            CASE a.author_kind WHEN 'human' THEN 2 WHEN 'bot' THEN 4 END
-     FROM ${a} a ORDER BY a.thread_id, a.n
-     ON CONFLICT (id) DO NOTHING RETURNING id, automation_level AS level`,
+            CASE a.author_kind WHEN 'human' THEN 2 WHEN 'bot' THEN 4 END, r.id
+     FROM ${a} a LEFT JOIN loopway.runners r ON r.id = a.runner_id AND r.org_id = $4::uuid
+     ORDER BY a.thread_id, a.n
+     ON CONFLICT (id) DO NOTHING RETURNING id, automation_level AS level, runner_id`,
     [assignments, botId, actor, orgId],
   );
   for (const t of created) await recordThreadEvents(tx, orgId, botId, t.id, ["created"]);
@@ -1404,7 +1407,11 @@ async function writeAssignments(tx: Pick<Db, "query">, botId: string, orgId: str
     [assignments],
   );
   const levels = [...created.map((t) => t.level), ...joined.map(() => 3 as const)];
-  return { assigned: msgs.length, levels: levels.filter((l): l is 2 | 3 | 4 => l !== null) };
+  return {
+    assigned: msgs.length,
+    levels: levels.filter((l): l is 2 | 3 | 4 => l !== null),
+    onRunner: created.filter((t) => t.runner_id).length,
+  };
 }
 
 /** Routing reads messages this recent no later than the next second: it waits that long for a message in flight. */
@@ -1416,6 +1423,9 @@ export interface RouteResult {
   /** Messages put on a thread, and messages no rule attached (dropped, as a runner's routing would). */
   assigned: number;
   dropped: number;
+  /** New threads created on a runner a rule named, and ones whose rule named a runner the org doesn't have. */
+  on_runner: number;
+  unknown_runner: number;
   /** Messages whose rules threw: skipped, with the error, and the cursor moved past them. */
   failed: { message_id: string; error: string }[];
   /** The bot's newest rules don't parse, so nothing was routed. */
@@ -1436,8 +1446,10 @@ export async function routeBot(db: Db, botId: string, wait = true): Promise<Rout
     for (;;) {
       const page = await routePage(db, botId);
       if (!page) return result;
-      result ??= { org_id: page.org_id, assigned: 0, dropped: 0, failed: [] };
+      result ??= { org_id: page.org_id, assigned: 0, dropped: 0, on_runner: 0, unknown_runner: 0, failed: [] };
       result.assigned += page.assigned;
+      result.on_runner += page.on_runner;
+      result.unknown_runner += page.unknown_runner;
       result.dropped += page.dropped;
       result.failed.push(...page.failed);
       if (page.bad_rules) result.bad_rules = page.bad_rules;
@@ -1469,7 +1481,16 @@ async function routePage(db: Db, botId: string): Promise<RoutePage | undefined> 
       [botId],
     );
     if (!bot?.rules) return undefined;
-    const base: RoutePage = { org_id: bot.org_id, assigned: 0, dropped: 0, failed: [], read: 0, held_back: false };
+    const base: RoutePage = {
+      org_id: bot.org_id,
+      assigned: 0,
+      dropped: 0,
+      on_runner: 0,
+      unknown_runner: 0,
+      failed: [],
+      read: 0,
+      held_back: false,
+    };
     try {
       checkRules(bot.rules);
     } catch (err) {
@@ -1495,6 +1516,12 @@ async function routePage(db: Db, botId: string): Promise<RoutePage | undefined> 
     // Who holds each subject, kept up to date as the page is routed so a later message sees an earlier one's threads.
     const held = new Map(subjects.map((k) => [k.subject, k.thread_id] as const));
     const known = new Set(threads.map((t) => t.id));
+    // The org's runners by name (the most recently seen first), to resolve the runner a rule names.
+    const runners = await tx.query<{ id: string; name: string }>(
+      `SELECT id, name FROM loopway.runners WHERE org_id = $1 ORDER BY last_seen_at DESC`,
+      [bot.org_id],
+    );
+    let unknownRunner = 0;
     const assignments: Assignment[] = [];
     const failed: { message_id: string; error: string }[] = [];
     let dropped = 0;
@@ -1509,6 +1536,12 @@ async function routePage(db: Db, botId: string): Promise<RoutePage | undefined> 
         if (routed.add_subjects.length > 100 || [...routed.add_subjects, routed.key ?? ""].some((s) => s.length > 500))
           throw new Error("A rule found more than 100 subjects, or one longer than 500 characters.");
         for (const s of routed.add_subjects) held.set(s, routed.thread_id);
+        // Only a new thread goes to the runner the rule names; a name the org doesn't have means any runner.
+        let runnerId: string | undefined;
+        if (!known.has(routed.thread_id) && routed.runner !== ANY_RUNNER) {
+          runnerId = runners.find((r) => r.name === routed.runner)?.id;
+          if (!runnerId) unknownRunner++;
+        }
         known.add(routed.thread_id);
         assignments.push({
           message_id: m.id,
@@ -1516,6 +1549,7 @@ async function routePage(db: Db, botId: string): Promise<RoutePage | undefined> 
           ...(routed.add_subjects.length ? { add_subjects: routed.add_subjects } : {}),
           ...(routed.key ? { subject: routed.key } : {}),
           ...(routed.author_kind ? { author_kind: routed.author_kind } : {}),
+          ...(runnerId ? { runner_id: runnerId } : {}),
         });
       } catch (err) {
         failed.push({ message_id: m.id, error: err instanceof Error ? err.message : String(err) });
@@ -1530,6 +1564,8 @@ async function routePage(db: Db, botId: string): Promise<RoutePage | undefined> 
       ...base,
       assigned: written.assigned,
       dropped,
+      on_runner: written.onRunner,
+      unknown_runner: unknownRunner,
       failed,
       read: rows.length,
       held_back: await heldBack(rows.at(-1)!.seq),

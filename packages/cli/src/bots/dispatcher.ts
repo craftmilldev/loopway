@@ -18,7 +18,7 @@ import { clock, dim } from "../format.js";
 import { startMcpServer, type McpServer, type McpTool } from "../mcp.js";
 import { getHarness, runHarness, type RunAgent, type RunOutcome } from "@loopway/harnesses";
 import { botEnv } from "./github.js";
-import { checkRules, route, type BotRule } from "@loopway/rules";
+import { ANY_RUNNER, checkRules, route, type BotRule } from "@loopway/rules";
 import { sessionTools } from "./tools.js";
 import { sessionLogPath } from "./transcript.js";
 
@@ -287,7 +287,8 @@ export class Dispatcher {
         // only by the runner that holds it.
         const repair = !this.repaired.has(bot.id);
         const claim = leased && !this.claimed.has(bot.id);
-        if (leased) await this.refreshVersion(bot);
+        // A runner that doesn't hold the bot still runs its threads, which start from the bot's newest prompt.
+        await this.refreshVersion(bot);
         if (repair || claim) {
           await this.reconcile(bot, { repair, claim });
           if (repair) this.repaired.add(bot.id);
@@ -604,13 +605,19 @@ export class Dispatcher {
     const known = new Set(threads.map((t) => t.id));
     const created: string[] = [];
     const assignments: Assignment[] = [];
+    // The org's runners, read once a rule names one.
+    let runners: Runner[] | undefined;
     for (const m of messages) {
       const routed = route(rules, held, m, { botId: bot.id, threads: known });
       if (!routed) continue;
       for (const s of routed.add_subjects) held.set(s, routed.thread_id);
+      let runnerId: string | undefined;
       if (!known.has(routed.thread_id)) {
         known.add(routed.thread_id);
-        created.push(routed.thread_id);
+        if (routed.runner !== ANY_RUNNER) runners ??= await this.client.listRunners(this.org);
+        runnerId = this.ruleRunner(bot, routed.runner, runners ?? []);
+        // A thread made for another runner is theirs from the start, so this one doesn't claim it.
+        if (!runnerId) created.push(routed.thread_id);
       }
       assignments.push({
         message_id: m.id,
@@ -618,6 +625,7 @@ export class Dispatcher {
         ...(routed.add_subjects.length ? { add_subjects: routed.add_subjects } : {}),
         ...(routed.key ? { subject: routed.key } : {}),
         ...(routed.author_kind ? { author_kind: routed.author_kind } : {}),
+        ...(runnerId ? { runner_id: runnerId } : {}),
       });
     }
     await this.client.assign(bot.id, {
@@ -626,6 +634,26 @@ export class Dispatcher {
       assignments,
     });
     for (const id of created) await this.client.claimThread(bot.id, id, this.token());
+  }
+
+  /**
+   * The runner a rule's `runner` names, for a new thread: its id, or undefined for any runner (the rule says `*` or
+   * names none, or names a runner the org doesn't have, which is warned about and flagged in metrics).
+   */
+  private ruleRunner(bot: Bot, name: string, runners: Runner[]): string | undefined {
+    if (name === ANY_RUNNER) return undefined;
+    const named = runners.filter((r) => r.name === name);
+    // The most recently seen one, if several share the name.
+    const runner = named.sort((a, b) => b.last_seen_at.localeCompare(a.last_seen_at))[0];
+    if (!runner) {
+      this.ctx.out(
+        `warning: bot ${bot.name}: a rule names runner "${name}", which this org doesn't have; any runner may take the thread.`,
+      );
+      void this.ctx.metrics?.capture("rule_runner_unknown", {});
+      return undefined;
+    }
+    void this.ctx.metrics?.capture("rule_runner_assigned", { self: runner.id === this.runnerId });
+    return runner.id;
   }
 
   /**

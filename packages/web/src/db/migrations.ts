@@ -716,4 +716,14 @@ UPDATE loopway.inboxes i
   WHERE m.inbox_id = i.id;
 `,
   },
+  {
+    // A rule names the runner a new thread runs on, so a runner's name is a plain word: letters, digits, dots,
+    // underscores and dashes, 1 to 64 long. Names from before that (a host name can have spaces) are rewritten.
+    version: "036_runner_names",
+    sql: `
+UPDATE loopway.runners
+  SET name = COALESCE(NULLIF(left(regexp_replace(name, '[^A-Za-z0-9._-]+', '-', 'g'), 64), ''), 'runner')
+  WHERE name !~ '^[A-Za-z0-9._-]{1,64}$';
+`,
+  },
 ];

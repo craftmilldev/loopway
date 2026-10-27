@@ -9,6 +9,7 @@ export interface RuleDraft {
   subject: string;
   related: string;
   authorKind: string;
+  runner: string;
   action: string;
 }
 
@@ -20,10 +21,15 @@ const EXPRESSIONS = [
     label: "Author kind",
     hint: "CEL: 'human' or 'bot' for who made the message, \"\" for unknown. Sets the thread's level of automation.",
   },
+  {
+    key: "runner",
+    label: "Runner",
+    hint: "CEL: the name of the runner a new thread runs on, or '*' (the default) for any.",
+  },
   { key: "action", label: "Action", hint: "CEL, required: 'attach' or 'skip'." },
 ] as const;
 
-const blankRule = (): RuleDraft => ({ types: "", subject: "", related: "", authorKind: "", action: "" });
+const blankRule = (): RuleDraft => ({ types: "", subject: "", related: "", authorKind: "", runner: "", action: "" });
 
 export const toDrafts = (rules: lw.BotRule[] | null): RuleDraft[] =>
   (rules ?? []).map((r) => ({
@@ -31,6 +37,7 @@ export const toDrafts = (rules: lw.BotRule[] | null): RuleDraft[] =>
     subject: r.subject ?? "",
     related: r.related ?? "",
     authorKind: r.authorKind ?? "",
+    runner: r.runner ?? "",
     action: r.action ?? "",
   }));
 
