@@ -1463,7 +1463,7 @@ async function routePage(db: Db, botId: string): Promise<RoutePage | undefined> 
           dropped++;
           continue;
         }
-        // The limits `POST /assign` puts on a runner's subjects.
+        // The most subjects, and the longest, a thread may be given.
         if (routed.add_subjects.length > 100 || [...routed.add_subjects, routed.key ?? ""].some((s) => s.length > 500))
           throw new Error("A rule found more than 100 subjects, or one longer than 500 characters.");
         for (const s of routed.add_subjects) held.set(s, routed.thread_id);
