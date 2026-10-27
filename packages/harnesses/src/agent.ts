@@ -29,7 +29,7 @@ export interface AgentRun {
   deniedTools?: string[];
   /** The shell command of a `script` bot (its prompt); other harnesses ignore it. */
   script?: string;
-  /** Called once Claude Code has created the session (its `system` `init` record), so later runs must resume it. */
+  /** Called once the harness has created the session, so later runs must resume it. */
   onStarted?: () => void;
   /** Called when a plan usage report was attempted (see plan-usage.ts), for product metrics. */
   onPlanUsage?: (outcome: PlanUsageOutcome) => void;
@@ -38,7 +38,7 @@ export interface AgentRun {
 export interface RunOutcome {
   /** The process's exit code. */
   code: number;
-  /** Whether Claude Code echoed `message` back, which it does once the message is in the session. */
+  /** Whether the harness took `message` into its session. */
   delivered: boolean;
   /** Whether the run ended with a `result` record rather than being cut off. */
   finished?: boolean;
