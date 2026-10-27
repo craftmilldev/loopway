@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { botState, type BotState } from "./bot-state.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
-import { StateBadge } from "./overview.js";
 import { Updated } from "./updated.js";
 
 type RunnerFilter = "all" | "online" | "offline";
@@ -65,32 +63,8 @@ export function Runners() {
   const ready = !!me;
   const runners = lw.useList<lw.Runner>(lw.inOrg("/runners"), ready);
   lw.usePoll(runners.reload, ready);
-  const [states, setStates] = useState<Record<string, BotState>>({});
   const [filter, setFilter] = useState<RunnerFilter>("all");
   const [find, setFind] = useState("");
-
-  // The state of each bot a runner holds, which comes from its active threads and so one request per bot.
-  const held = [...new Set((runners.data ?? []).flatMap((r) => r.bots.map((b) => b.id)))].sort();
-  const loadStates = async () => {
-    let ok = true;
-    await Promise.all(
-      held.map(async (id) => {
-        const r = await lw.api(`/bots/${id}/threads?status=active`);
-        if (!r.ok) {
-          ok = false;
-          return track("runners_load_failed", { resource: "threads", status: r.status });
-        }
-        const threads = ((await r.json()) as { data: lw.Thread[] }).data;
-        const state = botState(threads, runners.data ?? []);
-        setStates((s) => (s[id] === state ? s : { ...s, [id]: state }));
-      }),
-    );
-    return ok;
-  };
-  useEffect(() => {
-    void loadStates();
-  }, [held.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
-  lw.usePoll(loadStates, ready && !!runners.data);
 
   const loaded = !!runners.data;
   const list = runners.data ?? [];
@@ -103,8 +77,7 @@ export function Runners() {
   const needle = find.trim().toLowerCase();
   const shown = list.filter(
     (r) =>
-      (filter === "all" || (filter === "online") === isOnline(r)) &&
-      (!needle || [r.name, ...r.bots.map((b) => b.name)].some((n) => n.toLowerCase().includes(needle))),
+      (filter === "all" || (filter === "online") === isOnline(r)) && (!needle || r.name.toLowerCase().includes(needle)),
   );
   const stranded = list.filter((r) => !isOnline(r) && r.threads > 0).length;
 
@@ -175,12 +148,7 @@ export function Runners() {
               <label htmlFor="find" className="lbl">
                 Find
               </label>
-              <input
-                id="find"
-                placeholder="Runner or bot name"
-                value={find}
-                onChange={(e) => setFind(e.target.value)}
-              />
+              <input id="find" placeholder="Runner name" value={find} onChange={(e) => setFind(e.target.value)} />
             </div>
           </section>
 
@@ -191,7 +159,6 @@ export function Runners() {
                   <th scope="col">Runner</th>
                   <th scope="col">Status</th>
                   <th scope="col">Last seen</th>
-                  <th scope="col">Bots</th>
                   <th scope="col" className="num">
                     Threads
                   </th>
@@ -219,20 +186,6 @@ export function Runners() {
                         )}
                       </td>
                       <td title={lw.when(r.last_seen_at)}>{lw.ago(r.last_seen_at)}</td>
-                      <td>
-                        {r.bots.length ? (
-                          r.bots.map((b) => (
-                            <div key={b.id} className="runner-bot">
-                              <a className="bot-link" href={lw.orgBase() + "/bots/" + b.id}>
-                                {b.name}
-                              </a>{" "}
-                              {states[b.id] && <StateBadge state={states[b.id]!} />}
-                            </div>
-                          ))
-                        ) : (
-                          <span className="muted">none</span>
-                        )}
-                      </td>
                       <td className="num">{r.threads}</td>
                       <td className={online ? undefined : "muted"} title={lw.when(r.leased_until)}>
                         {online ? lw.when(r.leased_until) : "expired"}

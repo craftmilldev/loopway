@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { call, db, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
+import { assign, call, db, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
 
 describe("join table timestamps", () => {
   it("stamps bot_inboxes, thread_subjects and thread_messages, and moves updated_at on update", async () => {
@@ -16,16 +16,7 @@ describe("join table timestamps", () => {
     const messages = (await call("GET", `/inboxes/${inbox.id}/messages?order=asc`, { key })).body.data as {
       id: string;
     }[];
-    const lease = (await call("POST", `/bots/${bot.id}/lease`, { key, body: { ttl_seconds: 60 } })).body.lease.token;
-    const assigned = await call("POST", `/bots/${bot.id}/assign`, {
-      key,
-      body: {
-        lease_token: lease,
-        cursor: 0,
-        assignments: [{ message_id: messages[0]!.id, thread_id: randomUUID(), add_subjects: ["s/1"] }],
-      },
-    });
-    expect(assigned.status).toBe(200);
+    await assign(bot.id, [{ message_id: messages[0]!.id, thread_id: randomUUID(), add_subjects: ["s/1"] }]);
 
     const [bi] = await db.query<{ created_at: Date | null }>(
       `SELECT created_at FROM loopway.bot_inboxes WHERE bot_id = $1`,

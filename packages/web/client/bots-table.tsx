@@ -17,8 +17,6 @@ export interface BotRow {
   reason: string;
   /** The inboxes it reads, as text. */
   reads: string;
-  /** The runner holding it; null when none does. */
-  runner: string | null;
   open: number;
   waiting: number;
   /** Its deliveries and levels; undefined while they load. */
@@ -37,7 +35,6 @@ export function BotsTable({ rows }: { rows: BotRow[] }) {
             <th scope="col">Bot</th>
             <th scope="col">State</th>
             <th scope="col">Reads</th>
-            <th scope="col">Runner</th>
             <th scope="col" className="num">
               Open threads
             </th>
@@ -69,7 +66,6 @@ export function BotsTable({ rows }: { rows: BotRow[] }) {
                 {r.reason && <div className="why">{r.reason}</div>}
               </td>
               <td className="mono">{r.reads}</td>
-              <td className={"mono" + (r.runner ? "" : " muted")}>{r.runner ?? "not held"}</td>
               <td className="num">{r.open}</td>
               <td className="num">{r.waiting}</td>
               <td>

@@ -1092,7 +1092,7 @@ describe("runners", () => {
       "--inbox",
       inbox.id,
     );
-    expect(await runJson("runners")).toMatchObject([{ id: first.id, bots: [] }]);
+    expect(await runJson("runners")).toMatchObject([{ id: first.id }]);
   });
 
   it("is leased by one bots run at a time, and released when it stops", async () => {
@@ -1127,7 +1127,7 @@ describe("runners", () => {
     expect(refused).toBeInstanceOf(UsageError);
     expect(refused.message).toMatch(/runner is already in use/);
     await first.close();
-    expect((await runJson("runners"))[0]).toMatchObject({ leased_until: null, bots: [] });
+    expect((await runJson("runners"))[0]).toMatchObject({ leased_until: null });
     const second = await Dispatcher.start(ctx, client, [bot], { ttl: 60, runnerId: runner.id, org: runner.org });
     await second.close();
   });

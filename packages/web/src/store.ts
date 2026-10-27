@@ -1,5 +1,5 @@
 import { ANY_RUNNER, checkRules, route, type BotRule } from "@loopway/rules";
-import { botActor, runnerActor, userActor } from "./actor.js";
+import { botActor, userActor } from "./actor.js";
 import type { CloudEvent } from "./cloudevents.js";
 import { MIGRATE_LOCK, type Db } from "./db/index.js";
 import { ApiError } from "./http.js";
@@ -546,15 +546,11 @@ export interface Bot {
   inbox_ids: string[];
   /** The bot's newest version of its prompt and assign rules; null for a bot that has none yet. */
   prompt_version: BotVersion | null;
-  /** The runner's lease: see leaseBot(). runner_id is who holds it, if the lease asked to say. */
-  lock_token: string | null;
-  locked_until: Date | null;
-  runner_id: string | null;
   created_at: Date;
 }
 
 const BOT_COLS = `
-  b.id, b.created_by, b.org_id, b.name, b.model, b.harness, b.cursor, b.lock_token, b.locked_until, b.runner_id, b.created_at,
+  b.id, b.created_by, b.org_id, b.name, b.model, b.harness, b.cursor, b.created_at,
   COALESCE((SELECT jsonb_agg(bi.inbox_id ORDER BY bi.inbox_id) FROM loopway.bot_inboxes bi WHERE bi.bot_id = b.id),
            '[]'::jsonb) AS inbox_ids,
   (SELECT jsonb_build_object('version', v.version, 'prompt', v.prompt, 'rules', v.rules, 'created_at', v.created_at)
@@ -770,60 +766,6 @@ export async function deleteBot(db: Db, id: string): Promise<void> {
   await db.query(`UPDATE loopway.bots SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`, [id]);
 }
 
-/**
- * Lease the bot to a runner. Succeeds if nobody holds a live lease, or the bot is already leased with
- * `currentToken` (in which case the lease is extended and the token kept).
- */
-export async function leaseBot(
-  db: Db,
-  botId: string,
-  ttlSeconds: number,
-  currentToken: string | null,
-  runnerId: string | null = null,
-): Promise<Bot | undefined> {
-  const [row] = await db.query<Bot>(
-    `UPDATE loopway.bots b SET
-       lock_token   = CASE WHEN b.lock_token = $3 THEN b.lock_token ELSE $2 END,
-       locked_until = now() + $4::int * interval '1 second',
-       runner_id    = $5::uuid
-     WHERE b.id = $1 AND b.deleted_at IS NULL
-       AND (b.locked_until IS NULL OR b.locked_until <= now() OR b.lock_token = $3)
-     RETURNING ${BOT_COLS}`,
-    [botId, newLockToken(), currentToken, ttlSeconds, runnerId],
-  );
-  return row;
-}
-
-/** Drops the lease, if `token` is the one held. */
-export async function releaseBot(db: Db, botId: string, token: string): Promise<boolean> {
-  const rows = await db.query<{ id: string }>(
-    `UPDATE loopway.bots SET lock_token = NULL, locked_until = NULL, runner_id = NULL
-     WHERE id = $1 AND deleted_at IS NULL AND lock_token = $2
-     RETURNING id`,
-    [botId, token],
-  );
-  return rows.length > 0;
-}
-
-/** Drops the lease whoever holds it, for a runner that died without releasing. */
-export async function forceReleaseBot(db: Db, botId: string): Promise<void> {
-  await db.query(
-    `UPDATE loopway.bots SET lock_token = NULL, locked_until = NULL, runner_id = NULL WHERE id = $1 AND deleted_at IS NULL`,
-    [botId],
-  );
-}
-
-/** Moves the cursor forward to `seq` (never backwards), if `token` is the live lease. */
-export async function advanceCursor(db: Db, botId: string, seq: number, token: string): Promise<Bot | undefined> {
-  const [row] = await db.query<Bot>(
-    `UPDATE loopway.bots b SET cursor = GREATEST(b.cursor, $2::bigint)
-     WHERE b.id = $1 AND b.deleted_at IS NULL AND b.lock_token = $3 AND b.locked_until > now()
-     RETURNING ${BOT_COLS}`,
-    [botId, seq, token],
-  );
-  return row;
-}
-
 /** Messages in the bot's inboxes after its cursor, oldest first, stopping at the first one still held back. */
 export async function botMessages(
   db: Pick<Db, "query">,
@@ -861,8 +803,6 @@ export interface Runner {
   locked_until: Date | null;
   created_at: Date;
   last_seen_at: Date;
-  /** Bots whose live lease this runner holds. */
-  bots: { id: string; name: string }[];
   /** Threads this runner owns. */
   threads: number;
 }
@@ -870,8 +810,6 @@ export interface Runner {
 const RUNNER_COLS = `
   r.id, r.created_by, r.org_id, (SELECT o.slug FROM loopway.orgs o WHERE o.id = r.org_id) AS org_slug,
   r.name, r.lock_token, r.locked_until, r.created_at, r.last_seen_at,
-  COALESCE((SELECT jsonb_agg(jsonb_build_object('id', b.id, 'name', b.name) ORDER BY b.id) FROM loopway.bots b
-            WHERE b.runner_id = r.id AND b.deleted_at IS NULL AND b.locked_until > now()), '[]'::jsonb) AS bots,
   (SELECT count(*)::int FROM loopway.threads t WHERE t.runner_id = r.id) AS threads`;
 
 /**
@@ -1037,9 +975,6 @@ const DELIVERED_IDS = `,
                              ORDER BY tm.delivered_at, tm.assigned_at)
             FROM loopway.thread_messages tm JOIN loopway.messages m ON m.id = tm.message_id
             WHERE tm.thread_id = t.id AND tm.state = 'delivered'), '[]'::jsonb) AS delivered_messages`;
-
-/** The runner's live lease on bot $1 with token $2: the condition assign makes inside its own statement. */
-const LEASED = `b.id = $1 AND b.deleted_at IS NULL AND b.lock_token = $2 AND b.locked_until > now()`;
 
 // Strings go in as a jsonb array, like inbox ids.
 const jsonStrings = (param: string) => `(SELECT value FROM jsonb_array_elements_text(${param}::jsonb))`;
@@ -1345,43 +1280,18 @@ export interface Assignment {
   runner_id?: string;
 }
 
-/** Takes turns between everything that assigns the bot's messages (server routing and a runner's `assign`). */
+/** Takes turns between everything that assigns the bot's messages. */
 const assignLock = (tx: Pick<Db, "query">, botId: string) =>
   tx.query(`SELECT pg_advisory_xact_lock(hashtext('loopway.assign'), hashtext($1))`, [botId]);
 
-/**
- * One transaction, so it's atomic: creates the threads the bot doesn't have yet, adds subjects, inserts the messages as
- * waiting (one already assigned is skipped), sets the threads' automation levels from the messages' author kinds
- * (`levels` lists each one set or changed) and advances the cursor. Does nothing, and returns undefined, unless `token`
- * is the live lease. Callers check the ids, subjects and messages first (threadBots and friends).
- */
-export async function assignMessages(
-  db: Db,
+/** Writes the assignments in the caller's transaction (which holds the bot's assign lock). */
+export async function writeAssignments(
+  tx: Pick<Db, "query">,
   botId: string,
-  token: string,
-  cursor: number,
-  assignments: Assignment[],
-): Promise<{ assigned: number; levels: (2 | 3 | 4)[]; onRunner: number } | undefined> {
-  return db.transaction(async (tx) => {
-    await assignLock(tx, botId);
-    const [bot] = await tx.query<{ org_id: string; runner_id: string | null }>(
-      `UPDATE loopway.bots b SET cursor = GREATEST(b.cursor, $3::bigint)
-       WHERE ${LEASED} RETURNING b.org_id, b.runner_id`,
-      [botId, token, cursor],
-    );
-    if (!bot) return undefined;
-    return writeAssignments(
-      tx,
-      botId,
-      bot.org_id,
-      bot.runner_id ? runnerActor(bot.runner_id) : botActor(botId),
-      assignments,
-    );
-  });
-}
-
-/** The writes of `assignMessages`, in the caller's transaction (which holds the bot's assign lock). */
-async function writeAssignments(tx: Pick<Db, "query">, botId: string, orgId: string, actor: string, all: Assignment[]) {
+  orgId: string,
+  actor: string,
+  all: Assignment[],
+) {
   // Another assigner (the server's routing, a runner) may have got to these messages first. Dropping them here keeps
   // a thread from being made for messages that then go nowhere.
   const done = await tx.query<{ message_id: string }>(

@@ -7,7 +7,7 @@ export const CLI_VERSION_HEADER = "x-loopway-cli-version";
  * sends raises this, in the same diff, to the release that includes the matching CLI change. `MIN_CLI_VERSION` can
  * only raise the minimum above it.
  */
-export const MIN_CLI_VERSION_FLOOR = "0.3.37";
+export const MIN_CLI_VERSION_FLOOR = "0.3.54";
 
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/;
 

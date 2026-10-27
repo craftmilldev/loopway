@@ -22,12 +22,6 @@ export interface Inbox {
   };
 }
 
-/** Who holds the bot, in words. */
-export function leaseText(b: lw.Bot, runner: string | undefined) {
-  if (!b.leased_until) return "not running";
-  return `running on ${runner ?? "a runner"} until ${lw.when(b.leased_until)}`;
-}
-
 /** The Source option that asks for a new source type instead of creating an inbox. */
 const REQUEST = "request:";
 

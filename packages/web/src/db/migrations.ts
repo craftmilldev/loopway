@@ -726,4 +726,15 @@ UPDATE loopway.runners
   WHERE name !~ '^[A-Za-z0-9._-]{1,64}$';
 `,
   },
+  {
+    // Bots are no longer leased: the server routes messages to threads and runners own threads, so the bot's lease
+    // (lock_token, locked_until) and the runner it recorded (runner_id) have no readers left. The cursor stays.
+    version: "037_drop_bot_leases",
+    sql: `
+ALTER TABLE loopway.bots
+  DROP COLUMN lock_token,
+  DROP COLUMN locked_until,
+  DROP COLUMN runner_id;
+`,
+  },
 ];

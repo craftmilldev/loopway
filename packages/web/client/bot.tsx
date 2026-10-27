@@ -4,7 +4,7 @@ import { BotSwitcher } from "./bot-switcher.js";
 import { DeliveryBars } from "./delivery-bars.js";
 import { LevelPie } from "./level-pie.js";
 import { StateBadge } from "./overview.js";
-import { leaseText, waitingForSender, type Inbox } from "./shared.js";
+import { waitingForSender, type Inbox } from "./shared.js";
 import { DashLayout } from "./layout.js";
 import * as lw from "./lw.js";
 import { track } from "./metrics.js";
@@ -61,7 +61,6 @@ export function Bot({ id, view }: { id: string; view?: Tab }) {
   lw.usePoll(open.reload, ready);
   const [error, setError] = useState<string | null>(null);
 
-  const runner = (rid: string | null) => runners.data?.find((r) => r.id === rid);
   const b = bot.data;
   const state = open.data && runners.data ? botState(open.data, runners.data) : null;
   const waiting = countThreads(open.data ?? []).waiting;
@@ -134,7 +133,7 @@ export function Bot({ id, view }: { id: string; view?: Tab }) {
                   </span>
                 );
               })}{" "}
-              · {leaseText(b, runner(b.runner_id)?.name)} · read up to #{b.cursor}
+              · read up to #{b.cursor}
             </div>
           )}
         </div>

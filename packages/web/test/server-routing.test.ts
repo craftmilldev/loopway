@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { routeBot } from "../src/store.js";
-import { call, db, events, newInbox, newUser, prPayload, sendGithub, settled } from "./helpers.js";
+import { assign, call, db, events, newInbox, newUser, prPayload, sendGithub, settled } from "./helpers.js";
 
 // A message about PR n goes to the thread holding "pr-n", or a new one.
 const RULES = [{ types: ["*"], subject: "'pr-' + string(data.number)", action: "'attach'" }];
@@ -135,25 +135,20 @@ describe("server routing", () => {
     expect(after[0]!.waiting).toHaveLength(2);
   });
 
-  it("makes a runner's own /assign of an already routed message a no-op", async () => {
+  it("drops an assignment of an already routed message", async () => {
     const { key, inbox, bot, threads } = await setup();
     await sendGithub(inbox, "pull_request", prPayload(1));
     await settled();
-    const lease = (await call("POST", `/bots/${bot.id}/lease`, { key, body: { ttl_seconds: 60 } })).body.lease.token;
     const messages = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data as {
       id: string;
       seq: number;
     }[];
-    const res = await call("POST", `/bots/${bot.id}/assign`, {
-      key,
-      body: {
-        lease_token: lease,
-        cursor: messages[0]!.seq,
-        assignments: [{ message_id: messages[0]!.id, thread_id: randomUUID(), add_subjects: ["other"] }],
-      },
-    });
-    expect(res.status).toBe(200);
-    expect(res.body.assigned).toBe(0);
+    const res = await assign(
+      bot.id,
+      [{ message_id: messages[0]!.id, thread_id: randomUUID(), add_subjects: ["other"] }],
+      messages[0]!.seq,
+    );
+    expect(res.assigned).toBe(0);
     const all = await threads();
     expect(all).toHaveLength(1);
     expect(all[0]!.subjects).toEqual(["pr-1"]);

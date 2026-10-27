@@ -9,7 +9,8 @@ const orgs = [
   { id: "o2", slug: "craftmill", name: "craftmill", personal: false },
 ];
 const inbox = { id: "i1", org_id: "o1", name: "github", source_type: "github", webhook_url: "https://lw.test/in/i1" };
-let bot: { id: string; name: string; model: string; inbox_ids: string[]; leased_until: string | null };
+let bot: { id: string; name: string; model: string; inbox_ids: string[] };
+let runners: object[];
 let threads: object[];
 let posts: { path: string; body: any }[];
 
@@ -26,6 +27,7 @@ function stubFetch() {
       if (path === "/me") return json({ id: "u1", email: null, name: "Me" });
       if (path === "/orgs") return json({ data: orgs });
       if (path === "/inboxes") return json({ data: [inbox] });
+      if (path.startsWith("/runners")) return json({ data: runners });
       if (path === "/bots/b1") return json(bot);
       if (path === "/bots/b1/threads") return json({ data: threads });
       return json({}, 404);
@@ -39,7 +41,8 @@ function at(search: string, org = "acme") {
 
 beforeEach(() => {
   localStorage.setItem("loopway_token", "t");
-  bot = { id: "b1", name: "dev", model: "sonnet", inbox_ids: ["i1"], leased_until: null };
+  bot = { id: "b1", name: "dev", model: "sonnet", inbox_ids: ["i1"] };
+  runners = [];
   threads = [];
   posts = [];
   stubFetch();
@@ -72,7 +75,7 @@ describe("New bot flow", () => {
     ]);
     fireEvent.click(screen.getByText("Create bot and continue"));
 
-    expect(await screen.findByText("Listening for a runner to take the lease…")).toBeTruthy();
+    expect(await screen.findByText("Listening for a runner…")).toBeTruthy();
     expect(posts).toHaveLength(1);
     expect(posts[0]!.body).toEqual({
       org: "me",
@@ -90,7 +93,7 @@ describe("New bot flow", () => {
     // Back from the runner step shows the created bot and doesn't make another.
     fireEvent.click(screen.getByText("Back"));
     fireEvent.click(await screen.findByText("Continue"));
-    expect(await screen.findByText("Listening for a runner to take the lease…")).toBeTruthy();
+    expect(await screen.findByText("Listening for a runner…")).toBeTruthy();
     expect(posts).toHaveLength(1);
 
     fireEvent.click(screen.getByText("Skip for now"));
@@ -119,7 +122,7 @@ describe("New bot flow", () => {
 
     fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "dev" } });
     fireEvent.click(screen.getByText("Create bot and continue"));
-    await screen.findByText("Listening for a runner to take the lease…");
+    await screen.findByText("Listening for a runner…");
     expect(posts[0]!.body).toMatchObject({
       prompt: "Triage issues.",
       rules: [{ types: ["com.github.*"], action: "'skip'" }],
@@ -151,18 +154,16 @@ describe("New bot flow", () => {
   it("resumes at the runner step for a bot nobody runs", async () => {
     at("?bot=b1");
     render(<NewBot />);
-    expect(await screen.findByText("Listening for a runner to take the lease…")).toBeTruthy();
+    expect(await screen.findByText("Listening for a runner…")).toBeTruthy();
     expect(posts).toHaveLength(0);
   });
 
-  it("notices the lease and resumes at the last step for a running bot", async () => {
+  it("notices a runner and resumes at the last step for a running bot", async () => {
     at("?bot=b1");
     render(<NewBot />);
-    expect(await screen.findByText("Listening for a runner to take the lease…")).toBeTruthy();
-    bot.leased_until = "2026-10-13T00:00:00Z";
-    expect(
-      await screen.findByText("A runner took the lease. Your bot is running.", {}, { timeout: 5000 }),
-    ).toBeTruthy();
+    expect(await screen.findByText("Listening for a runner…")).toBeTruthy();
+    runners = [{ id: "r1", name: "laptop", leased_until: "2026-10-13T00:00:00Z" }];
+    expect(await screen.findByText("A runner is online. Your bot can run.", {}, { timeout: 5000 })).toBeTruthy();
     cleanup();
 
     render(<NewBot />);
@@ -170,7 +171,7 @@ describe("New bot flow", () => {
   });
 
   it("links to the first thread once there is one", async () => {
-    bot.leased_until = "2026-10-13T00:00:00Z";
+    runners = [{ id: "r1", name: "laptop", leased_until: "2026-10-13T00:00:00Z" }];
     threads = [{ id: "t1" }];
     at("?bot=b1");
     render(<NewBot />);

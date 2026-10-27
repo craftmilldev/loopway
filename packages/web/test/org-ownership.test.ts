@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { migrate } from "../src/db/index.js";
 import { openTestDb } from "../src/db/testing.js";
 import { migrateBefore } from "./migrate-before.js";
-import { call, db, newInbox, newUser, newUserWithoutOrg, prPayload, sendGithub } from "./helpers.js";
+import { assign, call, db, newInbox, newUser, newUserWithoutOrg, prPayload, sendGithub } from "./helpers.js";
 
 const rows = <T>(sql: string, params: unknown[] = []) => db.query<T>(sql, params);
 
@@ -22,15 +22,10 @@ describe("dual-write of org_id", () => {
         body: { name: "b", model: "sonnet", harness: "claude", inbox_ids: [inbox.id] },
       })
     ).body;
-    const lease = (await call("POST", `/bots/${bot.id}/lease`, { key, body: {} })).body.lease.token;
     const runnerId = randomUUID();
     const runner = (await call("POST", "/runners", { key, body: { id: runnerId, name: "laptop" } })).body;
     const thread = randomUUID();
-    const assigned = await call("POST", `/bots/${bot.id}/assign`, {
-      key,
-      body: { lease_token: lease, cursor: 0, assignments: [{ message_id: message.id, thread_id: thread }] },
-    });
-    expect(assigned.status).toBe(200);
+    await assign(bot.id, [{ message_id: message.id, thread_id: thread }]);
 
     // the serialized responses carry it
     expect([inbox, bot, runner].map((x) => (x as { org_id: string }).org_id)).toEqual([org!.id, org!.id, org!.id]);

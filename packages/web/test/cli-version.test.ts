@@ -34,7 +34,7 @@ describe("minCliVersion", () => {
 });
 
 describe("the floor in code", () => {
-  it("turns away the last CLI without org on list requests, and serves the release that has it", async () => {
+  it("turns away the last CLI that leased bots, and serves the release that stopped", async () => {
     const db = await openTestDb();
     const app = createApi({
       getDb: async () => db,
@@ -44,17 +44,17 @@ describe("the floor in code", () => {
     });
     const get = (version?: string) =>
       app.request("/api/health", { headers: version ? { "x-loopway-cli-version": version } : {} });
-    expect((await get("0.3.36")).status).toBe(426);
-    expect((await get("0.3.37")).status).toBe(200);
+    expect((await get("0.3.53")).status).toBe(426);
+    expect((await get("0.3.54")).status).toBe(200);
     expect((await get()).status).toBe(200);
-    // An env value below the floor can't let 0.3.36 back in; one above it raises the minimum.
+    // An env value below the floor can't let 0.3.53 back in; one above it raises the minimum.
     const lowered = createApi({
       getDb: async () => db,
       tokenSecret: "test-secret",
       inboxSecretKey: TEST_INBOX_KEY,
       minCliVersion: minCliVersion("0.2.0"),
     });
-    expect((await lowered.request("/api/health", { headers: { "x-loopway-cli-version": "0.3.36" } })).status).toBe(426);
+    expect((await lowered.request("/api/health", { headers: { "x-loopway-cli-version": "0.3.53" } })).status).toBe(426);
     await db.close();
   });
 });

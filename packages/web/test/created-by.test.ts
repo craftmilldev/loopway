@@ -4,7 +4,7 @@ import { botActor, formatActor, parseActor, runnerActor, userActor } from "../sr
 import { migrate } from "../src/db/index.js";
 import { openTestDb } from "../src/db/testing.js";
 import { createLoginCode } from "../src/store.js";
-import { call, db, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
+import { assign, call, db, newInbox, newUser, prPayload, sendGithub } from "./helpers.js";
 import { migrateBefore } from "./migrate-before.js";
 
 describe("actor", () => {
@@ -38,26 +38,10 @@ describe("created_by through the API", () => {
     expect(runner.created_by).toBe(me);
 
     await sendGithub(inbox, "pull_request", prPayload(1));
-    await sendGithub(inbox, "pull_request", prPayload(2));
-    const messages = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data;
-    const assignAs = async (runnerId: string | undefined, message: { id: string }) => {
-      const lease = (
-        await call("POST", `/bots/${bot.id}/lease`, { key, body: { ttl_seconds: 60, runner_id: runnerId } })
-      ).body.lease.token;
-      const id = randomUUID();
-      await call("POST", `/bots/${bot.id}/assign`, {
-        key,
-        body: { lease_token: lease, cursor: 0, assignments: [{ message_id: message.id, thread_id: id }] },
-      });
-      await call("POST", `/bots/${bot.id}/release`, { key, body: { lease_token: lease } });
-      return id;
-    };
-    const threadId = await assignAs(undefined, messages[0]);
+    const message = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data[0];
+    const threadId = randomUUID();
+    await assign(bot.id, [{ message_id: message.id, thread_id: threadId }]);
     expect((await call("GET", `/bots/${bot.id}/threads/${threadId}`, { key })).body.created_by).toBe(`bot:${bot.id}`);
-    const byRunner = await assignAs(runner.id, messages[1]);
-    expect((await call("GET", `/bots/${bot.id}/threads/${byRunner}`, { key })).body.created_by).toBe(
-      `runner:${runner.id}`,
-    );
 
     // The org-scoped events feed still lists the thread's creation.
     const events = (await call("GET", "/events", { key })).body.data;
@@ -135,6 +119,7 @@ describe("migration 022_created_by", () => {
         "034_message_is_test",
         "035_inbox_last_delivery",
         "036_runner_names",
+        "037_drop_bot_leases",
       ]);
 
       const by = async (table: string, id: string) =>
