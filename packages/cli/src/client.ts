@@ -533,6 +533,15 @@ export class LoopwayClient {
     return this.request<Thread>("PATCH", `/bots/${enc(botId)}/threads/${enc(threadId)}`, input);
   }
 
+  /**
+   * What this runner has to do for these bots, in one request: its own threads with waiting messages or a run to
+   * resume, and the unowned threads with waiting messages, which it can claim. 404 from a server without it.
+   */
+  async runnerWork(runnerId: string, runnerLeaseToken: string, botIds: string[]) {
+    const path = `/runners/${enc(runnerId)}/work?bots=${botIds.map(enc).join(",")}`;
+    return (await this.request<{ data: Thread[] }>("GET", path, undefined, { "x-lease-token": runnerLeaseToken })).data;
+  }
+
   /** Moves the thread's waiting messages to inflight, marks it active, and returns them. */
   async deliverThread(botId: string, threadId: string, leaseToken: string) {
     const path = `/bots/${enc(botId)}/threads/${enc(threadId)}/deliver`;
@@ -547,7 +556,12 @@ export class LoopwayClient {
 
   // ---------- transport ----------
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    headers: Record<string, string> = {},
+  ): Promise<T> {
     let res: Response;
     try {
       res = await this.fetch(this.baseUrl + "/api" + path, {
@@ -555,6 +569,7 @@ export class LoopwayClient {
         headers: {
           accept: "application/json",
           [VERSION_HEADER]: CLI_VERSION,
+          ...headers,
           ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}),
           ...(body !== undefined ? { "content-type": "application/json" } : {}),
         },

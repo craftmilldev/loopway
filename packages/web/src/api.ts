@@ -20,6 +20,9 @@ import { secretBox } from "./secrets.js";
 import { signSessionToken, verifyToken } from "./tokens.js";
 import { createWeb } from "./ui.js";
 
+/** Carries the runner lease on a read, which has no body for `lease_token`. */
+const LEASE_TOKEN_HEADER = "x-lease-token";
+
 export interface ApiOptions extends EeOptions {
   getDb: () => Promise<Db>;
   /** Base for webhook URLs. Defaults to the request origin. */
@@ -916,6 +919,38 @@ export function createApi(opts: ApiOptions) {
     return c.json({ lease: { token: row.lock_token, expires_at: iso(row.locked_until) } });
   });
 
+  // Only where the server routes: with SERVER_ROUTING off a runner has to read each bot's messages itself, which is
+  // what a 404 here sends it back to.
+  if (opts.serverRouting !== false) {
+    // Everything the runner has to do for its bots, in one request: its own threads with waiting messages or a run to
+    // resume, and the unowned threads with waiting messages, which it claims (POST .../claim) while it has room.
+    authed.get("/runners/:runnerId/work", async (c) => {
+      const runner = await routeRunner(c);
+      const token = c.req.header(LEASE_TOKEN_HEADER);
+      if (!token || (await store.runnerByToken(c.var.db, c.var.user.id, token))?.id !== runner.id) {
+        await metrics.capture("runner_work_rejected", runner.org_id, { reason: token ? "not_leased" : "no_token" });
+        throw runnerNotLeased();
+      }
+      const parsed = z
+        .object({ bots: z.string().default("") })
+        .transform((q) => q.bots.split(",").filter(Boolean))
+        .pipe(z.array(uuid).max(100))
+        .safeParse(c.req.query());
+      if (!parsed.success) {
+        await metrics.capture("runner_work_rejected", runner.org_id, { reason: "invalid_bots" });
+        throw new ApiError(400, "invalid_request", "bots must be a comma-separated list of up to 100 bot ids");
+      }
+      const botIds = parsed.data;
+      await routeBots(c.var.db, botIds, "catch_up");
+      const rows = await store.runnerWork(c.var.db, runner, botIds);
+      await metrics.capture("runner_work_listed", runner.org_id, {
+        owned: rows.filter((t) => t.runner_id).length,
+        claimable: rows.filter((t) => !t.runner_id).length,
+      });
+      return c.json({ data: await serializeThreads(c.var.db, rows, false) });
+    });
+  }
+
   authed.post("/runners/:runnerId/release", async (c) => {
     const runner = await routeRunner(c);
     const { lease_token, force } = z
@@ -1216,7 +1251,15 @@ export function createApi(opts: ApiOptions) {
     await requireSameOrg(c, bot, runner, "thread_claim");
     if (thread.runner_id && thread.runner_id !== runner.id) throw threadOwned(thread);
     const claimed = await store.claimThread(c.var.db, c.var.user.id, bot.id, thread.id, lease_token);
-    if (!claimed) throw runnerNotLeased();
+    if (!claimed) {
+      // Another runner may have claimed it since the read above: first claim wins, and this one is told so.
+      const now = await store.getThread(c.var.db, bot.id, thread.id);
+      if (now?.runner_id && now.runner_id !== runner.id) {
+        await metrics.capture("thread_claim_lost", runner.org_id, {});
+        throw threadOwned(now);
+      }
+      throw runnerNotLeased();
+    }
     return c.json(await serializeThread(c.var.db, claimed));
   });
 

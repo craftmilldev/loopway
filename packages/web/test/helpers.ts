@@ -43,7 +43,11 @@ const LISTS = ["/inboxes", "/bots", "/runners", "/events", "/inboxes/activity", 
  * or query names one (or `noOrg` is set, to test its absence) the caller's personal org is filled in, so tests needn't
  * repeat it.
  */
-export async function call(method: string, path: string, opts: { key?: string; body?: unknown; noOrg?: boolean } = {}) {
+export async function call(
+  method: string,
+  path: string,
+  opts: { key?: string; body?: unknown; noOrg?: boolean; headers?: Record<string, string> } = {},
+) {
   const [route = "", query = ""] = path.split("?");
   const named = opts.body && typeof opts.body === "object" && "org" in opts.body;
   const fill =
@@ -65,6 +69,7 @@ export async function call(method: string, path: string, opts: { key?: string; b
   const res = await app.request("/api" + path, {
     method,
     headers: {
+      ...opts.headers,
       ...(opts.key ? { authorization: `Bearer ${opts.key}` } : {}),
       ...(opts.body !== undefined ? { "content-type": "application/json" } : {}),
     },

@@ -1064,6 +1064,27 @@ export async function listThreads(
   );
 }
 
+/**
+ * What the runner has to do for these bots, in one query: its own threads with a message waiting or a run to resume
+ * (`limited`, `interrupted`), and the unowned threads with a message waiting, which any runner of the org may claim.
+ * Only the org's live bots count, so a bot id from elsewhere finds nothing. Oldest first.
+ */
+export async function runnerWork(db: Db, runner: Runner, botIds: string[]): Promise<Thread[]> {
+  if (!botIds.length) return [];
+  return db.query<Thread>(
+    `SELECT ${THREAD_COLS} FROM loopway.threads t JOIN loopway.bots b ON b.id = t.bot_id
+     WHERE t.kind = 'bot' AND b.deleted_at IS NULL AND b.org_id = $1::uuid AND t.org_id = $1::uuid
+       AND t.bot_id IN (SELECT value::uuid FROM jsonb_array_elements_text($3::jsonb))
+       AND (
+         (t.runner_id = $2::uuid AND (t.limited OR t.interrupted OR EXISTS (
+           SELECT 1 FROM loopway.thread_messages tm WHERE tm.thread_id = t.id AND tm.state = 'waiting')))
+         OR (t.runner_id IS NULL AND EXISTS (
+           SELECT 1 FROM loopway.thread_messages tm WHERE tm.thread_id = t.id AND tm.state = 'waiting')))
+     ORDER BY t.created_at, t.id`,
+    [runner.org_id, runner.id, botIds],
+  );
+}
+
 export async function getThread(db: Db, botId: string, id: string): Promise<Thread | undefined> {
   const [row] = await db.query<Thread>(
     `SELECT ${THREAD_COLS}${DELIVERED_IDS} FROM loopway.threads t WHERE t.id = $1 AND t.bot_id = $2`,

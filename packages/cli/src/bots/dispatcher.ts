@@ -115,6 +115,10 @@ export interface DispatcherState {
  * then starts or resumes, in the background, every thread of this runner that has waiting messages and no run
  * in flight, as far as --max allows.
  *
+ * On a server that routes messages itself, a tick is one request instead (the runner's work feed): the runner's own
+ * threads with waiting messages and the unowned ones it can claim, which it claims while --max has room, then delivers.
+ * No bot leases, no reading of messages. An older server, or one with routing off, has no feed, and the tick above runs.
+ *
  * Delivered messages are context for the session, not tasks it has to mark done; the inbox's messages
  * are left alone. Sessions talk back through the MCP tools in tools.ts, and `end` is what finishes
  * a thread.
@@ -133,6 +137,12 @@ export class Dispatcher {
   /** Bots whose unclaimed threads this runner has already claimed, which it does once it holds their lease. */
   private readonly claimed = new Set<string>();
   private leaseBots: boolean;
+  /** Whether the server has the work feed: "on" until a 404 says it doesn't (an older server). */
+  private feed: "on" | "off" = "on";
+  /** When this runner last looked for new bots (ms), in the work tick. */
+  private syncedAt = 0;
+  /** Whether anything reads the thread snapshot (the TUI does); without it the work tick leaves the threads alone. */
+  private watching = false;
   /** Ids of the bots not running that were already reported, so each is announced once. */
   private readonly seen = new Set<string>();
   private closing?: Promise<void>;
@@ -274,6 +284,7 @@ export class Dispatcher {
   async tick(): Promise<void> {
     this.freed = false;
     await this.leaseRunner();
+    if (this.feed === "on" && (await this.workTick())) return;
     if (!this.draining)
       await this.syncBots().catch((err) =>
         this.ctx.out(`error: looking for new bots: ${err instanceof Error ? err.message : String(err)}`),
@@ -302,7 +313,60 @@ export class Dispatcher {
       }
     }
     if (!this.draining) await this.deliverAll();
-    await this.refresh();
+    await this.fetchSnapshotOnce();
+  }
+
+  /**
+   * The tick for a server with the work feed: one request says what this runner has to do, so an idle tick makes no
+   * per-bot calls and needs no bot leases. Claims the unowned threads it has room for, then delivers. False, having done
+   * nothing, if the server doesn't have the feed (a 404), so the caller runs the tick that reads each bot instead.
+   */
+  private async workTick(): Promise<boolean> {
+    if (this.draining) return true;
+    // Asked first, so a server without the feed is found out before anything else is done this tick.
+    let work = await this.fetchWork();
+    if (!work) return false;
+    // The bots this runner runs change rarely; look for new ones about as often as an idle runner polls.
+    if (Date.now() - this.syncedAt >= MAX_POLL_INTERVAL * 1000) {
+      this.syncedAt = Date.now();
+      await this.syncBots().catch((err) =>
+        this.ctx.out(`error: looking for new bots: ${err instanceof Error ? err.message : String(err)}`),
+      );
+    }
+    // Repairing changes threads (an in-flight message goes back to waiting), so the feed is read again after it.
+    let repaired = false;
+    for (const bot of [...this.bots]) {
+      if (this.repaired.has(bot.id)) continue;
+      try {
+        await this.reconcile(bot, { repair: true, claim: false });
+        this.repaired.add(bot.id);
+        repaired = true;
+      } catch (err) {
+        if (this.dropIfGone(bot, err)) continue;
+        this.ctx.out(`error: bot ${bot.name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    if (repaired) work = (await this.fetchWork()) ?? work;
+    await this.deliverAll(work);
+    if (this.watching) await this.fetchSnapshotOnce();
+    return true;
+  }
+
+  /** The work feed for this runner's bots, or undefined (and the feed turned off) if the server has none. */
+  private async fetchWork(): Promise<Thread[] | undefined> {
+    try {
+      return await this.client.runnerWork(
+        this.runnerId,
+        this.token(),
+        this.bots.map((b) => b.id),
+      );
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 404)) throw err;
+      this.feed = "off";
+      this.ctx.out(dim("The server has no work feed; reading each bot's messages instead."));
+      void this.ctx.metrics?.capture("work_feed_unsupported");
+      return undefined;
+    }
   }
 
   /**
@@ -311,6 +375,11 @@ export class Dispatcher {
    * while a fetch is running share it.
    */
   refresh(): Promise<void> {
+    this.watching = true;
+    return this.fetchSnapshotOnce();
+  }
+
+  private fetchSnapshotOnce(): Promise<void> {
     this.refreshing ??= this.fetchSnapshot().finally(() => (this.refreshing = undefined));
     return this.refreshing;
   }
@@ -657,11 +726,35 @@ export class Dispatcher {
   }
 
   /**
+   * Claims the feed's unowned threads, oldest first, into `ready` while there is room under --max. First claim wins:
+   * a thread another runner took first is skipped, and so is one this runner can't claim right now.
+   */
+  private async claimUnowned(work: Thread[], ready: Thread[], running: number): Promise<void> {
+    const open = work
+      .filter((t) => !t.runner_id)
+      .sort((a, b) => (a.waiting[0]?.id ?? "").localeCompare(b.waiting[0]?.id ?? ""));
+    for (const t of open) {
+      if (running + ready.length >= this.max) return;
+      try {
+        ready.push(await this.client.claimThread(t.bot_id, t.id, this.token()));
+        void this.ctx.metrics?.capture("thread_claimed");
+      } catch (err) {
+        if (err instanceof ApiError && err.code === "thread_owned") {
+          void this.ctx.metrics?.capture("thread_claim_lost");
+          continue;
+        }
+        this.ctx.out(`error: thread ${t.id.slice(0, 8)}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+
+  /**
    * Starts or resumes every thread of this runner with waiting messages and no run in flight, oldest first, while
    * --max allows. Delivers nothing while the usage limit a run hit hasn't reset yet; messages keep
-   * queueing up and go out on the first tick after it does.
+   * queueing up and go out on the first tick after it does. With the work feed (`work`), the threads come from it, and
+   * the unowned ones in it are claimed first, as many as there is room for.
    */
-  private async deliverAll(): Promise<void> {
+  private async deliverAll(work?: Thread[]): Promise<void> {
     if (Date.now() < this.limitedUntil) return;
     if (this.limitedUntil) {
       this.limitedUntil = 0;
@@ -670,21 +763,29 @@ export class Dispatcher {
     const running = new Set(this.running.keys());
     // A thread the limit stopped is ready too, with nothing new to deliver; ordering puts it first.
     const ready: Thread[] = [];
-    for (const bot of [...this.bots]) {
-      try {
-        for (const t of await this.client.listThreads(bot.id, "pending", false)) {
-          if (t.runner_id !== this.runnerId || running.has(t.id)) continue;
-          if (!(t.waiting.length || t.limited || t.interrupted)) continue;
-          if ((this.errored.get(t.id)?.after ?? 0) > Date.now()) continue;
-          ready.push(t);
+    const isReady = (t: Thread) =>
+      t.runner_id === this.runnerId &&
+      !running.has(t.id) &&
+      (t.waiting.length || t.limited || t.interrupted) &&
+      (this.errored.get(t.id)?.after ?? 0) <= Date.now();
+    if (work) ready.push(...work.filter(isReady));
+    else
+      for (const bot of [...this.bots]) {
+        try {
+          ready.push(...(await this.client.listThreads(bot.id, "pending", false)).filter(isReady));
+        } catch (err) {
+          // One bot's trouble shouldn't stop delivery to the others.
+          if (this.dropIfGone(bot, err)) continue;
+          this.ctx.out(`error: bot ${bot.name}: ${err instanceof Error ? err.message : String(err)}`);
         }
-      } catch (err) {
-        // One bot's trouble shouldn't stop delivery to the others.
-        if (this.dropIfGone(bot, err)) continue;
-        this.ctx.out(`error: bot ${bot.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
-    }
+    if (work && this.leaseBots) await this.claimUnowned(work, ready, running.size);
     ready.sort((a, b) => (a.waiting[0]?.id ?? "").localeCompare(b.waiting[0]?.id ?? ""));
+    // A thread starts from its bot's newest prompt.
+    for (const botId of new Set(ready.map((t) => t.bot_id))) {
+      const bot = this.bots.find((b) => b.id === botId);
+      if (bot && work) await this.refreshVersion(bot).catch(() => {});
+    }
 
     const deliveries: { thread: Thread; messages: ThreadMessage[] }[] = [];
     let failed = 0;

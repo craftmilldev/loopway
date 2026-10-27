@@ -34,7 +34,13 @@ let configDir: string;
 const emails: { to: string; text: string }[] = [];
 
 // The CLI talks to the real API app in-process; only the network hop is skipped.
-const apiFetch = ((input: string | URL | Request, init?: RequestInit) => app.request(input, init)) as typeof fetch;
+// `requests` is every call it made, as "METHOD /path".
+const requests: string[] = [];
+const apiFetch = ((input: string | URL | Request, init?: RequestInit) => {
+  const url = new URL(input instanceof Request ? input.url : input);
+  requests.push(`${init?.method ?? "GET"} ${url.pathname}${url.search}`);
+  return app.request(input, init);
+}) as typeof fetch;
 
 beforeAll(async () => {
   db = await openTestDb();
@@ -1321,6 +1327,40 @@ describe("threads", () => {
     });
     return ((await res.json()) as { result: any }).result;
   }
+
+  it("reads one work feed per tick on a server that routes: claims what it has room for, and makes no other bot call when idle", async () => {
+    const saved = app;
+    app = createApi({
+      getDb: async () => db,
+      publicBaseUrl: API,
+      tokenSecret: SECRET,
+      inboxSecretKey: TEST_INBOX_KEY,
+      sendEmail: async (e) => void emails.push(e),
+    });
+    try {
+      const { inbox, bot, runner, runs, d, finish, client } = await setup(2);
+      for (const n of [1, 2, 3]) await send(inbox, "issues", issue("opened", n));
+      await d.tick();
+      // Room for two: the third thread stays unowned for another runner.
+      expect(runs).toHaveLength(2);
+      const owners = (await client.listThreads(bot.id, "all")).map((t) => t.runner_id);
+      expect(owners.filter((o) => o === runner.id)).toHaveLength(2);
+      expect(owners.filter((o) => o === null)).toHaveLength(1);
+
+      await finish();
+      await d.tick();
+      expect(runs).toHaveLength(3);
+      await finish();
+
+      requests.length = 0;
+      await d.tick();
+      expect(requests.filter((r) => !r.includes("/lease"))).toEqual([
+        `GET /api/runners/${runner.id}/work?bots=${bot.id}`,
+      ]);
+    } finally {
+      app = saved;
+    }
+  });
 
   it("keeps sessions from updating the CLI, and drains before an update: no new work, and it waits for running sessions", async () => {
     const { inbox, runs, out, d, finish, cursor, newest } = await setup(3);
