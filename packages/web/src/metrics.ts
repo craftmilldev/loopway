@@ -19,7 +19,11 @@ export function createMetrics(env: NodeJS.ProcessEnv = process.env): Metrics {
     // Sent right away, not batched: a serverless function can be frozen before a batch goes out.
     async capture(event, distinctId, properties) {
       try {
-        await client.captureImmediate({ distinctId, event, properties: { ...properties, app: "web" } });
+        await client.captureImmediate({
+          distinctId,
+          event,
+          properties: { ...properties, product: "loopway", app: "loopway-api" },
+        });
       } catch (err) {
         console.error("metrics:", err);
       }
