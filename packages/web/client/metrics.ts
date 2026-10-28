@@ -14,6 +14,8 @@ export function startMetrics() {
     person_profiles: "identified_only",
     defaults: "2025-05-24",
   });
+  // Every browser event carries the product, like the server's (src/metrics.ts), so reports can filter by it.
+  posthog.register({ product: "loopway", app: "browser" });
   on = true;
 }
 

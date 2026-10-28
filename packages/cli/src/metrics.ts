@@ -54,7 +54,7 @@ export function createMetrics(dir: string, env: NodeJS.ProcessEnv = process.env)
           // The logged-in user, like the web side; the install until someone logs in.
           distinctId: tokenUserId(api_key) ?? (await installId(dir)),
           event,
-          properties: { ...properties, app: "cli", cli_version: CLI_VERSION },
+          properties: { ...properties, product: "loopway", app: "cli", cli_version: CLI_VERSION },
         });
       } catch {
         // Offline or unwritable config dir: the command still has to work.
