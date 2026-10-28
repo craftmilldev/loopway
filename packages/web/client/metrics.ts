@@ -15,7 +15,7 @@ export function startMetrics() {
     defaults: "2025-05-24",
   });
   // Every browser event carries the product, like the server's (src/metrics.ts), so reports can filter by it.
-  posthog.register({ product: "loopway", app: "browser" });
+  posthog.register({ product: "loopway", app: "loopway-browser" });
   on = true;
 }
 

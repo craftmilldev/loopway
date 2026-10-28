@@ -22,7 +22,7 @@ export function createMetrics(env: NodeJS.ProcessEnv = process.env): Metrics {
         await client.captureImmediate({
           distinctId,
           event,
-          properties: { ...properties, product: "loopway", app: "web" },
+          properties: { ...properties, product: "loopway", app: "loopway-api" },
         });
       } catch (err) {
         console.error("metrics:", err);
