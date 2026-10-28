@@ -51,7 +51,7 @@ export interface ApiOptions extends EeOptions {
   posthogUiHost?: string;
   /** Vercel Cron's bearer token (`CRON_SECRET`). Unset, /cron/schedules refuses every call. */
   cronSecret?: string;
-  /** The schedule options (`hour`, `day`, `week`) this deploy offers. Defaults to both. */
+  /** The schedule options (`hour`, `day`, `week`) this deploy offers. Defaults to all three. */
   scheduleOptions?: ScheduleOption[];
   /** Signs session tokens (JWTs). */
   tokenSecret: string;
