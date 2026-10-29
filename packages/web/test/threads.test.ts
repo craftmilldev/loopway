@@ -17,11 +17,9 @@ async function setup(count = 3) {
     seq: number;
   }[];
   const base = `/bots/${bot.id}`;
-  /** Puts messages on threads, as the server's routing does; a stand-in for the response of the removed `/assign`. */
-  const assign = async (assignments: store.Assignment[], o: { cursor?: number } = {}) => ({
-    status: 200,
-    body: { assigned: (await assignTo(bot.id, assignments, o.cursor ?? 0)).assigned },
-  });
+  /** Puts messages on threads, as the server's routing does; resolves to how many it assigned. */
+  const assign = (assignments: store.Assignment[], o: { cursor?: number } = {}) =>
+    assignTo(bot.id, assignments, o.cursor ?? 0);
   const thread = (id: string) => call("GET", `${base}/threads/${id}`, { key });
   const runner = randomUUID();
   await call("POST", "/runners", { key, body: { id: runner, name: "laptop" } });
@@ -56,9 +54,7 @@ describe("thread titles and summaries", () => {
     await sendGithub(inbox, "push", { ref: "refs/heads/main", sender, commits: [{}], repository: { url: "u" } });
     const ms = (await call("GET", `/inboxes/${inbox.id}/messages?order=asc`, { key })).body.data as { id: string }[];
     const id = randomUUID();
-    expect((await assign(ms.map((m) => ({ message_id: m.id, thread_id: id, add_subjects: ["o/r#4"] })))).status).toBe(
-      200,
-    );
+    await assign(ms.map((m) => ({ message_id: m.id, thread_id: id, add_subjects: ["o/r#4"] })));
 
     const got = (await thread(id)).body;
     expect(got.title).toBe("New title");
@@ -82,7 +78,7 @@ describe("thread titles and summaries", () => {
     });
     const ms = (await call("GET", `/inboxes/${inbox.id}/messages?order=asc`, { key })).body.data as { id: string }[];
     const id = randomUUID();
-    expect((await assign([{ message_id: ms[0]!.id, thread_id: id, runner_id: runner }])).status).toBe(200);
+    expect((await assign([{ message_id: ms[0]!.id, thread_id: id, runner_id: runner }])).assigned).toBe(1);
     expect((await thread(id)).body.runner_id).toBe(runner);
 
     const other = randomUUID();
@@ -94,8 +90,8 @@ describe("thread titles and summaries", () => {
       repository: { url: "u" },
     });
     const more = (await call("GET", `/inboxes/${inbox.id}/messages?order=asc`, { key })).body.data as { id: string }[];
-    expect((await assign([{ message_id: more[1]!.id, thread_id: id, runner_id: other }], { cursor: 2 })).status).toBe(
-      200,
+    expect((await assign([{ message_id: more[1]!.id, thread_id: id, runner_id: other }], { cursor: 2 })).assigned).toBe(
+      1,
     );
     expect((await thread(id)).body.runner_id).toBe(runner);
     expect((await call("GET", `${base}/threads`, { key })).status).toBe(200);
@@ -130,7 +126,7 @@ describe("thread assignment", () => {
       ],
       { cursor: 42 },
     );
-    expect(r).toMatchObject({ status: 200, body: { assigned: 3 } });
+    expect(r.assigned).toBe(3);
     expect((await call("GET", base, { key })).body.cursor).toBe(42);
 
     const got = (await thread(t1)).body;
@@ -187,7 +183,7 @@ describe("thread assignment", () => {
   it("skips a message that is already assigned, and never moves the cursor back", async () => {
     const { key, base, messages, assign } = await setup(2);
     const t1 = randomUUID();
-    expect((await assign([{ message_id: messages[0]!.id, thread_id: t1 }], { cursor: 10 })).body.assigned).toBe(1);
+    expect((await assign([{ message_id: messages[0]!.id, thread_id: t1 }], { cursor: 10 })).assigned).toBe(1);
     const again = await assign(
       [
         { message_id: messages[0]!.id, thread_id: randomUUID() },
@@ -195,7 +191,7 @@ describe("thread assignment", () => {
       ],
       { cursor: 5 },
     );
-    expect(again.body.assigned).toBe(1);
+    expect(again.assigned).toBe(1);
     expect((await call("GET", base, { key })).body.cursor).toBe(10);
     expect((await call("GET", `${base}/threads`, { key })).body.data[0].waiting).toHaveLength(2);
   });
@@ -229,22 +225,25 @@ describe("thread assignment", () => {
     expect((await call("GET", `${base}/threads?status=all`, { key })).body.data).toEqual([]);
   });
 
-  it("gives a key to one thread per bot", async () => {
+  it("gives a subject to one thread per bot", async () => {
     const { key, bot, messages, assign } = await setup();
     const t1 = randomUUID();
     await assign([{ message_id: messages[0]!.id, thread_id: t1, add_subjects: ["o/r#1"] }]);
 
-    // The same key on the same thread again is fine.
-    expect((await assign([{ message_id: messages[1]!.id, thread_id: t1, add_subjects: ["o/r#1"] }])).status).toBe(200);
+    // The same subject on the same thread again is fine.
+    expect((await assign([{ message_id: messages[1]!.id, thread_id: t1, add_subjects: ["o/r#1"] }])).assigned).toBe(1);
 
-    // Another bot can use the same key.
+    // Another bot can use the same subject.
     const other = (
       await call("POST", "/bots", {
         key,
         body: { name: "o", model: "sonnet", harness: "claude", inbox_ids: bot.inbox_ids },
       })
     ).body;
-    await assignTo(other.id, [{ message_id: messages[0]!.id, thread_id: randomUUID(), add_subjects: ["o/r#1"] }]);
+    expect(
+      (await assignTo(other.id, [{ message_id: messages[0]!.id, thread_id: randomUUID(), add_subjects: ["o/r#1"] }]))
+        .assigned,
+    ).toBe(1);
     // And the database enforces it too.
     await expect(
       db.query(`INSERT INTO loopway.thread_subjects (thread_id, bot_id, subject) VALUES ($1, $2, 'o/r#1')`, [
@@ -452,7 +451,6 @@ describe("thread writes", () => {
       ["POST", `${base}/threads/${t}/deliver`, { lease_token: lease }],
       ["POST", `${base}/threads/${t}/finish`, { lease_token: lease }],
       ["POST", `${base}/threads/${t}/end`, {}],
-      ["POST", `${base}/threads`, { id: randomUUID(), subjects: [], status: "active", started: false, messages: [] }],
     ] as const)
       expect((await call(method, path, { key: stranger, body })).status, `${method} ${path}`).toBe(404);
 

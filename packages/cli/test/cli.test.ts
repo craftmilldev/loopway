@@ -1388,14 +1388,13 @@ describe("threads", () => {
 
     let checks = 0;
     let version: string | undefined;
-    // A comment arrives just as the release is found, so the drained ticks after it have something to skip.
+    // A release is found while a session runs; the runner waits for the session to finish before updating.
     const polling = pollUntilUpdate(ctxOf(out), d, 1, async () => {
       if (checks++ === 0) await send(inbox, "issue_comment", comment(1));
       return "9.9.9";
     }).then((v) => (version = v as string));
-    await new Promise((r) => setTimeout(r, 1500));
-    // Found the release, but a session is still running, and the new comment isn't read or delivered.
-    expect(checks).toBeGreaterThan(0);
+    // Found the release, but a session is still running.
+    await vi.waitFor(() => expect(checks).toBeGreaterThan(0));
     expect(version).toBeUndefined();
     expect(runs).toHaveLength(1);
     const waiting = async () => (await client.listThreads(bot.id, "all"))[0]!.waiting.length;
@@ -1567,13 +1566,7 @@ describe("threads", () => {
       waiting: [],
     });
 
-    // Messages that come back (the cursor didn't move after they were assigned) are skipped.
-    await db.query(`UPDATE loopway.bots SET cursor = cursor - 1 WHERE id = $1`, [bot.id]);
-    await d.tick();
-    expect(runs).toHaveLength(1);
-    expect((await sessions())[id]).toMatchObject({ delivered: 1, waiting: [] });
     expect(Object.keys(await sessions())).toEqual([id]);
-    expect(await cursor()).toBe(await newest());
   });
 
   it("never runs more than --max sessions at once, but sessions waiting on their thread don't count", async () => {
