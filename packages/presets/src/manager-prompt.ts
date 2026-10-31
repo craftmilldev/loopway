@@ -30,7 +30,6 @@ export const MANAGER_DENIED_TOOLS = [
   "Bash(loopway bots threads end:*)",
   // The change commands are the Chat view's to run, after approval, never the session's own.
   ...MANAGER_CHANGE_COMMANDS.map(([group, verb]) => `Bash(loopway ${group} ${verb}:*)`),
-  "Bash(loopway bots release:*)",
   "Bash(loopway bots rm:*)",
   "Bash(loopway bot:*)",
   "Bash(loopway inboxes:*)",

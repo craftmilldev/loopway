@@ -292,7 +292,7 @@ describe("chat", () => {
     it("refuses commands outside the allowed list, without asking the user", async () => {
       const { ran, runCommand } = commands();
       const { chat, events } = await manager(
-        fake((_run, n) => (n === 1 ? propose("loopway bots release triage --force") : "ok")).runAgent,
+        fake((_run, n) => (n === 1 ? propose("loopway inbox delete x") : "ok")).runAgent,
         { runCommand },
       );
       await chat.send("free it").done;
@@ -317,8 +317,8 @@ describe("chat", () => {
       expect(
         await chat.execute({
           ...parsed("loopway bots delete a"),
-          command: "loopway bots release a",
-          args: ["bots", "release", "a"],
+          command: "loopway inbox delete x",
+          args: ["inbox", "delete", "x"],
         }),
       ).toMatchObject({
         ok: false,
@@ -380,7 +380,7 @@ describe("chat", () => {
 
     it("tells the manager about a refused proposal on the next message even if that run fails", async () => {
       const { runs, runAgent } = fake((_run, n) =>
-        n === 1 ? propose("loopway bots release a") : n === 2 ? { code: 2 } : "ok",
+        n === 1 ? propose("loopway inbox delete x") : n === 2 ? { code: 2 } : "ok",
       );
       const { chat } = await manager(runAgent);
       await chat.send("one").done;
