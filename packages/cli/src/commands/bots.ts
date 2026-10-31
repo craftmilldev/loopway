@@ -153,7 +153,7 @@ export async function deleteBot(ctx: Context, ref: string, opts: OrgOpt) {
   ctx.out(`Deleted bot ${id}.`);
 }
 
-/** What the bot would read next: messages after its cursor, oldest first. */
+/** The messages the server hasn't routed to a thread yet: after the bot's cursor, oldest first. */
 export async function botMessages(ctx: Context, ref: string, opts: JsonOpt & OrgOpt & { limit?: number }) {
   const client = await authedClient(ctx);
   const messages = await client.botMessages(await resolveBot(ctx, client, ref, opts.org), { limit: opts.limit });

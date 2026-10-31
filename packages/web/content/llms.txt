@@ -59,7 +59,7 @@ loopway bots create --name <n> --preset github-threads --harness claude --model 
 loopway bots list
 loopway bots show <bot>
 loopway bots update <bot> [--name n] [--harness h] [--model m] [--inbox a,b]
-loopway bots messages <bot>                   # what the bot would read next
+loopway bots messages <bot>                   # messages not yet routed to a thread
 loopway bots threads <bot>                    # the bot's threads
 loopway bots run --org <slug> [--max 3] [--interval 5]     # run all your bots; loopway.json can give each its own directory
 ```

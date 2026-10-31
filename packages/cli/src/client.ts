@@ -140,7 +140,7 @@ export interface Thread {
   /** The agent session's id. */
   id: string;
   bot_id: string;
-  /** The runner that assigned it for the bot (`runner:<id>`), or `bot:<uuid>` if the lease named no runner. Informational. */
+  /** Who made the thread: `bot:<uuid>` when the bot's routing started it, `runner:<id>` for a manager thread. Informational. */
   created_by: string;
   status: "active" | "ended";
   started: boolean;
