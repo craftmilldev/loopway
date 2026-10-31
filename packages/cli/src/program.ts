@@ -301,7 +301,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
   program
     .command("runners")
     .alias("runner")
-    .description("list the machines that run your bots, and the bots and threads each holds")
+    .description("list the machines that run your bots, and how many threads each owns")
     .addOption(orgOpt("whose runners to list"))
     .addOption(jsonOpt())
     .action((opts) => listRunners(ctx, opts));
@@ -404,7 +404,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
 
   bots
     .command("messages")
-    .description("list the messages the bot would read next (after its cursor, oldest first)")
+    .description("list the messages the server hasn't routed to a thread yet (after the bot's cursor, oldest first)")
     .argument("<bot>", "bot id or name")
     .addOption(botOrgOpt())
     .option("--limit <n>", "how many (default 50, max 100)", positiveInt)
@@ -480,9 +480,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
 
   bots
     .command("run")
-    .description(
-      "run your bots: read each one's messages and hand each to a session in the bot's harness, one per thread as the bot's rules group them, starting one if none matches",
-    )
+    .description("run your bots: claim their threads and hand each thread's messages to a session in the bot's harness")
     .option(
       "--max <n>",
       "most sessions running at once; sessions waiting on their thread don't count (default 3)",

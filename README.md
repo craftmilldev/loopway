@@ -65,7 +65,7 @@ loopway bots list
 loopway bots show <bot>
 loopway bots update <bot> [--name n] [--harness h] [--model m] [--inbox a,b]   # --inbox replaces the bot's inboxes
 loopway bots delete <bot>
-loopway bots messages <bot> [--limit 20]            # what the bot would read next
+loopway bots messages <bot> [--limit 20]            # messages not yet routed to a thread
 loopway bots threads <bot> [--status active|ended|all]   # the threads the server has for the bot
 loopway bots threads release <bot> <thread>         # give up a thread whose runner is gone, so another can claim it
 loopway bots threads end <bot> <thread>             # end a thread; its next message resumes it

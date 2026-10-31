@@ -68,7 +68,7 @@ export interface ChangeRecord {
 export type ChangeOutcome =
   { ok: true; output: string } | { ok: false; reason: ParseFailure | "not_approved" | "failed"; output: string };
 
-/** An unreachable MCP endpoint: the manager has no thread, and its tools come from `allowedTools`, not the dispatcher. */
+/** An unreachable MCP endpoint for a chat whose thread couldn't be opened: its tools then come from `allowedTools` alone. */
 const NO_MCP_URL = "http://127.0.0.1:1/mcp/manager";
 
 /** The server side of a chat: its manager thread, which the org owns (it has no bot), and the tools that write to it. */

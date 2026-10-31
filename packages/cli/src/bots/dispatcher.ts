@@ -707,14 +707,14 @@ export class Dispatcher {
   }
 }
 
-/** When the lease a 409 `leased` ran into expires, if the server said. */
+/** When the runner lease a 409 `runner_leased` ran into expires, if the server said. */
 function leasedUntil(err: ApiError): string | undefined {
   const details = err.details as { expires_at?: unknown } | undefined;
   return typeof details?.expires_at === "string" ? details.expires_at : undefined;
 }
 
 const RESUME_AFTER_INTERRUPT =
-  "Your last run was cut off before it finished (the runner stopped, or the API failed). Carry on from wherever you got to, and check the thread's latest messages on GitHub for anything you missed.";
+  "Your last run was cut off before it finished (the runner stopped, or the API failed). Carry on from wherever you got to, and check the thread's latest messages for anything you missed.";
 
 const RESUME_AFTER_LIMIT =
   "Your last run stopped because the account hit its usage limit. The limit has reset: carry on with the messages you were given, from wherever you got to.";
