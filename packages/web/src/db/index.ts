@@ -2,7 +2,7 @@ import { migrations } from "./migrations.js";
 
 /**
  * The only thing the rest of the app knows about the database.
- * Postgres everywhere: a local Docker Postgres (see docker-compose.yml) in dev and tests, Neon on Vercel.
+ * Postgres everywhere: a local Docker Postgres (see docker-compose.yml) in dev and tests, Supabase on Vercel.
  * For jsonb params, pass the JS object itself (not JSON.stringify'd): postgres.js learns the param
  * type from the server and serializes it, so a pre-stringified value gets stored as a JSON *string*.
  */
@@ -18,16 +18,26 @@ export interface DbOptions {
   databaseUrl: string;
 }
 
+/**
+ * Query params in hosted Postgres URLs that aren't connection settings postgres.js knows: it would send them to the
+ * server as startup parameters, which then refuses the connection. Vercel's Supabase integration adds `supa` and
+ * `pgbouncer`; libpq-style strings (Neon's, among others) carry `channel_binding`.
+ */
+const FOREIGN_PARAMS = ["supa", "pgbouncer", "channel_binding"];
+
+/** The URL as postgres.js should see it: trimmed, unquoted, without FOREIGN_PARAMS. `sslmode` stays. */
+export function connectionUrl(url: string): string {
+  const u = new URL(url.trim().replace(/^(['"])(.*)\1$/, "$2"));
+  for (const p of FOREIGN_PARAMS) u.searchParams.delete(p);
+  return u.toString();
+}
+
 export async function openDb(opts: DbOptions): Promise<Db> {
   const { default: postgres } = await import("postgres");
-  // Neon's connection strings carry libpq's `channel_binding`, which postgres.js doesn't understand
-  // and would forward to the server as a startup parameter.
-  const u = new URL(opts.databaseUrl);
-  u.searchParams.delete("channel_binding");
-  // prepare:false: Neon's pooled endpoint (-pooler) is PgBouncer in transaction mode.
+  // prepare:false: Supabase's pooler (Supavisor, port 6543) runs in transaction mode, as do other poolers.
   // onnotice: no-op, since postgres.js console.logs NOTICEs by default, and our idempotent
   // `CREATE ... IF NOT EXISTS` migration bookkeeping emits one on every run.
-  const sql = postgres(u.toString(), { prepare: false, max: 5, idle_timeout: 20, onnotice: () => {} });
+  const sql = postgres(connectionUrl(opts.databaseUrl), { prepare: false, max: 5, idle_timeout: 20, onnotice: () => {} });
   return {
     async query<T>(text: string, params: unknown[] = []) {
       const rows = await sql.unsafe(text, params as never[]);
@@ -87,15 +97,21 @@ function splitSql(sql: string): string[] {
     .filter(Boolean);
 }
 
+/** The URL the server queries through. See getDb. */
+export function serverUrl(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env.DATABASE_URL_POOLED || env.DATABASE_URL || env.POSTGRES_URL || undefined;
+}
+
 let shared: Promise<Db> | undefined;
 
 /**
  * Process-wide DB, configured from env. Reused across requests (and across invocations on warm Vercel functions).
- * Serves from DATABASE_URL_POOLED, else DATABASE_URL. Migrations pick their own URL in run-migrations.ts.
+ * Serves from DATABASE_URL_POOLED, else DATABASE_URL, else POSTGRES_URL (the pooled URL Vercel's Supabase
+ * integration sets). Migrations pick their own URL in run-migrations.ts.
  */
 export function getDb(): Promise<Db> {
   if (!shared) {
-    const databaseUrl = process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL;
+    const databaseUrl = serverUrl();
     if (!databaseUrl) {
       throw new Error(
         "DATABASE_URL is not set. Locally: `npm run db:up`, then copy packages/web/.env.example to .env.",

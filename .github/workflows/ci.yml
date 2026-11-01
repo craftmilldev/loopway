@@ -14,7 +14,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # Same Postgres major version as docker-compose.yml and Neon.
+    # Same Postgres major version as docker-compose.yml and Supabase.
     services:
       postgres:
         image: postgres:17

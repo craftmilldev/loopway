@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { migrationUrl, runMigrations } from "../src/db/run-migrations.js";
+import { connectionUrl, serverUrl } from "../src/db/index.js";
 import { createTestDatabase, TEST_INBOX_KEY } from "../src/db/testing.js";
 import { migrations } from "../src/db/migrations.js";
 import type { Metrics } from "../src/metrics.js";
@@ -32,6 +33,30 @@ describe("migrationUrl", () => {
     expect(migrationUrl({ DATABASE_URL_POOLED: "p" })).toBeUndefined();
     expect(migrationUrl({ DATABASE_URL_UNPOOLED: "", DATABASE_URL: "d" })).toBe("d");
   });
+
+  it("falls back to Supabase's session-mode URL, never its transaction pooler", () => {
+    expect(migrationUrl({ POSTGRES_URL_NON_POOLING: "s", POSTGRES_URL: "t" })).toBe("s");
+    expect(migrationUrl({ POSTGRES_URL: "t" })).toBeUndefined();
+    expect(migrationUrl({ DATABASE_URL: "d", POSTGRES_URL_NON_POOLING: "s" })).toBe("d");
+  });
+});
+
+describe("serverUrl", () => {
+  it("prefers DATABASE_URL_POOLED, then DATABASE_URL, then Supabase's POSTGRES_URL", () => {
+    expect(serverUrl({ DATABASE_URL_POOLED: "p", DATABASE_URL: "d", POSTGRES_URL: "t" })).toBe("p");
+    expect(serverUrl({ DATABASE_URL: "d", POSTGRES_URL: "t" })).toBe("d");
+    expect(serverUrl({ POSTGRES_URL: "t", POSTGRES_URL_NON_POOLING: "s" })).toBe("t");
+    expect(serverUrl({})).toBeUndefined();
+  });
+});
+
+describe("connectionUrl", () => {
+  it("drops the params Vercel's Supabase integration and libpq add, keeps sslmode", () => {
+    const u = connectionUrl(
+      ' "postgres://postgres.ref:pw@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require&supa=base-pooler.x&pgbouncer=true&channel_binding=require" ',
+    );
+    expect(u).toBe("postgres://postgres.ref:pw@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require");
+  });
 });
 
 describe("runMigrations", () => {
@@ -53,7 +78,7 @@ describe("runMigrations", () => {
     expect(events.map((e) => e.event)).toEqual(["migrations_failed"]);
   });
 
-  it("migrates the unpooled URL when DATABASE_URL is the pooled one (Neon's names)", async () => {
+  it("migrates the unpooled URL when DATABASE_URL is the pooled one", async () => {
     const env = {
       DATABASE_URL: "postgres://nobody@127.0.0.1:1/none",
       DATABASE_URL_UNPOOLED: database.url,

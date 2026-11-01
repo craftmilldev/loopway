@@ -1,4 +1,5 @@
 import { migrate, openDb } from "../src/db/index.js";
+import { migrationUrl } from "../src/db/run-migrations.js";
 import { secretBox } from "../src/secrets.js";
 import { encryptInboxSecrets } from "../src/store.js";
 
@@ -12,10 +13,11 @@ for (const f of [".env.production", ".env.local", ".env"]) {
   }
 }
 
-// `npm run dev` migrates the local database itself; this is for Neon: DATABASE_URL=... npm run db:migrate
-// Use Neon's *direct* connection string (no `-pooler` in the host) for migrations.
-if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is not set.");
-const db = await openDb({ databaseUrl: process.env.DATABASE_URL });
+// `npm run dev` migrates the local database itself; this is for the hosted one: DATABASE_URL=... npm run db:migrate
+// Use a session-mode URL (Supabase's POSTGRES_URL_NON_POOLING, port 5432), not the transaction pooler on 6543.
+const databaseUrl = migrationUrl();
+if (!databaseUrl) throw new Error("DATABASE_URL is not set.");
+const db = await openDb({ databaseUrl });
 const applied = await migrate(db);
 console.log(applied.length ? `Applied: ${applied.join(", ")}` : "Up to date.");
 const moved = await encryptInboxSecrets(db, secretBox(process.env.INBOX_SECRET_KEY)); // throws if it is unset

@@ -4,11 +4,12 @@ import { encryptInboxSecrets } from "../store.js";
 import { ANONYMOUS, type Metrics } from "../metrics.js";
 
 /**
- * The URL migrations run against: Neon's direct `DATABASE_URL_UNPOOLED`, else `DATABASE_URL`. Never the pooled
- * `DATABASE_URL_POOLED`: PgBouncer in transaction mode isn't safe for DDL.
+ * The URL migrations run against: `DATABASE_URL_UNPOOLED`, else `DATABASE_URL`, else `POSTGRES_URL_NON_POOLING`
+ * (the session-mode URL Vercel's Supabase integration sets). Never a transaction-mode pooled URL
+ * (`DATABASE_URL_POOLED`, `POSTGRES_URL`): it isn't safe for DDL.
  */
 export function migrationUrl(env: NodeJS.ProcessEnv = process.env): string | undefined {
-  return env.DATABASE_URL_UNPOOLED || env.DATABASE_URL || undefined;
+  return env.DATABASE_URL_UNPOOLED || env.DATABASE_URL || env.POSTGRES_URL_NON_POOLING || undefined;
 }
 
 export interface RunMigrationsOptions {
@@ -26,7 +27,7 @@ export async function runMigrations(opts: RunMigrationsOptions): Promise<string[
   const log = opts.log ?? console.log;
   const databaseUrl = migrationUrl(opts.env);
   if (!databaseUrl) {
-    log("No DATABASE_URL_UNPOOLED or DATABASE_URL set; skipping migrations.");
+    log("No DATABASE_URL_UNPOOLED, DATABASE_URL or POSTGRES_URL_NON_POOLING set; skipping migrations.");
     return null;
   }
   const key = (opts.env ?? process.env).INBOX_SECRET_KEY;
