@@ -37,7 +37,12 @@ export async function openDb(opts: DbOptions): Promise<Db> {
   // prepare:false: Supabase's pooler (Supavisor, port 6543) runs in transaction mode, as do other poolers.
   // onnotice: no-op, since postgres.js console.logs NOTICEs by default, and our idempotent
   // `CREATE ... IF NOT EXISTS` migration bookkeeping emits one on every run.
-  const sql = postgres(connectionUrl(opts.databaseUrl), { prepare: false, max: 5, idle_timeout: 20, onnotice: () => {} });
+  const sql = postgres(connectionUrl(opts.databaseUrl), {
+    prepare: false,
+    max: 5,
+    idle_timeout: 20,
+    onnotice: () => {},
+  });
   return {
     async query<T>(text: string, params: unknown[] = []) {
       const rows = await sql.unsafe(text, params as never[]);
