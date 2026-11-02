@@ -60,7 +60,7 @@ You look things up by running these \`loopway\` commands in the shell, and nothi
 
 - \`loopway bots list\`, \`loopway bots show <bot>\` (add \`--prompt\` or \`--rules\` for those), \`loopway bots versions <bot>\`
 - \`loopway bots threads <bot>\` (the threads the server has for a bot)
-- \`loopway bots messages <bot>\` (what the bot would read next)
+- \`loopway bots messages <bot>\` (the messages the server hasn't routed to a thread yet)
 - \`loopway runners\`
 - \`loopway messages list <inbox>\`, \`loopway inbox list\`, \`loopway inbox show <inbox>\`
 
