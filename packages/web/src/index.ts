@@ -5,16 +5,7 @@ import { createApi, parseScheduleOptions } from "./api.js";
 import { minCliVersion } from "./cli-version.js";
 import { getDb } from "./db/index.js";
 import { senderFromEnv } from "./email.js";
-import { createMetrics } from "./metrics.js";
-
-/** The /api/ingest proxy forwards to PostHog's EU cloud when POSTHOG_HOST is an EU host (eu.i.posthog.com), else US. */
-function posthogRegion(host: string | undefined) {
-  try {
-    return host && new URL(host).hostname.startsWith("eu.") ? "eu" : "us";
-  } catch {
-    return "us";
-  }
-}
+import { createMetrics, posthogHost, posthogUiHost } from "./metrics.js";
 
 const app = new Hono();
 
@@ -34,7 +25,8 @@ app.route(
     scheduleOptions: parseScheduleOptions(process.env.SCHEDULE_OPTIONS),
     metrics: createMetrics(),
     posthogKey: process.env.POSTHOG_API_KEY || undefined,
-    posthogRegion: posthogRegion(process.env.POSTHOG_HOST),
+    posthogHost: posthogHost(),
+    posthogUiHost: posthogUiHost(),
     publicBaseUrl: process.env.PUBLIC_BASE_URL || undefined,
     selfHosted: ["1", "true"].includes(process.env.SELF_HOSTED ?? ""),
     minCliVersion: minCliVersion(process.env.MIN_CLI_VERSION),

@@ -11,7 +11,6 @@ import { makeCloudEvent } from "./cloudevents.js";
 import { isUuid, LOGIN_CODE_RE, normalizeLoginCode, safeEqual, uuidv7 } from "./ids.js";
 import { ANONYMOUS, noopMetrics, type Metrics } from "./metrics.js";
 import { getHarness, HARNESSES } from "@loopway/harnesses";
-import { createPosthogProxy } from "./posthog-proxy.js";
 import { ORG_SLUG_PROBLEM_MESSAGES, USERNAME_PROBLEM_MESSAGES, type SlugProblem } from "./slugs.js";
 import { sources } from "./sources.js";
 import * as store from "./store.js";
@@ -43,11 +42,11 @@ export interface ApiOptions extends EeOptions {
   defer?: (work: Promise<unknown>) => void;
   /** Delivers login codes. Defaults to printing them to the console. */
   sendEmail?: SendEmail;
-  /** PostHog cloud region the /api/ingest proxy forwards to. Defaults to "us". */
-  posthogRegion?: "us" | "eu";
-  /** PostHog project key the browser UI reports to through /api/ingest. Unset, the UI sends no metrics. */
+  /** Where the browser sends PostHog events. Defaults to Craftmill's shared proxy. */
+  posthogHost?: string;
+  /** PostHog project key the browser UI reports to. Unset, the UI sends no metrics. */
   posthogKey?: string;
-  /** PostHog's UI host (the toolbar needs it behind a proxy). Defaults to the region's, https://us.posthog.com. */
+  /** PostHog's UI host (the toolbar needs it behind a proxy). Defaults to https://us.posthog.com. */
   posthogUiHost?: string;
   /** Vercel Cron's bearer token (`CRON_SECRET`). Unset, /cron/schedules refuses every call. */
   cronSecret?: string;
@@ -179,9 +178,6 @@ export function createApi(opts: ApiOptions) {
   });
   app.notFound((c) => c.json({ error: { code: "not_found", message: "Route not found" } }, 404));
 
-  // Registered before the db middleware: forwarding analytics needs no database.
-  app.route("/", createPosthogProxy({ region: opts.posthogRegion }));
-
   app.use(async (c, next) => {
     c.set("db", await opts.getDb());
     await next();
@@ -217,8 +213,8 @@ export function createApi(opts: ApiOptions) {
       selfHosted: opts.selfHosted,
       publicBaseUrl: opts.publicBaseUrl,
       posthogKey: opts.posthogKey,
-      posthogUiHost:
-        opts.posthogUiHost ?? (opts.posthogRegion === "eu" ? "https://eu.posthog.com" : "https://us.posthog.com"),
+      posthogHost: opts.posthogHost,
+      posthogUiHost: opts.posthogUiHost ?? "https://us.posthog.com",
     }),
   );
 

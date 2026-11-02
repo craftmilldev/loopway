@@ -6,7 +6,7 @@ import { app, assign, call, db, newInbox, newUser, prPayload, sendGithub } from 
 // either listed as public here or answers 401 without a token, and every route that names a resource answers
 // 404 (or a refusal) for a user outside the resource's org, leaving the org's data as it was.
 
-// Public on purpose: the shell, health, signed webhooks, login, and the analytics proxy.
+// Public on purpose: the shell, health, signed webhooks, login.
 const PUBLIC = [
   /^GET \/api\/?$/,
   /^GET \/api\/health$/,
@@ -17,7 +17,6 @@ const PUBLIC = [
   /^GET \/dashboard(\/|$)/,
   // The pages of an org, which show nothing until the browser has loaded the org from the API.
   /^GET \/:org(\/|$)/,
-  /^ALL \/api\/ingest\//,
   // The database middleware, which runs for every request and answers nothing itself.
   /^ALL \/\*$/,
 ];

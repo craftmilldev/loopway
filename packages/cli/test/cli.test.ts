@@ -286,7 +286,7 @@ describe("auth", () => {
     expect(await loadConfig(configDir, {})).toEqual({
       api_url: "https://loopway.craftmill.dev",
       api_key: undefined,
-      posthog_host: "https://loopway.craftmill.dev/api/ingest",
+      posthog_host: "https://a.craftmill.dev/api/ingest",
       auto_update: true,
       manager_enabled: false,
       manager_harness: "claude",
@@ -296,7 +296,7 @@ describe("auth", () => {
     expect(await loadConfig(configDir, {})).toEqual({
       api_url: "https://file.test",
       api_key: "lw_file",
-      posthog_host: "https://file.test/api/ingest",
+      posthog_host: "https://a.craftmill.dev/api/ingest",
       auto_update: true,
       manager_enabled: false,
       manager_harness: "claude",
@@ -305,7 +305,7 @@ describe("auth", () => {
     expect(await loadConfig(configDir, { LOOPWAY_API_URL: "https://env.test", LOOPWAY_API_KEY: "lw_env" })).toEqual({
       api_url: "https://env.test",
       api_key: "lw_env",
-      posthog_host: "https://env.test/api/ingest",
+      posthog_host: "https://a.craftmill.dev/api/ingest",
       auto_update: true,
       manager_enabled: false,
       manager_harness: "claude",
