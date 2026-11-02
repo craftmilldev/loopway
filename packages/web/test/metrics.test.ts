@@ -3,7 +3,8 @@ import { createApi } from "../src/api.js";
 import { type Db } from "../src/db/index.js";
 import { openTestDb, TEST_INBOX_KEY } from "../src/db/testing.js";
 import { createLoginCode } from "../src/store.js";
-import { createMetrics, noopMetrics, type Metrics } from "../src/metrics.js";
+import { createWeb } from "../src/ui.js";
+import { createMetrics, noopMetrics, POSTHOG_PROXY, posthogHost, posthogUiHost, type Metrics } from "../src/metrics.js";
 
 let db: Db;
 let app: ReturnType<typeof createApi>;
@@ -73,5 +74,27 @@ describe("metrics", () => {
 
   it("records nothing without a PostHog key", () => {
     expect(createMetrics({})).toBe(noopMetrics);
+  });
+
+  it("sends the browser and server to the shared proxy unless POSTHOG_HOST says otherwise", () => {
+    expect(posthogHost({})).toBe(POSTHOG_PROXY);
+    expect(posthogHost({ POSTHOG_HOST: "" })).toBe(POSTHOG_PROXY);
+    expect(posthogHost({ POSTHOG_HOST: "https://ph.example" })).toBe("https://ph.example");
+  });
+
+  it("links to PostHog's EU UI only for an eu.* host", () => {
+    expect(posthogUiHost({})).toBe("https://us.posthog.com");
+    expect(posthogUiHost({ POSTHOG_HOST: "not a url" })).toBe("https://us.posthog.com");
+    expect(posthogUiHost({ POSTHOG_HOST: "https://us.i.posthog.com" })).toBe("https://us.posthog.com");
+    expect(posthogUiHost({ POSTHOG_HOST: "https://eu.i.posthog.com" })).toBe("https://eu.posthog.com");
+  });
+
+  it("puts the escaped host in a meta tag, and only when there is a key", async () => {
+    const page = async (opts: Parameters<typeof createWeb>[0]) => (await createWeb(opts).request("/login")).text();
+    expect(await page({})).not.toContain("posthog-host");
+    expect(await page({ posthogKey: "phc_test" })).toContain(`<meta name="posthog-host" content="${POSTHOG_PROXY}">`);
+    expect(await page({ posthogKey: "phc_test", posthogHost: 'https://x.test/"><b>' })).toContain(
+      'content="https://x.test/&quot;>&lt;b>"',
+    );
   });
 });

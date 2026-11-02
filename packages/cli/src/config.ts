@@ -39,10 +39,10 @@ export interface GithubBot {
   email: string;
 }
 
-/** Used for anything neither the environment nor config.json sets. */
 /** The shared PostHog proxy every Craftmill product sends events through. */
 const POSTHOG_PROXY = "https://a.craftmill.dev/api/ingest";
 
+/** Used for anything neither the environment nor config.json sets. */
 const DEFAULTS = { api_url: "https://loopway.craftmill.dev" };
 
 export const configPath = (dir: string) => join(dir, "config.json");
