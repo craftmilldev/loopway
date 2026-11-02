@@ -1,11 +1,12 @@
-import { ANY_RUNNER, checkRules, route, type BotRule } from "@loopway/rules";
+import { ANY_RUNNER, checkRules, lookups, route, type BotRule } from "@loopway/rules";
 import { botActor, userActor } from "./actor.js";
 import type { CloudEvent } from "./cloudevents.js";
 import { MIGRATE_LOCK, type Db } from "./db/index.js";
 import { ApiError } from "./http.js";
 import type { SecretBox } from "./secrets.js";
+import { sources } from "./sources.js";
 import { slugProblem, type SlugProblem } from "./slugs.js";
-import { newLockToken, newLoginCode, normalizeLoginCode, safeEqual, sha256, uuidv7 } from "./ids.js";
+import { isUuid, newLockToken, newLoginCode, normalizeLoginCode, safeEqual, sha256, uuidv7 } from "./ids.js";
 
 /** What a transaction body gets: just `query`, bound to the transaction's connection. */
 type Q = Pick<Db, "query">;
@@ -31,6 +32,12 @@ export async function createUser(db: Db, input: { name: string; email?: string |
     [uuidv7(), input.name, input.email ?? null],
   );
   return { user: user! };
+}
+
+/** Whether the user exists: all a request's auth needs of them. */
+export async function userExists(db: Db, id: string): Promise<{ id: string } | undefined> {
+  const [user] = await db.query<{ id: string }>(`SELECT id FROM loopway.users WHERE id = $1`, [id]);
+  return user;
 }
 
 export async function findUserById(db: Db, id: string): Promise<User | undefined> {
@@ -249,7 +256,14 @@ export async function markOrgCelebrated(db: Q, orgId: string): Promise<void> {
 
 /** The org with this slug, if the user is a member of it. */
 export async function memberOrg(db: Q, userId: string, slug: string): Promise<Org | undefined> {
-  return (await listOrgs(db, userId)).find((o) => o.slug === slug);
+  const [org] = await db.query<Org>(
+    `SELECT o.id, o.slug, o.name, (o.personal_user_id IS NOT NULL) AS personal,
+       (o.celebrated_at IS NOT NULL) AS celebrated
+     FROM loopway.orgs o JOIN loopway.org_members m ON m.org_id = o.id
+     WHERE m.user_id = $1 AND o.slug = $2`,
+    [userId, slug],
+  );
+  return org;
 }
 
 // ---------- Inboxes ----------
@@ -321,17 +335,48 @@ export async function listInboxes(db: Db, userId: string, orgId?: string): Promi
   );
 }
 
-/** Without userId: for webhook ingestion. With userId: only if the user is a member of its org. */
-export async function getInbox(db: Db, id: string, userId?: string): Promise<Inbox | undefined> {
-  const [row] = userId
-    ? await db.query<Inbox>(`SELECT * FROM loopway.inboxes WHERE id = $1 AND ${inOrgOf("org_id", "$2")}`, [id, userId])
-    : await db.query<Inbox>(`SELECT * FROM loopway.inboxes WHERE id = $1`, [id]);
+/** What taking a delivery reads of an inbox: its source and config to check it with, and what the metrics say. */
+export type DeliveryInbox = Pick<
+  Inbox,
+  "id" | "org_id" | "source_type" | "config" | "secret_enc" | "created_at" | "last_delivery_at"
+>;
+
+/** The inbox a webhook names, as a delivery needs it. */
+export async function deliveryInbox(db: Db, id: string): Promise<DeliveryInbox | undefined> {
+  const [row] = await db.query<DeliveryInbox>(
+    `SELECT id, org_id, source_type, config, secret_enc, created_at, last_delivery_at FROM loopway.inboxes WHERE id = $1`,
+    [id],
+  );
   return row;
 }
 
-/** Every inbox of one source type, for the cron route. */
-export async function inboxesOfSource(db: Db, sourceType: string): Promise<Inbox[]> {
-  return db.query<Inbox>(`SELECT * FROM loopway.inboxes WHERE source_type = $1 ORDER BY id`, [sourceType]);
+/** The org of each of these ids that is an inbox in one of the user's orgs. */
+export async function inboxOrgs(db: Db, userId: string, ids: string[]): Promise<Map<string, string>> {
+  const rows = await db.query<{ id: string; org_id: string }>(
+    `SELECT id, org_id FROM loopway.inboxes
+     WHERE ${inOrgOf("org_id", "$1")} AND id IN (SELECT value::uuid FROM jsonb_array_elements_text($2::jsonb))`,
+    [userId, ids],
+  );
+  return new Map(rows.map((r) => [r.id, r.org_id]));
+}
+
+/** With userId: only if the user is a member of its org. */
+export async function getInbox(db: Db, id: string, userId: string): Promise<Inbox | undefined> {
+  const [row] = await db.query<Inbox>(`SELECT * FROM loopway.inboxes WHERE id = $1 AND ${inOrgOf("org_id", "$2")}`, [
+    id,
+    userId,
+  ]);
+  return row;
+}
+
+/** Every inbox of one source type, for the cron route: what it needs to fill them. */
+export async function inboxesOfSource(
+  db: Db,
+  sourceType: string,
+): Promise<Pick<Inbox, "id" | "org_id" | "source_type" | "config">[]> {
+  return db.query(`SELECT id, org_id, source_type, config FROM loopway.inboxes WHERE source_type = $1 ORDER BY id`, [
+    sourceType,
+  ]);
 }
 
 /** Leaves `secretEnc` alone unless it is given. */
@@ -621,6 +666,28 @@ export async function getBot(db: Db, id: string, userId?: string): Promise<Bot |
   return row;
 }
 
+/** What most of a bot's routes need of it: not its inboxes or its prompt, which can be long. */
+export type BotHead = Pick<Bot, "id" | "org_id" | "name" | "model" | "harness">;
+
+/** The bot, if the user is a member of its org, as most of its routes need it. */
+export async function getBotHead(db: Db, id: string, userId: string): Promise<BotHead | undefined> {
+  const [row] = await db.query<BotHead>(
+    `SELECT b.id, b.org_id, b.name, b.model, b.harness FROM loopway.bots b
+     WHERE b.id = $1 AND ${inOrgOf("b.org_id", "$2")} AND b.deleted_at IS NULL`,
+    [id, userId],
+  );
+  return row;
+}
+
+/** The bot's first inbox (by id), which a message to one of its threads goes through. */
+export async function firstBotInbox(db: Db, botId: string): Promise<string | undefined> {
+  const [row] = await db.query<{ inbox_id: string }>(
+    `SELECT inbox_id FROM loopway.bot_inboxes WHERE bot_id = $1 ORDER BY inbox_id LIMIT 1`,
+    [botId],
+  );
+  return row?.inbox_id;
+}
+
 /** The last `days` UTC dates, today included, oldest first. */
 function windowDates(days: number): string[] {
   const today = new Date().toISOString().slice(0, 10);
@@ -714,7 +781,7 @@ export async function botActivity(
 /** `inboxIds`, when given, replaces the bot's inboxes. The cursor stays where it is. */
 export async function updateBot(
   db: Db,
-  bot: Bot,
+  bot: Pick<Bot, "id" | "org_id">,
   patch: { name?: string; model?: string; harness?: string; inboxIds?: string[] },
 ): Promise<Bot> {
   await db.transaction(async (tx) => {
@@ -766,26 +833,28 @@ export async function deleteBot(db: Db, id: string): Promise<void> {
   await db.query(`UPDATE loopway.bots SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`, [id]);
 }
 
+/**
+ * SQL for the bot's ($1) messages after its cursor, oldest first, stopping at the first one received in the last $2
+ * seconds, at most $3, with columns `cols` of `e`. Reads only the rows it returns: the cursor and the first held-back
+ * seq are scalars, so no message is read and then dropped.
+ */
+const botMessagesSql = (cols: string) => `
+  WITH b AS (SELECT cursor FROM loopway.bots WHERE id = $1),
+  fresh AS (
+    SELECT min(e.seq) AS seq FROM loopway.messages e JOIN loopway.bot_inboxes bi ON bi.inbox_id = e.inbox_id
+    WHERE bi.bot_id = $1 AND e.seq > (SELECT cursor FROM b) AND e.received_at > now() - $2::int * interval '1 second')
+  SELECT ${cols} FROM loopway.messages e JOIN loopway.bot_inboxes bi ON bi.inbox_id = e.inbox_id
+  WHERE bi.bot_id = $1 AND e.seq > (SELECT cursor FROM b)
+    AND ((SELECT seq FROM fresh) IS NULL OR e.seq < (SELECT seq FROM fresh))
+  ORDER BY e.seq LIMIT $3`;
+
 /** Messages in the bot's inboxes after its cursor, oldest first, stopping at the first one still held back. */
-export async function botMessages(
-  db: Pick<Db, "query">,
-  botId: string,
-  limit: number,
-  holdback = MESSAGE_HOLDBACK_SECONDS,
-): Promise<MessageRow[]> {
-  return db.query<MessageRow>(
-    `WITH mine AS (
-       SELECT e.* FROM loopway.messages e
-       JOIN loopway.bot_inboxes bi ON bi.inbox_id = e.inbox_id
-       JOIN loopway.bots b ON b.id = bi.bot_id
-       WHERE b.id = $1 AND e.seq > b.cursor
-     ),
-     fresh AS (SELECT min(seq) AS seq FROM mine WHERE received_at > now() - $2::int * interval '1 second')
-     SELECT ${MESSAGE_COLS} FROM mine
-     WHERE (SELECT seq FROM fresh) IS NULL OR seq < (SELECT seq FROM fresh)
-     ORDER BY seq LIMIT $3`,
-    [botId, holdback, limit],
-  );
+export async function botMessages(db: Db, botId: string, limit: number): Promise<MessageRow[]> {
+  return db.query<MessageRow>(botMessagesSql(`e.id, e.inbox_id, e.seq, e.cloudevent, e.received_at, e.is_test`), [
+    botId,
+    MESSAGE_HOLDBACK_SECONDS,
+    limit,
+  ]);
 }
 
 // ---------- Runners ----------
@@ -843,6 +912,27 @@ export async function upsertRunner(
   return { ...runner, firstSeconds: first?.seconds ?? undefined };
 }
 
+/** What a runner's routes check of it: its org, and when its lease runs out. */
+export type RunnerHead = Pick<Runner, "id" | "org_id" | "locked_until">;
+
+/** The runner, if it's in one of the user's orgs, as its routes check it. */
+export async function runnerHead(db: Db, userId: string, id: string): Promise<RunnerHead | undefined> {
+  const [row] = await db.query<RunnerHead>(
+    `SELECT r.id, r.org_id, r.locked_until FROM loopway.runners r WHERE r.id = $1 AND ${inOrgOf("r.org_id", "$2")}`,
+    [id, userId],
+  );
+  return row;
+}
+
+/** The org's runners as a dashboard names them: id, name and whether a process holds the lease. */
+export async function boardRunners(db: Db, orgId: string): Promise<{ id: string; name: string; leased: boolean }[]> {
+  return db.query(
+    `SELECT id, name, COALESCE(locked_until > now(), false) AS leased FROM loopway.runners
+     WHERE org_id = $1 ORDER BY created_at, id`,
+    [orgId],
+  );
+}
+
 export async function getRunner(db: Db, userId: string, id: string): Promise<Runner | undefined> {
   const [row] = await db.query<Runner>(
     `SELECT ${RUNNER_COLS} FROM loopway.runners r WHERE r.id = $1 AND ${inOrgOf("r.org_id", "$2")}`,
@@ -869,18 +959,18 @@ export async function leaseRunner(
   id: string,
   ttlSeconds: number,
   currentToken: string | null,
-): Promise<Runner | undefined> {
-  const rows = await db.query<{ id: string }>(
+): Promise<{ lock_token: string; locked_until: Date } | undefined> {
+  const [row] = await db.query<{ lock_token: string; locked_until: Date }>(
     `UPDATE loopway.runners r SET
        lock_token   = CASE WHEN r.lock_token = $4 THEN r.lock_token ELSE $3 END,
        locked_until = now() + $5::int * interval '1 second',
        last_seen_at = now()
      WHERE r.id = $1 AND ${inOrgOf("r.org_id", "$2")}
        AND (r.locked_until IS NULL OR r.locked_until <= now() OR r.lock_token = $4)
-     RETURNING r.id`,
+     RETURNING r.lock_token, r.locked_until`,
     [id, userId, newLockToken(), currentToken, ttlSeconds],
   );
-  return rows.length ? getRunner(db, userId, id) : undefined;
+  return row;
 }
 
 /** Drops the runner's lease, if `token` is the one held; or whoever's, with `token` null (a process that died). */
@@ -894,10 +984,15 @@ export async function releaseRunner(db: Db, userId: string, id: string, token: s
   return rows.length > 0;
 }
 
-/** The runner whose live lease has this token. */
-export async function runnerByToken(db: Db, userId: string, token: string): Promise<Runner | undefined> {
-  const [row] = await db.query<Runner>(
-    `SELECT ${RUNNER_COLS} FROM loopway.runners r WHERE ${inOrgOf("r.org_id", "$1")} AND r.lock_token = $2 AND r.locked_until > now()`,
+/** The runner whose live lease has this token: its id and org. */
+export async function runnerByToken(
+  db: Db,
+  userId: string,
+  token: string,
+): Promise<Pick<Runner, "id" | "org_id"> | undefined> {
+  const [row] = await db.query<Pick<Runner, "id" | "org_id">>(
+    `SELECT r.id, r.org_id FROM loopway.runners r
+     WHERE ${inOrgOf("r.org_id", "$1")} AND r.lock_token = $2 AND r.locked_until > now()`,
     [userId, token],
   );
   return row;
@@ -950,17 +1045,23 @@ export interface Thread {
 
 type ThreadMessageState = "waiting" | "inflight" | "delivered";
 
-const threadMessages = (state: ThreadMessageState) => `
-  COALESCE((SELECT jsonb_agg(jsonb_build_object('id', m.id, 'inbox_id', m.inbox_id, 'type', m.ce_type, 'subject', tm.subject)
-                             ORDER BY tm.assigned_at, m.seq)
+/** The thread's (`t`) messages in one state as a jsonb array of objects with `fields` (of `m` and `tm`), oldest first. */
+const threadMessages = (
+  state: ThreadMessageState,
+  fields = `'id', m.id, 'inbox_id', m.inbox_id, 'type', m.ce_type, 'subject', tm.subject`,
+) => `
+  COALESCE((SELECT jsonb_agg(jsonb_build_object(${fields}) ORDER BY tm.assigned_at, m.seq)
             FROM loopway.thread_messages tm JOIN loopway.messages m ON m.id = tm.message_id
             WHERE tm.thread_id = t.id AND tm.state = '${state}'), '[]'::jsonb)`;
+
+/** The thread's (`t`) subjects as a jsonb array, sorted. */
+const SUBJECTS = `COALESCE((SELECT jsonb_agg(k.subject ORDER BY k.subject) FROM loopway.thread_subjects k WHERE k.thread_id = t.id),
+           '[]'::jsonb)`;
 
 const THREAD_COLS = `
   t.id, t.bot_id, t.kind, t.created_by, t.status, t.started, t.interrupted, t.limited, t.runner_id, t.automation_level, t.metadata,
   t.created_at, t.updated_at,
-  COALESCE((SELECT jsonb_agg(k.subject ORDER BY k.subject) FROM loopway.thread_subjects k WHERE k.thread_id = t.id),
-           '[]'::jsonb) AS subjects,
+  ${SUBJECTS} AS subjects,
   ${threadMessages("waiting")} AS waiting,
   ${threadMessages("inflight")} AS inflight,
   (SELECT count(*)::int FROM loopway.thread_messages tm WHERE tm.thread_id = t.id AND tm.state = 'delivered') AS delivered`;
@@ -998,15 +1099,35 @@ export async function listThreads(
   );
 }
 
+/** What a runner needs of a thread in its work feed to claim it, order it and run it. */
+export interface WorkThread {
+  id: string;
+  bot_id: string;
+  started: boolean;
+  interrupted: boolean;
+  limited: boolean;
+  runner_id: string | null;
+  subjects: string[];
+  /** The waiting messages' ids, oldest first. */
+  waiting: { id: string }[];
+}
+
 /**
  * What the runner has to do for these bots, in one query: its own threads with a message waiting or a run to resume
  * (`limited`, `interrupted`), and the unowned threads with a message waiting, which any runner of the org may claim.
  * Only the org's live bots count, so a bot id from elsewhere finds nothing. Oldest first.
  */
-export async function runnerWork(db: Db, runner: Runner, botIds: string[]): Promise<Thread[]> {
+export async function runnerWork(
+  db: Db,
+  runner: Pick<Runner, "id" | "org_id">,
+  botIds: string[],
+): Promise<WorkThread[]> {
   if (!botIds.length) return [];
-  return db.query<Thread>(
-    `SELECT ${THREAD_COLS} FROM loopway.threads t JOIN loopway.bots b ON b.id = t.bot_id
+  return db.query<WorkThread>(
+    `SELECT t.id, t.bot_id, t.started, t.interrupted, t.limited, t.runner_id, ${SUBJECTS} AS subjects,
+       COALESCE((SELECT jsonb_agg(jsonb_build_object('id', tm.message_id) ORDER BY tm.assigned_at, tm.message_id)
+                 FROM loopway.thread_messages tm WHERE tm.thread_id = t.id AND tm.state = 'waiting'), '[]'::jsonb) AS waiting
+     FROM loopway.threads t JOIN loopway.bots b ON b.id = t.bot_id
      WHERE t.kind = 'bot' AND b.deleted_at IS NULL AND b.org_id = $1::uuid AND t.org_id = $1::uuid
        AND t.bot_id IN (SELECT value::uuid FROM jsonb_array_elements_text($3::jsonb))
        AND (
@@ -1017,6 +1138,88 @@ export async function runnerWork(db: Db, runner: Runner, botIds: string[]): Prom
      ORDER BY t.created_at, t.id`,
     [runner.org_id, runner.id, botIds],
   );
+}
+
+/** One row of a runner's dashboard: what it shows of a thread. */
+export interface BoardThread {
+  id: string;
+  bot_id: string;
+  status: "active" | "ended";
+  limited: boolean;
+  interrupted: boolean;
+  runner_id: string | null;
+  automation_level: 2 | 3 | 4 | null;
+  subjects: string[];
+  /** The waiting messages of the runner's own threads, oldest first; empty for other runners' threads. */
+  waiting: { id: string; type: string; subject: string | null }[];
+  updated_at: Date;
+}
+
+/**
+ * The threads of these bots of the runner's org for its dashboard, oldest first; with `since`, only those changed at
+ * or after it: the thread's row, one of its messages (assigned, delivered, moved) or one of its subjects. `as_of` is
+ * what to pass as `since` next. A write stamps the time its transaction started, which can be before this read while
+ * it commits after, so `as_of` is the start of the oldest transaction still open (or now): every change stamped
+ * before it is already visible here.
+ */
+export async function boardThreads(
+  db: Db,
+  runner: Pick<Runner, "id" | "org_id">,
+  botIds: string[],
+  since?: Date,
+): Promise<{ threads: BoardThread[]; as_of: Date }> {
+  const [{ as_of }] = (await db.query<{ as_of: Date }>(
+    `SELECT LEAST(now(), (SELECT min(xact_start) FROM pg_stat_activity
+                          WHERE datname = current_database() AND backend_type = 'client backend'
+                            AND state <> 'idle')) AS as_of`,
+  )) as [{ as_of: Date }];
+  if (!botIds.length) return { threads: [], as_of };
+  const threads = await db.query<BoardThread>(
+    `SELECT t.id, t.bot_id, t.status, t.limited, t.interrupted, t.runner_id, t.automation_level, ${SUBJECTS} AS subjects,
+       CASE WHEN t.runner_id = $2::uuid THEN ${threadMessages("waiting", "'id', m.id, 'type', m.ce_type, 'subject', tm.subject")}
+            ELSE '[]'::jsonb END AS waiting,
+       t.updated_at
+     FROM loopway.threads t JOIN loopway.bots b ON b.id = t.bot_id
+     WHERE t.kind = 'bot' AND b.deleted_at IS NULL AND b.org_id = $1::uuid AND t.org_id = $1::uuid
+       AND t.bot_id IN (SELECT value::uuid FROM jsonb_array_elements_text($3::jsonb))
+       AND ($4::timestamptz IS NULL OR t.updated_at >= $4::timestamptz
+            OR t.id IN (SELECT tm.thread_id FROM loopway.thread_messages tm WHERE tm.updated_at >= $4::timestamptz)
+            OR t.id IN (SELECT k.thread_id FROM loopway.thread_subjects k WHERE k.updated_at >= $4::timestamptz))
+     ORDER BY t.created_at, t.id`,
+    [runner.org_id, runner.id, botIds, since ?? null],
+  );
+  return { threads, as_of };
+}
+
+/** What a thread write checks before it writes: that the thread is the bot's, who owns it, and its status. */
+export async function threadHead(
+  db: Db,
+  botId: string,
+  id: string,
+): Promise<Pick<Thread, "id" | "runner_id" | "status"> | undefined> {
+  const [row] = await db.query<Pick<Thread, "id" | "runner_id" | "status">>(
+    `SELECT id, runner_id, status FROM loopway.threads WHERE id = $1 AND bot_id = $2`,
+    [id, botId],
+  );
+  return row;
+}
+
+/** The thread as a write returns it: its row, subjects and waiting and inflight messages, not its delivered history. */
+export async function getThreadRow(db: Db, botId: string, id: string): Promise<Thread | undefined> {
+  const [row] = await db.query<Thread>(
+    `SELECT ${THREAD_COLS} FROM loopway.threads t WHERE t.id = $1 AND t.bot_id = $2`,
+    [id, botId],
+  );
+  return row;
+}
+
+/** How many of the bot's active threads have started a session. */
+export async function startedThreads(db: Db, botId: string): Promise<number> {
+  const [row] = await db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM loopway.threads WHERE bot_id = $1 AND status = 'active' AND started`,
+    [botId],
+  );
+  return row!.n;
 }
 
 export async function getThread(db: Db, botId: string, id: string): Promise<Thread | undefined> {
@@ -1070,29 +1273,54 @@ export async function messageEvents(db: Db, ids: string[]): Promise<Map<string, 
 }
 
 /**
- * Each thread's newest `limit` messages (any state), newest first (by id, which is time-ordered, so an index on
- * thread_messages(thread_id, message_id) reads just those rows), for finding the thread's title. */
-export async function threadNewestEvents(
+ * Each thread's newest messages (any state) from the `skip`th newest on, at most `limit`, newest first (by id, which
+ * is time-ordered, so an index on thread_messages(thread_id, message_id) reads just those rows), for finding the
+ * thread's title. A caller reads a few at a time and stops at the first title, so it reads no message past it.
+ */
+export async function threadEvents(
   db: Db,
   threadIds: string[],
+  skip: number,
   limit: number,
 ): Promise<Map<string, MessageEvent[]>> {
   if (!threadIds.length) return new Map();
   const rows = await db.query<MessageEvent & { thread_id: string }>(
     `SELECT t.id AS thread_id, n.id, n.source_type, n.cloudevent
      FROM loopway.threads t CROSS JOIN LATERAL (
-       SELECT m.id, m.received_at, m.seq, i.source_type, m.cloudevent
-       FROM loopway.thread_messages tm JOIN loopway.messages m ON m.id = tm.message_id
-       JOIN loopway.inboxes i ON i.id = m.inbox_id
-       WHERE tm.thread_id = t.id ORDER BY tm.message_id DESC LIMIT $2
+       SELECT m.id, i.source_type, m.cloudevent
+       FROM (SELECT tm.message_id FROM loopway.thread_messages tm WHERE tm.thread_id = t.id
+             ORDER BY tm.message_id DESC OFFSET $2 LIMIT $3) tm
+       JOIN loopway.messages m ON m.id = tm.message_id JOIN loopway.inboxes i ON i.id = m.inbox_id
      ) n
      WHERE t.id IN (SELECT value::uuid FROM jsonb_array_elements_text($1::jsonb))
      ORDER BY t.id, n.id DESC`,
-    [threadIds, limit],
+    [threadIds, skip, limit],
   );
   const byThread = new Map<string, MessageEvent[]>();
   for (const { thread_id, ...e } of rows) byThread.set(thread_id, [...(byThread.get(thread_id) ?? []), e]);
   return byThread;
+}
+
+/** The titles stored on the threads: '' for none, and no entry for a thread whose title isn't worked out yet. */
+export async function storedTitles(db: Db, threadIds: string[]): Promise<Map<string, string>> {
+  if (!threadIds.length) return new Map();
+  const rows = await db.query<{ id: string; title: string }>(
+    `SELECT id, title FROM loopway.threads
+     WHERE title IS NOT NULL AND id IN (SELECT value::uuid FROM jsonb_array_elements_text($1::jsonb))`,
+    [threadIds],
+  );
+  return new Map(rows.map((r) => [r.id, r.title]));
+}
+
+/** Stores worked-out titles ('' for none) on threads that have none yet. */
+export async function storeTitles(db: Db, titles: Map<string, string>): Promise<void> {
+  if (!titles.size) return;
+  await db.query(
+    `UPDATE loopway.threads t SET title = x.title
+     FROM (SELECT (v->>'id')::uuid AS id, v->>'title' AS title FROM jsonb_array_elements($1::jsonb) v) x
+     WHERE t.id = x.id AND t.title IS NULL`,
+    [[...titles].map(([id, title]) => ({ id, title }))],
+  );
 }
 
 /** The thread that holds each of these subjects, for the bot's subjects that are taken. */
@@ -1131,7 +1359,7 @@ export async function claimThread(
      RETURNING t.id`,
     [botId, userId, token, id],
   );
-  return rows.length ? getThread(db, botId, id) : undefined;
+  return rows.length ? getThreadRow(db, botId, id) : undefined;
 }
 
 /**
@@ -1265,6 +1493,11 @@ export interface Assignment {
   subject?: string;
   /** Who made the message, as the bot's rules judged it (see `authorKind` in BotRule). Drives the thread's level. */
   author_kind?: "human" | "bot";
+  /**
+   * The title the message's source finds in it ("" for none), which the thread takes if it is the newest. Left out, the
+   * thread's title is worked out when it is first read.
+   */
+  title?: string;
   /** The runner a new thread is created on (it owns the thread from the start); ignored for a thread that exists. */
   runner_id?: string;
 }
@@ -1293,19 +1526,28 @@ export async function writeAssignments(
   if (!assignments.length) return { assigned: 0, levels: [] as (2 | 3 | 4)[], onRunner: 0 };
   // The assignments as rows, shared by the three inserts below.
   const a = `(SELECT (x->>'message_id')::uuid AS message_id, (x->>'thread_id')::uuid AS thread_id,
-                     x->'add_subjects' AS add_subjects, x->>'subject' AS subject, x->>'author_kind' AS author_kind, (x->>'runner_id')::uuid AS runner_id, n
+                     x->'add_subjects' AS add_subjects, x->>'subject' AS subject, x->>'author_kind' AS author_kind, x->>'title' AS title, (x->>'runner_id')::uuid AS runner_id, n
               FROM jsonb_array_elements($1::jsonb) WITH ORDINALITY AS e(x, n))`;
   // A new thread's level comes from its first message's author kind: a person is 2, a bot 4.
   const created = await tx.query<{ id: string; level: 2 | 4 | null; runner_id: string | null }>(
     `INSERT INTO loopway.threads (id, bot_id, created_by, org_id, automation_level, runner_id)
      SELECT DISTINCT ON (a.thread_id) a.thread_id, $2::uuid, $3, $4::uuid,
             CASE a.author_kind WHEN 'human' THEN 2 WHEN 'bot' THEN 4 END, r.id
+     
      FROM ${a} a LEFT JOIN loopway.runners r ON r.id = a.runner_id AND r.org_id = $4::uuid
      ORDER BY a.thread_id, a.n
      ON CONFLICT (id) DO NOTHING RETURNING id, automation_level AS level, runner_id`,
     [assignments, botId, actor, orgId],
   );
   for (const t of created) await recordThreadEvents(tx, orgId, botId, t.id, ["created"]);
+  // Each thread takes the newest title among the batch's messages, or "" if none has one and the thread is new (an older thread without a title stays unworked-out, to be read later).
+  await tx.query(
+    `UPDATE loopway.threads t SET title = x.title
+     FROM (SELECT DISTINCT ON (a.thread_id) a.thread_id, a.title FROM ${a} a WHERE a.title IS NOT NULL
+           ORDER BY a.thread_id, a.title = '', a.n DESC) x
+     WHERE t.id = x.thread_id AND (x.title <> '' OR t.id IN (SELECT value::uuid FROM jsonb_array_elements_text($2::jsonb)))`,
+    [assignments, created.map((t) => t.id)],
+  );
   await tx.query(
     `INSERT INTO loopway.thread_subjects (thread_id, bot_id, subject)
      SELECT DISTINCT a.thread_id, $2::uuid, k.subject
@@ -1394,13 +1636,15 @@ interface RoutePage extends Omit<RouteResult, "failed"> {
 async function routePage(db: Db, botId: string): Promise<RoutePage | undefined> {
   return db.transaction(async (tx) => {
     await assignLock(tx, botId);
-    const [bot] = await tx.query<{ org_id: string; cursor: string | bigint; rules: BotRule[] | null }>(
+    // The rules themselves are read only once there is a message to route with them.
+    const [bot] = await tx.query<{ org_id: string; cursor: string | bigint; routed: boolean }>(
       `SELECT b.org_id, b.cursor,
-              (SELECT v.rules FROM loopway.bot_versions v WHERE v.bot_id = b.id ORDER BY v.version DESC LIMIT 1) AS rules
+              COALESCE((SELECT v.rules IS NOT NULL FROM loopway.bot_versions v WHERE v.bot_id = b.id
+                        ORDER BY v.version DESC LIMIT 1), false) AS routed
        FROM loopway.bots b WHERE b.id = $1 AND b.deleted_at IS NULL`,
       [botId],
     );
-    if (!bot?.rules) return undefined;
+    if (!bot?.routed) return undefined;
     const base: RoutePage = {
       org_id: bot.org_id,
       assigned: 0,
@@ -1411,15 +1655,9 @@ async function routePage(db: Db, botId: string): Promise<RoutePage | undefined> 
       read: 0,
       held_back: false,
     };
-    try {
-      checkRules(bot.rules);
-    } catch (err) {
-      return { ...base, bad_rules: err instanceof Error ? err.message : String(err) };
-    }
-    const rows = await botMessages(tx, botId, ROUTE_PAGE, ROUTE_HOLDBACK_SECONDS);
-    // Whether a message past this page is held back, which is all that can be left when the page isn't full.
-    const heldBack = async (after: string | bigint) =>
-      rows.length < ROUTE_PAGE &&
+    // Whether a message past `after` is held back, which is all that can be left when the page isn't full.
+    const heldBack = async (read: number, after: string | bigint) =>
+      read < ROUTE_PAGE &&
       (
         await tx.query(
           `SELECT 1 FROM loopway.messages e JOIN loopway.bot_inboxes bi ON bi.inbox_id = e.inbox_id
@@ -1427,27 +1665,53 @@ async function routePage(db: Db, botId: string): Promise<RoutePage | undefined> 
           [botId, after],
         )
       ).length > 0;
-    if (!rows.length) return { ...base, held_back: await heldBack(bot.cursor) };
-    const threads = await tx.query<{ id: string }>(`SELECT id FROM loopway.threads WHERE bot_id = $1`, [botId]);
-    const subjects = await tx.query<{ subject: string; thread_id: string }>(
-      `SELECT subject, thread_id FROM loopway.thread_subjects WHERE bot_id = $1`,
+    // Routing reads a message's id, its seq (for the cursor) and its event, nothing else.
+    const rows = await tx.query<{ id: string; seq: string | bigint; cloudevent: CloudEvent; source_type: string }>(
+      botMessagesSql(
+        `e.id, e.seq, e.cloudevent, (SELECT i.source_type FROM loopway.inboxes i WHERE i.id = e.inbox_id) AS source_type`,
+      ),
+      [botId, ROUTE_HOLDBACK_SECONDS, ROUTE_PAGE],
+    );
+    if (!rows.length) return { ...base, held_back: await heldBack(0, bot.cursor) };
+    const [version] = await tx.query<{ rules: BotRule[] }>(
+      `SELECT rules FROM loopway.bot_versions WHERE bot_id = $1 ORDER BY version DESC LIMIT 1`,
       [botId],
     );
+    const rules = version!.rules;
+    try {
+      checkRules(rules);
+    } catch (err) {
+      return { ...base, bad_rules: err instanceof Error ? err.message : String(err) };
+    }
+    // Only the subjects and threads this page's messages can look up, not every one the bot has.
+    const wanted = { subjects: new Set<string>(), threads: new Set<string>() };
+    for (const m of rows) {
+      const l = lookups(rules, { event: m.cloudevent });
+      for (const k of l.subjects) wanted.subjects.add(k);
+      for (const t of l.threads) if (isUuid(t)) wanted.threads.add(t);
+    }
+    const subjects = wanted.subjects.size
+      ? await tx.query<{ subject: string; thread_id: string }>(
+          `SELECT subject, thread_id FROM loopway.thread_subjects WHERE bot_id = $1 AND subject IN ${jsonStrings("$2")}`,
+          [botId, [...wanted.subjects]],
+        )
+      : [];
+    const threads = wanted.threads.size
+      ? await tx.query<{ id: string }>(
+          `SELECT id FROM loopway.threads WHERE bot_id = $1 AND id IN (SELECT value::uuid FROM jsonb_array_elements_text($2::jsonb))`,
+          [botId, [...wanted.threads]],
+        )
+      : [];
     // Who holds each subject, kept up to date as the page is routed so a later message sees an earlier one's threads.
     const held = new Map(subjects.map((k) => [k.subject, k.thread_id] as const));
-    const known = new Set(threads.map((t) => t.id));
-    // The org's runners by name (the most recently seen first), to resolve the runner a rule names.
-    const runners = await tx.query<{ id: string; name: string }>(
-      `SELECT id, name FROM loopway.runners WHERE org_id = $1 ORDER BY last_seen_at DESC`,
-      [bot.org_id],
-    );
-    let unknownRunner = 0;
-    const assignments: Assignment[] = [];
+    // The threads that exist: the ones looked up, the holders of subjects, and the ones this page makes.
+    const known = new Set([...threads.map((t) => t.id), ...held.values()]);
+    const assignments: (Assignment & { runner?: string })[] = [];
     const failed: { message_id: string; error: string }[] = [];
     let dropped = 0;
     for (const m of rows) {
       try {
-        const routed = route(bot.rules, held, { event: m.cloudevent }, { botId, threads: known });
+        const routed = route(rules, held, { event: m.cloudevent }, { botId, threads: known });
         if (!routed) {
           dropped++;
           continue;
@@ -1456,24 +1720,41 @@ async function routePage(db: Db, botId: string): Promise<RoutePage | undefined> 
         if (routed.add_subjects.length > 100 || [...routed.add_subjects, routed.key ?? ""].some((s) => s.length > 500))
           throw new Error("A rule found more than 100 subjects, or one longer than 500 characters.");
         for (const s of routed.add_subjects) held.set(s, routed.thread_id);
-        // Only a new thread goes to the runner the rule names; a name the org doesn't have means any runner.
-        let runnerId: string | undefined;
-        if (!known.has(routed.thread_id) && routed.runner !== ANY_RUNNER) {
-          runnerId = runners.find((r) => r.name === routed.runner)?.id;
-          if (!runnerId) unknownRunner++;
-        }
+        // Only a new thread goes to the runner the rule names; it is looked up below.
+        const runner = !known.has(routed.thread_id) && routed.runner !== ANY_RUNNER ? routed.runner : undefined;
         known.add(routed.thread_id);
+        const title = sources.title(m.source_type, m.cloudevent);
         assignments.push({
           message_id: m.id,
           thread_id: routed.thread_id,
           ...(routed.add_subjects.length ? { add_subjects: routed.add_subjects } : {}),
           ...(routed.key ? { subject: routed.key } : {}),
           ...(routed.author_kind ? { author_kind: routed.author_kind } : {}),
-          ...(runnerId ? { runner_id: runnerId } : {}),
+          title: title ?? "",
+          ...(runner !== undefined ? { runner } : {}),
         });
       } catch (err) {
         failed.push({ message_id: m.id, error: err instanceof Error ? err.message : String(err) });
       }
+    }
+    // The org's runners with the names the rules gave, the most recently seen first; a name the org doesn't have
+    // means any runner.
+    const names = [...new Set(assignments.flatMap((a) => (a.runner !== undefined ? [a.runner] : [])))];
+    const runners = names.length
+      ? await tx.query<{ id: string; name: string }>(
+          `SELECT DISTINCT ON (name) id, name FROM loopway.runners
+           WHERE org_id = $1 AND name IN ${jsonStrings("$2")} ORDER BY name, last_seen_at DESC`,
+          [bot.org_id, names],
+        )
+      : [];
+    const runnerIds = new Map(runners.map((r) => [r.name, r.id]));
+    let unknownRunner = 0;
+    for (const a of assignments) {
+      if (a.runner === undefined) continue;
+      const id = runnerIds.get(a.runner);
+      if (id) a.runner_id = id;
+      else unknownRunner++;
+      delete a.runner;
     }
     const written = await writeAssignments(tx, botId, bot.org_id, botActor(botId), assignments);
     await tx.query(`UPDATE loopway.bots SET cursor = GREATEST(cursor, $2::bigint) WHERE id = $1`, [
@@ -1488,7 +1769,7 @@ async function routePage(db: Db, botId: string): Promise<RoutePage | undefined> 
       unknown_runner: unknownRunner,
       failed,
       read: rows.length,
-      held_back: await heldBack(rows.at(-1)!.seq),
+      held_back: await heldBack(rows.length, rows.at(-1)!.seq),
     };
   });
 }
@@ -1617,9 +1898,12 @@ export async function moveSubject(
        WHERE bot_id = $1::uuid AND thread_id = $3::uuid AND subject = $2 AND state = 'waiting'`,
       [botId, subject, fromThreadId, toThreadId],
     );
-    await tx.query(`UPDATE loopway.threads SET status = 'active', updated_at = now() WHERE id = $1::uuid`, [
-      toThreadId,
-    ]);
+    // Both threads changed: one lost a subject, the other got it and is resumed.
+    await tx.query(
+      `UPDATE loopway.threads SET status = CASE WHEN id = $1::uuid THEN 'active' ELSE status END, updated_at = now()
+       WHERE id IN ($1::uuid, $2::uuid)`,
+      [toThreadId, fromThreadId],
+    );
     return true;
   });
 }

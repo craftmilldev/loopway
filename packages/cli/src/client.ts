@@ -165,6 +165,41 @@ export interface Thread {
   updated_at: string;
 }
 
+/** A thread in a runner's work feed: what the runner needs to claim it, order it and run it. */
+export type WorkThread = Pick<
+  Thread,
+  "id" | "bot_id" | "started" | "interrupted" | "limited" | "runner_id" | "subjects"
+> & {
+  /** The waiting messages' ids, oldest first. */
+  waiting: Pick<ThreadMessage, "id">[];
+};
+
+/** A thread as a runner's dashboard shows it. */
+export type DashboardThread = Pick<
+  Thread,
+  | "id"
+  | "bot_id"
+  | "status"
+  | "limited"
+  | "interrupted"
+  | "runner_id"
+  | "subjects"
+  | "title"
+  | "automation_level"
+  | "updated_at"
+> & {
+  /** The waiting messages of the runner's own threads; empty for other runners' threads. */
+  waiting: Pick<ThreadMessage, "id" | "type" | "subject">[];
+};
+
+/** A runner as a dashboard names it. */
+export interface DashboardRunner {
+  id: string;
+  name: string;
+  /** Whether a process holds its lease. */
+  leased: boolean;
+}
+
 /** A chat with the org's manager: a thread of the org with no bot. */
 export interface ManagerThread {
   /** The chat's session id. */
@@ -497,7 +532,20 @@ export class LoopwayClient {
    */
   async runnerWork(runnerId: string, runnerLeaseToken: string, botIds: string[]) {
     const path = `/runners/${enc(runnerId)}/work?bots=${botIds.map(enc).join(",")}`;
-    return (await this.request<{ data: Thread[] }>("GET", path, undefined, { "x-lease-token": runnerLeaseToken })).data;
+    return (await this.request<{ data: WorkThread[] }>("GET", path, undefined, { "x-lease-token": runnerLeaseToken }))
+      .data;
+  }
+
+  /**
+   * A runner's dashboard: the threads of these bots, with just what it shows, and its org's runners. With `since`
+   * (the `as_of` of the last call), only the threads changed since then. 404 from a server without it.
+   */
+  runnerThreads(runnerId: string, botIds: string[], since?: string) {
+    const query = `bots=${botIds.map(enc).join(",")}${since ? `&since=${enc(since)}` : ""}`;
+    return this.request<{ data: DashboardThread[]; runners: DashboardRunner[]; as_of: string }>(
+      "GET",
+      `/runners/${enc(runnerId)}/threads?${query}`,
+    );
   }
 
   /** Moves the thread's waiting messages to inflight, marks it active, and returns them. */

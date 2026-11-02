@@ -120,6 +120,8 @@ describe("migration 022_created_by", () => {
         "035_inbox_last_delivery",
         "036_runner_names",
         "037_drop_bot_leases",
+        "038_threads_bot_updated",
+        "039_threads_title",
       ]);
 
       const by = async (table: string, id: string) =>

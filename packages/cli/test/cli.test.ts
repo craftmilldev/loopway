@@ -1621,33 +1621,37 @@ describe("threads", () => {
     const { inbox, d, finish } = await setup(2);
     await send(inbox, "issues", issue("opened", 1));
     await d.tick();
+    const board = vi.spyOn(LoopwayClient.prototype, "runnerThreads");
     const threads = vi.spyOn(LoopwayClient.prototype, "listThreads");
-    const runners = vi.spyOn(LoopwayClient.prototype, "listRunners");
     try {
       // Redrawing as often as the TUI likes costs no calls.
       for (let i = 0; i < 5; i++) expect(Object.keys((await d.state()).threads)).toHaveLength(1);
-      expect(threads).not.toHaveBeenCalled();
-      expect(runners).not.toHaveBeenCalled();
+      expect(board).not.toHaveBeenCalled();
 
-      // A new thread shows up with the tick that routes it, which fetches the snapshot once.
+      // A new thread shows up with the tick that routes it, which fetches the snapshot once: only what changed since
+      // the last fetch, which is the new thread.
       await send(inbox, "issues", issue("opened", 2));
       await d.tick();
       expect(Object.keys((await d.state()).threads)).toHaveLength(2);
-      expect(runners).toHaveBeenCalledTimes(1);
+      expect(board).toHaveBeenCalledTimes(1);
+      expect(board.mock.calls[0]![2]).toEqual(expect.any(String));
+      const changed = (await board.mock.results[0]!.value) as { data: { subjects: string[] }[] };
+      expect(changed.data.map((t) => t.subjects)).toEqual([["a/b#2"]]);
+      expect(threads).not.toHaveBeenCalled();
 
       // A burst of refreshes (a loop of sends, say) shares the fetch in flight.
-      runners.mockClear();
+      board.mockClear();
       await Promise.all(Array.from({ length: 6 }, () => d.refresh()));
-      expect(runners).toHaveBeenCalledTimes(1);
+      expect(board).toHaveBeenCalledTimes(1);
     } finally {
+      board.mockRestore();
       threads.mockRestore();
-      runners.mockRestore();
     }
     await finish();
   });
 
   it("holds every delivery after a run hits the usage limit, then resumes the session where it was", async () => {
-    const { inbox, runs, out, d, finish, list } = await setup(3);
+    const { inbox, bot, client, runs, out, d, finish, list } = await setup(3);
     await send(inbox, "issues", issue("opened", 1));
     await d.tick();
     expect(runs).toHaveLength(1);
@@ -1665,7 +1669,7 @@ describe("threads", () => {
     expect(state.running.size).toBe(0);
     // Only this runner's threads wait on it: the new issue's thread stays unclaimed through the limit.
     expect(state.waiting.map((m) => m.subject)).toEqual(["a/b#1"]);
-    expect(state.threads[first!.sessionId]!.delivered).toBe(delivered.length);
+    expect((await client.getThread(bot.id, first!.sessionId)).delivered).toBe(delivered.length);
     expect(state.threads[first!.sessionId]!.limited).toBe(true);
 
     // Once it resets, the session is told to carry on, with the comment that arrived meanwhile.
@@ -1701,7 +1705,7 @@ describe("threads", () => {
   });
 
   it("redelivers a limited run's messages when they never reached the session", async () => {
-    const { inbox, runs, out, d, finish, list } = await setup(3);
+    const { inbox, bot, client, runs, out, d, finish, list } = await setup(3);
     await send(inbox, "issues", issue("opened", 1));
     await d.tick();
     expect(runs).toHaveLength(1);
@@ -1717,7 +1721,7 @@ describe("threads", () => {
     const state = await d.state();
     expect(state.running.size).toBe(0);
     expect(state.waiting.map((m) => m.subject)).toEqual(["a/b#1"]);
-    expect(state.threads[first!.sessionId]!.delivered).toBe(0);
+    expect((await client.getThread(bot.id, first!.sessionId)).delivered).toBe(0);
 
     // Once it resets, the session is resumed with the same messages, and the new thread starts too.
     skipAhead(LIMIT_MS);
@@ -1734,7 +1738,7 @@ describe("threads", () => {
   });
 
   it("retries a session whose run ended on an API error, with a backoff and a cap", async () => {
-    const { inbox, runs, out, d, finish } = await setup(3);
+    const { inbox, bot, client, runs, out, d, finish } = await setup(3);
     await send(inbox, "issues", issue("opened", 1));
     await d.tick();
     const [first] = runs;
@@ -1744,7 +1748,7 @@ describe("threads", () => {
     await finish({ code: 0, delivered: true, apiError: error });
     await d.refresh();
     expect(out.join("\n")).toMatch(/hit an API error .*Overloaded.*retry 1\/3/);
-    expect((await d.state()).threads[first!.sessionId]!.interrupted).toBe(true);
+    expect((await client.getThread(bot.id, first!.sessionId)).interrupted).toBe(true);
     await d.tick();
     expect(runs).toHaveLength(1);
 
@@ -1758,7 +1762,7 @@ describe("threads", () => {
       expect(out.join("\n")).toMatch(/resumed \w+ for a\/b#1 \(after an interruption, 0 messages\)/);
       expect(runs[1]!.resume).toBe(true);
       expect(runs[1]!.message).toMatch(/^Your last run was cut off before it finished/);
-      expect((await d.state()).threads[first!.sessionId]!.interrupted).toBe(false);
+      expect((await client.getThread(bot.id, first!.sessionId)).interrupted).toBe(false);
 
       await finish({ code: 0, delivered: true, apiError: error });
       expect(out.join("\n")).toMatch(/retry 2\/3/);
@@ -1774,7 +1778,7 @@ describe("threads", () => {
       // The cap: the fourth failure in a row is not retried.
       await finish({ code: 0, delivered: true, apiError: error });
       expect(out.join("\n")).toMatch(/giving up after 3 retries/);
-      expect((await d.state()).threads[first!.sessionId]!.interrupted).toBe(false);
+      expect((await client.getThread(bot.id, first!.sessionId)).interrupted).toBe(false);
       skew += 100 * API_ERROR_BACKOFF_MS;
       await d.tick();
       expect(runs).toHaveLength(4);
@@ -2209,9 +2213,9 @@ describe("threads", () => {
     expect(runs).toHaveLength(0);
     const state = await d.state();
     expect(state.waiting).toEqual([]);
-    expect(Object.values(state.threads)).toMatchObject([
-      { runner_id: other.id, waiting: [{ type: expect.any(String) }, { type: expect.any(String) }] },
-    ]);
+    // Their thread is listed as theirs; its messages are for their dashboard, so this one doesn't read them.
+    expect(Object.values(state.threads)).toMatchObject([{ id: threadId, runner_id: other.id, waiting: [] }]);
+    expect((await client.getThread(bot.id, threadId)).waiting).toHaveLength(2);
     expect(state.runners[other.id]).toBe("desktop");
   });
 

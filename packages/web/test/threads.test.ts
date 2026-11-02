@@ -65,7 +65,47 @@ describe("thread titles and summaries", () => {
     ]);
     const list = (await call("GET", `${base}/threads`, { key })).body.data;
     expect(list[0]).toMatchObject({ title: "New title" });
-    expect(list[0].waiting[0].summary).toBe("alice opened issue #4: Old title");
+    // Summaries are for the one thread's page; a list leaves them out, so it reads no event it would only summarize.
+    expect(list[0].waiting[0]).not.toHaveProperty("summary");
+  });
+
+  it("reads the title stored on the thread: the newest a message gave, kept past later messages with none", async () => {
+    const { key, inbox, base, assign, thread } = await setup(0);
+    const sender = { login: "alice" };
+    for (const n of [1, 2])
+      await sendGithub(inbox, "push", { ref: `refs/heads/b${n}`, sender, commits: [{}], repository: { url: "u" } });
+    const ms = (await call("GET", `/inboxes/${inbox.id}/messages?order=asc`, { key })).body.data as { id: string }[];
+    const id = randomUUID();
+    // The events carry no title: only the stored one can say "Stored".
+    await assign([
+      { message_id: ms[0]!.id, thread_id: id, title: "Stored" },
+      { message_id: ms[1]!.id, thread_id: id, title: "" },
+    ]);
+    expect((await thread(id)).body.title).toBe("Stored");
+    expect((await call("GET", `${base}/threads`, { key })).body.data[0]).toMatchObject({ title: "Stored" });
+  });
+
+  it("leaves an older thread's title to be read when a message with no title is routed to it", async () => {
+    const { key, inbox, assign, thread } = await setup(0);
+    await sendGithub(inbox, "issues", {
+      action: "opened",
+      sender: { login: "alice" },
+      issue: { number: 4, title: "Old title" },
+      repository: { url: "u" },
+    });
+    await sendGithub(inbox, "push", {
+      ref: "refs/heads/main",
+      sender: { login: "alice" },
+      commits: [{}],
+      repository: { url: "u" },
+    });
+    const ms = (await call("GET", `/inboxes/${inbox.id}/messages?order=asc`, { key })).body.data as { id: string }[];
+    const id = randomUUID();
+    await assign([{ message_id: ms[0]!.id, thread_id: id }]);
+    // As a thread from before titles were stored: no title worked out yet.
+    await db.query(`UPDATE loopway.threads SET title = NULL WHERE id = $1`, [id]);
+    await assign([{ message_id: ms[1]!.id, thread_id: id, title: "" }], { cursor: 1 });
+    expect((await thread(id)).body.title).toBe("Old title");
   });
 
   it("creates a thread on the runner the assignment names, and leaves an existing thread where it is", async () => {

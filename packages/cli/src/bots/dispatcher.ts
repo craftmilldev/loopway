@@ -2,13 +2,15 @@ import { readFile } from "node:fs/promises";
 import {
   ApiError,
   type Bot,
+  type DashboardRunner,
+  type DashboardThread,
   type Lease,
   type LoopwayClient,
   type ManagerThread,
-  type Runner,
   type Thread,
   type ThreadMessage,
   type ThreadPatch,
+  type WorkThread,
 } from "../client.js";
 import { loadGithubBot } from "../config.js";
 import { UsageError, type Context } from "../context.js";
@@ -58,7 +60,7 @@ export const DEFAULTS = { max: 3, interval: 5, ttl: 30 };
 export const MAX_POLL_INTERVAL = 60;
 
 /** A message waiting on one of this runner's threads. The same message can wait on a thread of each bot. */
-export interface WaitingMessage extends ThreadMessage {
+export interface WaitingMessage extends Pick<ThreadMessage, "id" | "type" | "subject"> {
   thread_id: string;
   bot_name: string;
 }
@@ -70,7 +72,7 @@ export interface DispatcherState {
   /** Messages assigned to this runner's threads but not delivered yet, oldest first. */
   waiting: WaitingMessage[];
   /** Every thread of the bots, this runner's and other runners', by id. */
-  threads: Record<string, Thread>;
+  threads: Record<string, DashboardThread>;
   /** This runner's id, and the names of the account's runners, to say whose a thread is. */
   runnerId: string;
   runners: Record<string, string>;
@@ -130,7 +132,15 @@ export class Dispatcher {
   /** The fetch `refresh()` has in flight. */
   private refreshing?: Promise<void>;
   /** What `state()` shows: filled by `refresh()`, never by `state()` itself. */
-  private snapshot: { threads: Record<string, Thread>; runners: Runner[] } = { threads: {}, runners: [] };
+  private snapshot: {
+    threads: Record<string, DashboardThread>;
+    runners: DashboardRunner[];
+    /** The bots the threads are of, and what to pass as `since` to read only what changed since; see refresh(). */
+    bots?: string;
+    asOf?: string;
+  } = { threads: {}, runners: [] };
+  /** The server has no dashboard feed (it is older), so the snapshot is read the way it was before it. */
+  private legacySnapshot = false;
   /** Whether a run has exited since the last tick started, and who to tell when one does. */
   private freed = false;
   private onFreed?: () => void;
@@ -257,7 +267,7 @@ export class Dispatcher {
   }
 
   /** The work feed for this runner's bots: its threads with waiting messages, and the unowned ones it can claim. */
-  private fetchWork(): Promise<Thread[]> {
+  private fetchWork(): Promise<WorkThread[]> {
     return this.client.runnerWork(
       this.runnerId,
       this.token(),
@@ -266,9 +276,9 @@ export class Dispatcher {
   }
 
   /**
-   * Re-reads the threads of this runner's bots and the account's runners into the snapshot `state()` returns. Once
-   * per tick, and after a send or end from the TUI; a failure leaves the last snapshot in place. Calls that arrive
-   * while a fetch is running share it.
+   * Brings the snapshot `state()` returns up to date: the threads of this runner's bots and the org's runners. Once per
+   * tick, and after a send or end from the TUI; a failure leaves the last snapshot in place. Calls that arrive while a
+   * fetch is running share it. Only the threads that changed since the last read are read again, unless the bots did.
    */
   refresh(): Promise<void> {
     this.watching = true;
@@ -282,9 +292,29 @@ export class Dispatcher {
 
   private async fetchSnapshot(): Promise<void> {
     try {
-      const threads: Record<string, Thread> = {};
+      const botIds = this.bots.map((b) => b.id);
+      const bots = botIds.join(",");
+      if (!this.legacySnapshot) {
+        try {
+          const since = this.snapshot.bots === bots ? this.snapshot.asOf : undefined;
+          const res = await this.client.runnerThreads(this.runnerId, botIds, since);
+          const threads = since ? { ...this.snapshot.threads } : {};
+          for (const t of res.data) threads[t.id] = t;
+          this.snapshot = { threads, runners: res.runners, bots, asOf: res.as_of };
+          return;
+        } catch (err) {
+          if (!(err instanceof ApiError && err.status === 404)) throw err;
+          this.legacySnapshot = true;
+        }
+      }
+      const threads: Record<string, DashboardThread> = {};
       for (const bot of this.bots) for (const t of await this.client.listThreads(bot.id, "all")) threads[t.id] = t;
-      this.snapshot = { threads, runners: await this.client.listRunners(this.org) };
+      const runners = (await this.client.listRunners(this.org)).map((r) => ({
+        id: r.id,
+        name: r.name,
+        leased: !!r.leased_until,
+      }));
+      this.snapshot = { threads, runners };
     } catch (err) {
       this.ctx.out(`error: refreshing the thread list: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -372,7 +402,7 @@ export class Dispatcher {
       threads,
       runnerId: this.runnerId,
       runners,
-      offline: new Set(all.filter((r) => !r.leased_until).map((r) => r.id)),
+      offline: new Set(all.filter((r) => !r.leased).map((r) => r.id)),
       running: new Set(this.running.keys()),
       harnesses: Object.fromEntries([...this.sessions].map(([id, s]) => [id, s.harness])),
     };
@@ -472,7 +502,7 @@ export class Dispatcher {
    * Claims the feed's unowned threads, oldest first, into `ready` while there is room under --max. First claim wins:
    * a thread another runner took first is skipped, and so is one this runner can't claim right now.
    */
-  private async claimUnowned(work: Thread[], ready: Thread[], running: number): Promise<void> {
+  private async claimUnowned(work: WorkThread[], ready: WorkThread[], running: number): Promise<void> {
     const open = work
       .filter((t) => !t.runner_id)
       .sort((a, b) => (a.waiting[0]?.id ?? "").localeCompare(b.waiting[0]?.id ?? ""));
@@ -497,7 +527,7 @@ export class Dispatcher {
    * queueing up and go out on the first tick after it does. The threads come from the work feed, and the unowned ones
    * in it are claimed first, as many as there is room for.
    */
-  private async deliverAll(work: Thread[]): Promise<void> {
+  private async deliverAll(work: WorkThread[]): Promise<void> {
     if (Date.now() < this.limitedUntil) return;
     if (this.limitedUntil) {
       this.limitedUntil = 0;
@@ -505,8 +535,8 @@ export class Dispatcher {
     }
     const running = new Set(this.running.keys());
     // A thread the limit stopped is ready too, with nothing new to deliver; ordering puts it first.
-    const ready: Thread[] = [];
-    const isReady = (t: Thread) =>
+    const ready: WorkThread[] = [];
+    const isReady = (t: WorkThread) =>
       t.runner_id === this.runnerId &&
       !running.has(t.id) &&
       (t.waiting.length || t.limited || t.interrupted) &&
@@ -520,7 +550,7 @@ export class Dispatcher {
       if (bot) await this.refreshVersion(bot).catch(() => {});
     }
 
-    const deliveries: { thread: Thread; messages: ThreadMessage[] }[] = [];
+    const deliveries: { thread: WorkThread; messages: ThreadMessage[] }[] = [];
     let failed = 0;
     for (const thread of ready) {
       if (running.size + deliveries.length >= this.max) break;
@@ -550,7 +580,7 @@ export class Dispatcher {
    * A session the usage limit stopped is told to carry on, as its last messages are already in it.
    * `thread` is as it was before the delivery, so its flags say how the last run ended.
    */
-  private async run(thread: Thread, messages: ThreadMessage[]): Promise<void> {
+  private async run(thread: WorkThread, messages: ThreadMessage[]): Promise<void> {
     const id = thread.id;
     this.threadBots.set(id, thread.bot_id);
     const short = id.slice(0, 8);
