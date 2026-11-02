@@ -1627,13 +1627,17 @@ function serializeRunner(r: store.Runner) {
 const TITLE_STEPS = [1, 1, 2, 4, 12];
 
 /**
- * Each thread's title: the newest title among its last 20 messages, computed from the stored CloudEvents through the
- * source registry, so a better title shows on old messages too. Reads the messages newest first in TITLE_STEPS and
- * stops at the first step with a title, so it reads few messages past it. Threads with none are left out.
+ * Each thread's title, as routing stored it on the thread: the newest title among its messages. A thread from before
+ * titles were stored has none yet, so its title is worked out once, from the newest 20 messages' stored CloudEvents
+ * through the source registry (newest first in TITLE_STEPS, stopping at the first title), and stored. Threads with no
+ * title are left out.
  */
 async function threadTitles(db: Db, threadIds: string[]): Promise<Map<string, string>> {
-  const titles = new Map<string, string>();
-  let left = [...new Set(threadIds)];
+  const ids = [...new Set(threadIds)];
+  const stored = await store.storedTitles(db, ids);
+  const found = new Map<string, string>();
+  let left = ids.filter((id) => !stored.has(id));
+  const missing = new Set(left);
   let skip = 0;
   for (const step of TITLE_STEPS) {
     if (!left.length) break;
@@ -1642,12 +1646,15 @@ async function threadTitles(db: Db, threadIds: string[]): Promise<Map<string, st
     for (const id of left) {
       const page = events.get(id) ?? [];
       const title = page.map((e) => sources.title(e.source_type, e.cloudevent)).find((t) => t);
-      if (title) titles.set(id, title);
+      if (title) found.set(id, title);
       else if (page.length === step) more.push(id);
     }
     left = more;
     skip += step;
   }
+  await store.storeTitles(db, new Map([...missing].map((id) => [id, found.get(id) ?? ""])));
+  const titles = new Map<string, string>();
+  for (const [id, t] of [...stored, ...found]) if (t) titles.set(id, t);
   return titles;
 }
 

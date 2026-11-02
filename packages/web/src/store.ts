@@ -4,6 +4,7 @@ import type { CloudEvent } from "./cloudevents.js";
 import { MIGRATE_LOCK, type Db } from "./db/index.js";
 import { ApiError } from "./http.js";
 import type { SecretBox } from "./secrets.js";
+import { sources } from "./sources.js";
 import { slugProblem, type SlugProblem } from "./slugs.js";
 import { isUuid, newLockToken, newLoginCode, normalizeLoginCode, safeEqual, sha256, uuidv7 } from "./ids.js";
 
@@ -1300,6 +1301,28 @@ export async function threadEvents(
   return byThread;
 }
 
+/** The titles stored on the threads: '' for none, and no entry for a thread whose title isn't worked out yet. */
+export async function storedTitles(db: Db, threadIds: string[]): Promise<Map<string, string>> {
+  if (!threadIds.length) return new Map();
+  const rows = await db.query<{ id: string; title: string }>(
+    `SELECT id, title FROM loopway.threads
+     WHERE title IS NOT NULL AND id IN (SELECT value::uuid FROM jsonb_array_elements_text($1::jsonb))`,
+    [threadIds],
+  );
+  return new Map(rows.map((r) => [r.id, r.title]));
+}
+
+/** Stores worked-out titles ('' for none) on threads that have none yet. */
+export async function storeTitles(db: Db, titles: Map<string, string>): Promise<void> {
+  if (!titles.size) return;
+  await db.query(
+    `UPDATE loopway.threads t SET title = x.title
+     FROM (SELECT (v->>'id')::uuid AS id, v->>'title' AS title FROM jsonb_array_elements($1::jsonb) v) x
+     WHERE t.id = x.id AND t.title IS NULL`,
+    [[...titles].map(([id, title]) => ({ id, title }))],
+  );
+}
+
 /** The thread that holds each of these subjects, for the bot's subjects that are taken. */
 export async function subjectHolders(db: Db, botId: string, subjects: string[]): Promise<Map<string, string>> {
   const rows = await db.query<{ subject: string; thread_id: string }>(
@@ -1470,6 +1493,11 @@ export interface Assignment {
   subject?: string;
   /** Who made the message, as the bot's rules judged it (see `authorKind` in BotRule). Drives the thread's level. */
   author_kind?: "human" | "bot";
+  /**
+   * The title the message's source finds in it ("" for none), which the thread takes if it is the newest. Left out, the
+   * thread's title is worked out when it is first read.
+   */
+  title?: string;
   /** The runner a new thread is created on (it owns the thread from the start); ignored for a thread that exists. */
   runner_id?: string;
 }
@@ -1498,19 +1526,28 @@ export async function writeAssignments(
   if (!assignments.length) return { assigned: 0, levels: [] as (2 | 3 | 4)[], onRunner: 0 };
   // The assignments as rows, shared by the three inserts below.
   const a = `(SELECT (x->>'message_id')::uuid AS message_id, (x->>'thread_id')::uuid AS thread_id,
-                     x->'add_subjects' AS add_subjects, x->>'subject' AS subject, x->>'author_kind' AS author_kind, (x->>'runner_id')::uuid AS runner_id, n
+                     x->'add_subjects' AS add_subjects, x->>'subject' AS subject, x->>'author_kind' AS author_kind, x->>'title' AS title, (x->>'runner_id')::uuid AS runner_id, n
               FROM jsonb_array_elements($1::jsonb) WITH ORDINALITY AS e(x, n))`;
   // A new thread's level comes from its first message's author kind: a person is 2, a bot 4.
   const created = await tx.query<{ id: string; level: 2 | 4 | null; runner_id: string | null }>(
     `INSERT INTO loopway.threads (id, bot_id, created_by, org_id, automation_level, runner_id)
      SELECT DISTINCT ON (a.thread_id) a.thread_id, $2::uuid, $3, $4::uuid,
             CASE a.author_kind WHEN 'human' THEN 2 WHEN 'bot' THEN 4 END, r.id
+     
      FROM ${a} a LEFT JOIN loopway.runners r ON r.id = a.runner_id AND r.org_id = $4::uuid
      ORDER BY a.thread_id, a.n
      ON CONFLICT (id) DO NOTHING RETURNING id, automation_level AS level, runner_id`,
     [assignments, botId, actor, orgId],
   );
   for (const t of created) await recordThreadEvents(tx, orgId, botId, t.id, ["created"]);
+  // Each thread takes the newest title among the batch's messages, or "" if none has one and it has none stored.
+  await tx.query(
+    `UPDATE loopway.threads t SET title = x.title
+     FROM (SELECT DISTINCT ON (a.thread_id) a.thread_id, a.title FROM ${a} a WHERE a.title IS NOT NULL
+           ORDER BY a.thread_id, a.title = '', a.n DESC) x
+     WHERE t.id = x.thread_id AND (x.title <> '' OR t.title IS NULL)`,
+    [assignments],
+  );
   await tx.query(
     `INSERT INTO loopway.thread_subjects (thread_id, bot_id, subject)
      SELECT DISTINCT a.thread_id, $2::uuid, k.subject
@@ -1629,8 +1666,10 @@ async function routePage(db: Db, botId: string): Promise<RoutePage | undefined> 
         )
       ).length > 0;
     // Routing reads a message's id, its seq (for the cursor) and its event, nothing else.
-    const rows = await tx.query<{ id: string; seq: string | bigint; cloudevent: CloudEvent }>(
-      botMessagesSql(`e.id, e.seq, e.cloudevent`),
+    const rows = await tx.query<{ id: string; seq: string | bigint; cloudevent: CloudEvent; source_type: string }>(
+      botMessagesSql(
+        `e.id, e.seq, e.cloudevent, (SELECT i.source_type FROM loopway.inboxes i WHERE i.id = e.inbox_id) AS source_type`,
+      ),
       [botId, ROUTE_HOLDBACK_SECONDS, ROUTE_PAGE],
     );
     if (!rows.length) return { ...base, held_back: await heldBack(0, bot.cursor) };
@@ -1684,12 +1723,14 @@ async function routePage(db: Db, botId: string): Promise<RoutePage | undefined> 
         // Only a new thread goes to the runner the rule names; it is looked up below.
         const runner = !known.has(routed.thread_id) && routed.runner !== ANY_RUNNER ? routed.runner : undefined;
         known.add(routed.thread_id);
+        const title = sources.title(m.source_type, m.cloudevent);
         assignments.push({
           message_id: m.id,
           thread_id: routed.thread_id,
           ...(routed.add_subjects.length ? { add_subjects: routed.add_subjects } : {}),
           ...(routed.key ? { subject: routed.key } : {}),
           ...(routed.author_kind ? { author_kind: routed.author_kind } : {}),
+          title: title ?? "",
           ...(runner !== undefined ? { runner } : {}),
         });
       } catch (err) {

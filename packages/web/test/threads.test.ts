@@ -69,6 +69,22 @@ describe("thread titles and summaries", () => {
     expect(list[0].waiting[0]).not.toHaveProperty("summary");
   });
 
+  it("reads the title stored on the thread: the newest a message gave, kept past later messages with none", async () => {
+    const { key, inbox, base, assign, thread } = await setup(0);
+    const sender = { login: "alice" };
+    for (const n of [1, 2])
+      await sendGithub(inbox, "push", { ref: `refs/heads/b${n}`, sender, commits: [{}], repository: { url: "u" } });
+    const ms = (await call("GET", `/inboxes/${inbox.id}/messages?order=asc`, { key })).body.data as { id: string }[];
+    const id = randomUUID();
+    // The events carry no title: only the stored one can say "Stored".
+    await assign([
+      { message_id: ms[0]!.id, thread_id: id, title: "Stored" },
+      { message_id: ms[1]!.id, thread_id: id, title: "" },
+    ]);
+    expect((await thread(id)).body.title).toBe("Stored");
+    expect((await call("GET", `${base}/threads`, { key })).body.data[0]).toMatchObject({ title: "Stored" });
+  });
+
   it("creates a thread on the runner the assignment names, and leaves an existing thread where it is", async () => {
     const { key, inbox, base, assign, thread, runner } = await setup(0);
     await sendGithub(inbox, "issues", {
