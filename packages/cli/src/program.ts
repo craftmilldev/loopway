@@ -97,7 +97,7 @@ A CLI installed from a release updates itself to the newest one; turn that off w
       "set the API URL, metrics host, self-update, the manager bot and the GitHub bot for `loopway bots run` in ~/.loopway/config.json; run `loopway login` after",
     )
     .option("--url <url>", "API base URL, e.g. https://loopway.example.com (prompted for if omitted)")
-    .option("--posthog-host <url>", "where product metrics go (default: the API's /api/ingest proxy)")
+    .option("--posthog-host <url>", "where product metrics go (default: Craftmill's shared proxy)")
     .option("--github-token <token>", "token for the GitHub bot that `loopway bots run` sessions act as")
     .option("--github-name <name>", "the bot's git author name")
     .option("--github-email <email>", "the bot's git author email")

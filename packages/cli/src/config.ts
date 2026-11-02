@@ -9,7 +9,7 @@ export const defaultConfigDir = () => join(homedir(), ".loopway");
 export interface Config {
   api_url: string;
   api_key: string;
-  /** Where product metrics go; the API's /api/ingest proxy when unset. Set it to send straight to PostHog (https://us.i.posthog.com), EU or self-hosted. */
+  /** Where product metrics go; Craftmill's shared proxy (https://a.craftmill.dev/api/ingest) when unset. Set it to send straight to PostHog (https://us.i.posthog.com), EU or self-hosted. */
   posthog_host?: string;
   /** The GitHub bot `loopway bots run` sessions act as. Set by `loopway config update`; `login` keeps it. */
   github?: GithubBot;
@@ -40,6 +40,9 @@ export interface GithubBot {
 }
 
 /** Used for anything neither the environment nor config.json sets. */
+/** The shared PostHog proxy every Craftmill product sends events through. */
+const POSTHOG_PROXY = "https://a.craftmill.dev/api/ingest";
+
 const DEFAULTS = { api_url: "https://loopway.craftmill.dev" };
 
 export const configPath = (dir: string) => join(dir, "config.json");
@@ -65,8 +68,8 @@ export async function loadConfig(
   return {
     api_url,
     api_key: env.LOOPWAY_API_KEY || file?.api_key,
-    // Metrics go through the API's PostHog reverse proxy unless pointed elsewhere.
-    posthog_host: env.POSTHOG_HOST || file?.posthog_host || `${api_url}/api/ingest`,
+    // Metrics go through Craftmill's shared PostHog proxy unless pointed elsewhere.
+    posthog_host: env.POSTHOG_HOST || file?.posthog_host || POSTHOG_PROXY,
     auto_update: !(env.LOOPWAY_NO_UPDATE && env.LOOPWAY_NO_UPDATE !== "0") && file?.auto_update !== false,
     // LOOPWAY_MANAGER=1/0 beats the file; any other value (or empty) falls through to it.
     manager_enabled:

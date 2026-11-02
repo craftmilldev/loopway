@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { Hono } from "hono";
 import { MARKETING_PATHS } from "./marketing.js";
-import { ANONYMOUS, noopMetrics, type Metrics } from "./metrics.js";
+import { ANONYMOUS, noopMetrics, POSTHOG_PROXY, type Metrics } from "./metrics.js";
 
 // The web UI is a React app in client/ that talks to the JSON API on the same origin. scripts/client.ts bundles it
 // into public/app.js and public/app.css. This module returns the HTML shell that loads the bundle, and serves the
@@ -34,10 +34,11 @@ ${posthogMeta}
 const escapeAttr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
 // The project key is public by design: the browser needs it to send events.
-function posthogMeta(key: string | undefined, uiHost: string | undefined) {
+function posthogMeta(key: string | undefined, host: string | undefined, uiHost: string | undefined) {
   if (!key) return "";
   const ui = uiHost ? `\n<meta name="posthog-ui-host" content="${escapeAttr(uiHost)}">` : "";
-  return `<meta name="posthog-key" content="${escapeAttr(key)}">${ui}`;
+  const proxy = host ? `\n<meta name="posthog-host" content="${escapeAttr(host)}">` : "";
+  return `<meta name="posthog-key" content="${escapeAttr(key)}">${proxy}${ui}`;
 }
 
 // For tools like Codex and Claude Code to learn about loopway (https://llmstxt.org). The URL is literal for file tracing.
@@ -69,6 +70,8 @@ const ORG_PAGES = [
 export interface WebOptions {
   /** PostHog project key for the browser. Unset, the UI sends no metrics. */
   posthogKey?: string;
+  /** Where the browser sends events: the shared proxy, or a self-hosted PostHog. Defaults to the shared proxy. */
+  posthogHost?: string;
   /** Where PostHog's own UI lives, for links from the browser. Optional. */
   posthogUiHost?: string;
   /** Product metrics. Defaults to recording nothing. */
@@ -82,7 +85,7 @@ export interface WebOptions {
 export function createWeb(opts: WebOptions = {}) {
   const app = new Hono();
   const metrics = opts.metrics ?? noopMetrics;
-  const html = shell(posthogMeta(opts.posthogKey, opts.posthogUiHost));
+  const html = shell(posthogMeta(opts.posthogKey, opts.posthogHost ?? POSTHOG_PROXY, opts.posthogUiHost));
   // The signed-in pages live under /<org-slug>; /dashboard/... are their old addresses, which the page redirects.
   const pages = [
     ...MARKETING_PATHS,
