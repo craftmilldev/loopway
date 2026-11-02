@@ -140,8 +140,14 @@ export const granola = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapte
 
     const eventType = payload.event_type;
     const noteId = payload.note_id;
-    if (typeof eventType !== "string" || !eventType || typeof noteId !== "string" || !noteId) {
-      return { kind: "rejected", status: 400, message: "Payload is missing event_type or note_id" };
+    // A signed delivery about no note is Granola's "send a test event" (its shape isn't documented): acknowledge it
+    // like GitHub's ping, so the dialog shows success, and name its event_type in the outcome.
+    if (typeof noteId !== "string" || !noteId) {
+      const kind = typeof eventType === "string" ? eventType.replace(/[^\w.-]/g, "").slice(0, 64) : "";
+      return { kind: "ignored", reason: kind ? `no_note:${kind}` : "no_note" };
+    }
+    if (typeof eventType !== "string" || !eventType) {
+      return { kind: "rejected", status: 400, message: "Payload is missing event_type" };
     }
     if (!config.events.includes("*") && !config.events.includes(eventType)) {
       return { kind: "rejected", status: 422, message: `event "${eventType}" not enabled for this inbox` };

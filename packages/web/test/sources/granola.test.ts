@@ -87,6 +87,32 @@ describe("granola webhooks", () => {
     expect((await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data).toHaveLength(0);
   });
 
+  it("acknowledges a signed delivery about no note (Granola's test event) without storing it", async () => {
+    const key = await newUser();
+    const inbox = await granolaInbox(key);
+    const r = await sendGranola(inbox.id, { event_id: "t-1", event_type: "webhook.test" });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ignored: true, reason: "no_note:webhook.test" });
+    const bare = await sendGranola(inbox.id, {});
+    expect(await bare.json()).toEqual({ ignored: true, reason: "no_note" });
+    expect(
+      (
+        await sendGranola(
+          inbox.id,
+          { event_type: "webhook.test" },
+          { secret: "whsec_" + Buffer.from("x").toString("base64") },
+        )
+      ).status,
+    ).toBe(401);
+    expect((await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data).toHaveLength(0);
+  });
+
+  it("rejects a note event with no event_type", async () => {
+    const key = await newUser();
+    const inbox = await granolaInbox(key);
+    expect((await sendGranola(inbox.id, { note_id: "not_1" })).status).toBe(400);
+  });
+
   it("dedupes redeliveries", async () => {
     const key = await newUser();
     const inbox = await granolaInbox(key);
