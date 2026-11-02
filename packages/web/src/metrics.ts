@@ -14,9 +14,20 @@ export const ANONYMOUS = "anonymous";
 /** Craftmill's shared PostHog proxy: where the server, the browser and the CLI send events unless told otherwise. */
 export const POSTHOG_PROXY = "https://a.craftmill.dev/api/ingest";
 
-/** POSTHOG_HOST when set (self-hosted PostHog, or another proxy), else the shared proxy. */
+const POSTHOG_CLOUD_HOSTS = ["us.i.posthog.com", "eu.i.posthog.com", "us.posthog.com", "eu.posthog.com"];
+
+/** True when POSTHOG_HOST is one of PostHog's own cloud hosts: a leftover from before the proxy, which would bypass it. */
+export function isPosthogCloudHost(host: string | undefined): boolean {
+  try {
+    return POSTHOG_CLOUD_HOSTS.includes(new URL(host ?? "").hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+/** POSTHOG_HOST when set to something else (self-hosted PostHog, or another proxy), else the shared proxy. */
 export function posthogHost(env: NodeJS.ProcessEnv = process.env): string {
-  return env.POSTHOG_HOST || POSTHOG_PROXY;
+  return (!isPosthogCloudHost(env.POSTHOG_HOST) && env.POSTHOG_HOST) || POSTHOG_PROXY;
 }
 
 /** The browser reports to PostHog's EU UI when POSTHOG_HOST is an EU host (eu.i.posthog.com), else the US one. */

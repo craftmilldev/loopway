@@ -5,7 +5,7 @@ import { createApi, parseScheduleOptions } from "./api.js";
 import { minCliVersion } from "./cli-version.js";
 import { getDb } from "./db/index.js";
 import { senderFromEnv } from "./email.js";
-import { createMetrics, posthogHost, posthogUiHost } from "./metrics.js";
+import { createMetrics, isPosthogCloudHost, posthogHost, posthogUiHost } from "./metrics.js";
 
 const app = new Hono();
 
@@ -14,6 +14,10 @@ if (!tokenSecret) throw new Error("TOKEN_SECRET is required (it signs session to
 
 const inboxSecretKey = process.env.INBOX_SECRET_KEY;
 if (!inboxSecretKey) throw new Error("INBOX_SECRET_KEY is required (it encrypts inbox webhook secrets)");
+
+if (isPosthogCloudHost(process.env.POSTHOG_HOST)) {
+  console.log(`POSTHOG_HOST=${process.env.POSTHOG_HOST} is a PostHog cloud host: ignored, using ${posthogHost()}`);
+}
 
 app.route(
   "/",

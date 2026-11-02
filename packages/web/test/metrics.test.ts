@@ -82,6 +82,13 @@ describe("metrics", () => {
     expect(posthogHost({ POSTHOG_HOST: "https://ph.example" })).toBe("https://ph.example");
   });
 
+  it("ignores a leftover PostHog cloud host so it cannot bypass the proxy", () => {
+    for (const host of ["us.i.posthog.com", "eu.i.posthog.com", "us.posthog.com", "eu.posthog.com"]) {
+      expect(posthogHost({ POSTHOG_HOST: `https://${host}` })).toBe(POSTHOG_PROXY);
+    }
+    expect(posthogHost({ POSTHOG_HOST: "https://ph.example.com" })).toBe("https://ph.example.com");
+  });
+
   it("links to PostHog's EU UI only for an eu.* host", () => {
     expect(posthogUiHost({})).toBe("https://us.posthog.com");
     expect(posthogUiHost({ POSTHOG_HOST: "not a url" })).toBe("https://us.posthog.com");

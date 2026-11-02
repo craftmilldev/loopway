@@ -41,6 +41,16 @@ export interface GithubBot {
 
 /** The shared PostHog proxy every Craftmill product sends events through. */
 const POSTHOG_PROXY = "https://a.craftmill.dev/api/ingest";
+const POSTHOG_CLOUD_HOSTS = ["us.i.posthog.com", "eu.i.posthog.com", "us.posthog.com", "eu.posthog.com"];
+
+/** POSTHOG_HOST, unless it is one of PostHog's own cloud hosts (a leftover from before the proxy, which would bypass it). */
+function posthogHostFromEnv(host: string | undefined): string | undefined {
+  try {
+    return POSTHOG_CLOUD_HOSTS.includes(new URL(host ?? "").hostname.toLowerCase()) ? undefined : host || undefined;
+  } catch {
+    return host || undefined;
+  }
+}
 
 /** Used for anything neither the environment nor config.json sets. */
 const DEFAULTS = { api_url: "https://loopway.craftmill.dev" };
@@ -69,7 +79,7 @@ export async function loadConfig(
     api_url,
     api_key: env.LOOPWAY_API_KEY || file?.api_key,
     // Metrics go through Craftmill's shared PostHog proxy unless pointed elsewhere.
-    posthog_host: env.POSTHOG_HOST || file?.posthog_host || POSTHOG_PROXY,
+    posthog_host: posthogHostFromEnv(env.POSTHOG_HOST) || file?.posthog_host || POSTHOG_PROXY,
     auto_update: !(env.LOOPWAY_NO_UPDATE && env.LOOPWAY_NO_UPDATE !== "0") && file?.auto_update !== false,
     // LOOPWAY_MANAGER=1/0 beats the file; any other value (or empty) falls through to it.
     manager_enabled:
