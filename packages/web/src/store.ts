@@ -1540,13 +1540,13 @@ export async function writeAssignments(
     [assignments, botId, actor, orgId],
   );
   for (const t of created) await recordThreadEvents(tx, orgId, botId, t.id, ["created"]);
-  // Each thread takes the newest title among the batch's messages, or "" if none has one and it has none stored.
+  // Each thread takes the newest title among the batch's messages, or "" if none has one and the thread is new (an older thread without a title stays unworked-out, to be read later).
   await tx.query(
     `UPDATE loopway.threads t SET title = x.title
      FROM (SELECT DISTINCT ON (a.thread_id) a.thread_id, a.title FROM ${a} a WHERE a.title IS NOT NULL
            ORDER BY a.thread_id, a.title = '', a.n DESC) x
-     WHERE t.id = x.thread_id AND (x.title <> '' OR t.title IS NULL)`,
-    [assignments],
+     WHERE t.id = x.thread_id AND (x.title <> '' OR t.id IN (SELECT value::uuid FROM jsonb_array_elements_text($2::jsonb)))`,
+    [assignments, created.map((t) => t.id)],
   );
   await tx.query(
     `INSERT INTO loopway.thread_subjects (thread_id, bot_id, subject)
