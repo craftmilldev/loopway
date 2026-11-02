@@ -21,7 +21,7 @@ Each event only carries `note_id`; fetch the note itself with a Granola API key 
 
 ## Delivery
 
-Deliveries are authenticated by the [Standard Webhooks](https://www.standardwebhooks.com) `webhook-signature` header, with the `webhook-timestamp` within 5 minutes. An event type not in `config.events` answers `422`. Granola retries only `408`, `429` and `5xx`, so a `401` or `422` is dropped. A redelivery of a stored event answers `200 {duplicate: true}`.
+Deliveries are authenticated by the [Standard Webhooks](https://www.standardwebhooks.com) `webhook-signature` header, with the `webhook-timestamp` within 5 minutes. An event type not in `config.events` answers `422`. Granola retries only `408`, `429` and `5xx`, so a `401` or `422` is dropped. A redelivery of a stored event answers `200 {duplicate: true}`. A signed delivery with no `note_id`, such as the test event the webhook dialog sends, answers `200 {ignored: true}` and stores nothing; the inbox's last delivery shows `ignored:no_note:<event_type>`.
 
 ## CloudEvent mapping
 
