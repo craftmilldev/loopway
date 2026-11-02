@@ -35,9 +35,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-        env:
-          # @craftmilldev/analytics is on GitHub Packages (see .npmrc).
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: npm test
       - run: npm run typecheck
       - run: npm run lint

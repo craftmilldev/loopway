@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createAnalytics, type ServerAnalytics } from "@craftmilldev/analytics/server";
+import { PostHog } from "posthog-node";
 import { loadConfig } from "./config.js";
 import { CLI_VERSION } from "./version.js";
 
@@ -42,18 +42,19 @@ export function createMetrics(dir: string, env: NodeJS.ProcessEnv = process.env)
   const apiKey = env.POSTHOG_API_KEY;
   const optedOut = (env.DO_NOT_TRACK && env.DO_NOT_TRACK !== "0") || env.LOOPWAY_TELEMETRY === "0";
   if (!apiKey || optedOut) return noopMetrics;
-  let client: ServerAnalytics | undefined;
+  let client: PostHog | undefined;
   return {
     // Sent right away, not batched: the CLI exits as soon as its command is done.
     async capture(event, properties) {
       try {
         // The host comes from `loadConfig`: config.json, else POSTHOG_HOST, else the shared proxy.
         const { api_key, posthog_host } = await loadConfig(dir, env);
-        client ??= createAnalytics({ product: "loopway", app: "cli", apiKey, host: posthog_host });
-        // The logged-in user, like the web side; the install until someone logs in.
-        await client.capture(event, tokenUserId(api_key) ?? (await installId(dir)), {
-          ...properties,
-          cli_version: CLI_VERSION,
+        client ??= new PostHog(apiKey, { host: posthog_host });
+        await client.captureImmediate({
+          // The logged-in user, like the web side; the install until someone logs in.
+          distinctId: tokenUserId(api_key) ?? (await installId(dir)),
+          event,
+          properties: { ...properties, product: "loopway", app: "cli", cli_version: CLI_VERSION },
         });
       } catch {
         // Offline or unwritable config dir: the command still has to work.

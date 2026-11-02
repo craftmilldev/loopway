@@ -25,7 +25,6 @@
     "typecheck": "tsc --noEmit && tsc --noEmit --strict false"
   },
   "dependencies": {
-    "@craftmilldev/analytics": "^0.1.0",
     "@loopway/harnesses": "*",
     "@loopway/palette": "*",
     "@loopway/presets": "*",
@@ -36,6 +35,8 @@
     "hono": "^4.13.13",
     "marked": "^18.1.0",
     "postgres": "^3.4.9",
+    "posthog-js": "^1.438.7",
+    "posthog-node": "^5.55.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "zod": "^4.6.5"

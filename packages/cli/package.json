@@ -15,17 +15,17 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && tsx scripts/bundle-analytics.ts",
+    "build": "tsc -p tsconfig.build.json",
     "start": "tsx src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@clack/prompts": "^1.8.1",
     "@loopway/harnesses": "*",
     "@loopway/palette": "*",
     "@loopway/presets": "*",
     "@loopway/rules": "*",
+    "@clack/prompts": "^1.8.1",
     "chalk": "^6.0.1",
     "commander": "^15.0.0",
     "ink": "^8.0.0",
@@ -33,11 +33,9 @@
     "react": "^19.3.0"
   },
   "devDependencies": {
-    "@craftmilldev/analytics": "^0.1.0",
     "@loopway/web": "*",
     "@types/node": "^22.0.0",
     "@types/react": "^19.3.0",
-    "esbuild": "^0.28.2",
     "ink-testing-library": "^4.0.0",
     "tsx": "^4.23.15",
     "typescript": "^5.9.0",

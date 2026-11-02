@@ -27,10 +27,6 @@ loopway bots run --org <you>  # a runner on this machine; leave it running (your
 loopway bots create --org <you> --name <name> --inbox <inbox> --harness <harness> --preset <preset> --model <model>   # a bot for the runner to run
 ```
 
-## Developing
-
-`npm install` needs access to `@craftmilldev/analytics`, Craftmill's shared PostHog package on GitHub Packages (`.npmrc` points the `@craftmilldev` scope there). Set `NODE_AUTH_TOKEN` to a GitHub token with `read:packages` first (`export NODE_AUTH_TOKEN=$(gh auth token)` works once you have that scope: `gh auth refresh -s read:packages`). CI and the CLI release workflow use `secrets.GITHUB_TOKEN`, which needs the package to grant this repo read access; Vercel needs `NODE_AUTH_TOKEN` as a build env var. The published CLI inlines the package, so installing the CLI needs no token.
-
 ## CLI
 
 `loopway` lives in `packages/cli` and talks to the API over HTTP.

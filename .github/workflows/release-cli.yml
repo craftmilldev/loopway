@@ -14,7 +14,6 @@ on:
 
 permissions:
   contents: write
-  packages: read
 
 # One release at a time, and never cancel one halfway through publishing.
 concurrency:
@@ -74,9 +73,6 @@ jobs:
           cache: npm
       - if: steps.plan.outputs.release == 'true'
         run: npm ci
-        env:
-          # @craftmilldev/analytics is on GitHub Packages (see .npmrc).
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Set the version
         if: steps.plan.outputs.release == 'true'
         run: |
