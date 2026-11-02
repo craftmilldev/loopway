@@ -93,21 +93,6 @@ export function checkRules(rules: BotRule[]): void {
 }
 
 /**
- * Decides which thread a message goes to, given who holds each subject (subject → thread id) and the
- * bot's rules. The rules whose type globs match the message are tried in order. Each finds a `subject` (the
- * message's own, "" for none) and `related` ones, and its `action` says what to do with them:
- *
- * - `skip`: move on to the next rule.
- * - `attach`: attach the message to the thread holding the subject (the own one first, then the related ones in
- *   order), or to a new thread if none does, and stop. The rule's `runner` matters only for a new thread; one that
- *   exists stays on its runner.
- *
- * A message that no rule attached is dropped. A message sent to a thread (THREAD_MESSAGE_TYPE) skips the rules.
- * `add_subjects` is every subject the rule found that no thread holds yet. Ones another thread holds stay there.
- *
- * Doesn't change `held`; the caller adds `add_subjects` to it as it assigns, so later messages see them.
- */
-/**
  * Everything `route` may look up for this message: the subjects it may ask `held` about and the thread ids it may ask
  * `self.threads` about. A router reads just these, not every subject and thread the bot has. An expression that throws
  * here throws again in `route`, which reports it, so it adds nothing.
@@ -133,6 +118,22 @@ export function lookups(rules: readonly BotRule[], e: RoutableMessage): { subjec
   }
   return { subjects: [...subjects], threads: [] };
 }
+
+/**
+ * Decides which thread a message goes to, given who holds each subject (subject → thread id) and the
+ * bot's rules. The rules whose type globs match the message are tried in order. Each finds a `subject` (the
+ * message's own, "" for none) and `related` ones, and its `action` says what to do with them:
+ *
+ * - `skip`: move on to the next rule.
+ * - `attach`: attach the message to the thread holding the subject (the own one first, then the related ones in
+ *   order), or to a new thread if none does, and stop. The rule's `runner` matters only for a new thread; one that
+ *   exists stays on its runner.
+ *
+ * A message that no rule attached is dropped. A message sent to a thread (THREAD_MESSAGE_TYPE) skips the rules.
+ * `add_subjects` is every subject the rule found that no thread holds yet. Ones another thread holds stay there.
+ *
+ * Doesn't change `held`; the caller adds `add_subjects` to it as it assigns, so later messages see them.
+ */
 
 export function route(
   rules: readonly BotRule[],

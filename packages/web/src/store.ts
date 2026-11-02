@@ -948,10 +948,6 @@ export async function listRunners(db: Db, userId: string, orgId?: string): Promi
   );
 }
 
-export async function touchRunner(db: Db, id: string): Promise<void> {
-  await db.query(`UPDATE loopway.runners SET last_seen_at = now() WHERE id = $1`, [id]);
-}
-
 /**
  * Lease the runner to a process. Succeeds if nobody holds a live lease, or it's already leased with `currentToken`
  * (in which case the lease is extended and the token kept). Only one process uses a runner id at a time.
@@ -1017,7 +1013,10 @@ export interface Thread {
   bot_id: string | null;
   /** 'bot': a bot's session. 'manager': a chat with the org's manager (no bot). */
   kind: "bot" | "manager";
-  /** The runner that assigned it for the bot, as an actor (see actor.ts); the bot if its lease named no runner. Informational. */
+  /**
+   * Who made the thread, as an actor (see actor.ts): the bot whose routing started it (`bot:<uuid>`), or for a manager
+   * thread the runner that opened it (`runner:<uuid>`). Informational.
+   */
   created_by: string;
   status: "active" | "ended";
   started: boolean;
@@ -1310,16 +1309,6 @@ export async function subjectHolders(db: Db, botId: string, subjects: string[]):
   return new Map(rows.map((r) => [r.subject, r.thread_id]));
 }
 
-/** The ids among these that are messages in one of the bot's inboxes. */
-export async function botMessageIds(db: Db, botId: string, ids: string[]): Promise<Set<string>> {
-  const rows = await db.query<{ id: string }>(
-    `SELECT m.id FROM loopway.messages m JOIN loopway.bot_inboxes bi ON bi.inbox_id = m.inbox_id
-     WHERE bi.bot_id = $1 AND m.id IN (SELECT value::uuid FROM jsonb_array_elements_text($2::jsonb))`,
-    [botId, ids],
-  );
-  return new Set(rows.map((r) => r.id));
-}
-
 /**
  * The thread's owner holds a live runner lease with token $2: the condition thread writes make inside their statement.
  * Thread $3 of bot $1.
@@ -1497,7 +1486,7 @@ export async function writeAssignments(
   actor: string,
   all: Assignment[],
 ) {
-  // Another assigner (the server's routing, a runner) may have got to these messages first. Dropping them here keeps
+  // An earlier routing pass may have got to these messages first. Dropping them here keeps
   // a thread from being made for messages that then go nowhere.
   const done = await tx.query<{ message_id: string }>(
     `SELECT message_id FROM loopway.thread_messages
@@ -1571,8 +1560,8 @@ export interface RouteResult {
 /**
  * Routes the bot's messages past its cursor to threads on the server, with no runner lease: under the bot's assign
  * lock, a page (100) at a time, with the rules of its newest version and the subjects and threads it holds now,
- * writing like `assignMessages` and moving the cursor. Does nothing for a bot with no rules. Several calls at once
- * take turns, so each message is routed once and in order; a message a runner assigned is skipped. A message that
+ * writing with `writeAssignments` and moving the cursor. Does nothing for a bot with no rules. Several calls at once
+ * take turns, so each message is routed once and in order. A message that
  * landed in the last second is waited for, once (unless `wait` is false, for a request that can't spare the time),
  * as a commit still in flight could take a lower `seq`.
  */

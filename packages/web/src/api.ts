@@ -1030,7 +1030,7 @@ export function createApi(opts: ApiOptions) {
     .min(1)
     .max(100);
 
-  /** Rejects rules whose expressions don't parse, so a bad edit fails on save and not on a runner. */
+  /** Rejects rules whose expressions don't parse, so a bad edit fails on save and not in routing. */
   async function checked(c: Context<Env>, rules: z.infer<typeof rulesBody> | undefined, action: "create" | "version") {
     if (!rules) return rules;
     try {
@@ -1289,8 +1289,8 @@ export function createApi(opts: ApiOptions) {
     return c.json(threadBody((await store.getThreadRow(c.var.db, bot.id, thread.id))!));
   });
 
-  // A member's message to a thread: it lands in one of the bot's inboxes like any other, and the bot's runner routes
-  // it to this thread by its subject (the thread's id). It stays inside loopway's own auth.
+  // A member's message to a thread: it lands in one of the bot's inboxes like any other, and the server's routing puts
+  // it on this thread by its subject (the thread's id). It stays inside loopway's own auth.
   authed.post("/bots/:botId/threads/:threadId/messages", async (c) => {
     const bot = await memberBot(c);
     const thread = await existingThread(c, bot);
@@ -1355,11 +1355,7 @@ export function createApi(opts: ApiOptions) {
       })
       .parse(await jsonBody(c));
     await requireOwner(c, thread, input.lease_token);
-    await checkSubjects(
-      c,
-      bot,
-      (input.add_subjects ?? []).map((subject) => ({ subject, threadId: thread.id })),
-    );
+    await checkSubjects(c, bot, input.add_subjects ?? [], thread.id);
 
     const { lease_token, add_subjects, metadata_set, metadata_unset, ...fields } = input;
     const touched = Object.keys(metadata_set ?? {}).length + (metadata_unset?.length ?? 0);
@@ -1480,19 +1476,17 @@ export function createApi(opts: ApiOptions) {
     return thread;
   }
 
-  /** 409 if a subject is already on another of the bot's threads, or the batch wants it on two. */
-  async function checkSubjects(c: Context<Env>, bot: { id: string }, wanted: { subject: string; threadId: string }[]) {
-    if (!wanted.length) return;
-    const holders = await store.subjectHolders(c.var.db, bot.id, [...new Set(wanted.map((w) => w.subject))]);
-    const claimed = new Map(holders);
-    for (const { subject, threadId } of wanted) {
-      const holder = claimed.get(subject);
+  /** 409 if a subject is already on another of the bot's threads. */
+  async function checkSubjects(c: Context<Env>, bot: { id: string }, subjects: string[], threadId: string) {
+    if (!subjects.length) return;
+    const holders = await store.subjectHolders(c.var.db, bot.id, [...new Set(subjects)]);
+    for (const subject of subjects) {
+      const holder = holders.get(subject);
       if (holder && holder !== threadId)
         throw new ApiError(409, "subject_taken", `Subject ${subject} already belongs to thread ${holder}`, {
           subject,
           thread_id: holder,
         });
-      claimed.set(subject, threadId);
     }
   }
 
