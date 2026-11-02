@@ -62,18 +62,24 @@ describe("decide", () => {
     expect(args.slice(0, 2)).toEqual(["-C", root]);
     return args.slice(2);
   };
-  const run = (changed: string[], previousSha: string | undefined) => {
+  const run = (changed: string[], previousSha: string | undefined, force = false) => {
     const calls: string[][] = [];
     const git = (...args: string[]) => {
       const cmd = unpin(args);
       calls.push(cmd);
       return cmd[0] === "diff" ? changed.join("\n") : "";
     };
-    return { ...decide({ root, previousSha, git }), calls };
+    return { ...decide({ root, previousSha, git, force }), calls };
   };
 
   it("builds when there is no previous sha", () => {
     expect(run([], undefined).build).toBe(true);
+  });
+
+  it("builds without asking git when forced, even with nothing changed", () => {
+    const result = run([], "abc", true);
+    expect(result.build).toBe(true);
+    expect(result.calls).toEqual([]);
   });
 
   it("skips when only packages/cli changed", () => {

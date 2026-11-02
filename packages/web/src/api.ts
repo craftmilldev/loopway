@@ -227,7 +227,7 @@ export function createApi(opts: ApiOptions) {
 
   api.post("/webhooks/:inboxId", async (c) => {
     const inboxId = c.req.param("inboxId");
-    const inbox = isUuid(inboxId) ? await store.getInbox(c.var.db, inboxId) : undefined;
+    const inbox = isUuid(inboxId) ? await store.deliveryInbox(c.var.db, inboxId) : undefined;
     if (!inbox) throw new ApiError(404, "not_found", "Inbox not found");
     const delivery = { headers: c.req.raw.headers, rawBody: await c.req.text() };
     const result = await deliver(c, inbox, delivery, false);
@@ -241,7 +241,7 @@ export function createApi(opts: ApiOptions) {
    */
   async function deliver(
     c: Context<Env>,
-    inbox: Inbox,
+    inbox: store.DeliveryInbox,
     delivery: { headers: Headers; rawBody: string },
     test: boolean,
   ): Promise<{ kind: "ignored"; reason: string } | { kind: "stored"; id: string; seq: number; duplicate: boolean }> {
@@ -404,7 +404,7 @@ export function createApi(opts: ApiOptions) {
 
   async function userForToken(db: Db, token: string) {
     const claims = verifyToken(token, opts.tokenSecret);
-    return claims ? store.findUserById(db, claims.sub) : undefined;
+    return claims ? store.userExists(db, claims.sub) : undefined;
   }
 
   const authed = new Hono<Env>();
@@ -416,7 +416,7 @@ export function createApi(opts: ApiOptions) {
     await next();
   });
 
-  authed.get("/me", (c) => c.json(serializeUser(c.var.user)));
+  authed.get("/me", async (c) => c.json(serializeUser((await store.findUserById(c.var.db, c.var.user.id))!)));
 
   // Usernames are personal-org slugs. Checking is separate from setting so a form can say "taken" before submit.
   authed.get("/usernames/:username", async (c) => {
@@ -433,16 +433,17 @@ export function createApi(opts: ApiOptions) {
   // Sets the username, which also makes the personal org for a new signup. After that it renames the org's slug.
   authed.patch("/me/username", async (c) => {
     const { username } = z.object({ username: usernameParam }).parse(await jsonBody(c));
-    const result = await store.setUsername(c.var.db, c.var.user.id, username);
+    const user = (await store.findUserById(c.var.db, c.var.user.id))!;
+    const result = await store.setUsername(c.var.db, user.id, username);
     if ("problem" in result) {
-      await metrics.capture("username_rejected", c.var.user.id, {
+      await metrics.capture("username_rejected", user.id, {
         reason: result.problem,
-        renaming: !!c.var.user.username,
+        renaming: !!user.username,
       });
       throw usernameError(result.problem);
     }
     await metrics.capture(result.created ? "username_chosen" : "username_renamed", c.var.user.id);
-    return c.json(serializeUser({ ...c.var.user, username }));
+    return c.json(serializeUser({ ...user, username }));
   });
 
   authed.get("/orgs", async (c) => c.json({ data: await store.listOrgs(c.var.db, c.var.user.id) }));
@@ -943,9 +944,43 @@ export function createApi(opts: ApiOptions) {
         owned: rows.filter((t) => t.runner_id).length,
         claimable: rows.filter((t) => !t.runner_id).length,
       });
-      return c.json({ data: await serializeThreads(c.var.db, rows, false) });
+      return c.json({ data: rows });
     });
   }
+
+  // A runner's dashboard: the threads of its bots (with `since`, only those changed since then) and its org's runners,
+  // with just what the dashboard shows. `as_of` is the `since` of the next call.
+  authed.get("/runners/:runnerId/threads", async (c) => {
+    const runner = await routeRunner(c);
+    const parsed = z
+      .object({
+        bots: z
+          .string()
+          .default("")
+          .transform((b) => b.split(",").filter(Boolean))
+          .pipe(z.array(uuid).max(100)),
+        since: z.iso.datetime({ offset: true }).optional(),
+      })
+      .safeParse(c.req.query());
+    if (!parsed.success) {
+      await metrics.capture("runner_threads_rejected", runner.org_id, { reason: "invalid_query" });
+      throw new ApiError(400, "invalid_request", "bots must be up to 100 bot ids, and since an ISO time");
+    }
+    const { bots, since } = parsed.data;
+    const [{ threads, as_of }, runners] = await Promise.all([
+      store.boardThreads(c.var.db, runner, bots, since ? new Date(since) : undefined),
+      store.boardRunners(c.var.db, runner.org_id),
+    ]);
+    const titles = await threadTitles(
+      c.var.db,
+      threads.map((t) => t.id),
+    );
+    return c.json({
+      data: threads.map((t) => ({ ...t, title: titles.get(t.id) ?? null, updated_at: iso(t.updated_at) })),
+      runners,
+      as_of: iso(as_of),
+    });
+  });
 
   authed.post("/runners/:runnerId/release", async (c) => {
     const runner = await routeRunner(c);
@@ -1038,12 +1073,9 @@ export function createApi(opts: ApiOptions) {
       await listOrg(c, "events"),
     );
     const page = rows.slice(0, q.data.limit);
-    const newest = await store.threadNewestEvents(c.var.db, [...new Set(page.map((e) => e.thread_id))], TITLE_LOOKBACK);
-    const titles = new Map(
-      [...newest].map(([id, events]) => [
-        id,
-        events.map((e) => sources.title(e.source_type, e.cloudevent)).find((title) => title) ?? null,
-      ]),
+    const titles = await threadTitles(
+      c.var.db,
+      page.map((e) => e.thread_id),
     );
     await metrics.capture("thread_events_viewed", c.var.user.id, {
       paged: !!q.data.before,
@@ -1099,7 +1131,12 @@ export function createApi(opts: ApiOptions) {
     return c.json(serializeBot(bot), 201);
   });
 
-  authed.get("/bots/:botId", async (c) => c.json(serializeBot(await memberBot(c))));
+  authed.get("/bots/:botId", async (c) => {
+    const id = c.req.param("botId");
+    const bot = isUuid(id) ? await store.getBot(c.var.db, id, c.var.user.id) : undefined;
+    if (!bot) throw new ApiError(404, "not_found", "Bot not found");
+    return c.json(serializeBot(bot));
+  });
 
   authed.get("/bots/:botId/activity", async (c) => {
     const bot = await memberBot(c);
@@ -1130,7 +1167,7 @@ export function createApi(opts: ApiOptions) {
     }
     // A started thread's session lives in the harness that made it, and another harness can't resume it.
     if (input.harness && input.harness !== bot.harness) {
-      const live = (await store.listThreads(c.var.db, bot.id, "active")).filter((t) => t.started).length;
+      const live = await store.startedThreads(c.var.db, bot.id);
       if (live > 0) {
         await metrics.capture("bot_harness_change_rejected", c.var.user.id, { from: bot.harness, to: input.harness });
         throw new ApiError(409, "harness_in_use", `${live} started thread(s) are still active in ${bot.harness}`);
@@ -1194,12 +1231,30 @@ export function createApi(opts: ApiOptions) {
       .parse(c.req.query());
     await routeBots(c.var.db, [bot.id], "catch_up");
     const rows = await store.listThreads(c.var.db, bot.id, q.status);
-    return c.json({ data: await serializeThreads(c.var.db, rows, q.titles === "true") });
+    // Without titles the field is left out, as an older server would.
+    const titles =
+      q.titles === "true"
+        ? await threadTitles(
+            c.var.db,
+            rows.map((t) => t.id),
+          )
+        : undefined;
+    return c.json({
+      data: rows.map((t) => ({
+        ...serializeThreadRow(t),
+        ...(titles ? { title: titles.get(t.id) ?? null } : {}),
+        waiting: t.waiting,
+        inflight: t.inflight,
+      })),
+    });
   });
 
   authed.get("/bots/:botId/threads/:threadId", async (c) => {
     const bot = await memberBot(c);
-    return c.json(await serializeThread(c.var.db, await existingThread(c, bot)));
+    const id = c.req.param("threadId");
+    const thread = isUuid(id) ? await store.getThread(c.var.db, bot.id, id.toLowerCase()) : undefined;
+    if (!thread) throw new ApiError(404, "not_found", "Thread not found");
+    return c.json(await serializeThread(c.var.db, thread));
   });
 
   authed.post("/bots/:botId/threads/:threadId/claim", async (c) => {
@@ -1212,14 +1267,14 @@ export function createApi(opts: ApiOptions) {
     const claimed = await store.claimThread(c.var.db, c.var.user.id, bot.id, thread.id, lease_token);
     if (!claimed) {
       // Another runner may have claimed it since the read above: first claim wins, and this one is told so.
-      const now = await store.getThread(c.var.db, bot.id, thread.id);
+      const now = await store.threadHead(c.var.db, bot.id, thread.id);
       if (now?.runner_id && now.runner_id !== runner.id) {
         await metrics.capture("thread_claim_lost", runner.org_id, {});
         throw threadOwned(now);
       }
       throw runnerNotLeased();
     }
-    return c.json(await serializeThread(c.var.db, claimed));
+    return c.json(threadBody(claimed));
   });
 
   // The manual move, for when the thread's runner is gone: the thread has no owner until a runner claims it.
@@ -1227,7 +1282,7 @@ export function createApi(opts: ApiOptions) {
     const bot = await memberBot(c);
     const thread = await existingThread(c, bot);
     await store.releaseThread(c.var.db, bot.id, thread.id);
-    return c.json(await serializeThread(c.var.db, (await store.getThread(c.var.db, bot.id, thread.id))!));
+    return c.json(threadBody((await store.getThreadRow(c.var.db, bot.id, thread.id))!));
   });
 
   // A member's message to a thread: it lands in one of the bot's inboxes like any other, and the server's routing puts
@@ -1240,7 +1295,7 @@ export function createApi(opts: ApiOptions) {
       await metrics.capture("thread_message_rejected", c.var.user.id, { reason: "invalid_text" });
       throw parsed.error;
     }
-    const inboxId = bot.inbox_ids[0];
+    const inboxId = await store.firstBotInbox(c.var.db, bot.id);
     if (!inboxId) {
       await metrics.capture("thread_message_rejected", c.var.user.id, { reason: "no_inbox" });
       throw new ApiError(409, "no_inbox", "The bot has no inbox to send the message through");
@@ -1273,7 +1328,7 @@ export function createApi(opts: ApiOptions) {
     const thread = await existingThread(c, bot);
     await store.endThread(c.var.db, bot.id, thread.id);
     await metrics.capture("thread_ended_by_owner", c.var.user.id, { already_ended: thread.status === "ended" });
-    return c.json(await serializeThread(c.var.db, (await store.getThread(c.var.db, bot.id, thread.id))!));
+    return c.json(threadBody((await store.getThreadRow(c.var.db, bot.id, thread.id))!));
   });
 
   authed.patch("/bots/:botId/threads/:threadId", async (c) => {
@@ -1319,7 +1374,7 @@ export function createApi(opts: ApiOptions) {
         set: Object.keys(metadata_set ?? {}).length > 0,
         unset: (metadata_unset?.length ?? 0) > 0,
       });
-    return c.json(await serializeThread(c.var.db, (await store.getThread(c.var.db, bot.id, thread.id))!));
+    return c.json(threadBody((await store.getThreadRow(c.var.db, bot.id, thread.id))!));
   });
 
   // The manual repair for a subject that landed on the wrong thread: from this thread to `to_thread_id`. Needs no lease, like release.
@@ -1331,7 +1386,7 @@ export function createApi(opts: ApiOptions) {
     if (to.id === from.id) throw new ApiError(400, "invalid_request", "The subject is already on that thread");
     if (!(await store.moveSubject(c.var.db, bot.id, input.subject, from.id, to.id)))
       throw new ApiError(404, "not_found", `Subject ${input.subject} isn't on thread ${from.id}`);
-    return c.json(await serializeThread(c.var.db, (await store.getThread(c.var.db, bot.id, to.id))!));
+    return c.json(threadBody((await store.getThreadRow(c.var.db, bot.id, to.id))!));
   });
 
   authed.post("/bots/:botId/threads/:threadId/deliver", async (c) => {
@@ -1364,37 +1419,38 @@ export function createApi(opts: ApiOptions) {
 
   // ---------- helpers (closures over opts) ----------
 
-  async function memberBot(c: Context<Env>): Promise<store.Bot> {
+  /** The bot in the path, if it's in one of the user's orgs, as most routes need it (see store.getBotHead). */
+  async function memberBot(c: Context<Env>): Promise<store.BotHead> {
     const id = c.req.param("botId") ?? "";
-    const bot = isUuid(id) ? await store.getBot(c.var.db, id, c.var.user.id) : undefined;
+    const bot = isUuid(id) ? await store.getBotHead(c.var.db, id, c.var.user.id) : undefined;
     if (!bot) throw new ApiError(404, "not_found", "Bot not found");
     return bot;
   }
 
   /** A bot only runs on a runner of its own org: 400 otherwise. */
-  async function requireSameOrg(c: Context<Env>, bot: store.Bot, runner: store.Runner, action: string) {
+  async function requireSameOrg(c: Context<Env>, bot: { org_id: string }, runner: { org_id: string }, action: string) {
     if (runner.org_id === bot.org_id) return;
     await metrics.capture("runner_org_mismatch_rejected", c.var.user.id, { action });
     throw new ApiError(400, "runner_org_mismatch", "A bot can only use a runner from its own org");
   }
 
   /** The runner in the path, if it's in one of the user's orgs. */
-  async function routeRunner(c: Context<Env>): Promise<store.Runner> {
+  async function routeRunner(c: Context<Env>): Promise<store.RunnerHead> {
     const id = c.req.param("runnerId") ?? "";
-    const runner = isUuid(id) ? await store.getRunner(c.var.db, c.var.user.id, id.toLowerCase()) : undefined;
+    const runner = isUuid(id) ? await store.runnerHead(c.var.db, c.var.user.id, id.toLowerCase()) : undefined;
     if (!runner) throw new ApiError(404, "not_found", "Runner not found; register it with POST /runners");
     return runner;
   }
 
   /** The runner holding the live lease `token`: 409 if there is none. */
-  async function liveRunner(c: Context<Env>, token: string): Promise<store.Runner> {
+  async function liveRunner(c: Context<Env>, token: string): Promise<{ id: string; org_id: string }> {
     const runner = await store.runnerByToken(c.var.db, c.var.user.id, token);
     if (!runner) throw runnerNotLeased();
     return runner;
   }
 
   /** Fails fast, with the 409s the write's own check would give, unless `token` is the live lease of the thread's owner. */
-  async function requireOwner(c: Context<Env>, thread: store.Thread, token: string) {
+  async function requireOwner(c: Context<Env>, thread: { runner_id: string | null }, token: string) {
     const runner = await liveRunner(c, token);
     if (!thread.runner_id)
       throw new ApiError(409, "thread_unclaimed", "Claim the thread with POST .../claim before writing it");
@@ -1408,15 +1464,16 @@ export function createApi(opts: ApiOptions) {
     return thread;
   }
 
-  async function existingThread(c: Context<Env>, bot: store.Bot, threadId?: string): Promise<store.Thread> {
+  /** The thread in the path (or `threadId`) of the bot, as a write checks it (see store.threadHead). */
+  async function existingThread(c: Context<Env>, bot: { id: string }, threadId?: string) {
     const id = threadId ?? c.req.param("threadId") ?? "";
-    const thread = isUuid(id) ? await store.getThread(c.var.db, bot.id, id.toLowerCase()) : undefined;
+    const thread = isUuid(id) ? await store.threadHead(c.var.db, bot.id, id.toLowerCase()) : undefined;
     if (!thread) throw new ApiError(404, "not_found", "Thread not found");
     return thread;
   }
 
   /** 409 if a subject is already on another of the bot's threads. */
-  async function checkSubjects(c: Context<Env>, bot: store.Bot, subjects: string[], threadId: string) {
+  async function checkSubjects(c: Context<Env>, bot: { id: string }, subjects: string[], threadId: string) {
     if (!subjects.length) return;
     const holders = await store.subjectHolders(c.var.db, bot.id, [...new Set(subjects)]);
     for (const subject of subjects) {
@@ -1431,8 +1488,8 @@ export function createApi(opts: ApiOptions) {
 
   /** The ids, deduped, once they're all inboxes in the user's orgs. A bot's inboxes share one org: `orgId` if given (the bot's), else each other's. */
   async function memberInboxIds(c: Context<Env>, ids: string[], orgId?: string): Promise<string[]> {
-    const mine = new Map((await store.listInboxes(c.var.db, c.var.user.id)).map((i) => [i.id, i.org_id]));
     const wanted = [...new Set(ids.map((id) => id.toLowerCase()))];
+    const mine = await store.inboxOrgs(c.var.db, c.var.user.id, wanted);
     const unknown = wanted.filter((id) => !mine.has(id));
     if (unknown.length) throw new ApiError(400, "invalid_request", `Unknown inbox id(s): ${unknown.join(", ")}`);
     const orgs = new Set(wanted.map((id) => mine.get(id)!));
@@ -1459,7 +1516,7 @@ export function createApi(opts: ApiOptions) {
   }
 
   /** The inbox's config as its source adapter sees it, with the secret opened. Throws if the key can't open it. */
-  function fullConfig(inbox: Inbox): unknown {
+  function fullConfig(inbox: Pick<Inbox, "id" | "config" | "secret_enc">): unknown {
     if (!inbox.secret_enc) return inbox.config;
     return { ...(inbox.config as object), secret: box.open(inbox.secret_enc, inbox.id) };
   }
@@ -1475,7 +1532,7 @@ export function createApi(opts: ApiOptions) {
   }
 
   /** Notes a delivery on the inbox; the first one is a metric, since it's the step that gets a bot its first message. */
-  async function recordDelivery(db: Db, inbox: Inbox, outcome: string) {
+  async function recordDelivery(db: Db, inbox: store.DeliveryInbox, outcome: string) {
     const stored = outcome === "duplicate" ? "accepted" : outcome;
     await store.recordDelivery(db, inbox.id, stored);
     if (inbox.last_delivery_at !== null) return;
@@ -1541,7 +1598,7 @@ function runnerNotLeased(): ApiError {
   return new ApiError(409, "runner_not_leased", "lease_token is not a live runner lease");
 }
 
-function threadOwned(t: store.Thread): ApiError {
+function threadOwned(t: { runner_id: string | null }): ApiError {
   return new ApiError(409, "thread_owned", "The thread belongs to another runner", { runner_id: t.runner_id });
 }
 
@@ -1559,51 +1616,70 @@ function serializeRunner(r: store.Runner) {
   };
 }
 
-/** How many of a thread's newest messages are looked at for its title. */
-const TITLE_LOOKBACK = 20;
+/**
+ * How many of a thread's newest messages are looked at for its title, a few at a time: most threads have one on their
+ * newest message, so most need only the first step. 20 in all.
+ */
+const TITLE_STEPS = [1, 1, 2, 4, 12];
 
-async function serializeThread(db: Db, t: store.Thread) {
-  return (await serializeThreads(db, [t]))[0]!;
+/**
+ * Each thread's title, as routing stored it on the thread: the newest title among its messages. A thread from before
+ * titles were stored has none yet, so its title is worked out once, from the newest 20 messages' stored CloudEvents
+ * through the source registry (newest first in TITLE_STEPS, stopping at the first title), and stored. Threads with no
+ * title are left out.
+ */
+async function threadTitles(db: Db, threadIds: string[]): Promise<Map<string, string>> {
+  const ids = [...new Set(threadIds)];
+  const stored = await store.storedTitles(db, ids);
+  const found = new Map<string, string>();
+  let left = ids.filter((id) => !stored.has(id));
+  const missing = new Set(left);
+  let skip = 0;
+  for (const step of TITLE_STEPS) {
+    if (!left.length) break;
+    const events = await store.threadEvents(db, left, skip, step);
+    const more: string[] = [];
+    for (const id of left) {
+      const page = events.get(id) ?? [];
+      const title = page.map((e) => sources.title(e.source_type, e.cloudevent)).find((t) => t);
+      if (title) found.set(id, title);
+      else if (page.length === step) more.push(id);
+    }
+    left = more;
+    skip += step;
+  }
+  await store.storeTitles(db, new Map([...missing].map((id) => [id, found.get(id) ?? ""])));
+  const titles = new Map<string, string>();
+  for (const [id, t] of [...stored, ...found]) if (t) titles.set(id, t);
+  return titles;
+}
+
+/** A thread as the thread writes return it: its row and its waiting and inflight messages. */
+function threadBody(t: store.Thread) {
+  return { ...serializeThreadRow(t), waiting: t.waiting, inflight: t.inflight };
 }
 
 /**
- * Summaries and titles are computed here from the stored CloudEvents, through the source registry, so a better
- * summary shows on old messages too. A thread's title is the newest title among its last TITLE_LOOKBACK messages.
+ * One thread with everything about it: its title, and a summary of each of its messages, delivered ones included.
+ * Summaries are computed here from the stored CloudEvents, through the source registry, so a better summary shows on
+ * old messages too.
  */
-async function serializeThreads(db: Db, threads: store.Thread[], titles = true) {
-  const ids = new Set<string>();
-  for (const t of threads)
-    for (const m of [...t.waiting, ...t.inflight, ...(t.delivered_messages ?? [])]) ids.add(m.id);
-  const [events, newest] = await Promise.all([
-    store.messageEvents(db, [...ids]),
-    titles
-      ? store.threadNewestEvents(
-          db,
-          threads.map((t) => t.id),
-          TITLE_LOOKBACK,
-        )
-      : new Map<string, store.MessageEvent[]>(),
-  ]);
+async function serializeThread(db: Db, t: store.Thread) {
+  const ids = [...t.waiting, ...t.inflight, ...(t.delivered_messages ?? [])].map((m) => m.id);
+  const [events, titles] = await Promise.all([store.messageEvents(db, [...new Set(ids)]), threadTitles(db, [t.id])]);
   const summary = (id: string) => {
     const e = events.get(id);
     return e ? sources.summarize(e.source_type, e.cloudevent) : null;
   };
-  return threads.map((t) => ({
+  return {
     ...serializeThreadRow(t),
-    // Without titles the field is left out, as an older server would.
-    ...(titles
-      ? {
-          title:
-            (newest.get(t.id) ?? []).map((e) => sources.title(e.source_type, e.cloudevent)).find((title) => title) ??
-            null,
-        }
-      : {}),
+    title: titles.get(t.id) ?? null,
     waiting: t.waiting.map((m) => ({ ...m, summary: summary(m.id) })),
     inflight: t.inflight.map((m) => ({ ...m, summary: summary(m.id) })),
     ...(t.delivered_messages
       ? { delivered_messages: t.delivered_messages.map((m) => ({ ...m, summary: summary(m.id) })) }
       : {}),
-  }));
+  };
 }
 
 function serializeThreadRow(t: store.Thread) {

@@ -93,6 +93,33 @@ export function checkRules(rules: BotRule[]): void {
 }
 
 /**
+ * Everything `route` may look up for this message: the subjects it may ask `held` about and the thread ids it may ask
+ * `self.threads` about. A router reads just these, not every subject and thread the bot has. An expression that throws
+ * here throws again in `route`, which reports it, so it adds nothing.
+ */
+export function lookups(rules: readonly BotRule[], e: RoutableMessage): { subjects: string[]; threads: string[] } {
+  if (e.event.type === THREAD_MESSAGE_TYPE) {
+    const id = (e.event.data as { thread_id?: unknown } | undefined)?.thread_id;
+    return { subjects: [], threads: typeof id === "string" ? [id] : [] };
+  }
+  const vars = { event_type: e.event.type, data: e.event.data ?? {} };
+  const subjects = new Set<string>();
+  for (const rule of rules) {
+    if (!rule.types.some((t) => matches(t, e.event.type))) continue;
+    try {
+      const key = (rule.subject !== undefined && (base.evaluate(rule.subject, vars) as string)) || undefined;
+      if (!key) continue;
+      subjects.add(key);
+      if (rule.related !== undefined)
+        for (const s of base.evaluate(rule.related, vars) as string[]) if (typeof s === "string") subjects.add(s);
+    } catch {
+      // route() throws the same error for this rule.
+    }
+  }
+  return { subjects: [...subjects], threads: [] };
+}
+
+/**
  * Decides which thread a message goes to, given who holds each subject (subject → thread id) and the
  * bot's rules. The rules whose type globs match the message are tried in order. Each finds a `subject` (the
  * message's own, "" for none) and `related` ones, and its `action` says what to do with them:
@@ -107,6 +134,7 @@ export function checkRules(rules: BotRule[]): void {
  *
  * Doesn't change `held`; the caller adds `add_subjects` to it as it assigns, so later messages see them.
  */
+
 export function route(
   rules: readonly BotRule[],
   held: ReadonlyMap<string, string>,

@@ -1,9 +1,7 @@
 import type { Context } from "hono";
 import type { Db } from "./db/index.js";
-import type { User } from "./store.js";
-
-/** What the authenticated routes read from the Hono context. */
-export type Env = { Variables: { db: Db; user: User; path?: string } };
+/** What the authenticated routes read from the Hono context. `user` is just the id: a route that needs more reads it. */
+export type Env = { Variables: { db: Db; user: { id: string }; path?: string } };
 
 export class ApiError extends Error {
   constructor(
