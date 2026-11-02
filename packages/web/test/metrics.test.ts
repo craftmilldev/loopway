@@ -86,6 +86,7 @@ describe("metrics", () => {
     for (const host of ["us.i.posthog.com", "eu.i.posthog.com", "us.posthog.com", "eu.posthog.com"]) {
       expect(posthogHost({ POSTHOG_HOST: `https://${host}` })).toBe(POSTHOG_PROXY);
     }
+    expect(posthogHost({ POSTHOG_HOST: "us.i.posthog.com" })).toBe(POSTHOG_PROXY);
     expect(posthogHost({ POSTHOG_HOST: "https://ph.example.com" })).toBe("https://ph.example.com");
   });
 

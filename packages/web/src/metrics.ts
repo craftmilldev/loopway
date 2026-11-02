@@ -19,7 +19,9 @@ const POSTHOG_CLOUD_HOSTS = ["us.i.posthog.com", "eu.i.posthog.com", "us.posthog
 /** True when POSTHOG_HOST is one of PostHog's own cloud hosts: a leftover from before the proxy, which would bypass it. */
 export function isPosthogCloudHost(host: string | undefined): boolean {
   try {
-    return POSTHOG_CLOUD_HOSTS.includes(new URL(host ?? "").hostname.toLowerCase());
+    return POSTHOG_CLOUD_HOSTS.includes(
+      new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(host ?? "") ? host! : `https://${host ?? ""}`).hostname.toLowerCase(),
+    );
   } catch {
     return false;
   }

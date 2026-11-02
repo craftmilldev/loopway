@@ -330,6 +330,9 @@ describe("auth", () => {
     expect((await loadConfig(configDir, { POSTHOG_HOST: "https://us.i.posthog.com" })).posthog_host).toBe(
       "https://a.craftmill.dev/api/ingest",
     );
+    expect((await loadConfig(configDir, { POSTHOG_HOST: "us.i.posthog.com" })).posthog_host).toBe(
+      "https://a.craftmill.dev/api/ingest",
+    );
     // A `sandbox` key left by an older CLI is ignored.
     await writeFile(join(configDir, "config.json"), JSON.stringify({ api_url: "https://file.test", sandbox: false }));
     expect(await loadConfig(configDir, {})).not.toHaveProperty("sandbox");

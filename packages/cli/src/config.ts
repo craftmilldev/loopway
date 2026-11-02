@@ -46,7 +46,11 @@ const POSTHOG_CLOUD_HOSTS = ["us.i.posthog.com", "eu.i.posthog.com", "us.posthog
 /** POSTHOG_HOST, unless it is one of PostHog's own cloud hosts (a leftover from before the proxy, which would bypass it). */
 function posthogHostFromEnv(host: string | undefined): string | undefined {
   try {
-    return POSTHOG_CLOUD_HOSTS.includes(new URL(host ?? "").hostname.toLowerCase()) ? undefined : host || undefined;
+    return POSTHOG_CLOUD_HOSTS.includes(
+      new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(host ?? "") ? host! : `https://${host ?? ""}`).hostname.toLowerCase(),
+    )
+      ? undefined
+      : host || undefined;
   } catch {
     return host || undefined;
   }
