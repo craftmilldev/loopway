@@ -737,4 +737,11 @@ ALTER TABLE loopway.bots
   DROP COLUMN runner_id;
 `,
   },
+  {
+    // A runner's dashboard reads only the threads of its bots that changed since its last read, by updated_at.
+    version: "038_threads_bot_updated",
+    sql: `
+CREATE INDEX threads_bot_updated_idx ON loopway.threads (bot_id, updated_at);
+`,
+  },
 ];

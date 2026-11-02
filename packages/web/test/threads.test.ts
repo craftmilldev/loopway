@@ -65,7 +65,8 @@ describe("thread titles and summaries", () => {
     ]);
     const list = (await call("GET", `${base}/threads`, { key })).body.data;
     expect(list[0]).toMatchObject({ title: "New title" });
-    expect(list[0].waiting[0].summary).toBe("alice opened issue #4: Old title");
+    // Summaries are for the one thread's page; a list leaves them out, so it reads no event it would only summarize.
+    expect(list[0].waiting[0]).not.toHaveProperty("summary");
   });
 
   it("creates a thread on the runner the assignment names, and leaves an existing thread where it is", async () => {

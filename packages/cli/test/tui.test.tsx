@@ -42,9 +42,7 @@ const bot = (name: string) => ({ id: name, name, kind: "github-threads", inbox_i
 // A thread in each state (working, waiting, limited, stranded, done) and at each level, a/b#2 with none set.
 const snapshot: Snapshot = {
   bots: [bot("dev"), bot("ci")],
-  waiting: [
-    { id: "e1", inbox_id: "in", type: "com.github.push", subject: "a/b#9", thread_id: "aaaaaaaa-1", bot_name: "dev" },
-  ],
+  waiting: [{ id: "e1", type: "com.github.push", subject: "a/b#9", thread_id: "aaaaaaaa-1", bot_name: "dev" }],
   threads: {
     "aaaaaaaa-1": thread(["a/b#1"], "active", "2026-01-01T00:00:03Z", "me", {
       automation_level: 4,
