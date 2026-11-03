@@ -314,7 +314,7 @@ echo '{"type":"turn.completed"}'
       sessionId: "t1",
       resume: false,
       message: "-hello",
-      model: "gpt-6-sol",
+      model: "gpt-6-astra",
       logPath,
       mcpUrl: "http://127.0.0.1:1/mcp/t1",
       env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
@@ -327,7 +327,7 @@ echo '{"type":"turn.completed"}'
     expect(started).toBe(2);
 
     const args = (await readFile(join(out, "args"), "utf8")).trim().split("\n");
-    expect(args[0]).toMatch(/^exec --json --skip-git-repo-check -m gpt-6-sol /);
+    expect(args[0]).toMatch(/^exec --json --skip-git-repo-check -m gpt-6-astra /);
     expect(args[0]).toContain('mcp_servers.loopway.url="http://127.0.0.1:1/mcp/t1"');
     expect(args[0]).toContain("--dangerously-bypass-approvals-and-sandbox");
     expect(args[0]).toMatch(/ -$/);
@@ -335,7 +335,7 @@ echo '{"type":"turn.completed"}'
     expect(args[1]).toContain("--dangerously-bypass-approvals-and-sandbox");
     expect(args[1]).toMatch(/ th-123 -$/);
     expect(args[0]).not.toContain(" -C ");
-    expect([harness.modelFits("gpt-6-sol"), harness.modelFits("sonnet")]).toEqual([true, false]);
+    expect([harness.modelFits("gpt-6-astra"), harness.modelFits("sonnet")]).toEqual([true, false]);
     expect(await readFile(join(out, "stdin"), "utf8")).toBe("-hello-hello");
 
     // A new thread with its own directory tells codex its working root; a resumed one relies on the spawn's cwd.
@@ -343,7 +343,7 @@ echo '{"type":"turn.completed"}'
     await harness.run({ ...base, logPath: join(await temp(), "threads", "t2.log"), cwd: repo });
     await harness.run({ ...base, resume: true, cwd: repo });
     const [fresh, resumed] = (await readFile(join(out, "args"), "utf8")).trim().split("\n").slice(-2);
-    expect(fresh).toContain(`-m gpt-6-sol -C ${repo} `);
+    expect(fresh).toContain(`-m gpt-6-astra -C ${repo} `);
     expect(resumed).toMatch(/^exec resume /);
     expect(resumed).not.toContain(" -C ");
   });

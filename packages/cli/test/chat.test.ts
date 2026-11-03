@@ -106,9 +106,9 @@ describe("chat", () => {
 
   it("runs on the harness and model it is configured with", async () => {
     const { runs, runAgent } = fake(() => "ok");
-    const { chat } = await manager(runAgent, { harness: "codex", model: "gpt-6-sol" });
+    const { chat } = await manager(runAgent, { harness: "codex", model: "gpt-6-astra" });
     await chat.send("hi").done;
-    expect(runs[0]).toMatchObject({ harness: "codex", model: "gpt-6-sol" });
+    expect(runs[0]).toMatchObject({ harness: "codex", model: "gpt-6-astra" });
     const other = fake(() => "ok");
     const { chat: second } = await manager(other.runAgent, { harness: "cursor" });
     await second.send("hi").done;

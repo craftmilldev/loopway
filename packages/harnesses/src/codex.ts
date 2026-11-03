@@ -55,15 +55,7 @@ export class CodexHarness extends Harness {
   readonly command = "codex";
 
   /** The models `codex` lists (its `models_cache.json`) for the accounts it supports. Add new models here and drop retired ones. */
-  readonly models = [
-    "gpt-6.1-sol",
-    "gpt-6-sol",
-    "gpt-6-astra",
-    "gpt-6-luna",
-    "gpt-5.6-sol",
-    "gpt-5.6-terra",
-    "gpt-5.6-luna",
-  ];
+  readonly models = ["gpt-6-astra", "gpt-6.1-terra"];
 
   modelFits(model: string) {
     return this.models.includes(model);
