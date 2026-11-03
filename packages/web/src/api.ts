@@ -1410,6 +1410,15 @@ export function createApi(opts: ApiOptions) {
     if (!done) throw runnerNotLeased();
     if (done.firstRun)
       await metrics.capture("org_first_bot_ran", done.firstRun.orgId, { seconds: done.firstRun.seconds });
+    if (done.moved > 0) {
+      await metrics.capture(requeue ? "bot_requeued" : "bot_ran", bot.org_id, {
+        bot_id: bot.id,
+        harness: bot.harness,
+        model: bot.model,
+        thread_id: thread.id,
+        messages: done.moved,
+      });
+    }
     return c.json({ moved: done.moved });
   });
 
