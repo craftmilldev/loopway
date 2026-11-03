@@ -47,10 +47,21 @@ describe("time to runner and time to first bot", () => {
       call("POST", `${base}/threads/${thread}/${action}`, { key, body: { lease_token: token, ...body } });
     await call("POST", `${base}/threads/${thread}/claim`, { key, body: { lease_token: token } });
     await post("deliver");
-    await post("finish", { requeue: true });
+    const requeued = await post("finish", { requeue: true });
+    expect(requeued.body.moved).toBeGreaterThan(0);
+    expect(named("bot_ran")).toHaveLength(0);
+    expect(named("bot_requeued")).toMatchObject([
+      {
+        distinctId: org,
+        properties: { bot_id: bot.id, harness: "claude", model: "sonnet", messages: requeued.body.moved },
+      },
+    ]);
     expect(named("org_first_bot_ran").filter((e) => e.distinctId === org)).toHaveLength(0);
     await post("deliver");
     await post("finish");
+    expect(named("bot_ran")).toMatchObject([
+      { distinctId: org, properties: { bot_id: bot.id, harness: "claude", model: "sonnet", thread_id: thread } },
+    ]);
     const ran = named("org_first_bot_ran").filter((e) => e.distinctId === org);
     expect(ran).toHaveLength(1);
     expect(ran[0]!.properties!.seconds).toBeGreaterThanOrEqual(100);
@@ -59,5 +70,9 @@ describe("time to runner and time to first bot", () => {
     await post("deliver");
     await post("finish");
     expect(named("org_first_bot_ran").filter((e) => e.distinctId === org)).toHaveLength(1);
+
+    // Those later finishes delivered nothing, so they record no run.
+    expect(named("bot_ran")).toHaveLength(1);
+    expect(named("bot_requeued")).toHaveLength(1);
   });
 });
