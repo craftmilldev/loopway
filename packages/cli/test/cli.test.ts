@@ -1294,7 +1294,7 @@ describe("threads", () => {
           "--preset",
           "github-threads",
           "--model",
-          harness === "codex" ? "gpt-6-sol" : "sonnet",
+          harness === "codex" ? "gpt-6-astra" : "sonnet",
           "--harness",
           harness,
           "--inbox",
@@ -2028,14 +2028,14 @@ describe("threads", () => {
 
     // The server refuses a harness change while a started thread is active, so the runner is shown one directly.
     const getBot = client.getBot.bind(client);
-    client.getBot = async (id) => ({ ...(await getBot(id)), harness: "codex", model: "gpt-6-sol" });
+    client.getBot = async (id) => ({ ...(await getBot(id)), harness: "codex", model: "gpt-6-astra" });
     await send(inbox, "issues", issue("opened", 2));
     await send(inbox, "issue_comment", comment(1));
     await d.tick();
-    expect(out).toContain("bot dev1: now on harness codex / model gpt-6-sol");
+    expect(out).toContain("bot dev1: now on harness codex / model gpt-6-astra");
     expect(runs).toHaveLength(3);
     const fresh = runs.find((r) => !r.resume && r.harness === "codex");
-    expect(fresh).toMatchObject({ harness: "codex", model: "gpt-6-sol" });
+    expect(fresh).toMatchObject({ harness: "codex", model: "gpt-6-astra" });
     expect(runs.find((r) => r.resume)).toMatchObject({ harness: "claude", model: "sonnet" });
   });
 
