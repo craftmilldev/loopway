@@ -171,7 +171,7 @@ packages/cli/
 packages/harnesses/
   src/                  one file per harness a bot can run on (claude.ts, codex.ts, cursor.ts, hermes.ts, script.ts); index.ts lists them
 packages/rules/
-  src/index.ts          CEL assign rules: message → thread, with the sources' rule helpers
+  src/index.ts          CEL assign rules: message → thread
 packages/presets/
   src/                  bot presets: github-threads has its prompt and starting rules
 packages/palette/
