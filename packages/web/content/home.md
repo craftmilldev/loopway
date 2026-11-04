@@ -27,7 +27,7 @@ curl -fsSL https://loopway.craftmill.dev/install.sh | sh
 loopway login
 ```
 
-The login emails you a one-time code. New emails get an account.
+The login emails you a one-time code. Loopway is no longer taking new accounts; existing accounts still work.
 
 ## Listens to {#listens}
 
