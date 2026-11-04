@@ -181,36 +181,29 @@ describe("content/home.md", () => {
       "first",
       "levels",
       "runners",
+      "learned",
       "examples",
       "start",
       "colophon",
     ]);
   });
 
-  it("has no buttons in the lede or the start section, and the install well in both", () => {
+  it("has no buttons in the lede, and no install command or sign-up anywhere", () => {
     const c = draw(home);
-    for (const id of ["top", "start"]) {
-      const section = c.querySelector<HTMLElement>(`#${id}`)!;
-      expect(section.querySelector(".btn")).toBeNull();
-      expect(section.querySelector(".lp-well-wrap .lp-well-label")?.textContent).toBe("install");
-    }
-    const link = within(c.querySelector<HTMLElement>("#start")!).getByRole("link", { name: "View on GitHub" });
-    expect(link.className).toBe("");
-    expect(link.parentElement?.className).toBe("lp-links");
+    expect(c.querySelector("#top .btn")).toBeNull();
+    expect(c.querySelector(".lp-well-wrap")).toBeNull();
+    expect(c.textContent).not.toMatch(/install\.sh|loopway login|sign up|get started/i);
+    expect(c.innerHTML).not.toContain('href="/login"');
   });
 
-  it("copies exactly the install commands from either well", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
+  it("points the close at GitHub with plain links", () => {
     const c = draw(home);
-    for (const id of ["top", "start"]) {
-      fireEvent.click(c.querySelector<HTMLButtonElement>(`#${id} .lp-well-copy`)!);
-      await waitFor(() =>
-        expect(writeText).toHaveBeenLastCalledWith(
-          "curl -fsSL https://loopway.craftmill.dev/install.sh | sh\nloopway login",
-        ),
-      );
-    }
+    const links = within(c.querySelector<HTMLElement>("#start")!).getAllByRole("link");
+    expect(links.map((l) => l.getAttribute("href"))).toEqual([
+      "https://github.com/craftmilldev",
+      "https://github.com/craftmilldev/loopway",
+    ]);
+    expect(links[0]!.parentElement?.className).toBe("lp-links");
   });
 
   it("names every agent in the lede, and says nothing of a sandbox", () => {

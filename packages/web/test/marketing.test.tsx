@@ -50,18 +50,23 @@ describe("the marketing home", () => {
     expect(within(screen.getByRole("navigation")).queryByRole("link", { name: "Log in" })).toBeNull();
   });
 
-  it("shows how to install the CLI with the install.sh link", () => {
+  it("says it is a project and offers no way to install or sign up", () => {
     const { container } = render(marketingPage("/"));
-    expect(container.querySelector("#top .lp-well")?.textContent).toContain(
-      "curl -fsSL https://loopway.craftmill.dev/install.sh | sh",
-    );
+    expect(container.querySelector("#top")?.textContent).toMatch(/project, not a service/);
+    expect(container.querySelector(".lp-well")).toBeNull();
   });
 
   it("links the top bar to the page's sections, by their labels", () => {
     const { container } = render(marketingPage("/"));
     const links = within(screen.getByRole("navigation")).getAllByRole("link");
     const anchors = links.filter((a) => a.getAttribute("href")!.startsWith("#"));
-    expect(anchors.map((a) => a.getAttribute("href"))).toEqual(["#first", "#levels", "#runners", "#examples"]);
+    expect(anchors.map((a) => a.getAttribute("href"))).toEqual([
+      "#first",
+      "#levels",
+      "#runners",
+      "#learned",
+      "#examples",
+    ]);
     for (const a of anchors) {
       const section = container.querySelector(a.getAttribute("href")!)!;
       expect(a.textContent).toBe(section.querySelector(".lp-label")!.textContent);

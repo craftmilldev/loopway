@@ -16,40 +16,33 @@ How the page reads it:
 - Sample data in the figure (the terminal) lives in the page code, not here.
 -->
 
-## For the one who is always the trigger {#top}
+## A Craftmill project {#top}
 
 # A notification system for your bots.
 
-Your agent waits for you. Loopway tells it when there's work: a call ends, an email lands, an issue is filed, and a bot picks it up. It runs on your machine, on {agents}.
+Loopway is a project, not a service. It told an agent when there was work to do: a call ended, an email landed, an issue was filed, and a bot picked it up, on {agents}. We built it, ran our own work on it for a few weeks and put it down. It takes no new accounts, and the code is open on [GitHub](https://github.com/craftmilldev).
 
-```install
-curl -fsSL https://loopway.craftmill.dev/install.sh | sh
-loopway login
-```
-
-The login emails you a one-time code. Loopway is no longer taking new accounts; existing accounts still work.
-
-## Listens to {#listens}
+## Listened to {#listens}
 
 - **GitHub** · **Linear** · **Vercel** · **Granola** · **Resend** · **a clock** · **other bots**
 
-Need another? Ask for it from the dashboard.
+Each one became a CloudEvent in an inbox, and bots read their inboxes in order.
 
-## Your first bot {#first}
+## What it did {#first}
 
 ### A call ends, and the action items are in your tracker
 
-The first bot most people run files the action items from their call notes. You never open loopway to see it work: the tasks show up in the tracker you already use.
+The first bot we ran filed the action items from call notes. You never opened loopway to see it work: the tasks showed up in the tracker already in use.
 
 1. **The call ends** — Granola saves the notes, and loopway puts the event in your bot's inbox.
 2. **The bot reads the note** — Your agent, with the bot's prompt, finds the clear action items and leaves the vague ones alone.
 3. **The tasks appear** — Each one is an issue in Linear or GitHub, or a card in Trello or Asana if your agent has that connected.
 
-## You choose how much it does alone {#levels}
+## Why we built it {#levels}
 
-### Will it mess things up? Start with you approving, and turn it up one task at a time
+### Most of us sit at level 2, and the tools keep us there
 
-loopway records the level of every thread, so you can see the work move up as you trust the bot more.
+Agents wait to be asked, so the work starts with a person. Loopway was an attempt to make the other levels the default: give a bot a role, a set of events to listen to, and rules for which thread each event joins. loopway recorded the level of every thread, so you could see the work move up.
 
 - **Level 1 · Assisted** — You ask a model, read the answer, and do the work yourself. Nothing for loopway to run.
   *You start it. You do it.*
@@ -60,17 +53,23 @@ loopway records the level of every thread, so you can see the work move up as yo
 - **Level 4 · No one has to** — Bots start the work and finish it, handing it to each other. You read the results and change the rules, not the work.
   *Bots start it. Bots finish it.*
 
-## Runs on your machine {#runners}
+## How it was built {#runners}
 
-### Your data stays with you, on your own agent
+### The inboxes were hosted; the bots ran on your own agent
 
-We host the inboxes. The bots run where you start the runner, on the agent subscription you already pay for, with the permissions your agent's own settings allow. Nothing else is hosted.
+The inboxes lived on a server. The bots ran wherever you started the runner, on the agent subscription you already paid for, with the permissions your agent's own settings allowed. Three bots built most of loopway itself: a planner, an implementer and a reviewer, and one person reading what they made.
+
+## What we learned {#learned}
+
+### Engineers build this themselves, and the agent vendors will too
+
+About thirty conversations with software engineers found no pull. People who are comfortable with agents wire up their own triggers in an afternoon, and the question that kept coming back was why the agent's own vendor wouldn't just ship this. We had no good answer, so we stopped. The idea that held up: agents should hear about work as it happens, and bots with roles are a better frame than one assistant.
 
 ## Examples {#examples}
 
 ### Bots you could run
 
-These are examples, not the bots we run ourselves. Each is a prompt and a few rules, on the agent that suits it.
+These are examples, not the bots we ran ourselves. Each is a prompt and a few rules, on the agent that suits it.
 
 For your work:
 
@@ -90,21 +89,15 @@ For your code:
 - **deploy-medic** — When a production deploy fails, finds out why and files an issue so it gets fixed.
   *Vercel*
 
-## Start {#start}
+## The code {#start}
 
-### Start with one bot.
+### It's open, so run your own.
 
-Install loopway, log in with your email, and run the bot that files your call notes as tasks. The next call you finish is its first thread.
+loopway is open core. Everything is MIT-licensed except `packages/web/ee`. The source, the docs and how to deploy your own copy are on GitHub.
 
-```install
-curl -fsSL https://loopway.craftmill.dev/install.sh | sh
-loopway login
-```
-
-[View on GitHub](https://github.com/craftmilldev/loopway)
-
-loopway is open core. Everything is MIT-licensed except `packages/web/ee`.
+[Craftmill on GitHub](https://github.com/craftmilldev)
+[Read the code](https://github.com/craftmilldev/loopway)
 
 ## Colophon {#colophon}
 
-Loopway · a Craftmill works · Plumbline LLC, Maine
+Loopway · a Craftmill project · Plumbline LLC, Maine
