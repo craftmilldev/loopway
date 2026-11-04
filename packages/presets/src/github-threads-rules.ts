@@ -4,7 +4,7 @@ import type { BotRule } from "@loopway/rules";
 export const AUTHOR_KIND =
   "has(data.sender) && has(data.sender.login) ? ((has(data.sender.type) && data.sender.type == 'Bot') || data.sender.login.endsWith('[bot]') || data.sender.login.endsWith('-bot') ? 'bot' : 'human') : ''";
 
-/** The assign rules of the default `github-threads` bot. They use the helpers of the GitHub source. */
+/** The assign rules of the default `github-threads` bot. */
 export const GITHUB_THREADS_RULES: BotRule[] = [
   // CI runs belong to the PR they ran for. A run with no PR (on main) belongs to no thread: it skips this rule, and
   // the next one skips it too.

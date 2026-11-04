@@ -31,7 +31,7 @@ export interface RoutableMessage {
 
 /** Where `route` sends a message: a thread, the subjects to add to it, and the message's own subject for display. */
 export interface Routed {
-  /** An existing thread's id, or a new one's (made here; `assign` creates it). */
+  /** An existing thread's id, or a new one's (made here; the server's routing creates the thread). */
   thread_id: string;
   add_subjects: string[];
   /** The message's own subject, when the rule found one. */
@@ -80,7 +80,7 @@ function matches(glob: string, type: string): boolean {
   return new RegExp(`^${re.join(".*")}$`).test(type);
 }
 
-/** Throws if a rule's expressions don't parse, so a bad version fails when the bot starts, not on its first message. */
+/** Throws if a rule's expressions don't parse, so a bad version fails when it is saved, not on its first message. */
 export function checkRules(rules: BotRule[]): void {
   if (!Array.isArray(rules) || !rules.every((r) => Array.isArray(r?.types)))
     throw new Error("Rules must be a list of rules, each with a list of types.");
@@ -134,7 +134,6 @@ export function lookups(rules: readonly BotRule[], e: RoutableMessage): { subjec
  *
  * Doesn't change `held`; the caller adds `add_subjects` to it as it assigns, so later messages see them.
  */
-
 export function route(
   rules: readonly BotRule[],
   held: ReadonlyMap<string, string>,
