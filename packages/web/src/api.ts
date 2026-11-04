@@ -28,13 +28,13 @@ export interface ApiOptions extends EeOptions {
   publicBaseUrl?: string;
   /** `CRAFTMILL_ENTERPRISE_LICENSE`. The routes under ee/ are commercially licensed and are mounted only when this is set. */
   enterpriseLicense?: string;
-  /**
-   * Whether an email with no account can sign up (default true). Off (`SIGNUPS=off`), only existing users log in: a new
-   * email gets `403 signups_closed` and no code, and an existing code can't create a user.
-   */
-  signups?: boolean;
   /** `/` redirects to `/login` instead of serving the landing page. */
   selfHosted?: boolean;
+  /**
+   * No new accounts (`SIGNUPS=closed`): an email with no user can't log in, and can't be invited to an org. Existing
+   * users and their orgs are unaffected.
+   */
+  signupsClosed?: boolean;
   /**
    * Whether the server routes stored messages to threads (default true). Off, only runners do: a switch for a rollout
    * (`SERVER_ROUTING=off`), and for tests of the runner's own routing.
@@ -341,17 +341,9 @@ export function createApi(opts: ApiOptions) {
   // the user if the email is new (only after the code proves they own it).
   // The first step answers the same whether or not a code was already sent.
   // An address gets at most one code per TTL; asking again before it expires sends nothing.
-  // With signups off, only an email that already has an account gets in, at either step of the login.
-  async function refuseNewEmail(db: Db, email: string, step: "login" | "verify") {
-    if (opts.signups === false && !(await store.emailHasUser(db, email))) {
-      await metrics.capture("signup_refused", ANONYMOUS, { step });
-      throw new ApiError(403, "signups_closed", "Loopway is not taking new accounts");
-    }
-  }
-
   api.post("/auth/login", async (c) => {
     const { email } = z.object({ email: z.string().trim().email().max(320) }).parse(await jsonBody(c));
-    await refuseNewEmail(c.var.db, email, "login");
+    if (opts.signupsClosed && !(await store.emailHasUser(c.var.db, email))) await refuseSignup("login");
     const login = await store.createLoginCode(c.var.db, email);
     await metrics.capture("login_requested", ANONYMOUS, { sent: !!login.code });
     if (login.code) {
@@ -368,6 +360,16 @@ export function createApi(opts: ApiOptions) {
     }
     return c.json({ sent: true }, 202);
   });
+
+  /** Sign-ups are closed and this would create an account (or an invite to one). Counted by the path that tried. */
+  async function refuseSignup(path: "login" | "verify" | "invite", userId = ANONYMOUS): Promise<never> {
+    await metrics.capture("signup_refused", userId, { path });
+    throw new ApiError(
+      403,
+      "signups_closed",
+      "Loopway is no longer accepting new accounts. Existing accounts can still log in.",
+    );
+  }
 
   const usernameParam = z.string().trim().toLowerCase();
 
@@ -392,7 +394,7 @@ export function createApi(opts: ApiOptions) {
         username: usernameParam.optional(),
       })
       .parse(await jsonBody(c));
-    await refuseNewEmail(c.var.db, input.email, "verify");
+    if (opts.signupsClosed && !(await store.emailHasUser(c.var.db, input.email))) await refuseSignup("verify");
     const result = await store.redeemLoginCode(c.var.db, input.email, input.code, input.username);
     if ("problem" in result) {
       await metrics.capture("verify_rejected", ANONYMOUS, { reason: result.problem });
@@ -587,6 +589,7 @@ export function createApi(opts: ApiOptions) {
   authed.post("/orgs/:slug/members", async (c) => {
     const org = await memberOrgParam(c, "add");
     const { email } = z.object({ email: z.string().trim().email().max(320) }).parse(await jsonBody(c));
+    if (opts.signupsClosed && !(await store.emailHasUser(c.var.db, email))) await refuseSignup("invite", c.var.user.id);
     const result = await store.addOrgMember(c.var.db, org.id, c.var.user.id, email);
     if (result === "personal_org") {
       await metrics.capture("org_member_rejected", c.var.user.id, { action: "add", reason: "personal_org" });

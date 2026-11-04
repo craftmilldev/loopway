@@ -34,7 +34,7 @@ Install and log in:
 
 ```
 curl -fsSL {{base_url}}/install.sh | sh   # needs Node 22+
-loopway login              # emails a one-time code; new emails get an account
+loopway login              # emails a one-time code; existing accounts only (new accounts are closed)
 loopway whoami
 ```
 

@@ -226,6 +226,42 @@ describe("login", () => {
     });
   const lastCode = () => sent.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
 
+  it("refuses an unknown email, and an invite for one, when signups are closed", async () => {
+    const a = createApi({
+      getDb: async () => db,
+      tokenSecret: SECRET,
+      inboxSecretKey: TEST_INBOX_KEY,
+      sendEmail: async (e) => void sent.push(e),
+      signupsClosed: true,
+    });
+    const before = sent.length;
+    const login = await post(a, "/auth/login", { email: "new@example.com" });
+    expect(login.status).toBe(403);
+    expect((await login.json()).error.code).toBe("signups_closed");
+    expect(sent.length).toBe(before);
+    const verify = await post(a, "/auth/verify", { email: "new@example.com", code: "ABCD2345", username: "newbie" });
+    expect(verify.status).toBe(403);
+    // An existing user still logs in.
+    await createUser(db, { name: "Old", email: "closed-old@example.com" });
+    expect((await post(a, "/auth/login", { email: "CLOSED-OLD@example.com" })).status).toBe(202);
+    const res = await post(a, "/auth/verify", { email: "closed-old@example.com", code: lastCode() });
+    expect(res.status).toBe(201);
+    const { token } = await res.json();
+    const headers = { "content-type": "application/json", authorization: `Bearer ${token}` };
+    const org = await a.request("/api/orgs", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ slug: "closed-team" }),
+    });
+    expect(org.status).toBe(201);
+    const invite = await a.request("/api/orgs/closed-team/members", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ email: "stranger@example.com" }),
+    });
+    expect(invite.status).toBe(403);
+  });
+
   it("emails a code and trades it for a session token", async () => {
     const a = loginApp();
     await createUser(db, { name: "Login", email: "login@example.com" });
@@ -282,31 +318,6 @@ describe("login", () => {
     expect((await a.request("/api/me", { headers: { authorization: `Bearer ${api_key}` } })).status).toBe(200);
     const orgs = await call("GET", "/orgs", { key: api_key });
     expect(orgs.body.data).toMatchObject([{ slug: "new-person", personal: true }]);
-  });
-
-  it("with signups off, lets existing users log in and refuses a new email at both steps", async () => {
-    const a = createApi({
-      getDb: async () => db,
-      tokenSecret: SECRET,
-      inboxSecretKey: TEST_INBOX_KEY,
-      sendEmail: async (e) => void sent.push(e),
-      signups: false,
-    });
-    await createUser(db, { name: "Old", email: "closed-old@example.com" });
-    const before = sent.length;
-    expect((await post(a, "/auth/login", { email: "CLOSED-OLD@example.com" })).status).toBe(202);
-    expect((await post(a, "/auth/verify", { email: "closed-old@example.com", code: lastCode() })).status).toBe(201);
-
-    const res = await post(a, "/auth/login", { email: "fresh@example.com" });
-    expect(res.status).toBe(403);
-    expect((await res.json()).error.code).toBe("signups_closed");
-    expect(sent).toHaveLength(before + 1);
-
-    // a code issued while signups were on can't make a user now
-    await post(loginApp(), "/auth/login", { email: "fresh@example.com" });
-    const verify = await post(a, "/auth/verify", { email: "fresh@example.com", code: lastCode(), username: "fresh" });
-    expect(verify.status).toBe(403);
-    expect(await db.query(`SELECT 1 FROM loopway.users WHERE email = 'fresh@example.com'`)).toHaveLength(0);
   });
 
   it("needs a free username to sign up, and keeps the code valid so they can retry", async () => {

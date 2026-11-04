@@ -34,16 +34,18 @@ export async function createUser(db: Db, input: { name: string; email?: string |
   return { user: user! };
 }
 
+/** Whether an account uses this email. */
+export async function emailHasUser(db: Db, email: string): Promise<boolean> {
+  const rows = await db.query(`SELECT 1 FROM loopway.users WHERE lower(email) = $1 LIMIT 1`, [
+    email.trim().toLowerCase(),
+  ]);
+  return rows.length > 0;
+}
+
 /** Whether the user exists: all a request's auth needs of them. */
 export async function userExists(db: Db, id: string): Promise<{ id: string } | undefined> {
   const [user] = await db.query<{ id: string }>(`SELECT id FROM loopway.users WHERE id = $1`, [id]);
   return user;
-}
-
-/** Whether a user has this email (case-insensitive). */
-export async function emailHasUser(db: Q, email: string): Promise<boolean> {
-  const rows = await db.query(`SELECT 1 FROM loopway.users u WHERE lower(u.email) = $1`, [email.toLowerCase()]);
-  return rows.length > 0;
 }
 
 export async function findUserById(db: Db, id: string): Promise<User | undefined> {

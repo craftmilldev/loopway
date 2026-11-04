@@ -29,6 +29,7 @@ app.route(
     posthogUiHost: posthogUiHost(),
     publicBaseUrl: process.env.PUBLIC_BASE_URL || undefined,
     selfHosted: ["1", "true"].includes(process.env.SELF_HOSTED ?? ""),
+    signupsClosed: /^closed$/i.test(process.env.SIGNUPS ?? ""),
     minCliVersion: minCliVersion(process.env.MIN_CLI_VERSION),
     enterpriseLicense: process.env.CRAFTMILL_ENTERPRISE_LICENSE || undefined,
     sourceRequests:
@@ -37,7 +38,6 @@ app.route(
         : undefined,
     sendEmail: senderFromEnv(),
     defer: waitUntil,
-    signups: !/^(0|off|false)$/i.test(process.env.SIGNUPS ?? ""),
     serverRouting: !/^(0|off|false)$/i.test(process.env.SERVER_ROUTING ?? ""),
   }),
 );
