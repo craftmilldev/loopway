@@ -284,6 +284,31 @@ describe("login", () => {
     expect(orgs.body.data).toMatchObject([{ slug: "new-person", personal: true }]);
   });
 
+  it("with signups off, lets existing users log in and refuses a new email at both steps", async () => {
+    const a = createApi({
+      getDb: async () => db,
+      tokenSecret: SECRET,
+      inboxSecretKey: TEST_INBOX_KEY,
+      sendEmail: async (e) => void sent.push(e),
+      signups: false,
+    });
+    await createUser(db, { name: "Old", email: "closed-old@example.com" });
+    const before = sent.length;
+    expect((await post(a, "/auth/login", { email: "CLOSED-OLD@example.com" })).status).toBe(202);
+    expect((await post(a, "/auth/verify", { email: "closed-old@example.com", code: lastCode() })).status).toBe(201);
+
+    const res = await post(a, "/auth/login", { email: "fresh@example.com" });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.code).toBe("signups_closed");
+    expect(sent).toHaveLength(before + 1);
+
+    // a code issued while signups were on can't make a user now
+    await post(loginApp(), "/auth/login", { email: "fresh@example.com" });
+    const verify = await post(a, "/auth/verify", { email: "fresh@example.com", code: lastCode(), username: "fresh" });
+    expect(verify.status).toBe(403);
+    expect(await db.query(`SELECT 1 FROM loopway.users WHERE email = 'fresh@example.com'`)).toHaveLength(0);
+  });
+
   it("needs a free username to sign up, and keeps the code valid so they can retry", async () => {
     const a = loginApp();
     await newUser("Holder");

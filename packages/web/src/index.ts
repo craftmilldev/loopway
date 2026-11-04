@@ -37,6 +37,7 @@ app.route(
         : undefined,
     sendEmail: senderFromEnv(),
     defer: waitUntil,
+    signups: !/^(0|off|false)$/i.test(process.env.SIGNUPS ?? ""),
     serverRouting: !/^(0|off|false)$/i.test(process.env.SERVER_ROUTING ?? ""),
   }),
 );

@@ -40,6 +40,12 @@ export async function userExists(db: Db, id: string): Promise<{ id: string } | u
   return user;
 }
 
+/** Whether a user has this email (case-insensitive). */
+export async function emailHasUser(db: Q, email: string): Promise<boolean> {
+  const rows = await db.query(`SELECT 1 FROM loopway.users u WHERE lower(u.email) = $1`, [email.toLowerCase()]);
+  return rows.length > 0;
+}
+
 export async function findUserById(db: Db, id: string): Promise<User | undefined> {
   const [user] = await db.query<User>(`SELECT ${USER_COLUMNS} FROM loopway.users u WHERE u.id = $1`, [id]);
   return user;

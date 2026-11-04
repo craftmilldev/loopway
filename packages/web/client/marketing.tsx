@@ -13,7 +13,7 @@ export const CONTENT: Record<MarketingPath, string> = {
 };
 
 /** The sections the top bar links to, by id; each link reads as its section's label. */
-const NAV = ["first", "levels", "runners", "examples"];
+const NAV = ["first", "levels", "runners", "learned", "examples"];
 
 function Marketing({ sections }: { sections: Section[] }) {
   useEffect(() => {
