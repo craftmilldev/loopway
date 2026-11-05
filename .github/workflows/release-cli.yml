@@ -60,14 +60,6 @@ jobs:
             const higher = pkg.findIndex((n, i) => n !== last[i]);
             console.log(higher !== -1 && pkg[higher] > last[higher] ? pkg.join(".") : `${last[0]}.${last[1]}.${last[2] + 1}`);
           ' "${last#cli-v}" "$(node -p 'require("./packages/cli/package.json").version')")
-          # A new major version needs its server live first: an older CLI updates to whatever is newest, whatever server
-          # it talks to. So it's never automatic. Confirm the deploy, then run this by hand.
-          major="${version%%.*}"; last_version="${last#cli-v}"
-          if [ "${{ github.event_name }}" != "workflow_dispatch" ] && [ "$major" != "${last_version%%.*}" ]; then
-            echo "$version is a new major version: run this workflow by hand once the server is live" >&2
-            echo "release=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
           echo "Releasing $version (last release $last)" >&2
           {
             echo "release=true"
