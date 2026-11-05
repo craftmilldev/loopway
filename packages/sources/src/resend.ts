@@ -1,6 +1,5 @@
 import { createHmac } from "node:crypto";
-import { z } from "zod";
-import { get, standardWebhookSignature, str } from "./payload.js";
+import { get, str } from "./payload.js";
 import type { SourceAdapter, SourceDeps } from "./types.js";
 
 /**
@@ -15,108 +14,22 @@ import type { SourceAdapter, SourceDeps } from "./types.js";
  *   data    = the webhook payload
  *
  * Resend generates the signing secret when the webhook is created, after it already needs our URL,
- * so an inbox starts without one and rejects deliveries until it's set.
+ * so a source starts without one and its deliveries are refused until it's set.
  */
-
-export interface ResendConfig {
-  /** Signing secret Resend shows for the webhook (`whsec_…`). */
-  secret: string | null;
-  /** Resend event types to accept (e.g. ["email.bounced"]). ["*"] accepts everything. */
-  events: string[];
-}
-
-export const RESEND_EVENTS = [
-  "email.sent",
-  "email.delivered",
-  "email.delivery_delayed",
-  "email.complained",
-  "email.bounced",
-  "email.opened",
-  "email.clicked",
-  "email.failed",
-  "email.scheduled",
-  "email.suppressed",
-  "email.received",
-  "contact.created",
-  "contact.updated",
-  "contact.deleted",
-  "domain.created",
-  "domain.updated",
-  "domain.deleted",
-];
 
 /** How far svix-timestamp may be from now, either way. */
 const TOLERANCE_SECONDS = 5 * 60;
 
-const configInput = z
-  .object({
-    secret: z
-      .string()
-      .regex(/^whsec_[A-Za-z0-9+/]+={0,2}$/, "secret must be the whsec_… signing secret Resend shows")
-      .optional(),
-    events: z.array(z.string().min(1)).min(1).optional(),
-  })
-  .strict();
-
-export const resend = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter<ResendConfig> => ({
+export const resend = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter => ({
   type: "resend",
   label: "Resend",
   description: "Resend email, contact and domain webhooks, verified with the svix-signature header.",
-  events: RESEND_EVENTS,
-  secret: { from: "sender" },
+  secret: { from: "sender", pattern: /^whsec_[A-Za-z0-9+/]+={0,2}$/ },
   webhookSettings: "Resend → Webhooks",
 
-  parseConfig(input, existing) {
-    const parsed = configInput.parse(input ?? {});
-    return {
-      secret: parsed.secret ?? existing?.secret ?? null,
-      events: parsed.events ?? existing?.events ?? ["*"],
-    };
-  },
+  claims: (headers) => headers.has("svix-signature"),
 
-  publicConfig(config) {
-    return { secret: config.secret, events: config.events };
-  },
-
-  setup(config, webhookUrl) {
-    return {
-      where: "Resend → Webhooks → Add Webhook",
-      endpoint_url: webhookUrl,
-      events: config.events.includes("*") ? RESEND_EVENTS : config.events,
-      secret: config.secret
-        ? "set"
-        : "not set yet: paste the whsec_… signing secret Resend shows on the inbox page, or run `loopway inbox update <inbox> --secret whsec_…`",
-    };
-  },
-
-  sampleTypes: () => ["email.delivered", "email.sent", "email.bounced"],
-
-  sample(config, { type, id, now }) {
-    const rawBody = JSON.stringify({
-      type,
-      created_at: now.toISOString(),
-      data: {
-        email_id: "00000000-0000-0000-0000-00000000e001",
-        from: "Loopway Test <test@example.com>",
-        to: ["delivered@example.com"],
-        subject: "A test email from loopway",
-      },
-    });
-    const timestamp = String(Math.floor(now.getTime() / 1000));
-    return {
-      headers: {
-        "content-type": "application/json",
-        "svix-id": id,
-        "svix-timestamp": timestamp,
-        "svix-signature": standardWebhookSignature(config.secret!, id, timestamp, rawBody),
-      },
-      rawBody,
-    };
-  },
-
-  receive({ headers, rawBody, receivedAt }, config) {
-    if (!config.secret) return { kind: "rejected", status: 401, message: "No signing secret set for this inbox yet" };
-
+  receive({ headers, rawBody, receivedAt }, secret) {
     const id = headers.get("svix-id");
     const timestamp = headers.get("svix-timestamp");
     const signatures = headers.get("svix-signature");
@@ -129,7 +42,7 @@ export const resend = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter
       return { kind: "rejected", status: 401, message: "svix-timestamp is too old or too far in the future" };
     }
 
-    const key = Buffer.from(config.secret.slice("whsec_".length), "base64");
+    const key = Buffer.from(secret.slice("whsec_".length), "base64");
     const expected = createHmac("sha256", key).update(`${id}.${timestamp}.${rawBody}`, "utf8").digest("base64");
     // Space-separated `v1,<base64>` entries; more than one while a secret is being rotated.
     const ok = signatures.split(" ").some((s) => s.startsWith("v1,") && safeEqual(s.slice(3), expected));
@@ -147,9 +60,6 @@ export const resend = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter
     const eventType = payload.type;
     if (typeof eventType !== "string" || !eventType) {
       return { kind: "rejected", status: 400, message: "Payload is missing type" };
-    }
-    if (!config.events.includes("*") && !config.events.includes(eventType)) {
-      return { kind: "rejected", status: 422, message: `event "${eventType}" not enabled for this inbox` };
     }
 
     const created = typeof payload.created_at === "string" ? new Date(payload.created_at) : undefined;

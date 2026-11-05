@@ -66,16 +66,28 @@ export async function newUserWithoutUsername(name = "Matthew") {
   return signSessionToken(user.id, SECRET).token;
 }
 
-// GitHub is the source the source-agnostic tests use to get events into an inbox.
-
-export async function newInbox(key: string, config?: unknown) {
-  const r = await call("POST", "/inboxes", { key, body: { name: "gh", source_type: "github", config } });
-  expect(r.status).toBe(201);
-  return r.body as { id: string; config: { secret: string }; webhook_url: string };
+/** The id of the user `key` belongs to: the last part of their inbox URL. */
+export async function userId(key: string) {
+  return (await call("GET", "/me", { key })).body.id as string;
 }
 
+/** Registers a source, GitHub by default, and returns what the API said plus where to deliver to it. */
+export async function newSource(key: string, body: Record<string, unknown> = { type: "github" }) {
+  const r = await call("POST", "/sources", { key, body });
+  expect(r.status).toBe(201);
+  return { ...r.body, userId: await userId(key) } as {
+    id: string;
+    name: string;
+    userId: string;
+    secret: string;
+    webhook_url: string;
+  };
+}
+
+// GitHub is the source the source-agnostic tests use to get events into an inbox.
+
 export function sendGithub(
-  inbox: { id: string; config: { secret: string } },
+  source: { userId: string; secret: string },
   event: string,
   payload: unknown,
   o: { delivery?: string; secret?: string; form?: boolean } = {},
@@ -83,10 +95,10 @@ export function sendGithub(
   const raw = o.form ? new URLSearchParams({ payload: JSON.stringify(payload) }).toString() : JSON.stringify(payload);
   const sig =
     "sha256=" +
-    createHmac("sha256", o.secret ?? inbox.config.secret)
+    createHmac("sha256", o.secret ?? source.secret)
       .update(raw)
       .digest("hex");
-  return app.request(`/api/webhooks/${inbox.id}`, {
+  return app.request(`/api/webhooks/${source.userId}`, {
     method: "POST",
     headers: {
       "content-type": o.form ? "application/x-www-form-urlencoded" : "application/json",
@@ -104,3 +116,20 @@ export const prPayload = (n: number) => ({
   pull_request: { updated_at: "2026-10-01T12:00:00Z" },
   repository: { url: "https://api.github.com/repos/craftmill/loopway" },
 });
+
+/** Reads every message a test can see, past the holdback: `since=0` with the row's received_at moved back. */
+export async function ageMessages(seconds = 60) {
+  await db.query(`UPDATE loopway.messages SET received_at = received_at - make_interval(secs => $1)`, [seconds]);
+}
+
+/** All of a user's messages, oldest first. */
+export async function readAll(key: string) {
+  await ageMessages();
+  return (await call("GET", "/messages?since=0&limit=100", { key })).body.data as {
+    id: string;
+    source_id: string | null;
+    received_at: string;
+    received_us: string;
+    event: { id: string; type: string; subject?: string; source: string; time: string; data: never };
+  }[];
+}

@@ -1,8 +1,7 @@
 import type { CloudEvent } from "./cloudevents.js";
-import { MIGRATE_LOCK, type Db } from "./db/index.js";
-import type { SecretBox } from "./secrets.js";
+import type { Db } from "./db/index.js";
 import { slugProblem, type SlugProblem } from "./slugs.js";
-import { newLoginCode, normalizeLoginCode, safeEqual, sha256, uuidv7 } from "./ids.js";
+import { API_TOKEN_PREFIX, newApiToken, newLoginCode, normalizeLoginCode, safeEqual, sha256, uuidv7 } from "./ids.js";
 
 /** What a transaction body gets: just `query`, bound to the transaction's connection. */
 type Q = Pick<Db, "query">;
@@ -154,96 +153,127 @@ export async function setUsername(
   }
 }
 
-// ---------- Inboxes ----------
+// ---------- API tokens ----------
 
-export interface Inbox {
+export interface ApiToken {
+  id: string;
+  name: string;
+  created_at: Date;
+  last_used_at: Date | null;
+}
+
+const API_TOKEN_COLS = `id, name, created_at, last_used_at`;
+
+/** Makes a token. This is the only time its value exists outside the caller's hands: only its hash is stored. */
+export async function createApiToken(db: Db, userId: string, name: string) {
+  const token = newApiToken();
+  const [row] = await db.query<ApiToken>(
+    `INSERT INTO loopway.api_tokens (id, user_id, name, token_hash) VALUES ($1, $2, $3, $4) RETURNING ${API_TOKEN_COLS}`,
+    [uuidv7(), userId, name, sha256(token)],
+  );
+  return { token, row: row! };
+}
+
+export const isApiToken = (token: string) => token.startsWith(API_TOKEN_PREFIX);
+
+/** The user a live token belongs to. Notes its use at most once an hour, so a poller doesn't write on every read. */
+export async function apiTokenUser(db: Db, token: string): Promise<{ id: string } | undefined> {
+  const [row] = await db.query<{ id: string; token_id: string; stale: boolean }>(
+    `SELECT user_id AS id, id AS token_id, (last_used_at IS NULL OR last_used_at < now() - interval '1 hour') AS stale
+     FROM loopway.api_tokens WHERE token_hash = $1`,
+    [sha256(token)],
+  );
+  if (!row) return undefined;
+  if (row.stale) await db.query(`UPDATE loopway.api_tokens SET last_used_at = now() WHERE id = $1`, [row.token_id]);
+  return { id: row.id };
+}
+
+export async function listApiTokens(db: Db, userId: string): Promise<ApiToken[]> {
+  return db.query<ApiToken>(`SELECT ${API_TOKEN_COLS} FROM loopway.api_tokens WHERE user_id = $1 ORDER BY id`, [
+    userId,
+  ]);
+}
+
+export async function revokeApiToken(db: Db, userId: string, id: string): Promise<boolean> {
+  const rows = await db.query(`DELETE FROM loopway.api_tokens WHERE id = $1 AND user_id = $2 RETURNING id`, [
+    id,
+    userId,
+  ]);
+  return rows.length > 0;
+}
+
+// ---------- Sources ----------
+
+export interface Source {
   id: string;
   user_id: string;
   name: string;
   source_type: string;
-  /** Everything but the webhook secret, which is in `secret_enc`. */
+  /** A source's own settings: only a schedule has any. */
   config: unknown;
-  /** The webhook secret, sealed by secrets.ts with the inbox id as context. Null for an inbox with none. */
+  /** The webhook secret, sealed by secrets.ts with the source id as context. Null until one is registered. */
   secret_enc: string | null;
   created_at: Date;
-  /** When a sender last reached the inbox, whatever came of it. Null until it has. */
+  /** When a delivery last verified against this source. Null until one has. */
   last_delivery_at: Date | null;
-  /** `accepted`, `ignored:<reason>` or `rejected:<status>`. */
+  /** `accepted` or `ignored:<reason>`. */
   last_delivery_outcome: string | null;
 }
 
-/** Notes that a sender reached the inbox just now, with how it went. */
-export async function recordDelivery(db: Db, id: string, outcome: string): Promise<void> {
-  await db.query(`UPDATE loopway.inboxes SET last_delivery_at = now(), last_delivery_outcome = $2 WHERE id = $1`, [
-    id,
-    outcome,
-  ]);
-}
+/** Most sources one user can register: each one a delivery might be checked against costs a decrypt and an HMAC. */
+export const MAX_SOURCES = 50;
 
-export async function createInbox(
+/** Undefined when the user is already at MAX_SOURCES. The count and the insert are one statement. */
+export async function createSource(
   db: Db,
   input: {
-    /** Given when `secretEnc` was sealed against it. */
-    id?: string;
+    /** Given because `secretEnc` is sealed against it. */
+    id: string;
     userId: string;
     name: string;
     sourceType: string;
     config: unknown;
     secretEnc?: string | null;
   },
-): Promise<Inbox> {
-  const [row] = await db.query<Inbox>(
-    `INSERT INTO loopway.inboxes (id, user_id, name, source_type, config, secret_enc)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6) RETURNING *`,
-    [input.id ?? uuidv7(), input.userId, input.name, input.sourceType, input.config, input.secretEnc ?? null],
-  );
-  return row!;
-}
-
-/** The user's inboxes. */
-export async function listInboxes(db: Db, userId: string): Promise<Inbox[]> {
-  return db.query<Inbox>(`SELECT * FROM loopway.inboxes WHERE user_id = $1 ORDER BY id`, [userId]);
-}
-
-/** What taking a delivery reads of an inbox: its source and config to check it with, and what the metrics say. */
-export type DeliveryInbox = Pick<
-  Inbox,
-  "id" | "user_id" | "source_type" | "config" | "secret_enc" | "created_at" | "last_delivery_at"
->;
-
-/** The inbox a webhook names, as a delivery needs it. */
-export async function deliveryInbox(db: Db, id: string): Promise<DeliveryInbox | undefined> {
-  const [row] = await db.query<DeliveryInbox>(
-    `SELECT id, user_id, source_type, config, secret_enc, created_at, last_delivery_at FROM loopway.inboxes WHERE id = $1`,
-    [id],
+): Promise<Source | undefined> {
+  const [row] = await db.query<Source>(
+    `INSERT INTO loopway.sources (id, user_id, name, source_type, config, secret_enc)
+     SELECT $1, $2, $3, $4, $5::jsonb, $6
+     WHERE (SELECT count(*) FROM loopway.sources WHERE user_id = $2) < $7
+     RETURNING *`,
+    [input.id, input.userId, input.name, input.sourceType, input.config ?? {}, input.secretEnc ?? null, MAX_SOURCES],
   );
   return row;
 }
 
-/** The inbox, if it is the user's. */
-export async function getInbox(db: Db, id: string, userId: string): Promise<Inbox | undefined> {
-  const [row] = await db.query<Inbox>(`SELECT * FROM loopway.inboxes WHERE id = $1 AND user_id = $2`, [id, userId]);
+export async function listSources(db: Db, userId: string): Promise<Source[]> {
+  return db.query<Source>(`SELECT * FROM loopway.sources WHERE user_id = $1 ORDER BY id`, [userId]);
+}
+
+/** The source, if it is the user's. */
+export async function getSource(db: Db, id: string, userId: string): Promise<Source | undefined> {
+  const [row] = await db.query<Source>(`SELECT * FROM loopway.sources WHERE id = $1 AND user_id = $2`, [id, userId]);
   return row;
 }
 
-/** Every inbox of one source type, for the cron route: what it needs to fill them. */
-export async function inboxesOfSource(
+/** Every source of one type, for the cron route: what it needs to fill them. */
+export async function sourcesOfType(
   db: Db,
   sourceType: string,
-): Promise<Pick<Inbox, "id" | "user_id" | "source_type" | "config">[]> {
-  return db.query(`SELECT id, user_id, source_type, config FROM loopway.inboxes WHERE source_type = $1 ORDER BY id`, [
+): Promise<Pick<Source, "id" | "user_id" | "source_type" | "config">[]> {
+  return db.query(`SELECT id, user_id, source_type, config FROM loopway.sources WHERE source_type = $1 ORDER BY id`, [
     sourceType,
   ]);
 }
 
-/** Leaves `secretEnc` alone unless it is given. */
-export async function updateInbox(
+/** Leaves anything not given alone. */
+export async function updateSource(
   db: Db,
   id: string,
   patch: { name?: string; config?: unknown; secretEnc?: string },
-): Promise<Inbox> {
-  const [row] = await db.query<Inbox>(
-    `UPDATE loopway.inboxes SET
+): Promise<Source> {
+  const [row] = await db.query<Source>(
+    `UPDATE loopway.sources SET
        name       = COALESCE($2, name),
        config     = COALESCE($3::jsonb, config),
        secret_enc = COALESCE($4, secret_enc)
@@ -253,114 +283,162 @@ export async function updateInbox(
   return row!;
 }
 
-/** Recorded in schema_migrations once the plaintext secrets have been moved, so it is done once and never again. */
-const SECRETS_MOVED = "029_inbox_secret_enc:data";
-
-/**
- * The data half of migration 029, once: moves the secrets that are in plaintext in an inbox's config (from before
- * `secret_enc`) into it, sealed, and records that it is done, in one transaction under the migration lock. It runs
- * on a database that has the plaintext secrets and no other, never overwrites a `secret_enc`, and does nothing on
- * every run after the first. Returns how many it moved, or null if it had already run.
- */
-export async function encryptInboxSecrets(db: Db, box: SecretBox): Promise<number | null> {
-  return db.transaction(async (tx) => {
-    await tx.query(`SELECT pg_advisory_xact_lock($1)`, [MIGRATE_LOCK]);
-    const done = await tx.query(`SELECT 1 FROM loopway.schema_migrations WHERE version = $1`, [SECRETS_MOVED]);
-    if (done.length) return null;
-    const rows = await tx.query<{ id: string; secret: unknown }>(
-      `SELECT id, config->'secret' AS secret FROM loopway.inboxes WHERE config ? 'secret'`,
-    );
-    for (const { id, secret } of rows) {
-      // A null secret (Linear's "not set yet" kept as null) just goes away.
-      await tx.query(
-        `UPDATE loopway.inboxes SET config = config - 'secret', secret_enc = COALESCE(secret_enc, $2) WHERE id = $1`,
-        [id, typeof secret === "string" && secret ? box.seal(secret, id) : null],
-      );
-    }
-    await tx.query(`INSERT INTO loopway.schema_migrations (version) VALUES ($1)`, [SECRETS_MOVED]);
-    return rows.length;
-  });
+export async function deleteSource(db: Db, id: string): Promise<void> {
+  await db.query(`DELETE FROM loopway.sources WHERE id = $1`, [id]);
 }
 
-export async function deleteInbox(db: Db, id: string): Promise<void> {
-  await db.query(`DELETE FROM loopway.inboxes WHERE id = $1`, [id]);
-}
-
-export async function inboxStats(db: Db, inboxId: string) {
-  const [row] = await db.query<{ messages: number }>(
-    `SELECT count(*)::int AS messages FROM loopway.messages WHERE inbox_id = $1`,
-    [inboxId],
-  );
-  return row!;
+/** Notes that a delivery just verified against the source, with what came of it. */
+export async function recordDelivery(db: Db, id: string, outcome: string): Promise<void> {
+  await db.query(`UPDATE loopway.sources SET last_delivery_at = now(), last_delivery_outcome = $2 WHERE id = $1`, [
+    id,
+    outcome,
+  ]);
 }
 
 // ---------- Messages ----------
 
+/** How long a message is kept. The purge is daily, so reads apply this themselves and the cutoff is exact. */
+export const RETENTION_DAYS = 14;
+const RETAINED = `make_interval(days => ${RETENTION_DAYS})`;
+
+/**
+ * How far behind the clock a read stops. received_at is set inside the insert, but the row only becomes visible when
+ * it commits. Without this a reader could read past a timestamp while an earlier one is still committing, and never
+ * see that message, which would break at-least-once. It is the price of a timestamp cursor: delivery is this much late.
+ */
+export const READ_HOLDBACK_SECONDS = 5;
+
 export interface MessageRow {
   id: string;
-  inbox_id: string;
-  /** bigint; drivers return it as a string or BigInt. */
-  seq: string | bigint;
+  user_id: string;
+  source_id: string | null;
   cloudevent: CloudEvent;
-  received_at: Date;
-  /** Made by the "send a test message" action rather than received from a sender. */
-  is_test: boolean;
+  /** ISO 8601 with all six fractional digits: a JS Date would lose three. */
+  received_at: string;
+  /** Microseconds since the epoch, as a decimal string: what a cursor is. */
+  received_us: string;
 }
 
-const MESSAGE_COLS = `id, inbox_id, seq, cloudevent, received_at, is_test`;
+const MESSAGE_COLS = `id, user_id, source_id, cloudevent,
+  to_char(received_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS received_at,
+  (extract(epoch FROM received_at) * 1000000)::bigint::text AS received_us`;
 
-/** Returns the stored message and whether it was a redelivery of one we already had (same CE source+id). */
-export async function insertMessage(db: Db, inboxId: string, ce: CloudEvent, test: boolean) {
-  const [inserted] = await db.query<{ id: string; seq: string | bigint }>(
-    `INSERT INTO loopway.messages (id, inbox_id, ce_id, ce_source, ce_type, ce_subject, ce_time, cloudevent, is_test)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
+/** A microsecond count as a timestamptz, exactly: `to_timestamp` goes through a float. */
+const fromMicros = (param: string) => `('epoch'::timestamptz + ${param}::bigint * interval '1 microsecond')`;
+
+/** Stores a message. A redelivery (same CE source and id) returns the one already stored. */
+export async function insertMessage(db: Db, userId: string, sourceId: string | null, ce: CloudEvent) {
+  const [inserted] = await db.query<{ id: string }>(
+    `INSERT INTO loopway.messages (id, user_id, source_id, ce_id, ce_source, ce_type, ce_subject, ce_time, cloudevent)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
      ON CONFLICT ON CONSTRAINT messages_ce_unique DO NOTHING
-     RETURNING id, seq`,
-    [uuidv7(), inboxId, ce.id, ce.source, ce.type, ce.subject ?? null, ce.time ?? null, ce, test],
+     RETURNING id`,
+    [uuidv7(), userId, sourceId, ce.id, ce.source, ce.type, ce.subject ?? null, ce.time ?? null, ce],
   );
-  if (inserted) return { id: inserted.id, seq: Number(inserted.seq), duplicate: false };
-  const [existing] = await db.query<{ id: string; seq: string | bigint }>(
-    `SELECT id, seq FROM loopway.messages WHERE inbox_id = $1 AND ce_source = $2 AND ce_id = $3`,
-    [inboxId, ce.source, ce.id],
+  if (inserted) return { id: inserted.id, duplicate: false };
+  const [existing] = await db.query<{ id: string }>(
+    `SELECT id FROM loopway.messages WHERE user_id = $1 AND ce_source = $2 AND ce_id = $3`,
+    [userId, ce.source, ce.id],
   );
-  return { id: existing!.id, seq: Number(existing!.seq), duplicate: true };
+  // The purge can take the row it conflicted with between the two statements: then it's new after all.
+  if (!existing) return insertMessage(db, userId, sourceId, ce);
+  return { id: existing.id, duplicate: true };
 }
 
-export async function listMessages(
-  db: Db,
-  inboxId: string,
-  opts: { type?: string; after?: string; limit: number; order: "asc" | "desc" },
-) {
-  const params: unknown[] = [inboxId];
-  const where = [`inbox_id = $1`];
-  if (opts.type) {
-    if (opts.type.endsWith("*")) {
-      params.push(opts.type.slice(0, -1).replace(/[\\%_]/g, "\\$&") + "%");
-      where.push(`ce_type LIKE $${params.length}`);
-    } else {
-      params.push(opts.type);
-      where.push(`ce_type = $${params.length}`);
-    }
+const typeFilter = (type: string, params: unknown[]) => {
+  if (type.endsWith("*")) {
+    params.push(type.slice(0, -1).replace(/[\\%_]/g, "\\$&") + "%");
+    return `ce_type LIKE $${params.length}`;
   }
+  params.push(type);
+  return `ce_type = $${params.length}`;
+};
+
+export interface ReadPage {
+  messages: MessageRow[];
+  /** Pass these back as `since` and `after` to carry on. */
+  nextSince: string;
+  nextAfter: string | null;
+  hasMore: boolean;
+}
+
+/**
+ * The read: messages in `(received_at, id)` order, from `since` (microseconds, inclusive), up to the holdback.
+ * `since: null` starts at the head, so nothing comes back and `nextSince` is where a new reader begins. `after` is a
+ * message id at exactly `since`: it and anything before it in that microsecond are skipped, so a page boundary inside
+ * one microsecond neither repeats nor loses a message, and a page of ties can't stop a reader making progress.
+ */
+export async function readMessages(
+  db: Db,
+  userId: string,
+  opts: { since: string | null; after?: string; limit: number; type?: string },
+): Promise<ReadPage> {
+  const [row] = await db.query<{ head: string }>(
+    `SELECT (extract(epoch FROM clock_timestamp() - make_interval(secs => ${READ_HOLDBACK_SECONDS})) * 1000000)::bigint::text AS head`,
+  );
+  const head = row!.head;
+  if (opts.since === null) return { messages: [], nextSince: head, nextAfter: null, hasMore: false };
+  const params: unknown[] = [userId, opts.since, head];
+  const since = fromMicros("$2");
+  const where = [
+    `user_id = $1`,
+    `received_at >= ${since}`,
+    `received_at >= now() - ${RETAINED}`,
+    `received_at < ${fromMicros("$3")}`,
+  ];
   if (opts.after) {
     params.push(opts.after);
-    where.push(`id ${opts.order === "asc" ? ">" : "<"} $${params.length}`);
+    where.push(`(received_at, id) > (${since}, $${params.length}::uuid)`);
   }
+  if (opts.type) where.push(typeFilter(opts.type, params));
   params.push(opts.limit + 1);
   const rows = await db.query<MessageRow>(
     `SELECT ${MESSAGE_COLS} FROM loopway.messages WHERE ${where.join(" AND ")}
-     ORDER BY id ${opts.order} LIMIT $${params.length}`,
+     ORDER BY received_at, id LIMIT $${params.length}`,
     params,
   );
   const hasMore = rows.length > opts.limit;
-  const page = hasMore ? rows.slice(0, opts.limit) : rows;
-  return { messages: page, nextCursor: hasMore ? page[page.length - 1]!.id : null };
+  const messages = hasMore ? rows.slice(0, opts.limit) : rows;
+  const last = messages.at(-1);
+  if (hasMore) return { messages, nextSince: last!.received_us, nextAfter: last!.id, hasMore };
+  // Read to the end, so the cursor can move up to the head: rows at the head itself weren't returned, and `since` is
+  // inclusive, so they come next. A cursor set in the future stays where it is.
+  const ahead = BigInt(opts.since) > BigInt(head);
+  return { messages, nextSince: ahead ? opts.since : head, nextAfter: ahead ? (opts.after ?? null) : null, hasMore };
 }
 
-export async function getMessage(db: Db, inboxId: string, messageId: string): Promise<MessageRow | undefined> {
+/** The newest messages, newest first, for looking at an inbox. Not for reading it: there's no cursor and no holdback. */
+export async function latestMessages(db: Db, userId: string, opts: { limit: number; type?: string }) {
+  const params: unknown[] = [userId];
+  const where = [`user_id = $1`, `received_at >= now() - ${RETAINED}`];
+  if (opts.type) where.push(typeFilter(opts.type, params));
+  params.push(opts.limit);
+  return db.query<MessageRow>(
+    `SELECT ${MESSAGE_COLS} FROM loopway.messages WHERE ${where.join(" AND ")}
+     ORDER BY received_at DESC, id DESC LIMIT $${params.length}`,
+    params,
+  );
+}
+
+export async function getMessage(db: Db, userId: string, id: string): Promise<MessageRow | undefined> {
   const [row] = await db.query<MessageRow>(
-    `SELECT ${MESSAGE_COLS} FROM loopway.messages WHERE id = $1 AND inbox_id = $2`,
-    [messageId, inboxId],
+    `SELECT ${MESSAGE_COLS} FROM loopway.messages
+     WHERE id = $1 AND user_id = $2 AND received_at >= now() - ${RETAINED}`,
+    [id, userId],
   );
   return row;
+}
+
+export async function countMessages(db: Db, userId: string): Promise<number> {
+  const [row] = await db.query<{ messages: number }>(
+    `SELECT count(*)::int AS messages FROM loopway.messages WHERE user_id = $1 AND received_at >= now() - ${RETAINED}`,
+    [userId],
+  );
+  return row!.messages;
+}
+
+/** Deletes what's past retention. Returns how many went. */
+export async function purgeMessages(db: Db): Promise<number> {
+  const rows = await db.query(`DELETE FROM loopway.messages WHERE received_at < now() - ${RETAINED} RETURNING 1`);
+  return rows.length;
 }

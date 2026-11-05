@@ -17,7 +17,7 @@ export function Wordmark({ href }: { href: string }) {
 }
 
 /** The sections the top bar links to, by id; each link reads as its section's label. */
-const NAV = ["first", "levels", "runners", "learned", "examples"];
+const NAV = ["first", "reader", "promises", "agents"];
 
 function Marketing({ sections }: { sections: Section[] }) {
   useEffect(() => {

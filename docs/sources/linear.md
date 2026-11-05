@@ -1,26 +1,19 @@
 # Linear
 
-An inbox with `source_type: "linear"` receives a workspace's webhooks.
-
-## Config
-
-`{ "secret"?: string, "events"?: ["issue.create", ...] (default ["*"]) }`
-
-Event names are `<type>.<action>`, lowercased. Linear makes the secret, so `config.secret_set` is `false` until you paste it in.
+A source of type `linear` lets your inbox receive a workspace's webhooks.
 
 ## Setup
 
-In Linear → Settings → API → Webhooks: URL = `webhook_url`, and pick the resource types to send (Issues, Comments, …). Linear shows a signing secret once the webhook is created; set it with `loopway inbox update <inbox> --secret <secret>` (or paste it on the inbox's dashboard page, or `PATCH` it into `config.secret`). Until then deliveries get `401`.
+Linear makes the secret once the webhook exists, so:
+
+1. `loopway source register linear` and copy the webhook URL it prints (`loopway inbox` shows the same URL).
+2. In Linear → Settings → API → Webhooks: URL = your inbox URL, and pick the resource types to send (Issues, Comments, …).
+3. Copy the signing secret Linear shows and run `loopway source update linear --secret <secret>`. Until it is set, deliveries get `401`.
 
 ## Delivery
 
-Deliveries are authenticated by `Linear-Signature` (HMAC-SHA256 over the raw body with the secret). An event not in `config.events` answers `422`. A redelivery of a stored event (same `Linear-Delivery`) answers `200 {duplicate: true}`.
+loopway recognizes a Linear delivery by its `Linear-Signature` header, and authenticates it by that header (HMAC-SHA256 over the raw body with the secret), trying each of your `linear` sources. A delivery none of them verifies answers `401` with code `unverified` and is not stored. A redelivery of a stored event (same `Linear-Delivery`) answers `200 {duplicate: true}`.
 
 ## CloudEvent mapping
 
-`id` = the `Linear-Delivery` header, `type` = `com.linear.<type>.<action>` lowercased (e.g. `com.linear.issue.create`), `source` = `https://linear.app/<organizationId>`, `subject` = the issue the event is about (`data.issueId` for comments, else `data.id`), `time` = `createdAt`, `data` = the whole body.
-
-
-## Test message
-
-The test message is an `issue.create` event for a made-up issue, `TEST-1`. If `config.events` leaves out `issue.create`, it is `issue.update` or `issue.remove`. It needs the signing secret to be set first (`409 secret_not_set` otherwise).
+`id` = the `Linear-Delivery` header (without one, `webhookTimestamp` + `data.id`), `type` = `com.linear.<type>.<action>` lowercased (e.g. `com.linear.issue.create`), `source` = `https://linear.app/<organizationId>` (`https://linear.app` without one), `subject` = the issue the event is about (`data.issueId` for comments, else `data.id`), `time` = `createdAt`, falling back to receive time, `data` = the whole body.

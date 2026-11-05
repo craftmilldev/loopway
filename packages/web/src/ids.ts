@@ -25,6 +25,10 @@ export const normalizeLoginCode = (s: string) =>
   s.replace(/[\s-]/g, "").toUpperCase().replace(/O/g, "0").replace(/[IL]/g, "1");
 export const newSecret = () => randomBytes(32).toString("hex");
 
+/** A long-lived API token. The prefix tells it from a session JWT, in code and at a glance. */
+export const API_TOKEN_PREFIX = "lw_";
+export const newApiToken = () => API_TOKEN_PREFIX + randomBytes(32).toString("base64url");
+
 export const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
 export function safeEqual(a: string, b: string): boolean {

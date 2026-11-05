@@ -2,11 +2,11 @@
 
 The `loopway` server is a plain HTTP API; the [CLI](../README.md#cli) is a client of it. This file is the contract.
 
+Every route below is served under `/api` (the paths here include it); the landing page and static assets live outside it.
 
-Every route below is served under `/api` (the paths here include it); the web pages and static assets live outside it, and the old top-level paths (`/inboxes`, `/auth/login`, ...) answer `404`.
+Users are created with `loopway login`. Every endpoint except `/api/webhooks/*`, `/api/cron/tick`, `/api/auth/*`, `/api/health`, `/api` and the landing page takes `Authorization: Bearer <token>`. The token is a session JWT from `loopway login`, valid 30 days, or an API token from `POST /api/tokens`, which starts `lw_` and lasts until it's revoked.
 
-Users are created with `loopway login` (or the web UI). Every endpoint except `/api/webhooks/*`, `/api/health`, `/api` and the web pages takes `Authorization: Bearer <token>`. The token is a session JWT from `loopway login`, valid 30 days.
-Errors look like `{ "error": { "code": "...", "message": "..." } }`.
+Errors look like `{ "error": { "code": "...", "message": "..." } }`. A CLI older than the server's minimum gets `426 cli_outdated`.
 
 ## Users
 
@@ -18,57 +18,54 @@ Errors look like `{ "error": { "code": "...", "message": "..." } }`.
 | `PATCH /api/me/username` `{username}` | Set or change the username. Lowercase `[a-z0-9-]`, 2-39 chars, no leading/trailing `-`, not reserved. `400 invalid_username` / `username_reserved`, `409 username_taken`. |
 | `GET /api/usernames/:username` | `{username, available, reason?, message?}`: whether the name can be used (your own current one counts as available). |
 
-## Inboxes
+## API tokens
 
-|                                                |                                                                                                                                                                                                                             |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/sources`                                 | Available source types: `type`, `label`, `description`, common `events`, who makes the `secret` (`{from: "loopway", min_length}`, `{from: "sender"}`, or `{from: "none"}` for a source that takes no webhooks), and `webhook_settings` (where the webhook is added in the sender). |
-| `POST /api/inboxes` `{name, source_type, config?}` | Create. Response includes `webhook_url` and `setup` instructions, and is the only one that carries the inbox's webhook secret (`config.secret`). It is stored encrypted and never readable again; every other response has `config.secret_set` instead.                                                                                                                                                           |
-| `GET /api/inboxes`                                 | List yours.                                                                                                                                                                                                                 |
-| `GET /api/inboxes/:id`                             | One inbox + `stats` (`{messages}`: how many it holds).                                                                                                                                                                        |
-| `PATCH /api/inboxes/:id` `{name?, config?}`        | Update. Config merges onto existing (secret kept unless given; a new one is not echoed back).                                                                                                                                                             |
-| `DELETE /api/inboxes/:id`                          | Deletes the inbox and its messages.                                                                                                                                                                                           |
+|                            |                                                                                                                       |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/tokens`          | `{data: [{id, name, created_at, last_used_at}]}`. `last_used_at` is updated at most once an hour.                     |
+| `POST /api/tokens` `{name}` | `201`, with `token`. This is the only response that carries it: only its hash is stored. It works like a session token. |
+| `DELETE /api/tokens/:id`   | Revokes it. `204`.                                                                                                    |
 
-Each source's `config`, how to connect it in the sender, and how its deliveries map to CloudEvents are in `docs/sources/`: [github](sources/github.md), [vercel](sources/vercel.md), [linear](sources/linear.md), [granola](sources/granola.md), [resend](sources/resend.md), [loopway](sources/loopway.md) and [schedule](sources/schedule.md).
+## The inbox
+
+`GET /api/inbox` returns `{url, sources, messages, retention_days}`. `url` is what every sender is given. It's `/api/webhooks/<user id>`, so changing your username doesn't change it.
+
+## Sources
+
+A source is something the inbox accepts: a sender's signing secret, or a schedule. Each one's setup in the sender and how its deliveries map to CloudEvents are in `docs/sources/`: [github](sources/github.md), [vercel](sources/vercel.md), [linear](sources/linear.md), [granola](sources/granola.md), [resend](sources/resend.md), [loopway](sources/loopway.md) and [schedule](sources/schedule.md).
+
+|                                                  |                                                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/source-types`                          | `{data, schedule_options}`. For each type: `type`, `label`, `description`, who makes the `secret` (`{from: "loopway", min_length}`, `{from: "sender"}` or `{from: "none"}`), and `webhook_settings` (where the webhook is added in the sender).                                                                         |
+| `GET /api/sources`                               | `{data: [source]}`.                                                                                                                                                                                                                                                                                                     |
+| `POST /api/sources` `{type, name?, secret?, config?}` | Registers one. `name` defaults to the type, and is unique per user: `409 source_name_taken`. Where loopway makes the secret and none is given, the `201` carries it as `secret`, the only time it's shown. It's stored encrypted and never readable again. `config` is only for `schedule`. A user can have up to 50: `409 too_many_sources`. |
+| `GET /api/sources/:id`                           | One source.                                                                                                                                                                                                                                                                                                             |
+| `PATCH /api/sources/:id` `{name?, secret?, config?}` | Update. A new `secret` replaces the old one.                                                                                                                                                                                                                                                                       |
+| `DELETE /api/sources/:id`                        | Removes it. Its deliveries are refused from then on. Messages it sent stay until they expire, with `source_id: null`.                                                                                                                                                                                                  |
+
+A source looks like `{id, name, type, config?, secret_set?, webhook_url?, webhook_settings, created_at, last_delivery_at, last_delivery_outcome}`. `secret_set` and `webhook_url` are missing from a schedule, and `config` from anything else. `last_delivery_at` and `last_delivery_outcome` (`accepted` or `ignored:<reason>`) only change for a delivery that verifies: the inbox URL is public, so a refused one could be from anyone.
 
 ## Webhook ingestion
 
-`POST /api/webhooks/:inboxId` — no API key; authenticated by the source: a signature header, or a bearer token for `loopway` inboxes (see each source's doc).
+`POST /api/webhooks/:userId` takes no API token. It's authenticated by the sender's signature, or by a source's bearer token for `loopway` sources.
+
+Each source of the user whose sender claims the delivery (by its signature header) is tried in turn, so a user can have several of one type. The first that verifies it stores it, under that source.
 
 - `202 {id, duplicate:false}` stored
 - `200 {id, duplicate:true}` redelivery of a message already stored (same CloudEvent `source`+`id`)
-- `200 {ignored:true, reason}` `ping`, or for Granola a signed delivery with no `note_id`
-- `400` malformed body (for Loopway, one that doesn't match the inbox schema) · `401` bad/missing signature or token (or, for Vercel, Granola and Resend, no secret set yet) · `404` unknown inbox · `415` unsupported content type · `422` event type not in `config.events` (GitHub shows it as a failed delivery and doesn't retry it; Vercel retries any non-2xx for up to 24 hours; Granola retries only 408, 429 and 5xx)
-
-## Sending a test message
-
-`POST /api/inboxes/:id/test` `{from?}` — session auth; it must be your inbox (`404` otherwise). It builds a small sample event for the inbox's source, signs it with the inbox's stored secret the way the sender would, and runs it through the same handler as `POST /api/webhooks/:inboxId`, so it is stored like any message. `201 {message_id, seq}`. Each call stores a new message.
-
-- The message is stored with `is_test` set, and `GET /api/inboxes/:id/messages` returns it as `test: true` (`false` for every other message). The CloudEvent itself is the sample, unmarked. Only this route sets it: no webhook can.
-- If the inbox's `events` filter rejects the sample's type, the first sample type the inbox accepts is sent instead. If it accepts none: `422 no_accepted_type`.
-- For a source whose sender makes the secret (Linear, Vercel, Granola, Resend) that hasn't been pasted in yet: `409 secret_not_set`.
-- A sample the inbox refuses anyway (a `loopway` inbox whose schema the sample doesn't match) answers what the webhook would: `400` or `422`.
-- `from` (default `cli`) only labels the `test_message_sent` / `test_message_failed` metric events.
-
-From the CLI: `loopway inbox test <inbox>`.
+- `200 {ignored:true, reason}` a verified delivery with nothing to store, like GitHub's `ping`
+- `400` malformed body · `401` no source verifies it, and nothing is stored · `404` unknown user · `415` unsupported content type
 
 ## Messages
 
-All under `/api/inboxes/:inboxId/messages`. A message is a stored delivery: there's no per-message status, and nothing marks one done.
-
-|                |                                                                                                                                                                                                                    |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /`        | List. Query: `type` (exact, or prefix with trailing `*`, e.g. `com.github.pull_request.*`); `limit` (≤100, default 50); `order` = `asc` (default) \| `desc`; `cursor` = `next_cursor` from the previous page. |
-| `GET /:messageId` | One message.                                                                                                                                                                                                        |
-
-Message shape:
+A message is a stored delivery. It has no status, and nothing marks one done. It's dropped from every read 14 days after it arrives, and deleted by the daily cron.
 
 ```json
 {
-  "id": "0192…", // loopway id (UUIDv7, time-ordered)
-  "inbox_id": "0192…",
-  "seq": 1234, // arrival order across all inboxes, assigned by the database
-  "received_at": "2026-10-04T23:40:00.000Z",
+  "id": "0192…", // loopway's id for the message
+  "source_id": "0192…", // the source that verified it; null if pushed, or if the source was removed
+  "received_at": "2026-10-04T23:40:00.123456Z", // to the microsecond
+  "received_us": "1791157200123456", // the same time as microseconds since the epoch, as a string
   "event": {
     // the CloudEvent, structured mode
     "specversion": "1.0",
@@ -82,3 +79,42 @@ Message shape:
   }
 }
 ```
+
+### Reading
+
+`GET /api/messages` returns `{data, next_since, next_after, has_more}`, oldest first, ordered by `(received_at, id)`.
+
+| Query   |                                                                                                                                                                       |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `since` | Where to start, inclusive: microseconds since the epoch, an ISO 8601 time with up to six fractional digits, or `now`. Left out, the oldest message still held. Anything else: `400 invalid_since`. |
+| `after` | The `next_after` from the last page. Only with the `since` it came with.                                                                                              |
+| `limit` | ≤100, default 50.                                                                                                                                                     |
+| `type`  | Exact, or a prefix with a trailing `*`, e.g. `com.github.pull_request.*`.                                                                                             |
+
+To read everything, pass `next_since` and `next_after` back until `has_more` is false, and keep them for next time.
+
+- **Delivery is at least once.** Nothing on the server tracks a reader. Whoever holds the cursor decides when it moves, so a crash means a repeat, not a loss. Going back is a matter of asking for an earlier `since`.
+- `after` is what makes paging exact. Two messages can share a microsecond, so `since` alone can't say where a page ended.
+- `since=now` returns no messages and the `next_since` a new reader should start from.
+- Reads stop 5 seconds behind the clock. A message's time is set when its insert runs, but the row is only visible once it commits, so without this a reader could move past a message that hadn't appeared yet. Read to the end, `next_since` is that 5-second mark and `next_after` is null. A message with exactly that time comes next.
+
+`GET /api/messages?order=desc` returns the newest messages first, for looking at an inbox. It takes `limit` and `type`, has no holdback, and gives no cursor: `since` or `after` with it is a `400`.
+
+`GET /api/messages/:id` returns one message, or `404` once it's past retention.
+
+### Pushing
+
+`POST /api/messages` `{type, subject?, id?, data?}` puts a message in your own inbox as a CloudEvent with source `urn:loopway:push`. `id` is its CloudEvent id: pushing the same `id` again stores nothing new and answers `200 {id, duplicate:true}`. Without one, each push is a new message. `202 {id, duplicate:false}` otherwise. `data` is any JSON, at most 1 MiB: `400 too_large`.
+
+## MCP
+
+`POST /api/mcp` is a stateless MCP server over Streamable HTTP: one JSON-RPC message per request, a JSON answer, no sessions and no stream (`GET` and `DELETE` are `405`). It takes the same bearer tokens as the API, and always acts on the caller's own inbox.
+
+- `push_message` `{type, subject?, id?, data?}`: the same as `POST /api/messages`.
+- `pull_messages` `{since?, after?, limit?, type?}`: the same as `GET /api/messages`.
+
+Each returns its JSON as text. Bad input is a tool result with `isError: true`, with a message the agent can act on.
+
+## Cron
+
+`GET /api/cron/tick` with `Authorization: Bearer $CRON_SECRET` is what Vercel Cron calls. It fills schedule sources and deletes messages past retention, and returns `{sources, accepted, duplicate, failed, disabled, purged}`.

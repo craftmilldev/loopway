@@ -6,38 +6,51 @@ export interface User {
   id: string;
   name: string;
   email: string | null;
-  /** The slug of their personal org. Null until a new signup has picked one. */
+  /** Null only for accounts from before signup asked for one. */
   username: string | null;
   created_at: string;
 }
 
-export interface Source {
+export interface SourceType {
   type: string;
   label: string;
   description: string;
-  /** Common event names, offered as choices. */
-  events: string[];
-  /** `loopway`: generated or entered at create time. `sender`: the sender makes it; set it afterwards. */
+  /** `loopway`: generated or given when registering. `sender`: the sender makes it, and it's given afterwards. */
   secret: { from: "loopway"; min_length: number } | { from: "sender" } | { from: "none" };
   /** Where in the sender the webhook is added. */
   webhook_settings: string;
 }
 
-export interface Inbox {
+export interface RegisteredSource {
   id: string;
   name: string;
-  source_type: string;
-  config: Record<string, unknown>;
-  webhook_url: string;
-  setup?: Record<string, unknown>;
+  type: string;
+  /** A schedule's settings. */
+  config?: unknown;
+  /** Whether a signing secret is stored. Missing for a source that takes no webhooks. */
+  secret_set?: boolean;
+  webhook_url?: string;
+  webhook_settings: string;
   created_at: string;
-  /** When a sender last reached the inbox, and how it went; null until one has. */
-  last_delivery_at?: string | null;
-  last_delivery_outcome?: string | null;
+  /** When a delivery last verified against the source, and what came of it; null until one has. */
+  last_delivery_at: string | null;
+  last_delivery_outcome: string | null;
+  /** The secret loopway generated, on the response that made it. Nowhere else. */
+  secret?: string;
 }
 
-export interface InboxStats {
+export interface Inbox {
+  url: string;
+  sources: number;
   messages: number;
+  retention_days: number;
+}
+
+export interface ApiToken {
+  id: string;
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
 }
 
 export interface CloudEvent {
@@ -54,19 +67,40 @@ export interface CloudEvent {
 
 export interface Message {
   id: string;
-  inbox_id: string;
-  /** Arrival order across all inboxes; bots read by it. */
-  seq: number;
+  /** The source that verified it; null for a message pushed by a user, or whose source has since been removed. */
+  source_id: string | null;
+  /** ISO 8601, to the microsecond. */
   received_at: string;
+  /** Microseconds since the epoch: what a `since` is. */
+  received_us: string;
   event: CloudEvent;
 }
 
-/** One saved revision of a bot's prompt and assign rules. */
-export interface ListMessagesQuery {
-  type?: string;
+export interface ReadQuery {
+  /** `now`, microseconds since the epoch, or an ISO 8601 time. Inclusive. */
+  since?: string;
+  /** The `next_after` that came with this `since`. */
+  after?: string;
   limit?: number;
+  /** An exact CloudEvent type, or a prefix ending in `*`. */
+  type?: string;
+  /** `desc` is the newest messages, for looking: it has no cursor. */
   order?: "asc" | "desc";
-  cursor?: string;
+}
+
+export interface ReadResult {
+  data: Message[];
+  next_since: string | null;
+  next_after: string | null;
+  has_more: boolean;
+}
+
+export interface PushInput {
+  type: string;
+  subject?: string;
+  /** A dedupe id: pushing it again stores nothing new. */
+  id?: string;
+  data?: unknown;
 }
 
 export interface ClientOptions {
@@ -119,50 +153,70 @@ export class LoopwayClient {
     return this.request<User>("GET", "/me");
   }
 
-  /** Sets the username (the personal org's slug), or renames it. 400/409 `invalid_username`, `username_reserved`, `username_taken`. */
+  /** Sets or changes the username. 400/409 `invalid_username`, `username_reserved`, `username_taken`. */
   setUsername(username: string) {
     return this.request<User>("PATCH", "/me/username", { username });
   }
 
-  async sources() {
-    return (await this.request<{ data: Source[] }>("GET", "/sources")).data;
+  inbox() {
+    return this.request<Inbox>("GET", "/inbox");
   }
 
-  // ---------- inboxes ----------
+  // ---------- sources ----------
 
-  /** The inboxes of one org (by slug). */
-  async listInboxes() {
-    return (await this.request<{ data: Inbox[] }>("GET", `/inboxes`)).data;
+  async sourceTypes() {
+    return (await this.request<{ data: SourceType[] }>("GET", "/source-types")).data;
   }
 
-  createInbox(input: { name: string; source_type: string; config?: unknown }) {
-    return this.request<Inbox>("POST", "/inboxes", input);
+  async listSources() {
+    return (await this.request<{ data: RegisteredSource[] }>("GET", "/sources")).data;
   }
 
-  getInbox(inboxId: string) {
-    return this.request<Inbox & { stats: InboxStats }>("GET", `/inboxes/${enc(inboxId)}`);
+  getSource(id: string) {
+    return this.request<RegisteredSource>("GET", `/sources/${enc(id)}`);
   }
 
-  updateInbox(inboxId: string, input: { name?: string; config?: unknown }) {
-    return this.request<Inbox>("PATCH", `/inboxes/${enc(inboxId)}`, input);
+  registerSource(input: { type: string; name?: string; secret?: string; config?: unknown }) {
+    return this.request<RegisteredSource>("POST", "/sources", input);
   }
 
-  /** Sends the inbox a sample message of its source, signed and stored like a real delivery. */
-  testInbox(inboxId: string) {
-    return this.request<{ message_id: string; seq: number }>("POST", `/inboxes/${enc(inboxId)}/test`, { from: "cli" });
+  updateSource(id: string, input: { name?: string; secret?: string; config?: unknown }) {
+    return this.request<RegisteredSource>("PATCH", `/sources/${enc(id)}`, input);
+  }
+
+  async removeSource(id: string) {
+    await this.request("DELETE", `/sources/${enc(id)}`);
   }
 
   // ---------- messages ----------
 
-  listMessages(inboxId: string, q: ListMessagesQuery = {}) {
+  readMessages(q: ReadQuery = {}) {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(q)) if (v !== undefined) qs.set(k, String(v));
     const suffix = qs.size ? `?${qs}` : "";
-    return this.request<{ data: Message[]; next_cursor: string | null }>("GET", `${messages(inboxId)}${suffix}`);
+    return this.request<ReadResult>("GET", `/messages${suffix}`);
   }
 
-  getMessage(inboxId: string, messageId: string) {
-    return this.request<Message>("GET", `${messages(inboxId)}/${enc(messageId)}`);
+  getMessage(id: string) {
+    return this.request<Message>("GET", `/messages/${enc(id)}`);
+  }
+
+  pushMessage(input: PushInput) {
+    return this.request<{ id: string; duplicate: boolean }>("POST", "/messages", input);
+  }
+
+  // ---------- tokens ----------
+
+  async listTokens() {
+    return (await this.request<{ data: ApiToken[] }>("GET", "/tokens")).data;
+  }
+
+  createToken(name: string) {
+    return this.request<ApiToken & { token: string }>("POST", "/tokens", { name });
+  }
+
+  async revokeToken(id: string) {
+    await this.request("DELETE", `/tokens/${enc(id)}`);
   }
 
   private async request<T>(
@@ -212,4 +266,3 @@ export class LoopwayClient {
 }
 
 const enc = encodeURIComponent;
-const messages = (inboxId: string) => `/inboxes/${enc(inboxId)}/messages`;

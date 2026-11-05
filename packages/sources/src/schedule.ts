@@ -8,15 +8,15 @@ import type { SourceAdapter, SourceDeps } from "./types.js";
  *
  *   id      = hash of <type>/<window start>, the same for every run in a window, so a repeat run is a duplicate
  *   type    = dev.craftmill.loopway.schedule.<type>
- *   source  = urn:loopway:inbox:<inbox id>
+ *   source  = urn:loopway:source:<source id>
  *   subject = the same hash as the id
  *   time    = window start (the run time truncated down to the hour, or the day's or week's hour)
  *   data    = { message, created_at } (created_at is the window start)
  *
- * The server's cron route calls `tick` for every schedule inbox; `receive` refuses webhooks.
+ * The server's cron route calls `tick` for every schedule source.
  */
 
-/** `day` is the UTC weekday, 0 = Sunday, as in CEL's `getDayOfWeek()`. */
+/** `day` is the UTC weekday, 0 = Sunday. */
 export type Every = { every: "hour" } | { every: "day"; hour: number } | { every: "week"; day: number; hour: number };
 
 export interface ScheduleMessage {
@@ -80,22 +80,13 @@ export function windowStart(every: Every, now: Date): Date {
   return new Date(Math.floor((t - offset) / DAY) * DAY + offset);
 }
 
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-function describe(every: Every): string {
-  if (every.every === "hour") return "every hour";
-  if (every.every === "day") return `daily at ${every.hour}:00 UTC`;
-  return `weekly on ${WEEKDAYS[every.day]} at ${every.hour}:00 UTC`;
-}
-
 export const schedule = ({ makeCloudEvent }: SourceDeps): SourceAdapter<ScheduleConfig> => ({
   type: "schedule",
   label: "Schedule",
   description:
     "Messages with text you set, sent every hour, once a day at an hour you pick, or once a week on a weekday and hour you pick (UTC).",
-  events: [],
   secret: { from: "none" },
-  webhookSettings: "nowhere: this inbox takes no webhooks",
+  webhookSettings: "nowhere: a schedule takes no webhooks",
 
   parseConfig(input, existing) {
     const parsed = configInput.safeParse(input ?? existing);
@@ -105,29 +96,14 @@ export const schedule = ({ makeCloudEvent }: SourceDeps): SourceAdapter<Schedule
     return parsed.data as ScheduleConfig;
   },
 
-  publicConfig(config) {
-    return { schedule: config.schedule, messages: config.messages };
-  },
-
-  setup(config) {
-    return {
-      schedule: describe(config.schedule),
-      types: config.messages.map((m) => m.type),
-    };
-  },
-
-  receive() {
-    return { kind: "rejected", status: 404, message: "This inbox is fed by a schedule, not webhooks" };
-  },
-
-  tick(config, inboxId, now) {
+  tick(config, sourceId, now) {
     const start = windowStart(config.schedule, now).toISOString();
     return config.messages.map((m) => {
       const hash = createHash("sha256").update(`${m.type}/${start}`).digest("hex");
       return makeCloudEvent({
         specversion: "1.0",
         id: hash,
-        source: `urn:loopway:inbox:${inboxId}`,
+        source: `urn:loopway:source:${sourceId}`,
         type: `dev.craftmill.loopway.schedule.${m.type}`,
         subject: hash,
         time: start,

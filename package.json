@@ -1,6 +1,6 @@
 {
   "name": "loopway",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "license": "MIT",
   "description": "A notification system for your bots: every webhook you care about lands in one CloudEvents inbox, and you read it from where you are.",

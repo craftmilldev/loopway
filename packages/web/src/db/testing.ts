@@ -1,5 +1,5 @@
-import { randomBytes } from "node:crypto";
-import { createInbox, createUser, insertMessage, setUsername } from "../store.js";
+import { randomBytes, randomUUID } from "node:crypto";
+import { createSource, createUser, insertMessage, setUsername } from "../store.js";
 import { migrate, openDb, type Db } from "./index.js";
 
 /** The docker-compose.yml Postgres; CI sets TEST_DATABASE_URL to its service container. */
@@ -79,30 +79,31 @@ export async function openTestDb(): Promise<Db> {
 }
 
 /**
- * The same small world in every test database: a user with an inbox holding one message. Written through the store,
- * so it is what the app itself would write on the schema the migrations built. It goes away with the database, so
- * there is nothing to tear down.
+ * The same small world in every test database: a user with a source and one message. Written through the store, so it
+ * is what the app itself would write on the schema the migrations built. It goes away with the database, so there is
+ * nothing to tear down.
  */
 export async function seedFixtures(db: Db) {
   const { user } = await createUser(db, { name: "Fixture", email: "fixture@example.com" });
   const username = await setUsername(db, user.id, "fixture");
   if ("problem" in username) throw new Error(`Fixture username rejected: ${username.problem}`);
-  const inbox = await createInbox(db, { userId: user.id, name: "fixture-inbox", sourceType: "github", config: {} });
-  const message = await insertMessage(
-    db,
-    inbox.id,
-    {
-      specversion: "1.0",
-      id: "fixture-1",
-      source: "https://github.com/craftmill/loopway",
-      type: "com.github.pull_request.opened",
-      subject: "pull/1",
-      time: "2026-10-01T12:00:00Z",
-      data: { number: 1 },
-    },
-    false,
-  );
-  return { userId: user.id, inboxId: inbox.id, messageId: message.id };
+  const source = await createSource(db, {
+    id: randomUUID(),
+    userId: user.id,
+    name: "fixture-source",
+    sourceType: "github",
+    config: {},
+  });
+  const message = await insertMessage(db, user.id, source!.id, {
+    specversion: "1.0",
+    id: "fixture-1",
+    source: "https://github.com/craftmill/loopway",
+    type: "com.github.pull_request.opened",
+    subject: "pull/1",
+    time: "2026-10-01T12:00:00Z",
+    data: { number: 1 },
+  });
+  return { userId: user.id, sourceId: source!.id, messageId: message.id };
 }
 
 /** An `INBOX_SECRET_KEY` for tests that create inboxes. */

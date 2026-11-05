@@ -2,9 +2,9 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 const VERSION = "v1";
 
-/** Seals and opens inbox secrets (AES-256-GCM) so they are never at rest in plaintext. */
+/** Seals and opens webhook secrets (AES-256-GCM) so they are never at rest in plaintext. */
 export interface SecretBox {
-  /** `v1.<iv>.<tag>.<ciphertext>` (base64url). `context` (the inbox id) is authenticated, so a value can't be moved to another row. */
+  /** `v1.<iv>.<tag>.<ciphertext>` (base64url). `context` (the source id) is authenticated, so a value can't be moved to another row. */
   seal(plaintext: string, context: string): string;
   open(sealed: string, context: string): string;
 }

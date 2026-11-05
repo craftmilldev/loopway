@@ -28,23 +28,17 @@ describe("the marketing home", () => {
     expect(within(screen.getByRole("navigation")).queryByRole("link", { name: "Log in" })).toBeNull();
   });
 
-  it("says it is a project and offers no way to install or sign up", () => {
+  it("says what it is, and how to install it", () => {
     const { container } = render(marketingPage("/"));
-    expect(container.querySelector("#top")?.textContent).toMatch(/project, not a service/);
-    expect(container.querySelector(".lp-well")).toBeNull();
+    expect(container.querySelector("#top")?.textContent).toMatch(/notification system for your bots/);
+    expect(container.querySelector("#top .lp-well")?.textContent).toContain("install.sh");
   });
 
   it("links the top bar to the page's sections, by their labels", () => {
     const { container } = render(marketingPage("/"));
     const links = within(screen.getByRole("navigation")).getAllByRole("link");
     const anchors = links.filter((a) => a.getAttribute("href")!.startsWith("#"));
-    expect(anchors.map((a) => a.getAttribute("href"))).toEqual([
-      "#first",
-      "#levels",
-      "#runners",
-      "#learned",
-      "#examples",
-    ]);
+    expect(anchors.map((a) => a.getAttribute("href"))).toEqual(["#first", "#reader", "#promises", "#agents"]);
     for (const a of anchors) {
       const section = container.querySelector(a.getAttribute("href")!)!;
       expect(a.textContent).toBe(section.querySelector(".lp-label")!.textContent);

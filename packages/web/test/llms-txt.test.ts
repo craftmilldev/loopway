@@ -11,7 +11,7 @@ describe("GET /llms.txt", () => {
     expect(res.headers.get("content-type")).toContain("text/plain");
     const body = await res.text();
     expect(body).toMatch(/^# loopway/);
-    for (const part of ["loopway inbox create", "loopway messages list"]) {
+    for (const part of ["loopway source register", "loopway read", "loopway messages list"]) {
       expect(body).toContain(part);
     }
     expect(captured).toEqual(["llms_txt_served"]);
@@ -21,7 +21,7 @@ describe("GET /llms.txt", () => {
     const body = await (await createWeb().request("/llms.txt")).text();
     // Look in the concept that lists each, since some names (`loopway`) also show up elsewhere.
     const concept = (name: string) => body.split("\n").find((line) => line.startsWith(`- **${name}**:`)) ?? "";
-    for (const type of sources.types()) expect(concept("Inbox")).toContain(`\`${type}\``);
+    for (const type of sources.types()) expect(concept("Source")).toContain(`\`${type}\``);
   });
 
   it("names the request's origin, or PUBLIC_BASE_URL when set, never a hard-coded host", async () => {

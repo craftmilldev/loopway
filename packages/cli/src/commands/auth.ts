@@ -81,6 +81,10 @@ export async function login(ctx: Context, opts: { url?: string; email?: string; 
   // Signup asks for the username, so only an account from before that can lack one. The token is already saved.
   const authed = new LoopwayClient({ baseUrl: url, apiKey: token, fetch: ctx.fetch });
   if (!user.username) await chooseUsername(ctx, authed, opts.username);
+  if (created)
+    ctx.out(
+      `\n${bold("Next:")} \`loopway inbox\` shows your inbox URL; \`loopway source types\` lists what can send to it.`,
+    );
 }
 
 /**

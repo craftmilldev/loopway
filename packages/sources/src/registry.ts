@@ -18,29 +18,16 @@ export class SourceRegistry {
     return this.byType.get(type);
   }
 
-  /**
-   * The event name for a test message to an inbox: the source's first sample type the inbox's `events` filter lets
-   * through. Undefined when the source has no sample or the filter lets none through.
-   */
-  sampleType(type: string, config: { events?: string[] }): string | undefined {
-    const events = config.events ?? ["*"];
-    return this.byType
-      .get(type)
-      ?.sampleTypes?.(config)
-      .find((t) => events.includes("*") || events.includes(t));
-  }
-
   types(): string[] {
     return [...this.byType.keys()];
   }
 
-  /** What clients need to build a create form or prompt for each source (`GET /sources`). */
+  /** What clients need to explain each source (`GET /source-types`). */
   describe() {
     return [...this.byType.values()].map((s) => ({
       type: s.type,
       label: s.label,
       description: s.description,
-      events: s.events,
       secret:
         s.secret.from === "loopway" ? { from: s.secret.from, min_length: s.secret.minLength } : { from: s.secret.from },
       webhook_settings: s.webhookSettings,

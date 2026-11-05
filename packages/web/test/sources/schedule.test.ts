@@ -1,15 +1,16 @@
+import { randomUUID } from "node:crypto";
 import { TEST_INBOX_KEY } from "../../src/db/testing.js";
 import { describe, expect, it } from "vitest";
 import { windowStart } from "../../../sources/src/schedule.js";
 import { createApi, parseScheduleOptions } from "../../src/api.js";
 import type { Metrics } from "../../src/metrics.js";
-import { app, call, db, newUser, SECRET } from "../helpers.js";
+import { app, call, db, newUser, readAll, SECRET, userId } from "../helpers.js";
 
 const CRON = "cron-secret";
 const cronApp = () =>
   createApi({ getDb: async () => db, tokenSecret: "x", inboxSecretKey: TEST_INBOX_KEY, cronSecret: CRON });
 const tick = (token: string | null = CRON, a = cronApp()) =>
-  a.request("/api/cron/schedules", { headers: token ? { authorization: `Bearer ${token}` } : {} });
+  a.request("/api/cron/tick", { headers: token ? { authorization: `Bearer ${token}` } : {} });
 
 const config = {
   schedule: { every: "hour" },
@@ -19,11 +20,14 @@ const config = {
   ],
 };
 
-function scheduleInbox(key: string, c: unknown = config) {
-  return call("POST", "/inboxes", { key, body: { name: "clock", source_type: "schedule", config: c } });
+/** Source names are unique per user, and these tests register several. */
+const clock = () => `clock-${randomUUID()}`;
+
+function scheduleSource(key: string, c: unknown = config) {
+  return call("POST", "/sources", { key, body: { type: "schedule", name: clock(), config: c } });
 }
 
-describe("schedule inboxes", () => {
+describe("schedule sources", () => {
   it("computes the window a weekly schedule is in", () => {
     const week = (day: number, hour: number, at: string) =>
       windowStart({ every: "week", day, hour }, new Date(at)).toISOString();
@@ -47,18 +51,18 @@ describe("schedule inboxes", () => {
 
   it("validates its config", async () => {
     const key = await newUser();
-    expect((await scheduleInbox(key, {})).status).toBe(400);
-    expect((await scheduleInbox(key, { ...config, schedule: { every: "week" } })).status).toBe(400);
-    expect((await scheduleInbox(key, { ...config, schedule: { every: "week", hour: 9 } })).status).toBe(400);
-    expect((await scheduleInbox(key, { ...config, schedule: { every: "week", day: 7, hour: 9 } })).status).toBe(400);
-    expect((await scheduleInbox(key, { ...config, schedule: { every: "week", day: 1, hour: 24 } })).status).toBe(400);
-    expect((await scheduleInbox(key, { ...config, schedule: { every: "month" } })).status).toBe(400);
-    expect((await scheduleInbox(key, { ...config, schedule: { every: "day", hour: 24 } })).status).toBe(400);
-    expect((await scheduleInbox(key, { ...config, messages: [] })).status).toBe(400);
-    expect((await scheduleInbox(key, { ...config, messages: [config.messages[0], config.messages[0]] })).status).toBe(
+    expect((await scheduleSource(key, {})).status).toBe(400);
+    expect((await scheduleSource(key, { ...config, schedule: { every: "week" } })).status).toBe(400);
+    expect((await scheduleSource(key, { ...config, schedule: { every: "week", hour: 9 } })).status).toBe(400);
+    expect((await scheduleSource(key, { ...config, schedule: { every: "week", day: 7, hour: 9 } })).status).toBe(400);
+    expect((await scheduleSource(key, { ...config, schedule: { every: "week", day: 1, hour: 24 } })).status).toBe(400);
+    expect((await scheduleSource(key, { ...config, schedule: { every: "month" } })).status).toBe(400);
+    expect((await scheduleSource(key, { ...config, schedule: { every: "day", hour: 24 } })).status).toBe(400);
+    expect((await scheduleSource(key, { ...config, messages: [] })).status).toBe(400);
+    expect((await scheduleSource(key, { ...config, messages: [config.messages[0], config.messages[0]] })).status).toBe(
       400,
     );
-    const ok = await scheduleInbox(key);
+    const ok = await scheduleSource(key);
     expect(ok.status).toBe(201);
     expect(ok.body.config).toEqual(config);
   });
@@ -66,49 +70,55 @@ describe("schedule inboxes", () => {
   it("accepts a weekly schedule and stores one message for the week", async () => {
     const key = await newUser();
     const weekly = { schedule: { every: "week", day: 1, hour: 13 }, messages: [config.messages[0]] };
-    const inbox = await scheduleInbox(key, weekly);
-    expect(inbox.status).toBe(201);
-    expect(inbox.body.config).toEqual(weekly);
-    expect((await call("POST", `/inboxes/${inbox.body.id}/test`, { key })).status).toBeLessThan(500);
+    const source = await scheduleSource(key, weekly);
+    expect(source.status).toBe(201);
+    expect(source.body.config).toEqual(weekly);
+    await tick();
+    await tick();
+    const messages = await readAll(key);
+    expect(messages).toHaveLength(1);
+    const time = new Date(messages[0]!.event.time);
+    expect(time.getUTCDay()).toBe(1);
+    expect(time.getUTCHours()).toBe(13);
   });
 
   it("stores one message per type per window, and a second run in the window is a duplicate", async () => {
     const key = await newUser();
-    const inbox = (await scheduleInbox(key)).body;
+    const source = (await scheduleSource(key)).body;
     const first = await (await tick()).json();
+    expect(Object.keys(first).sort()).toEqual(["accepted", "disabled", "duplicate", "failed", "purged", "sources"]);
     expect(first.accepted).toBeGreaterThanOrEqual(2);
     const again = await (await tick()).json();
     expect(again.accepted).toBe(0);
     expect(again.duplicate).toBeGreaterThanOrEqual(2);
 
-    const messages = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data;
+    const messages = await readAll(key);
     expect(messages).toHaveLength(2);
-    const event = messages.find((m: { event: { type: string } }) => m.event.type.endsWith(".water")).event;
+    const event = messages.find((m) => m.event.type.endsWith(".water"))!.event;
     expect(event.type).toBe("dev.craftmill.loopway.schedule.water");
+    expect(event.source).toBe(`urn:loopway:source:${source.id}`);
     expect(event.subject).toBe(event.id);
-    expect(event.data.message).toBe("Drink water");
-    expect(event.data.created_at).toBe(event.time);
+    expect(event.data).toEqual({ message: "Drink water", created_at: event.time });
     expect(new Date(event.time).getUTCMinutes()).toBe(0);
   });
 
   it("stamps a daily schedule's messages with its hour", async () => {
     const key = await newUser();
-    const inbox = (await scheduleInbox(key, { schedule: { every: "day", hour: 9 }, messages: [config.messages[0]] }))
-      .body;
+    await scheduleSource(key, { schedule: { every: "day", hour: 9 }, messages: [config.messages[0]] });
     await tick();
-    const [m] = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data;
-    expect(new Date(m.event.time).getUTCHours()).toBe(9);
-    expect(new Date(m.event.time).getUTCMinutes()).toBe(0);
+    const [m] = await readAll(key);
+    expect(new Date(m!.event.time).getUTCHours()).toBe(9);
+    expect(new Date(m!.event.time).getUTCMinutes()).toBe(0);
   });
 
-  it("keeps going when one inbox's config no longer parses", async () => {
+  it("keeps going when one source's config no longer parses", async () => {
     const key = await newUser();
-    const broken = (await scheduleInbox(key)).body;
-    await db.query(`UPDATE loopway.inboxes SET config = '{}'::jsonb WHERE id = $1`, [broken.id]);
-    const good = (await scheduleInbox(key)).body;
+    const broken = (await scheduleSource(key)).body;
+    await db.query(`UPDATE loopway.sources SET config = '{}'::jsonb WHERE id = $1`, [broken.id]);
+    const good = (await scheduleSource(key)).body;
     const result = await (await tick()).json();
     expect(result.failed).toBeGreaterThanOrEqual(1);
-    const messages = (await call("GET", `/inboxes/${good.id}/messages`, { key })).body.data;
+    const messages = (await readAll(key)).filter((m) => m.source_id === good.id);
     expect(messages).toHaveLength(2);
   });
 
@@ -122,9 +132,17 @@ describe("schedule inboxes", () => {
 
   it("takes no webhooks", async () => {
     const key = await newUser();
-    const inbox = (await scheduleInbox(key)).body;
-    const r = await app.request(`/api/webhooks/${inbox.id}`, { method: "POST", body: "{}" });
-    expect(r.status).toBe(404);
+    const source = (await scheduleSource(key)).body;
+    expect(source).not.toHaveProperty("webhook_url");
+    const r = await app.request(`/api/webhooks/${await userId(key)}`, { method: "POST", body: "{}" });
+    expect(r.status).toBe(401);
+    expect((await r.json()).error.code).toBe("unverified");
+  });
+
+  it("has no secret", async () => {
+    const key = await newUser();
+    const body = { type: "schedule", name: clock(), config, secret: "x".repeat(32) };
+    expect((await call("POST", "/sources", { key, body })).status).toBe(400);
   });
 
   describe("schedule options", () => {
@@ -149,33 +167,33 @@ describe("schedule inboxes", () => {
       expect(() => parseScheduleOptions("month")).toThrow(/month/);
     });
 
-    it("lists the enabled options with the sources", async () => {
+    it("lists the enabled options with the source types", async () => {
       const key = await newUser();
-      expect((await call("GET", "/sources", { key })).body.schedule_options).toEqual(["hour", "day", "week"]);
-      const r = await dayOnly().request("/api/sources", { headers: { authorization: `Bearer ${key}` } });
+      expect((await call("GET", "/source-types", { key })).body.schedule_options).toEqual(["hour", "day", "week"]);
+      const r = await dayOnly().request("/api/source-types", { headers: { authorization: `Bearer ${key}` } });
       expect((await r.json()).schedule_options).toEqual(["day"]);
     });
 
-    it("rejects creating or updating an inbox with a disabled option", async () => {
+    it("rejects registering or updating a source with a disabled option", async () => {
       const key = await newUser();
       const post = (body: unknown) =>
-        dayOnly().request("/api/inboxes", {
+        dayOnly().request("/api/sources", {
           method: "POST",
           headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
           body: JSON.stringify(body),
         });
       events.length = 0;
-      const hourly = await post({ name: "clock", source_type: "schedule", config });
+      const hourly = await post({ type: "schedule", name: clock(), config });
       expect(hourly.status).toBe(400);
       expect((await hourly.json()).error.code).toBe("schedule_option_disabled");
       expect(events).toContainEqual({
         event: "schedule_option_rejected",
         properties: { option: "hour", action: "create" },
       });
-      expect((await post({ name: "clock", source_type: "schedule", config: daily })).status).toBe(201);
+      expect((await post({ type: "schedule", name: clock(), config: daily })).status).toBe(201);
 
-      const inbox = (await scheduleInbox(key, daily)).body;
-      const patch = await dayOnly().request(`/api/inboxes/${inbox.id}`, {
+      const source = (await scheduleSource(key, daily)).body;
+      const patch = await dayOnly().request(`/api/sources/${source.id}`, {
         method: "PATCH",
         headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
         body: JSON.stringify({ config }),
@@ -187,11 +205,11 @@ describe("schedule inboxes", () => {
       });
     });
 
-    it("lets an inbox on a disabled option keep it while its messages change", async () => {
+    it("lets a source on a disabled option keep it while its messages change", async () => {
       const key = await newUser();
-      const inbox = (await scheduleInbox(key)).body;
+      const source = (await scheduleSource(key)).body;
       const messages = [{ type: "standup", message: "New text" }];
-      const patch = await dayOnly().request(`/api/inboxes/${inbox.id}`, {
+      const patch = await dayOnly().request(`/api/sources/${source.id}`, {
         method: "PATCH",
         headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
         body: JSON.stringify({ config: { schedule: { every: "hour" }, messages } }),
@@ -201,14 +219,14 @@ describe("schedule inboxes", () => {
 
     it("accepts both options when both are on", async () => {
       const key = await newUser();
-      expect((await scheduleInbox(key)).status).toBe(201);
-      expect((await scheduleInbox(key, daily)).status).toBe(201);
+      expect((await scheduleSource(key)).status).toBe(201);
+      expect((await scheduleSource(key, daily)).status).toBe(201);
     });
 
-    it("skips inboxes on a disabled option at a cron tick and records it", async () => {
+    it("skips sources on a disabled option at a cron tick and records it", async () => {
       const key = await newUser();
-      const hourly = (await scheduleInbox(key)).body;
-      const dailyInbox = (await scheduleInbox(key, daily)).body;
+      const hourly = (await scheduleSource(key)).body;
+      const dailySource = (await scheduleSource(key, daily)).body;
       events.length = 0;
       const result = await (await tick(CRON, dayOnly())).json();
       expect(result.disabled).toBeGreaterThanOrEqual(1);
@@ -216,8 +234,9 @@ describe("schedule inboxes", () => {
         event: "schedule_tick_rejected",
         properties: { reason: "option_disabled", option: "hour" },
       });
-      expect((await call("GET", `/inboxes/${hourly.id}/messages`, { key })).body.data).toHaveLength(0);
-      expect((await call("GET", `/inboxes/${dailyInbox.id}/messages`, { key })).body.data).toHaveLength(1);
+      const messages = await readAll(key);
+      expect(messages.filter((m) => m.source_id === hourly.id)).toHaveLength(0);
+      expect(messages.filter((m) => m.source_id === dailySource.id)).toHaveLength(1);
     });
   });
 });

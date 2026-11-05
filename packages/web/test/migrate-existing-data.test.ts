@@ -7,15 +7,15 @@ import { migrateBefore } from "./migrate-before.js";
 
 // Migrations run on every deploy, against data that is already there. Each test rolls a database back to just before a
 // migration, fills it as production would be then, applies the rest and checks what is left.
-describe("migration 040_v2", () => {
+describe("migration 040_v1", () => {
   it("is the newest, so this test's rows are written for the schema before it", () => {
-    expect(migrations.at(-1)!.version).toBe("040_v2");
+    expect(migrations.at(-1)!.version).toBe("040_v1");
   });
 
-  it("moves usernames onto users, and drops orgs, inboxes, messages, bots, threads and runners", async () => {
+  it("moves usernames onto users, drops everything else, and makes sources and tokens", async () => {
     const db = await openTestDb();
     try {
-      await migrateBefore(db, "040_v2");
+      await migrateBefore(db, "040_v1");
       const id = {
         user: randomUUID(),
         nameless: randomUUID(),
@@ -62,31 +62,31 @@ describe("migration 040_v2", () => {
         id.personal,
       ]);
 
-      expect(await migrate(db)).toEqual(["040_v2"]);
+      expect(await migrate(db)).toEqual(["040_v1"]);
 
       expect(await db.query(`SELECT id, username FROM loopway.users ORDER BY email`)).toEqual([
         { id: id.nameless, username: null },
         { id: id.user, username: "existing" },
       ]);
-      expect(await db.query(`SELECT 1 FROM loopway.inboxes`)).toEqual([]);
       expect(await db.query(`SELECT 1 FROM loopway.messages`)).toEqual([]);
       const tables = await db.query<{ table_name: string }>(
         `SELECT table_name FROM information_schema.tables WHERE table_schema = 'loopway' ORDER BY 1`,
       );
       expect(tables.map((t) => t.table_name)).toEqual([
-        "inboxes",
+        "api_tokens",
         "login_codes",
         "messages",
         "schema_migrations",
+        "sources",
         "users",
       ]);
-      // An inbox now belongs to its user, and goes with them.
-      await db.query(
-        `INSERT INTO loopway.inboxes (id, user_id, name, source_type, config) VALUES ($1, $2, 'gh', 'github', '{}'::jsonb)`,
-        [randomUUID(), id.user],
-      );
+      // A source belongs to its user, and goes with them.
+      await db.query(`INSERT INTO loopway.sources (id, user_id, name, source_type) VALUES ($1, $2, 'gh', 'github')`, [
+        randomUUID(),
+        id.user,
+      ]);
       await db.query(`DELETE FROM loopway.users WHERE id = $1`, [id.user]);
-      expect(await db.query(`SELECT 1 FROM loopway.inboxes`)).toEqual([]);
+      expect(await db.query(`SELECT 1 FROM loopway.sources`)).toEqual([]);
     } finally {
       await db.close();
     }

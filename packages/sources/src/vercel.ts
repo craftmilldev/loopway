@@ -1,5 +1,4 @@
 import { createHmac } from "node:crypto";
-import { z } from "zod";
 import { get, str, type Payload } from "./payload.js";
 import type { SourceAdapter, SourceDeps } from "./types.js";
 
@@ -15,20 +14,6 @@ import type { SourceAdapter, SourceDeps } from "./types.js";
  *   time    = body.createdAt, falling back to receive time
  *   data    = the whole webhook body
  */
-
-export interface VercelConfig {
-  /** Signing secret Vercel shows once when the webhook is created. Unset until pasted in; deliveries get 401 until then. */
-  secret?: string;
-  /** Vercel event types to accept (e.g. ["deployment.error"]). ["*"] accepts everything. */
-  events: string[];
-}
-
-const configInput = z
-  .object({
-    secret: z.string().min(1).optional(),
-    events: z.array(z.string().min(1)).min(1).optional(),
-  })
-  .strict();
 
 /**
  * Payload paths tried in order for `subject`, keyed by event type or type prefix. The longest key
@@ -75,86 +60,20 @@ const TEAM_PATHS = ["team.id", "teamId", "newTeamId"];
 
 const API = "https://api.vercel.com";
 
-export const vercel = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter<VercelConfig> => ({
+export const vercel = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter => ({
   type: "vercel",
   label: "Vercel",
   description: "Vercel account/integration webhooks, verified with X-Vercel-Signature.",
-  events: [
-    "deployment.created",
-    "deployment.succeeded",
-    "deployment.ready",
-    "deployment.promoted",
-    "deployment.rollback",
-    "deployment.error",
-    "deployment.canceled",
-    "project.created",
-    "project.removed",
-    "project.renamed",
-    "project.env-variable.created",
-    "project.env-variable.updated",
-    "project.env-variable.deleted",
-  ],
   // Vercel makes the secret when the webhook is added, so it's set afterwards.
   secret: { from: "sender" },
   webhookSettings: "Vercel → Team Settings → Webhooks",
 
-  parseConfig(input, existing) {
-    const parsed = configInput.parse(input ?? {});
-    const secret = parsed.secret ?? existing?.secret;
-    return { ...(secret ? { secret } : {}), events: parsed.events ?? existing?.events ?? ["*"] };
-  },
+  claims: (headers) => headers.has("x-vercel-signature"),
 
-  publicConfig(config) {
-    return { secret: config.secret ?? null, events: config.events };
-  },
-
-  setup(config, webhookUrl) {
-    return {
-      endpoint_url: webhookUrl,
-      events: config.events.includes("*") ? "Any (pick them in Vercel)" : config.events,
-      secret: config.secret
-        ? "set"
-        : "not set yet: paste the secret Vercel shows after you create the webhook with `loopway inbox update <inbox> --secret`",
-    };
-  },
-
-  sampleTypes: () => ["deployment.created", "deployment.succeeded", "deployment.error"],
-
-  sample(config, { type, id, now }) {
-    const rawBody = JSON.stringify({
-      id,
-      type,
-      createdAt: now.getTime(),
-      region: "iad1",
-      payload: {
-        team: { id: "team_loopwaytest" },
-        project: { id: "prj_loopwaytest" },
-        deployment: {
-          id: "dpl_loopwaytest",
-          name: "hello-world",
-          url: "hello-world-loopwaytest.vercel.app",
-          meta: { githubCommitMessage: "A test commit from loopway" },
-        },
-      },
-    });
-    return {
-      headers: {
-        "content-type": "application/json",
-        "x-vercel-signature": createHmac("sha1", config.secret!).update(rawBody, "utf8").digest("hex"),
-      },
-      rawBody,
-    };
-  },
-
-  // Nothing a Vercel event carries names a task; threads from Vercel events are titled by their other messages.
-
-  receive({ headers, rawBody, receivedAt }, config) {
-    if (!config.secret) {
-      return { kind: "rejected", status: 401, message: "No secret set for this inbox yet; add the one Vercel shows" };
-    }
+  receive({ headers, rawBody, receivedAt }, secret) {
     const signature = headers.get("x-vercel-signature");
     if (!signature) return { kind: "rejected", status: 401, message: "Missing X-Vercel-Signature header" };
-    const expected = createHmac("sha1", config.secret).update(rawBody, "utf8").digest("hex");
+    const expected = createHmac("sha1", secret).update(rawBody, "utf8").digest("hex");
     if (!safeEqual(signature, expected)) return { kind: "rejected", status: 401, message: "Signature mismatch" };
 
     let body: Payload;
@@ -168,9 +87,6 @@ export const vercel = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter
 
     const type = str(body.type);
     if (!type) return { kind: "rejected", status: 400, message: "Missing `type` in body" };
-    if (!config.events.includes("*") && !config.events.includes(type)) {
-      return { kind: "rejected", status: 422, message: `event "${type}" not enabled for this inbox` };
-    }
     const id = str(body.id);
     if (!id) return { kind: "rejected", status: 400, message: "Missing `id` in body" };
 

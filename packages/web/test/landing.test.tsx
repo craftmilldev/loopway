@@ -156,20 +156,18 @@ describe("content/home.md", () => {
       "top",
       "listens",
       "first",
-      "levels",
-      "runners",
-      "learned",
-      "examples",
+      "reader",
+      "promises",
+      "agents",
       "start",
       "colophon",
     ]);
   });
 
-  it("has no buttons in the lede, and no install command or sign-up anywhere", () => {
+  it("has the install command in the lede, and no way to log in on the web", () => {
     const c = draw(home);
     expect(c.querySelector("#top .btn")).toBeNull();
-    expect(c.querySelector(".lp-well-wrap")).toBeNull();
-    expect(c.textContent).not.toMatch(/install\.sh|loopway login|sign up|get started/i);
+    expect(c.querySelector("#top .lp-well")?.textContent).toContain("install.sh");
     expect(c.innerHTML).not.toContain('href="/login"');
   });
 
@@ -181,21 +179,5 @@ describe("content/home.md", () => {
       "https://github.com/craftmilldev/loopway",
     ]);
     expect(links[0]!.parentElement?.className).toBe("lp-links");
-  });
-
-  it("names every agent in the lede, and says nothing of a sandbox", () => {
-    const c = draw(home);
-    expect(c.textContent).not.toMatch(/sandbox/i);
-  });
-});
-
-describe("the examples", () => {
-  it("has two captioned rows, one for work and one for code", () => {
-    const c = draw(home).querySelector("#examples")!;
-    expect([...c.querySelectorAll(".lp-caption")].map((e) => e.textContent)).toEqual([
-      "For your work",
-      "For your code",
-    ]);
-    expect([...c.querySelectorAll(".lp-items")].map((l) => l.querySelectorAll("li").length)).toEqual([3, 3]);
   });
 });

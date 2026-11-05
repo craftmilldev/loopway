@@ -1,21 +1,45 @@
 # loopway
 
-> loopway is a notification system for your bots. It accepts webhooks from the services you use and keeps each delivery as a CloudEvent, for your own code to read.
+> loopway is a notification system for your bots. Webhooks from the services you use land in one inbox as CloudEvents, and your own code reads them.
 
 If a person asks you to set up loopway, the steps are below. Everything is done with the `loopway` CLI, which talks to {{base_url}}.
 
 ## Concepts
 
-- **Inbox**: holds one source's webhook secret and receives its deliveries. It is named by its `source_type`: `github`, `linear`, `vercel`, `granola`, `resend`, `schedule` (a message on a clock) or `loopway` (messages pushed with a token).
+- **Inbox**: every user has one, with one URL. Messages stay for 14 days.
+- **Source**: something the inbox accepts, named by its type: `github`, `linear`, `vercel`, `granola`, `resend`, `schedule` (messages on a clock) or `loopway` (messages sent with a token). A webhook source stores the sender's signing secret. A delivery no source verifies is refused.
 - **Message**: one stored delivery: the CloudEvent (its `type`, e.g. `com.github.issues.opened`, and `data`) and when it arrived. Nothing is marked done.
+- **Reader**: a JS file whose default export takes one message. `loopway read` calls it for each new message, in order. If it throws, that message comes again. Delivery is at least once, so dedupe on `msg.message_id` if a repeat would do harm.
 
 ## Setup
 
 ```bash
 curl -fsSL {{base_url}}/install.sh | sh
 loopway login
-loopway inbox create
-loopway inbox show <inbox>      # the webhook URL to add in the sender
-loopway messages list <inbox>
-loopway messages get <inbox> <message> --data
+loopway source register github
+loopway inbox                    # the URL to add in the sender
 ```
+
+For `vercel`, `linear`, `granola` and `resend` the sender makes the secret: register, add the webhook there, then run `loopway source update <source> --secret <secret>`.
+
+## Reading
+
+```js
+// reader.js
+export default async function (msg, ctx) {
+  if (msg.type.startsWith("com.github.")) console.log(msg.type, msg.subject);
+}
+```
+
+```bash
+loopway read reader.js             # everything since the last read
+loopway poll reader.js             # the same, until stopped
+loopway read reader.js --since 2h  # go back: a time, microseconds since the epoch, or how long ago
+loopway messages list              # the newest messages
+loopway messages get <message> --data
+loopway push build.done --data '{"ok":true}'
+```
+
+## MCP
+
+`{{base_url}}/api/mcp` is a hosted MCP server with `push_message` and `pull_messages` tools. Authenticate with `Authorization: Bearer <token>`, using a token from `loopway token create <name>`.

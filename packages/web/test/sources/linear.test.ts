@@ -1,23 +1,15 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { app, call, newUser } from "../helpers.js";
+import { app, call, newSource, newUser, readAll } from "../helpers.js";
 
 describe("linear webhooks", () => {
   const SECRET = "linear-made-this-secret";
 
-  async function linearInbox(key: string, config?: unknown) {
-    const r = await call("POST", "/inboxes", { key, body: { name: "ln", source_type: "linear", config } });
-    expect(r.status).toBe(201);
-    return r.body as {
-      id: string;
-      config: { secret: string | null; events: string[] };
-      setup: Record<string, unknown>;
-    };
-  }
+  const linearSource = (key: string, secret?: string) => newSource(key, { type: "linear", secret });
 
-  function sendLinear(inboxId: string, body: unknown, delivery: string = randomUUID(), secret = SECRET) {
+  function sendLinear(userId: string, body: unknown, delivery: string = randomUUID(), secret = SECRET) {
     const raw = JSON.stringify(body);
-    return app.request(`/api/webhooks/${inboxId}`, {
+    return app.request(`/api/webhooks/${userId}`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -39,22 +31,23 @@ describe("linear webhooks", () => {
 
   it("rejects deliveries until a secret is set", async () => {
     const key = await newUser();
-    const inbox = await linearInbox(key);
-    expect(inbox.config).toEqual({ events: ["*"], secret_set: false });
-    expect((await sendLinear(inbox.id, issue("create"))).status).toBe(401);
-    await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { secret: SECRET } } });
-    expect((await sendLinear(inbox.id, issue("create"))).status).toBe(202);
+    const source = await linearSource(key);
+    expect(source).toMatchObject({ secret_set: false });
+    const early = await sendLinear(source.userId, issue("create"));
+    expect(early.status).toBe(401);
+    expect((await early.json()).error.code).toBe("unverified");
+    await call("PATCH", `/sources/${source.id}`, { key, body: { secret: SECRET } });
+    expect((await sendLinear(source.userId, issue("create"))).status).toBe(202);
   });
 
   it("stores events as CloudEvents, with a comment's subject being its issue", async () => {
     const key = await newUser();
-    const inbox = await linearInbox(key, { secret: SECRET });
+    const source = await linearSource(key, SECRET);
     const body = issue("create");
-    expect((await sendLinear(inbox.id, body, "d_1")).status).toBe(202);
+    expect((await sendLinear(source.userId, body, "d_1")).status).toBe(202);
     const comment = { ...issue("create"), type: "Comment", data: { id: "c_1", issueId: "iss_1", body: "yo" } };
-    expect((await sendLinear(inbox.id, comment, "d_2")).status).toBe(202);
-    const msgs = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data;
-    const events = msgs.map((m: { event: unknown }) => m.event);
+    expect((await sendLinear(source.userId, comment, "d_2")).status).toBe(202);
+    const events = (await readAll(key)).map((m) => m.event);
     expect(events).toContainEqual(
       expect.objectContaining({
         id: "d_1",
@@ -68,17 +61,14 @@ describe("linear webhooks", () => {
     expect(events).toContainEqual(expect.objectContaining({ type: "com.linear.comment.create", subject: "iss_1" }));
   });
 
-  it("rejects bad signatures, dedupes redeliveries, and filters events", async () => {
+  it("rejects bad signatures and dedupes redeliveries", async () => {
     const key = await newUser();
-    const inbox = await linearInbox(key, { secret: SECRET, events: ["Issue.create"] });
-    expect(inbox.config.events).toEqual(["issue.create"]);
-    expect((await sendLinear(inbox.id, issue("create"), "d_x", "wrong")).status).toBe(401);
-    expect((await sendLinear(inbox.id, issue("create"), "same")).status).toBe(202);
-    const dup = await sendLinear(inbox.id, issue("create"), "same");
+    const source = await linearSource(key, SECRET);
+    expect((await sendLinear(source.userId, issue("create"), "d_x", "wrong")).status).toBe(401);
+    expect((await sendLinear(source.userId, issue("create"), "same")).status).toBe(202);
+    const dup = await sendLinear(source.userId, issue("create"), "same");
     expect(dup.status).toBe(200);
     expect((await dup.json()).duplicate).toBe(true);
-    const filtered = await sendLinear(inbox.id, issue("remove"));
-    expect(filtered.status).toBe(422);
-    expect((await filtered.json()).error.message).toBe('event "issue.remove" not enabled for this inbox');
+    expect(await readAll(key)).toHaveLength(1);
   });
 });

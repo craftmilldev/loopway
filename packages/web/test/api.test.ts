@@ -1,15 +1,28 @@
 import { TEST_INBOX_KEY } from "../src/db/testing.js";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { build } from "esbuild";
 import { describe, expect, it } from "vitest";
 import { clientBuild } from "../scripts/client.js";
 import { createApi } from "../src/api.js";
 import { SourceRegistry } from "@loopway/sources";
-import { sources } from "../src/sources.js";
+import { secretBox } from "../src/secrets.js";
+import * as store from "../src/store.js";
 import { createUser } from "../src/store.js";
 import { signSessionToken, verifyToken } from "../src/tokens.js";
-import { app, call, db, events, newInbox, newUser, prPayload, SECRET, sendGithub } from "./helpers.js";
+import {
+  ageMessages,
+  app,
+  call,
+  db,
+  newSource,
+  newUser,
+  prPayload,
+  readAll,
+  SECRET,
+  sendGithub,
+  userId,
+} from "./helpers.js";
 
 // Source-specific webhook tests live in ./sources/<type>.test.ts.
 
@@ -20,156 +33,439 @@ describe("auth", () => {
   });
 });
 
-describe("sources", () => {
+describe("source types", () => {
   it("describes every registered source", async () => {
-    const r = await call("GET", "/sources", { key: await newUser() });
-    expect(r.body.data.map((s: { type: string }) => s.type)).toEqual(sources.types());
-    expect(r.body.data.find((s: { type: string }) => s.type === "github")).toMatchObject({
+    const key = await newUser();
+    const res = await call("GET", "/source-types", { key });
+    expect(res.status).toBe(200);
+    expect(res.body.data.map((s: { type: string }) => s.type).sort()).toEqual(
+      ["github", "granola", "linear", "loopway", "resend", "schedule", "vercel"].sort(),
+    );
+    expect(res.body.data.find((s: { type: string }) => s.type === "github")).toEqual({
+      type: "github",
       label: "GitHub",
+      description: expect.any(String),
       secret: { from: "loopway", min_length: 16 },
-      webhook_settings: "GitHub → Settings → Webhooks",
+      webhook_settings: expect.any(String),
     });
-    for (const s of r.body.data) {
-      // The loopway and schedule sources have no common events: their messages name their own types.
-      expect(s.events.length > 0 || ["loopway", "schedule"].includes(s.type)).toBe(true);
-      expect(["loopway", "sender", "none"]).toContain(s.secret.from);
-    }
   });
 
   it("refuses to register a type twice", () => {
-    const github = sources.get("github")!;
-    expect(() => new SourceRegistry([github, github])).toThrow(/registered twice/);
+    const type = { type: "x" } as never;
+    expect(() => new SourceRegistry([type, type])).toThrow(/registered twice/);
   });
 });
 
-describe("inboxes", () => {
-  it("creates a github inbox with generated secret and webhook url", async () => {
+describe("sources", () => {
+  it("generates a secret once, and every source shares the user's one inbox URL", async () => {
     const key = await newUser();
-    const inbox = await newInbox(key);
-    expect(inbox.config.secret).toMatch(/^[0-9a-f]{64}$/);
-    expect(inbox.webhook_url).toBe(`https://loopway.test/api/webhooks/${inbox.id}`);
-    const list = await call("GET", "/inboxes", { key });
-    expect(list.body.data).toHaveLength(1);
+    const a = await newSource(key);
+    const b = await newSource(key, { type: "github", name: "other-org" });
+    expect(a.secret).toMatch(/^[0-9a-f]{64}$/);
+    expect(a.webhook_url).toBe(`https://loopway.test/api/webhooks/${a.userId}`);
+    expect(b.webhook_url).toBe(a.webhook_url);
+    const shown = await call("GET", `/sources/${a.id}`, { key });
+    expect(shown.body.secret).toBeUndefined();
+    expect(shown.body.secret_set).toBe(true);
+    const inbox = await call("GET", "/inbox", { key });
+    expect(inbox.body).toEqual({ url: a.webhook_url, sources: 2, messages: 0, retention_days: 14 });
   });
-  it("notes when a sender first reaches an inbox, and how the last delivery went", async () => {
-    const key = await newUser();
-    const inbox = await newInbox(key);
-    const before = await call("GET", `/inboxes/${inbox.id}`, { key });
-    expect(before.body).toMatchObject({ last_delivery_at: null, last_delivery_outcome: null });
 
-    const ping = await sendGithub(inbox, "ping", { zen: "Keep it logically awesome." });
-    expect(ping.status).toBe(200);
-    const pinged = await call("GET", `/inboxes/${inbox.id}`, { key });
-    expect(pinged.body.last_delivery_at).toEqual(expect.any(String));
-    expect(pinged.body.last_delivery_outcome).toBe("ignored:ping");
-    expect(
-      events.filter((e) => e.event === "inbox_first_delivery" && e.properties?.outcome === "ignored"),
-    ).toHaveLength(1);
-
-    const bad = await sendGithub(inbox, "pull_request", prPayload(1), { secret: "not-the-secret-at-all" });
-    expect(bad.status).toBe(401);
-    expect((await call("GET", `/inboxes/${inbox.id}`, { key })).body.last_delivery_outcome).toBe("rejected:401");
-
-    await sendGithub(inbox, "pull_request", prPayload(1));
-    expect((await call("GET", `/inboxes/${inbox.id}`, { key })).body.last_delivery_outcome).toBe("accepted");
-    expect(events.filter((e) => e.event === "inbox_first_delivery")).toHaveLength(1);
-  });
-  it("rejects unknown source types and bad config", async () => {
+  it("stores the secret encrypted", async () => {
     const key = await newUser();
-    expect((await call("POST", "/inboxes", { key, body: { name: "x", source_type: "nope" } })).status).toBe(400);
-    expect(
-      (await call("POST", "/inboxes", { key, body: { name: "x", source_type: "github", config: { secret: "short" } } }))
-        .status,
-    ).toBe(400);
-  });
-  it("isolates inboxes between users", async () => {
-    const a = await newUser("a");
-    const b = await newUser("b");
-    const inbox = await newInbox(a);
-    expect((await call("GET", `/inboxes/${inbox.id}`, { key: b })).status).toBe(404);
-    expect((await call("GET", `/inboxes/${inbox.id}/messages`, { key: b })).status).toBe(404);
-  });
-  it("patches config, keeping the secret", async () => {
-    const key = await newUser();
-    const inbox = await newInbox(key);
-    const r = await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { events: ["push"] } } });
-    expect(r.body.config).toEqual({ events: ["push"], secret_set: true });
-    expect((await sendGithub(inbox, "push", {})).status).not.toBe(401);
-  });
-  it("shows the secret once, on create, and stores it encrypted", async () => {
-    const key = await newUser();
-    const inbox = await newInbox(key);
-    expect(inbox.config.secret).toBeTruthy();
-    const got = await call("GET", `/inboxes/${inbox.id}`, { key });
-    expect(got.body.config.secret).toBeUndefined();
-    expect(got.body.config.secret_set).toBe(true);
-    expect(JSON.stringify(got.body)).not.toContain(inbox.config.secret);
-    const listed = await call("GET", "/inboxes", { key });
-    expect(JSON.stringify(listed.body)).not.toContain(inbox.config.secret);
-    const [row] = await db.query<{ config: object; secret_enc: string }>(
-      `SELECT config, secret_enc FROM loopway.inboxes WHERE id = $1`,
-      [inbox.id],
+    const a = await newSource(key);
+    const [row] = await db.query<{ secret_enc: string; config: unknown }>(
+      `SELECT secret_enc, config FROM loopway.sources WHERE id = $1`,
+      [a.id],
     );
-    expect(row!.config).not.toHaveProperty("secret");
-    expect(row!.secret_enc).toMatch(/^v1\./);
-    expect(row!.secret_enc).not.toContain(inbox.config.secret);
+    expect(row!.secret_enc).not.toContain(a.secret);
+    expect(row!.config).toEqual({});
+    expect(secretBox(TEST_INBOX_KEY).open(row!.secret_enc, a.id)).toBe(a.secret);
   });
-  it("can still rename, and set a new secret, when the stored one can't be opened", async () => {
+
+  it("takes names one at a time, and refuses what a type can't have", async () => {
     const key = await newUser();
-    const inbox = await newInbox(key);
-    await db.query(`UPDATE loopway.inboxes SET secret_enc = 'v1.bad.bad.bad' WHERE id = $1`, [inbox.id]);
-    expect((await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { name: "renamed" } })).status).toBe(200);
-    expect((await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { events: ["push"] } } })).status).toBe(
-      500,
-    );
-    const next = "n".repeat(20);
-    expect((await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { secret: next } } })).status).toBe(200);
-    expect((await sendGithub(inbox, "push", {}, { secret: next })).status).not.toBe(401);
+    await newSource(key);
+    const post = (body: unknown) => call("POST", "/sources", { key, body });
+    expect((await post({ type: "github" })).body.error.code).toBe("source_name_taken");
+    expect((await post({ type: "nope" })).status).toBe(400);
+    expect((await post({ type: "github", name: "x", secret: "short" })).status).toBe(400);
+    expect((await post({ type: "github", name: "x", config: {} })).status).toBe(400);
+    expect((await post({ type: "granola", secret: "not-a-whsec" })).status).toBe(400);
+    expect((await post({ type: "schedule" })).status).toBe(400);
   });
-  it("replaces the secret when one is sent", async () => {
+
+  it("keeps a sender's source without a secret until it's given, and refuses deliveries meanwhile", async () => {
     const key = await newUser();
-    const inbox = await newInbox(key);
-    const next = "n".repeat(20);
-    await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { secret: next } } });
-    expect((await sendGithub(inbox, "push", {})).status).toBe(401);
-    expect((await sendGithub(inbox, "push", {}, { secret: next })).status).not.toBe(401);
+    const s = await newSource(key, { type: "linear" });
+    expect(s.secret).toBeUndefined();
+    const raw = JSON.stringify({ type: "Issue", action: "create", data: { id: "i" } });
+    const send = () =>
+      app.request(`/api/webhooks/${s.userId}`, {
+        method: "POST",
+        headers: {
+          "linear-signature": createHmac("sha256", "lin-secret").update(raw).digest("hex"),
+          "linear-delivery": "d-1",
+        },
+        body: raw,
+      });
+    expect((await send()).status).toBe(401);
+    const patched = await call("PATCH", `/sources/${s.id}`, { key, body: { secret: "lin-secret" } });
+    expect(patched.body.secret_set).toBe(true);
+    expect((await send()).status).toBe(202);
+  });
+
+  it("renames, and refuses a name that's taken", async () => {
+    const key = await newUser();
+    const a = await newSource(key);
+    await newSource(key, { type: "github", name: "b" });
+    expect((await call("PATCH", `/sources/${a.id}`, { key, body: { name: "a" } })).body.name).toBe("a");
+    expect((await call("PATCH", `/sources/${a.id}`, { key, body: { name: "b" } })).status).toBe(409);
+  });
+
+  it("stops accepting a sender once its source is removed, and keeps what it sent", async () => {
+    const key = await newUser();
+    const a = await newSource(key);
+    expect((await sendGithub(a, "pull_request", prPayload(1))).status).toBe(202);
+    expect((await call("DELETE", `/sources/${a.id}`, { key })).status).toBe(204);
+    expect((await sendGithub(a, "pull_request", prPayload(2))).status).toBe(401);
+    expect((await readAll(key)).map((m) => m.source_id)).toEqual([null]);
+  });
+
+  it("caps how many a user can have", async () => {
+    const key = await newUser();
+    const id = await userId(key);
+    for (let i = 0; i < store.MAX_SOURCES; i++) {
+      await store.createSource(db, { id: randomUUID(), userId: id, name: `s${i}`, sourceType: "github", config: {} });
+    }
+    const res = await call("POST", "/sources", { key, body: { type: "github" } });
+    expect(res.body.error.code).toBe("too_many_sources");
   });
 });
 
-describe("messages", () => {
-  async function setup(n = 3) {
+describe("the inbox URL", () => {
+  it("is a 404 for a user who doesn't exist", async () => {
+    expect((await sendGithub({ userId: randomUUID(), secret: "x".repeat(16) }, "push", {})).status).toBe(404);
+    expect((await app.request("/api/webhooks/nope", { method: "POST" })).status).toBe(404);
+  });
+
+  it("refuses a delivery no source verifies, and stores nothing", async () => {
     const key = await newUser();
-    const inbox = await newInbox(key);
-    for (let i = 1; i <= n; i++) await sendGithub(inbox, "pull_request", prPayload(i));
-    const ids = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data.map((e: any) => e.id);
-    return { key, inbox, ids: ids as string[], base: `/inboxes/${inbox.id}/messages` };
+    const a = await newSource(key);
+    const res = await sendGithub(a, "pull_request", prPayload(1), { secret: "wrong-secret-wrong" });
+    expect(res.status).toBe(401);
+    const anon = await app.request(`/api/webhooks/${a.userId}`, { method: "POST", body: "{}" });
+    expect(anon.status).toBe(401);
+    expect(await readAll(key)).toEqual([]);
+    // The URL is public, so a refused delivery says nothing about the source, and can't change what's recorded on it.
+    expect((await call("GET", `/sources/${a.id}`, { key })).body.last_delivery_at).toBeNull();
+  });
+
+  it("tries each secret of a type, and credits the one that verified", async () => {
+    const key = await newUser();
+    const a = await newSource(key, { type: "github", name: "org-a" });
+    const b = await newSource(key, { type: "github", name: "org-b" });
+    expect((await sendGithub(b, "pull_request", prPayload(1))).status).toBe(202);
+    expect((await sendGithub(a, "pull_request", prPayload(2))).status).toBe(202);
+    expect((await readAll(key)).map((m) => m.source_id)).toEqual([b.id, a.id]);
+    for (const s of [a, b]) {
+      expect((await call("GET", `/sources/${s.id}`, { key })).body.last_delivery_outcome).toBe("accepted");
+    }
+  });
+
+  it("tells senders apart by how they sign", async () => {
+    const key = await newUser();
+    const gh = await newSource(key);
+    const push = await newSource(key, { type: "loopway" });
+    expect((await sendGithub(gh, "pull_request", prPayload(1))).status).toBe(202);
+    const res = await app.request(`/api/webhooks/${gh.userId}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${push.secret}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "build.done", id: 1, data: {} }),
+    });
+    expect(res.status).toBe(202);
+    expect((await readAll(key)).map((m) => m.source_id)).toEqual([gh.id, push.id]);
+  });
+
+  it("keeps one user's secret from opening another's inbox", async () => {
+    const a = await newSource(await newUser("a"));
+    const bKey = await newUser("b");
+    const b = await newSource(bKey);
+    const res = await sendGithub({ userId: b.userId, secret: a.secret }, "pull_request", prPayload(1));
+    expect(res.status).toBe(401);
+    expect(await readAll(bKey)).toEqual([]);
+  });
+
+  it("dedupes a redelivery, per user", async () => {
+    const key = await newUser();
+    const a = await newSource(key);
+    const first = await sendGithub(a, "pull_request", prPayload(1), { delivery: "d-1" });
+    const again = await sendGithub(a, "pull_request", prPayload(1), { delivery: "d-1" });
+    expect(first.status).toBe(202);
+    expect(again.status).toBe(200);
+    expect(await again.json()).toMatchObject({ duplicate: true, id: ((await first.json()) as { id: string }).id });
+    expect(await readAll(key)).toHaveLength(1);
+    const other = await newSource(await newUser("other"));
+    expect((await sendGithub(other, "pull_request", prPayload(1), { delivery: "d-1" })).status).toBe(202);
+  });
+});
+
+describe("reading messages", () => {
+  async function seeded(n: number) {
+    const key = await newUser();
+    const a = await newSource(key);
+    for (let i = 1; i <= n; i++) expect((await sendGithub(a, "pull_request", prPayload(i))).status).toBe(202);
+    await ageMessages();
+    return { key, a };
   }
+  const read = (key: string, qs: string) => call("GET", `/messages?${qs}`, { key });
 
-  it("lists with a type filter and cursor pagination", async () => {
-    const { key, base, ids } = await setup(5);
-    expect((await call("GET", `${base}?type=com.github.pull_request.*`, { key })).body.data).toHaveLength(5);
-    expect((await call("GET", `${base}?type=com.github.push`, { key })).body.data).toHaveLength(0);
-
-    const p1 = await call("GET", `${base}?limit=2`, { key });
-    expect(p1.body.data.map((e: any) => e.id)).toEqual(ids.slice(0, 2));
-    const p2 = await call("GET", `${base}?limit=2&cursor=${p1.body.next_cursor}`, { key });
-    expect(p2.body.data.map((e: any) => e.id)).toEqual(ids.slice(2, 4));
-    const p3 = await call("GET", `${base}?limit=2&cursor=${p2.body.next_cursor}`, { key });
-    expect(p3.body.next_cursor).toBeNull();
-    // An event is just a stored message: no per-event status.
-    expect(Object.keys(p1.body.data[0]).sort()).toEqual(["event", "id", "inbox_id", "received_at", "seq", "test"]);
+  it("gives microsecond timestamps, as text a JS Date can't round", async () => {
+    const { key } = await seeded(1);
+    const [m] = (await read(key, "since=0")).body.data;
+    expect(m.received_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/);
+    expect(m.received_us).toMatch(/^\d{16}$/);
+    const [row] = await db.query<{ same: boolean }>(
+      `SELECT received_at = $2::text::timestamptz AS same FROM loopway.messages WHERE id = $1`,
+      [m.id, m.received_at],
+    );
+    expect(row!.same).toBe(true);
+    // Back to it from either form of the time, inclusively.
+    expect((await read(key, `since=${m.received_us}`)).body.data[0].id).toBe(m.id);
+    expect((await read(key, `since=${encodeURIComponent(m.received_at)}`)).body.data[0].id).toBe(m.id);
   });
 
-  it("counts an inbox's messages", async () => {
-    const { key, inbox } = await setup(2);
-    expect((await call("GET", `/inboxes/${inbox.id}`, { key })).body.stats).toEqual({ messages: 2 });
+  it("walks every message once, in order, across pages", async () => {
+    const { key } = await seeded(5);
+    const seen: string[] = [];
+    let qs = "since=0&limit=2";
+    for (let pages = 0; ; pages++) {
+      expect(pages).toBeLessThan(5);
+      const { data, next_since, next_after, has_more } = (await read(key, qs)).body;
+      seen.push(...data.map((m: { id: string }) => m.id));
+      if (!has_more) break;
+      qs = `since=${next_since}&after=${next_after}&limit=2`;
+    }
+    expect(seen).toHaveLength(5);
+    expect(new Set(seen).size).toBe(5);
+    expect(seen).toEqual(
+      (
+        await db.query<{ id: string }>(
+          `SELECT m.id FROM loopway.messages m WHERE m.id = ANY($1::uuid[]) ORDER BY received_at, id`,
+          [seen],
+        )
+      ).map((r) => r.id),
+    );
   });
 
-  it("404s on bad ids", async () => {
-    const { key, base } = await setup(0);
-    expect((await call("GET", `${base}/not-a-uuid`, { key })).status).toBe(404);
-    expect((await call("GET", `${base}/${randomUUID()}`, { key })).status).toBe(404);
-    expect((await call("GET", `${base}?cursor=nope`, { key })).status).toBe(400);
+  it("makes progress through a page of ties in one microsecond", async () => {
+    const { key } = await seeded(5);
+    const id = await userId(key);
+    await db.query(`UPDATE loopway.messages SET received_at = now() - interval '1 minute' WHERE user_id = $1`, [id]);
+    const seen: string[] = [];
+    let qs = "since=0&limit=2";
+    for (let pages = 0; ; pages++) {
+      expect(pages).toBeLessThan(5);
+      const { data, next_since, next_after, has_more } = (await read(key, qs)).body;
+      seen.push(...data.map((m: { id: string }) => m.id));
+      if (!has_more) break;
+      qs = `since=${next_since}&after=${next_after}&limit=2`;
+    }
+    expect(new Set(seen).size).toBe(5);
+  });
+
+  it("holds back the newest messages, so one still committing can't be skipped", async () => {
+    const key = await newUser();
+    const a = await newSource(key);
+    await sendGithub(a, "pull_request", prPayload(1));
+    const page = (await read(key, "since=0")).body;
+    expect(page.data).toEqual([]);
+    // The cursor stays behind the message, so it comes as soon as it's old enough.
+    await db.query(
+      `UPDATE loopway.messages SET received_at = clock_timestamp() - interval '10 seconds' WHERE user_id = $1`,
+      [a.userId],
+    );
+    expect(BigInt(page.next_since)).toBeLessThanOrEqual(BigInt(Date.now()) * 1000n);
+    expect((await read(key, "since=0")).body.data).toHaveLength(1);
+  });
+
+  it("starts a new reader at the head with since=now", async () => {
+    const { key } = await seeded(2);
+    const start = (await read(key, "since=now")).body;
+    expect(start.data).toEqual([]);
+    expect(start.next_since).toMatch(/^\d{16}$/);
+    expect((await read(key, `since=${start.next_since}`)).body.data).toEqual([]);
+  });
+
+  it("moves a caught-up cursor to the head, and doesn't move one set in the future", async () => {
+    const { key } = await seeded(1);
+    const page = (await read(key, "since=0")).body;
+    expect(page.next_after).toBeNull();
+    expect(BigInt(page.next_since)).toBeGreaterThan(BigInt(page.data[0].received_us));
+    const future = String(BigInt(Date.now() + 86_400_000) * 1000n);
+    expect((await read(key, `since=${future}`)).body.next_since).toBe(future);
+  });
+
+  it("drops a message from every read at 14 days, before the purge has run", async () => {
+    const { key } = await seeded(2);
+    const id = await userId(key);
+    const [old] = await db.query<{ id: string }>(
+      `UPDATE loopway.messages SET received_at = now() - interval '14 days 1 second'
+       WHERE id = (SELECT id FROM loopway.messages WHERE user_id = $1 ORDER BY id LIMIT 1) RETURNING id`,
+      [id],
+    );
+    expect((await read(key, "since=0")).body.data).toHaveLength(1);
+    expect((await read(key, "order=desc")).body.data).toHaveLength(1);
+    expect((await call("GET", `/messages/${old!.id}`, { key })).status).toBe(404);
+    expect((await call("GET", "/inbox", { key })).body.messages).toBe(1);
+  });
+
+  it("filters by type, exact or by prefix", async () => {
+    const { key } = await seeded(1);
+    await call("POST", "/messages", { key, body: { type: "build.done" } });
+    await ageMessages();
+    const types = async (qs: string) =>
+      (await read(key, qs)).body.data.map((m: { event: { type: string } }) => m.event.type);
+    expect(await types("since=0&type=build.done")).toEqual(["build.done"]);
+    expect(await types("since=0&type=com.github.*")).toEqual(["com.github.pull_request.opened"]);
+    expect(await types("since=0&type=com.github")).toEqual([]);
+  });
+
+  it("shows the newest first with order=desc, which has no cursor", async () => {
+    const { key } = await seeded(3);
+    const page = (await read(key, "order=desc&limit=2")).body;
+    expect(page.data).toHaveLength(2);
+    expect(BigInt(page.data[0].received_us)).toBeGreaterThan(BigInt(page.data[1].received_us));
+    expect((await read(key, "order=desc&since=0")).status).toBe(400);
+  });
+
+  it("refuses a since or after it can't use", async () => {
+    const { key } = await seeded(1);
+    expect((await read(key, "since=yesterday")).body.error.code).toBe("invalid_since");
+    expect((await read(key, "since=2026-13-45T00:00:00Z")).status).toBe(400);
+    expect((await read(key, "since=99999999999999999999")).status).toBe(400);
+    expect((await read(key, "after=not-a-uuid&since=0")).status).toBe(400);
+    expect((await read(key, `after=${randomUUID()}`)).status).toBe(400);
+    expect((await read(key, "since=0&limit=101")).status).toBe(400);
+  });
+
+  it("404s on a message that isn't there", async () => {
+    const key = await newUser();
+    expect((await call("GET", `/messages/${randomUUID()}`, { key })).status).toBe(404);
+    expect((await call("GET", "/messages/nope", { key })).status).toBe(404);
+  });
+});
+
+describe("a slow insert", () => {
+  // The bug a timestamp cursor invites: a row is stamped when its insert runs and visible when it commits, so a reader
+  // can read past a stamp while that row is still on its way. This holds a real insert open across a real read.
+  it("isn't skipped by a reader that reads while it commits", async () => {
+    const key = await newUser();
+    const id = await userId(key);
+    const cursor = (await call("GET", "/messages?since=now", { key })).body.next_since as string;
+    let release!: () => void;
+    let inserted!: () => void;
+    const held = new Promise<void>((done) => (release = done));
+    const stamped = new Promise<void>((done) => (inserted = done));
+    const slow = db.transaction(async (tx) => {
+      await store.insertMessage(tx as never, id, null, {
+        specversion: "1.0",
+        id: "slow",
+        source: "urn:test",
+        type: "slow",
+      });
+      inserted();
+      await held;
+    });
+    await stamped;
+    // A newer message that commits first: a read with no holdback would move the cursor past the slow one.
+    await call("POST", "/messages", { key, body: { type: "fast" } });
+    const during = (await call("GET", `/messages?since=${cursor}`, { key })).body;
+    expect(during.data).toEqual([]);
+    expect(BigInt(during.next_since) - BigInt(cursor)).toBeLessThan(5_000_000n);
+    release();
+    await slow;
+
+    await db.query(`UPDATE loopway.messages SET received_at = received_at - interval '1 minute' WHERE user_id = $1`, [
+      id,
+    ]);
+    const after = (await call("GET", `/messages?since=${BigInt(cursor) - 120_000_000n}`, { key })).body;
+    expect(after.data.map((m: { event: { type: string } }) => m.event.type).sort()).toEqual(["fast", "slow"]);
+  });
+
+  it("stores a message whose duplicate the purge takes mid-insert", async () => {
+    const key = await newUser();
+    const id = await userId(key);
+    const ce = { specversion: "1.0", id: "again", source: "urn:test", type: "t" } as const;
+    const first = await store.insertMessage(db, id, null, ce);
+    expect((await store.insertMessage(db, id, null, ce)).duplicate).toBe(true);
+    await db.query(`DELETE FROM loopway.messages WHERE id = $1`, [first.id]);
+    expect((await store.insertMessage(db, id, null, ce)).duplicate).toBe(false);
+  });
+});
+
+describe("pushing messages", () => {
+  it("stores a CloudEvent, and dedupes on the id it's given", async () => {
+    const key = await newUser();
+    const body = { type: "build.done", subject: "main", id: "b-1", data: { ok: true } };
+    const first = await call("POST", "/messages", { key, body });
+    const again = await call("POST", "/messages", { key, body });
+    expect(first.status).toBe(202);
+    expect(again.status).toBe(200);
+    expect(again.body).toEqual({ id: first.body.id, duplicate: true });
+    const [m] = await readAll(key);
+    expect(m!.event).toMatchObject({
+      specversion: "1.0",
+      id: "b-1",
+      source: "urn:loopway:push",
+      type: "build.done",
+      subject: "main",
+      data: { ok: true },
+    });
+    expect(m!.source_id).toBeNull();
+  });
+
+  it("makes every push its own message without an id", async () => {
+    const key = await newUser();
+    await call("POST", "/messages", { key, body: { type: "t" } });
+    await call("POST", "/messages", { key, body: { type: "t" } });
+    expect(await readAll(key)).toHaveLength(2);
+  });
+
+  it("refuses a bad message", async () => {
+    const key = await newUser();
+    const post = (body: unknown) => call("POST", "/messages", { key, body });
+    expect((await post({})).status).toBe(400);
+    expect((await post({ type: "t", extra: 1 })).status).toBe(400);
+    expect((await post({ type: "t", data: "x".repeat(1024 * 1024 + 1) })).body.error.code).toBe("too_large");
+  });
+});
+
+describe("api tokens", () => {
+  it("authenticates like a session, shows the token once, and stops when revoked", async () => {
+    const key = await newUser();
+    const made = await call("POST", "/tokens", { key, body: { name: "poller" } });
+    expect(made.status).toBe(201);
+    const token = made.body.token as string;
+    expect(token).toMatch(/^lw_/);
+    expect((await call("GET", "/me", { key: token })).body.id).toBe(await userId(key));
+    expect(await db.query(`SELECT 1 FROM loopway.api_tokens WHERE token_hash = $1`, [token])).toEqual([]);
+
+    const list = await call("GET", "/tokens", { key });
+    expect(list.body.data).toEqual([
+      { id: made.body.id, name: "poller", created_at: expect.any(String), last_used_at: expect.any(String) },
+    ]);
+    expect((await call("DELETE", `/tokens/${made.body.id}`, { key })).status).toBe(204);
+    expect((await call("GET", "/me", { key: token })).status).toBe(401);
+  });
+
+  it("refuses a made-up token, and another user's revoke", async () => {
+    const key = await newUser("a");
+    const made = await call("POST", "/tokens", { key, body: { name: "t" } });
+    expect((await call("GET", "/me", { key: "lw_madeup" })).status).toBe(401);
+    const stranger = await newUser("b");
+    expect((await call("DELETE", `/tokens/${made.body.id}`, { key: stranger })).status).toBe(404);
+    expect((await call("GET", "/me", { key: made.body.token })).status).toBe(200);
   });
 });
 

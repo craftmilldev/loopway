@@ -34,7 +34,7 @@ describe("minCliVersion", () => {
 });
 
 describe("the floor in code", () => {
-  it("turns away every v1 CLI, and serves v2", async () => {
+  it("turns away every 0.x CLI, and serves 1.0.0", async () => {
     const db = await openTestDb();
     const app = createApi({
       getDb: async () => db,
@@ -45,9 +45,9 @@ describe("the floor in code", () => {
     const get = (version?: string) =>
       app.request("/api/health", { headers: version ? { "x-loopway-cli-version": version } : {} });
     expect((await get("0.4.7")).status).toBe(426);
-    expect((await get("2.0.0")).status).toBe(200);
+    expect((await get("1.0.0")).status).toBe(200);
     expect((await get()).status).toBe(200);
-    // An env value below the floor can't let a v1 CLI back in; one above it raises the minimum.
+    // An env value below the floor can't let a 0.x CLI back in; one above it raises the minimum.
     const lowered = createApi({
       getDb: async () => db,
       tokenSecret: "test-secret",

@@ -2,7 +2,7 @@
 
 - **Stack:** TypeScript + [Hono](https://hono.dev), zero-config on Vercel.
 - **DB:** Postgres 17 everywhere, through [postgres.js](https://github.com/porsager/postgres). Locally a Docker container (`docker-compose.yml`); on Vercel, [Supabase](https://supabase.com) from the Vercel Marketplace (`POSTGRES_URL`, or `DATABASE_URL` to point it anywhere else). Tests run against the same local Postgres, so they exercise the engine that is deployed.
-- **Data types:** `User` → owns `Inbox`es; an inbox receives `Message`s.
+- **Data types:** a `User` has one inbox, of `Message`s, and registers `Source`s that say what it accepts.
 - **Sources:** `github`, `granola`, `linear`, `loopway`, `resend`, `schedule`, `vercel` (more can be added in `packages/sources/src/`, see [Adding a source](#adding-a-source)).
 - **Packages:** npm workspaces — [`packages/web`](../packages/web) (the server) and [`packages/cli`](../packages/cli) (the `loopway` command, a client of the [API](api.md)).
 
@@ -36,7 +36,7 @@ The Deploy with Vercel button in the [README](../README.md) clones the repo into
 | `POSTGRES_URL`, `POSTGRES_URL_NON_POOLING` | the Supabase product | transaction-pooler URL the server uses; session-mode URL the build migrates |
 | `TOKEN_SECRET` | prompt | signs session tokens; `openssl rand -hex 32` |
 | `CRON_SECRET` | prompt | Vercel Cron's bearer token for the schedule route; `openssl rand -hex 32` |
-| `INBOX_SECRET_KEY` | prompt | encrypts inbox webhook secrets at rest; `openssl rand -base64 32`; keep a copy, losing it loses the secrets |
+| `INBOX_SECRET_KEY` | prompt | encrypts webhook secrets at rest; `openssl rand -base64 32`; keep a copy, losing it loses the secrets |
 | `RESEND_API_KEY`, `EMAIL_FROM` | prompt | login emails (see [Login email](#login-email-resend-on-the-one-click-deploy)) |
 
 The schedule needs nothing: `SCHEDULE_OPTIONS` defaults to `day,week`, which is all a Hobby account's daily cron can run. Everything else under [Deploy (Vercel + Supabase)](#deploy-vercel--supabase) is optional (`PUBLIC_BASE_URL`, `POSTHOG_API_KEY`, `MIN_CLI_VERSION`).
@@ -92,7 +92,7 @@ The same thing by hand:
 
 1. Add Supabase from the Vercel Marketplace (Storage → Supabase) and connect it to the project; it sets `POSTGRES_URL` (Supavisor in transaction mode, port 6543) and `POSTGRES_URL_NON_POOLING` (session mode, port 5432), among others. Or take both from Supabase → Connect. Use the pooler hosts, not `db.<ref>.supabase.co`: that direct host is IPv6-only and Vercel can't reach it.
 2. Nothing to run by hand: the Vercel build applies pending migrations before it bundles (see step 4). To migrate from your machine instead, `DATABASE_URL='postgresql://...' npm run db:migrate` against the session-mode URL, or put it in `packages/web/.env.production` (gitignored; `db:migrate` reads it ahead of `.env`), which also makes `npm run update` migrate prod.
-3. In Vercel, import the repo, set **Root Directory** to `packages/web`, and set env vars (the Supabase integration has already set the database ones): `TOKEN_SECRET` (signs session tokens; `openssl rand -hex 32`), `INBOX_SECRET_KEY` (encrypts inbox webhook secrets at rest; `openssl rand -base64 32`; keep a copy, since losing it loses the secrets; the build needs it too, because it encrypts any plaintext secrets left from before), and optionally `PUBLIC_BASE_URL` (also the URL `/llms.txt` names), `SIGNUPS=closed` (no new accounts: an unknown email can't log in or be invited, and gets a `signups_closed` error; existing users are unaffected) and `MIN_CLI_VERSION` (see [Releasing the CLI](#releasing-the-cli)). The server uses `DATABASE_URL_POOLED` when it's set, else `DATABASE_URL`, else `POSTGRES_URL`; the build migrates `DATABASE_URL_UNPOOLED`, else `DATABASE_URL`, else `POSTGRES_URL_NON_POOLING`. So `DATABASE_URL*` overrides the integration, and setups that set `DATABASE_URL_POOLED` (pooled) and `DATABASE_URL` (direct), or Neon's `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED` (direct), keep working unchanged. Craftmill's own deployment also sets `CRAFTMILL_ENTERPRISE_LICENSE` (any non-empty value; it turns on the routes under `ee/`, which `ee/LICENSE` covers) plus `SOURCE_REQUEST_URL` and `SOURCE_REQUEST_TOKEN` (the webhook URL and inbox token of its `source-requests` loopway inbox); without all three the dashboard doesn't offer source requests.
+3. In Vercel, import the repo, set **Root Directory** to `packages/web`, and set env vars (the Supabase integration has already set the database ones): `TOKEN_SECRET` (signs session tokens; `openssl rand -hex 32`), `INBOX_SECRET_KEY` (encrypts webhook secrets at rest; `openssl rand -base64 32`; keep a copy, since losing it loses the secrets; the build needs it too, because it encrypts any plaintext secrets left from before), and optionally `PUBLIC_BASE_URL` (also the URL `/llms.txt` names), `SIGNUPS=closed` (no new accounts: an unknown email can't log in or be invited, and gets a `signups_closed` error; existing users are unaffected) and `MIN_CLI_VERSION` (see [Releasing the CLI](#releasing-the-cli)). The server uses `DATABASE_URL_POOLED` when it's set, else `DATABASE_URL`, else `POSTGRES_URL`; the build migrates `DATABASE_URL_UNPOOLED`, else `DATABASE_URL`, else `POSTGRES_URL_NON_POOLING`. So `DATABASE_URL*` overrides the integration, and setups that set `DATABASE_URL_POOLED` (pooled) and `DATABASE_URL` (direct), or Neon's `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED` (direct), keep working unchanged. Craftmill's own deployment also sets `CRAFTMILL_ENTERPRISE_LICENSE` (any non-empty value; it turns on the routes under `ee/`, which `ee/LICENSE` covers) plus `SOURCE_REQUEST_URL` and `SOURCE_REQUEST_TOKEN` (the webhook URL and inbox token of its `source-requests` loopway inbox); without all three the dashboard doesn't offer source requests.
 4. Deploy. Vercel picks up `packages/web/src/index.ts` as a Hono app automatically, and runs `npm run build`, which applies pending migrations (a failure fails the build, so the previous deployment stays live; it records `migrations_applied` or `migrations_failed`) and then bundles the web UI into `packages/web/public/`. The app serves `app.js` and `app.css` itself, since Vercel's CDN only serves the files in `public/` that are committed. Only `main` deploys: `packages/web/vercel.json` turns off preview deployments for every other branch.
 5. Create users with `loopway login` pointed at your deployment (`loopway config update` sets the URL).
 
@@ -143,6 +143,7 @@ packages/web/
   src/cloudevents.ts    CloudEvent validation
   src/index.ts          Vercel entry (default-exports the Hono app)
   src/api.ts            routes, auth, serialization
+  src/mcp.ts            the hosted MCP server: stateless JSON-RPC over POST
   src/ui.ts             the HTML shell, the bundle, /llms.txt and /install.sh
   client/               the landing page
   content/              home.md, llms.txt, install.sh
@@ -155,7 +156,7 @@ packages/web/
 packages/cli/
   src/index.ts          `loopway` entry: error handling + exit codes
   src/program.ts        commands and flags (commander)
-  src/commands/         auth, inboxes (incl. the create TUI, @clack/prompts), messages
+  src/commands/         auth, sources, schedule, messages, tokens, read (`read`, `poll` and the cursors)
   src/client.ts         typed API client
   src/config.ts         ~/.loopway/config.json
   test/cli.test.ts      runs commands against the real API app in-process
@@ -163,10 +164,11 @@ packages/cli/
 
 ### Adding a source
 
-1. Add `packages/sources/src/<type>.ts` exporting a function from `SourceDeps` to a `SourceAdapter` (`types.ts`); use the injected `newSecret`, `uuidv7`, `safeEqual` and `makeCloudEvent` rather than importing your own:
-   - what clients show: `label`, `description`, common `events`, `secret` (`{from: "loopway", minLength}` if loopway makes it, `{from: "sender"}` if the sender shows one after the webhook is added) and `webhookSettings`
-   - `parseConfig` (validate + defaults), `publicConfig`, optional `setup`, and `receive(headers, rawBody) → event | ignored | rejected`
+1. Add `packages/sources/src/<type>.ts` exporting a function from `SourceDeps` to a `SourceAdapter` (`types.ts`); use the injected `uuidv7`, `safeEqual` and `makeCloudEvent` rather than importing your own.
+   - what clients show: `label`, `description`, `secret` (`{from: "loopway", minLength}` if loopway makes it, `{from: "sender"}` if the sender shows one after the webhook is added) and `webhookSettings`
+   - `claims(headers)`: whether a delivery looks like this sender's, from its headers alone. Every source of the user whose sender claims a delivery is tried in turn, so it needs no certainty, only to leave other senders alone
+   - `receive(req, secret)` → event | ignored | rejected. A signature that doesn't match must be a `401`, which moves on to the next source
 2. Add it to `createSources` in `packages/sources/src/index.ts`.
-3. Add `packages/web/test/sources/<type>.test.ts` (`test/helpers.ts` gives it an app and database) and write `docs/sources/<type>.md` (config, setup in the sender, delivery rules, CloudEvent mapping) like the [existing ones](sources/).
+3. Add `packages/web/test/sources/<type>.test.ts` (`test/helpers.ts` gives it an app and database) and write `docs/sources/<type>.md` (setup in the sender, delivery rules, CloudEvent mapping) like the [existing ones](sources/).
 
-Nothing else names a source: the API and `loopway inbox create` work from `GET /sources`.
+Nothing else names a source: the API and `loopway source` work from the registry.

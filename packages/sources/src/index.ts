@@ -21,13 +21,4 @@ export const createSources = (deps: SourceDeps) =>
   ]);
 
 export { SourceRegistry } from "./registry.js";
-export type {
-  SourceAdapter,
-  SourceDeps,
-  CloudEvent,
-  IncomingWebhook,
-  ReceiveResult,
-  SampleContext,
-  SampleDelivery,
-  SecretOrigin,
-} from "./types.js";
+export type { SourceAdapter, SourceDeps, CloudEvent, IncomingWebhook, ReceiveResult, SecretOrigin } from "./types.js";

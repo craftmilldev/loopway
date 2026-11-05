@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { migrationUrl, runMigrations } from "../src/db/run-migrations.js";
 import { connectionUrl, serverUrl } from "../src/db/index.js";
-import { createTestDatabase, TEST_INBOX_KEY } from "../src/db/testing.js";
+import { createTestDatabase } from "../src/db/testing.js";
 import { migrations } from "../src/db/migrations.js";
 import type { Metrics } from "../src/metrics.js";
 
@@ -61,7 +61,7 @@ describe("connectionUrl", () => {
 
 describe("runMigrations", () => {
   it("applies pending migrations, then is a no-op", async () => {
-    const env = { DATABASE_URL: database.url, INBOX_SECRET_KEY: TEST_INBOX_KEY };
+    const env = { DATABASE_URL: database.url };
     const first = await runMigrations({ env, metrics, log });
     expect(first).toEqual(migrations.map((m) => m.version));
     expect(events).toEqual([{ event: "migrations_applied", properties: { count: migrations.length } }]);
@@ -72,29 +72,22 @@ describe("runMigrations", () => {
     expect(lines.at(-1)).toBe("Migrations up to date.");
   });
 
-  it("fails the build when INBOX_SECRET_KEY is unset", async () => {
-    const env = { DATABASE_URL: database.url };
-    await expect(runMigrations({ env, metrics, log })).rejects.toThrow(/INBOX_SECRET_KEY/);
-    expect(events.map((e) => e.event)).toEqual(["migrations_failed"]);
-  });
-
   it("migrates the unpooled URL when DATABASE_URL is the pooled one", async () => {
     const env = {
       DATABASE_URL: "postgres://nobody@127.0.0.1:1/none",
       DATABASE_URL_UNPOOLED: database.url,
-      INBOX_SECRET_KEY: TEST_INBOX_KEY,
     };
     expect(await runMigrations({ env, metrics, log })).toEqual([]);
   });
 
   it("records migrations_failed and rethrows when the database can't be migrated", async () => {
-    const env = { DATABASE_URL_UNPOOLED: "postgres://nobody@127.0.0.1:1/none", INBOX_SECRET_KEY: TEST_INBOX_KEY };
+    const env = { DATABASE_URL_UNPOOLED: "postgres://nobody@127.0.0.1:1/none" };
     await expect(runMigrations({ env, metrics, log })).rejects.toThrow();
     expect(events.map((e) => e.event)).toEqual(["migrations_failed"]);
   });
 
   it("records migrations_failed when a migration's SQL fails", async () => {
-    const env = { DATABASE_URL: database.url, INBOX_SECRET_KEY: TEST_INBOX_KEY };
+    const env = { DATABASE_URL: database.url };
     migrations.push({ version: "999_broken", sql: "SELECT * FROM loopway.no_such_table" });
     try {
       await expect(runMigrations({ env, metrics, log })).rejects.toThrow();
@@ -105,7 +98,7 @@ describe("runMigrations", () => {
   });
 
   it("lets two concurrent runs take turns, applying each migration once", async () => {
-    const env = { DATABASE_URL: raceDatabase.url, INBOX_SECRET_KEY: TEST_INBOX_KEY };
+    const env = { DATABASE_URL: raceDatabase.url };
     const [a, b] = await Promise.all([runMigrations({ env, metrics, log }), runMigrations({ env, metrics, log })]);
     expect([...a!, ...b!].sort()).toEqual(migrations.map((m) => m.version).sort());
   });

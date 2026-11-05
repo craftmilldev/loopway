@@ -1,5 +1,4 @@
 import { createHmac } from "node:crypto";
-import { z } from "zod";
 import { get, str, type Payload } from "./payload.js";
 import type { SourceAdapter, SourceDeps } from "./types.js";
 
@@ -15,112 +14,20 @@ import type { SourceAdapter, SourceDeps } from "./types.js";
  *   data    = the whole webhook body
  */
 
-export interface LinearConfig {
-  /** Signing secret Linear shows after the webhook is created. Unset until pasted in; deliveries get 401 until then. */
-  secret?: string;
-  /** Event names to accept, as `<type>.<action>` (e.g. ["issue.create"]). ["*"] accepts everything. */
-  events: string[];
-}
-
-const configInput = z
-  .object({
-    secret: z.string().min(1).optional(),
-    events: z.array(z.string().min(1)).min(1).optional(),
-  })
-  .strict();
-
-/** Every resource type Linear can send webhooks for, as the lowercased `type` of the body. */
-const RESOURCES = [
-  "issue",
-  "comment",
-  "issuelabel",
-  "attachment",
-  "reaction",
-  "document",
-  "project",
-  "projectupdate",
-  "initiative",
-  "initiativeupdate",
-  "cycle",
-  "user",
-  "customer",
-  "customerneed",
-  "auditentry",
-];
-const ACTIONS = ["create", "update", "remove"];
-
-export const linear = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter<LinearConfig> => ({
+export const linear = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter => ({
   type: "linear",
   label: "Linear",
   description: "Linear webhooks, verified with Linear-Signature.",
-  events: RESOURCES.flatMap((r) => ACTIONS.map((a) => `${r}.${a}`)),
   // Linear makes the secret when the webhook is added, so it's set afterwards.
   secret: { from: "sender" },
   webhookSettings: "Linear → Settings → API → Webhooks",
 
-  parseConfig(input, existing) {
-    const parsed = configInput.parse(input ?? {});
-    const secret = parsed.secret ?? existing?.secret;
-    return {
-      ...(secret ? { secret } : {}),
-      events: (parsed.events ?? existing?.events ?? ["*"]).map((e) => e.toLowerCase()),
-    };
-  },
+  claims: (headers) => headers.has("linear-signature"),
 
-  publicConfig(config) {
-    return { secret: config.secret ?? null, events: config.events };
-  },
-
-  setup(config, webhookUrl) {
-    return {
-      endpoint_url: webhookUrl,
-      events: config.events.includes("*") ? "Any (pick the resource types in Linear)" : config.events,
-      secret: config.secret
-        ? "set"
-        : "not set yet: paste the signing secret Linear shows after you create the webhook with `loopway inbox update <inbox> --secret`",
-    };
-  },
-
-  sampleTypes: () => ["issue.create", "issue.update", "issue.remove"],
-
-  sample(config, { type, id, now }) {
-    const action = type.split(".")[1];
-    const rawBody = JSON.stringify({
-      action,
-      type: "Issue",
-      actor: { id: "00000000-0000-0000-0000-000000000001", type: "user", name: "Loopway Test" },
-      data: {
-        id: "00000000-0000-0000-0000-000000000002",
-        identifier: "TEST-1",
-        title: "A test issue from loopway",
-        state: { name: "Todo" },
-      },
-      url: "https://linear.app/loopway-test/issue/TEST-1",
-      createdAt: now.toISOString(),
-      organizationId: "00000000-0000-0000-0000-000000000003",
-      webhookTimestamp: now.getTime(),
-    });
-    return {
-      headers: {
-        "content-type": "application/json",
-        "linear-delivery": id,
-        "linear-signature": createHmac("sha256", config.secret!).update(rawBody, "utf8").digest("hex"),
-      },
-      rawBody,
-    };
-  },
-
-  receive({ headers, rawBody, receivedAt }, config) {
-    if (!config.secret) {
-      return {
-        kind: "rejected",
-        status: 401,
-        message: "No secret set for this inbox yet; add the signing secret Linear shows",
-      };
-    }
+  receive({ headers, rawBody, receivedAt }, secret) {
     const signature = headers.get("linear-signature");
     if (!signature) return { kind: "rejected", status: 401, message: "Missing Linear-Signature header" };
-    const expected = createHmac("sha256", config.secret).update(rawBody, "utf8").digest("hex");
+    const expected = createHmac("sha256", secret).update(rawBody, "utf8").digest("hex");
     if (!safeEqual(signature, expected)) return { kind: "rejected", status: 401, message: "Signature mismatch" };
 
     let body: Payload;
@@ -136,9 +43,6 @@ export const linear = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter
     const action = str(body.action);
     if (!resource || !action) return { kind: "rejected", status: 400, message: "Missing `type` or `action` in body" };
     const name = `${resource}.${action}`.toLowerCase();
-    if (!config.events.includes("*") && !config.events.includes(name)) {
-      return { kind: "rejected", status: 422, message: `event "${name}" not enabled for this inbox` };
-    }
 
     const dataId = str(get(body, "data.id"));
     const id = headers.get("linear-delivery") ?? (dataId ? `${str(body.webhookTimestamp) ?? ""}${dataId}` : undefined);

@@ -18,8 +18,6 @@ export interface CloudEvent {
  * validation. The host passes them in, so tests can pin them and get the same output every time.
  */
 export interface SourceDeps {
-  /** A fresh webhook signing secret. */
-  newSecret: () => string;
   /** A time-ordered UUID for the given time. */
   uuidv7: (now?: number) => string;
   /** Constant-time string comparison. */
@@ -33,22 +31,8 @@ export interface IncomingWebhook {
   /** Exact bytes as received (as a UTF-8 string) — signatures are computed over this. */
   rawBody: string;
   receivedAt: Date;
-  /** The inbox's webhook URL, the one this request was sent to. */
+  /** The user's inbox URL, the one this request was sent to. */
   webhookUrl: string;
-}
-
-/** A sample delivery as the sender would make it: the headers and the exact body that was signed. */
-export interface SampleDelivery {
-  headers: Record<string, string>;
-  rawBody: string;
-}
-
-export interface SampleContext {
-  /** An event name from `sampleTypes`. */
-  type: string;
-  /** A fresh id for this delivery, so sending twice stores two messages. */
-  id: string;
-  now: Date;
 }
 
 export type ReceiveResult =
@@ -59,41 +43,31 @@ export type ReceiveResult =
 /**
  * Who makes the webhook signing secret:
  * - `loopway`: loopway generates one (or takes one of at least `minLength` characters) and you enter it in the sender.
- * - `sender`: the sender shows one after the webhook is added there, and it's pasted into the inbox afterwards.
- *   The inbox rejects deliveries until then.
- * - `none`: the inbox has no secret and takes no webhooks; it fills itself (see `tick`).
+ * - `sender`: the sender shows one after the webhook is added there, and you register it afterwards. Until then the
+ *   source's deliveries are refused. `pattern`, if any, is what a good one looks like.
+ * - `none`: the source has no secret and takes no webhooks; it fills itself (see `tick`).
  */
-export type SecretOrigin = { from: "loopway"; minLength: number } | { from: "sender" } | { from: "none" };
+export type SecretOrigin =
+  { from: "loopway"; minLength: number } | { from: "sender"; pattern?: RegExp } | { from: "none" };
 
 /**
- * A source type defines how an inbox is configured and how a raw webhook becomes a CloudEvent.
- * Add a new one by implementing this and registering it in ./index.ts. The API, the CLI and the
- * dashboard only read what's here, so nothing else needs to change.
+ * A source type says how to recognise a sender's deliveries, how to verify them, and how to turn them into CloudEvents.
+ * Add one by implementing this and registering it in ./index.ts. The API and the CLI only read what's here.
  */
 export interface SourceAdapter<Config = unknown> {
   type: string;
   /** Display name, e.g. "GitHub". */
   label: string;
   description: string;
-  /** Common event names, offered as choices when creating an inbox. Others can still be typed in. */
-  events: string[];
   secret: SecretOrigin;
   /** Where in the sender the webhook is added, e.g. "GitHub → Settings → Webhooks". */
   webhookSettings: string;
-  /** Validate user input on inbox create/update; fill defaults (e.g. generate a secret). Throws on invalid. */
-  parseConfig(input: unknown, existing?: Config): Config;
-  /** Shape of the config returned by the API. */
-  publicConfig(config: Config): unknown;
-  /** Setup hints shown on inbox responses (e.g. which content type to pick in GitHub). */
-  setup?(config: Config, webhookUrl: string): Record<string, unknown>;
+  /** Whether a delivery looks like it came from this sender, from its headers alone. Sources without webhooks have none. */
+  claims?(headers: Headers): boolean;
+  /** Verifies a delivery against one stored secret and maps it. A signature that doesn't match is a 401. */
+  receive?(req: IncomingWebhook, secret: string): ReceiveResult | Promise<ReceiveResult>;
+  /** For sources with settings of their own: validates them. Throws on invalid. */
+  parseConfig?(input: unknown, existing?: Config): Config;
   /** For sources that fill themselves on a clock: the events due at `now`. The server's cron route stores them; repeats must dedupe (same CE source and id). */
-  tick?(config: Config, inboxId: string, now: Date): CloudEvent[];
-  /**
-   * The event names `sample` can build, the one to try first leading. Each is a name the inbox's `events` filter
-   * is checked against. Sources that take no webhooks have none.
-   */
-  sampleTypes?(config: Config): string[];
-  /** A delivery of `ctx.type` signed with the inbox's secret exactly as the sender would, for the "send a test message" action. */
-  sample?(config: Config, ctx: SampleContext): SampleDelivery;
-  receive(req: IncomingWebhook, config: Config): ReceiveResult | Promise<ReceiveResult>;
+  tick?(config: Config, sourceId: string, now: Date): CloudEvent[];
 }

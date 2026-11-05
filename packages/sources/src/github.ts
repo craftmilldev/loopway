@@ -1,5 +1,4 @@
 import { createHmac } from "node:crypto";
-import { z } from "zod";
 import { get, str, type Payload } from "./payload.js";
 import type { SourceAdapter, SourceDeps } from "./types.js";
 
@@ -15,21 +14,7 @@ import type { SourceAdapter, SourceDeps } from "./types.js";
  *   data    = the webhook payload
  */
 
-export interface GithubConfig {
-  /** Shared secret entered in GitHub's webhook "Secret" field. Used to verify X-Hub-Signature-256. */
-  secret: string;
-  /** GitHub event names to accept (e.g. ["push", "pull_request"]). ["*"] accepts everything. */
-  events: string[];
-}
-
 const MIN_SECRET = 16;
-
-const configInput = z
-  .object({
-    secret: z.string().min(MIN_SECRET, `secret must be at least ${MIN_SECRET} characters`).optional(),
-    events: z.array(z.string().min(1)).min(1).optional(),
-  })
-  .strict();
 
 interface Rule {
   /** Dotted path, or a function, for `source`. Default: repository.url → organization.url → sender.url. */
@@ -127,81 +112,25 @@ const RULES: Record<string, Rule> = {
   workflow_run: { subject: "workflow.name" },
 };
 
-export const github = ({ newSecret, safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter<GithubConfig> => ({
+export const github = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter => ({
   type: "github",
   label: "GitHub",
   description: "GitHub repository/org/app webhooks, verified with X-Hub-Signature-256.",
-  events: [
-    "push",
-    "pull_request",
-    "pull_request_review",
-    "pull_request_review_comment",
-    "issues",
-    "issue_comment",
-    "release",
-    "workflow_run",
-    "workflow_job",
-    "check_run",
-    "check_suite",
-    "create",
-    "delete",
-    "deployment_status",
-    "discussion",
-    "star",
-    "fork",
-  ],
   secret: { from: "loopway", minLength: MIN_SECRET },
   webhookSettings: "GitHub → Settings → Webhooks",
 
-  parseConfig(input, existing) {
-    const parsed = configInput.parse(input ?? {});
-    return {
-      secret: parsed.secret ?? existing?.secret ?? newSecret(),
-      events: parsed.events ?? existing?.events ?? ["*"],
-    };
-  },
+  claims: (headers) => headers.has("x-github-event") || headers.has("x-hub-signature-256"),
 
-  publicConfig(config) {
-    return { secret: config.secret, events: config.events };
-  },
-
-  setup(config, webhookUrl) {
-    return {
-      payload_url: webhookUrl,
-      content_type: "application/json (application/x-www-form-urlencoded also works)",
-      secret: config.secret,
-      events: config.events.includes("*") ? "Send me everything" : config.events,
-    };
-  },
-
-  sampleTypes: () => ["pull_request", "issues", "push"],
-
-  sample(config, { type, id, now }) {
-    const rawBody = JSON.stringify(githubSample(type, now));
-    return {
-      headers: {
-        "content-type": "application/json",
-        "x-github-event": type,
-        "x-github-delivery": id,
-        "x-hub-signature-256": "sha256=" + createHmac("sha256", config.secret).update(rawBody, "utf8").digest("hex"),
-      },
-      rawBody,
-    };
-  },
-
-  receive({ headers, rawBody, receivedAt }, config) {
+  receive({ headers, rawBody, receivedAt }, secret) {
     const event = headers.get("x-github-event");
     if (!event) return { kind: "rejected", status: 400, message: "Missing X-GitHub-Event header" };
 
     const signature = headers.get("x-hub-signature-256");
     if (!signature) return { kind: "rejected", status: 401, message: "Missing X-Hub-Signature-256 header" };
-    const expected = "sha256=" + createHmac("sha256", config.secret).update(rawBody, "utf8").digest("hex");
+    const expected = "sha256=" + createHmac("sha256", secret).update(rawBody, "utf8").digest("hex");
     if (!safeEqual(signature, expected)) return { kind: "rejected", status: 401, message: "Signature mismatch" };
 
     if (event === "ping") return { kind: "ignored", reason: "ping" };
-    if (!config.events.includes("*") && !config.events.includes(event)) {
-      return { kind: "rejected", status: 422, message: `event "${event}" not enabled for this inbox` };
-    }
 
     const delivery = headers.get("x-github-delivery");
     if (!delivery) return { kind: "rejected", status: 400, message: "Missing X-GitHub-Delivery header" };
@@ -262,56 +191,4 @@ function toIso(v: unknown): string | undefined {
     return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
   }
   return undefined;
-}
-
-/** A small but realistic payload for `event`, from a made-up repository. */
-function githubSample(event: string, now: Date): Payload {
-  const time = now.toISOString();
-  const repo = "https://api.github.com/repos/loopway-test/hello-world";
-  const base = {
-    repository: {
-      id: 1,
-      name: "hello-world",
-      full_name: "loopway-test/hello-world",
-      url: repo,
-      html_url: "https://github.com/loopway-test/hello-world",
-      default_branch: "main",
-    },
-    sender: { login: "loopway-test", url: "https://api.github.com/users/loopway-test" },
-  };
-  if (event === "issues") {
-    return {
-      ...base,
-      action: "opened",
-      issue: {
-        number: 1,
-        title: "A test issue from loopway",
-        state: "open",
-        html_url: "https://github.com/loopway-test/hello-world/issues/1",
-        updated_at: time,
-      },
-    };
-  }
-  if (event === "push") {
-    return {
-      ...base,
-      ref: "refs/heads/main",
-      commits: [{ id: "0000000000000000000000000000000000000001", message: "A test commit from loopway" }],
-    };
-  }
-  return {
-    ...base,
-    action: "opened",
-    number: 1,
-    pull_request: {
-      number: 1,
-      title: "A test pull request from loopway",
-      state: "open",
-      merged: false,
-      html_url: "https://github.com/loopway-test/hello-world/pull/1",
-      head: { ref: "test-branch" },
-      base: { ref: "main" },
-      updated_at: time,
-    },
-  };
 }

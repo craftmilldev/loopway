@@ -1,5 +1,4 @@
-import { createHmac, randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApi } from "@loopway/web/api";
@@ -11,6 +10,7 @@ import type { Command } from "commander";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadConfig, writeConfig } from "../src/config.js";
 import type { Context } from "../src/context.js";
+import { poll, sinceValue } from "../src/commands/read.js";
 import { createProgram } from "../src/program.js";
 import { LoopwayClient } from "../src/client.js";
 
@@ -101,34 +101,6 @@ async function configured(name = "Matthew") {
   return key;
 }
 
-async function sendGithub(inbox: { id: string; config: { secret: string } }, event: string, payload: unknown) {
-  const raw = JSON.stringify(payload);
-  const res = await app.request(`/api/webhooks/${inbox.id}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-github-event": event,
-      "x-github-delivery": randomUUID(),
-      "x-hub-signature-256": "sha256=" + createHmac("sha256", inbox.config.secret).update(raw).digest("hex"),
-    },
-    body: raw,
-  });
-  expect(res.status).toBe(202);
-}
-
-const pr = (n: number) => ({
-  action: "opened",
-  number: n,
-  pull_request: { number: n, body: "" },
-  repository: { full_name: "a/b", url: "https://api.github.com/repos/a/b" },
-});
-
-async function inboxWithEvents(n: number, name = "gh") {
-  const inbox = await runJson("inbox", "create", "--name", name, "--source", "github");
-  for (let i = 1; i <= n; i++) await sendGithub(inbox, "pull_request", pr(i));
-  return inbox as { id: string; name: string; config: { secret: string } };
-}
-
 /**
  * Has the server route the inbox's messages to threads now, as a runner's work feed does before it answers: waits out
  * the holdback on messages that are still fresh, then asks for the runner's work, which routes first.
@@ -215,7 +187,7 @@ describe("auth", () => {
   it("commands fail clearly when not logged in", async () => {
     await configured();
     expect(await run("clear-config")).toMatch(/Removed .*config\.json/);
-    await expect(run("inbox", "list")).rejects.toThrow(/Not logged in\. Run `loopway login`/);
+    await expect(run("inbox")).rejects.toThrow(/Not logged in\. Run `loopway login`/);
   });
 
   it("loadConfig: env over config.json over defaults; trailing slashes dropped on save", async () => {
@@ -281,330 +253,378 @@ describe("auth", () => {
   });
 });
 
-describe("inboxes", () => {
-  it("creates from flags and lists", async () => {
+describe("the inbox", () => {
+  it("shows the one URL", async () => {
     await configured();
-    const inbox = await runJson(
-      "inbox",
-      "create",
+    const inbox = await runJson("inbox");
+    expect(inbox.url).toMatch(/^https:\/\/loopway\.test\/api\/webhooks\/[0-9a-f-]{36}$/);
+    expect(await run("inbox")).toContain(inbox.url);
+  });
+});
+
+describe("sources", () => {
+  it("registers GitHub with a generated secret and the gh line to add it", async () => {
+    await configured();
+    const out = await run("source", "register", "github");
+    expect(out).toMatch(/Registered/);
+    expect(out).toContain("gh api repos/OWNER/REPO/hooks");
+    const [s] = await runJson("source", "list");
+    expect(s).toMatchObject({ name: "github", type: "github", secret_set: true });
+    expect(s.secret).toBeUndefined();
+  });
+
+  it("registers a sender-made secret afterwards, and says deliveries wait for it", async () => {
+    await configured();
+    const out = await run("source", "register", "linear", "--name", "work");
+    expect(out).toContain("loopway source update work --secret <secret>");
+    expect((await runJson("source", "show", "work")).secret_set).toBe(false);
+    await run("source", "update", "work", "--secret", "lin_secret");
+    expect((await runJson("source", "show", "work")).secret_set).toBe(true);
+  });
+
+  it("says when a name is taken, and removes by name", async () => {
+    await configured();
+    await run("source", "register", "github");
+    await expect(run("source", "register", "github")).rejects.toThrow(/already have a source named "github"/);
+    await run("source", "remove", "github");
+    expect(await run("source", "list")).toMatch(/No sources yet/);
+    await expect(run("source", "show", "github")).rejects.toThrow(/No source with id or name/);
+  });
+
+  it("makes and changes a schedule with its flags", async () => {
+    await configured();
+    await run(
+      "source",
+      "register",
+      "schedule",
       "--name",
-      "prs",
-      "--source",
-      "github",
-      "--events",
-      "push, pull_request",
+      "clock",
+      "--every",
+      "day",
+      "--hour",
+      "7",
+      "--message",
+      "standup=Write the standup",
     );
-    expect(inbox.config.events).toEqual(["push", "pull_request"]);
-    expect(inbox.webhook_url).toBe(`${API}/api/webhooks/${inbox.id}`);
-
-    const list = await runJson("inbox", "list");
-    expect(list.map((i: any) => i.id)).toEqual([inbox.id]);
-    expect(await run("inbox", "ls")).toContain("prs");
+    expect(await run("source", "show", "clock")).toMatch(/daily at 7:00 UTC/);
+    await run("source", "update", "clock", "--every", "week", "--day", "mon", "--message", "retro=Run the retro");
+    const shown = await runJson("source", "show", "clock");
+    expect(shown.config.schedule).toEqual({ every: "week", day: 1, hour: 7 });
+    expect(shown.config.messages).toHaveLength(2);
+    await run("source", "update", "clock", "--remove-message", "retro");
+    expect((await runJson("source", "show", "clock")).config.messages).toHaveLength(1);
   });
 
-  it("sends a test message", async () => {
+  it("rejects schedule flags where they don't apply, and bad ones", async () => {
     await configured();
-    const inbox = await runJson("inbox", "create", "--name", "prs", "--source", "github");
-    const sent = await runJson("inbox", "test", "prs");
-    expect(sent).toMatchObject({ message_id: expect.any(String), seq: expect.any(Number) });
-    expect(await run("inbox", "test", inbox.id)).toMatch(/^Sent test message \S+ \(seq \d+\)\./);
-    const [message] = (await runJson("messages", "list", inbox.id, "--order", "desc")).data;
-    expect(message.test).toBe(true);
-    expect(message.event.type).toBe("com.github.pull_request.opened");
-  });
-
-  it("explains a test message that can't be sent", async () => {
-    await configured();
-    await runJson("inbox", "create", "--name", "deploys", "--source", "vercel");
-    await expect(run("inbox", "test", "deploys")).rejects.toThrow(/no signing secret yet/);
-  });
-
-  it("requires --name without a terminal", async () => {
-    await configured();
-    await expect(run("inbox", "create", "--source", "github")).rejects.toThrow(/--name is required/);
-  });
-
-  it("show resolves names and reports stats", async () => {
-    await configured();
-    const inbox = await inboxWithEvents(2, "named");
-    const shown = await runJson("inbox", "show", "named");
-    expect(shown.id).toBe(inbox.id);
-    expect(shown.stats).toEqual({ messages: 2 });
-    expect(await run("inbox", "show", "named")).toMatch(/messages\s+2/);
-    await expect(run("inbox", "show", "nope")).rejects.toThrow(/No inbox with id or name/);
-  });
-
-  it("creates a vercel inbox without a secret and sets it with update", async () => {
-    await configured();
-    const inbox = await runJson(
-      "inbox",
-      "create",
-      "--name",
-      "vc",
-      "--source",
-      "vercel",
-      "--events",
-      "deployment.error",
+    await expect(run("source", "register", "github", "--every", "day")).rejects.toThrow(/only apply/);
+    await expect(run("source", "register", "schedule")).rejects.toThrow(/needs --every/);
+    await expect(run("source", "register", "schedule", "--every", "day", "--message", "a=b")).rejects.toThrow(
+      /--every day needs --hour/,
     );
-    expect(inbox.config).toEqual({ events: ["deployment.error"], secret_set: false });
-    await expect(run("inbox", "update", "vc")).rejects.toThrow(/Pass --name, --events, --secret or --schema/);
-    const updated = await runJson("inbox", "update", "vc", "--secret", "from-vercel");
-    expect(updated.config).toEqual({ events: ["deployment.error"], secret_set: true });
-    expect(await run("inbox", "update", inbox.id, "--name", "vercel")).toMatch(/Updated inbox .*vercel/);
+    await run("source", "register", "github");
+    await expect(run("source", "update", "github", "--every", "day")).rejects.toThrow(/don't apply/);
   });
 
-  it("creates a loopway inbox with a schema from a file and replaces it with update", async () => {
+  it("lists the types", async () => {
     await configured();
-    const inbox = await runJson("inbox", "create", "--name", "bots", "--source", "loopway");
-    expect(inbox.config.schema).toEqual({ type: "object", required: ["type", "id", "data"] });
-
-    const schema = { type: "object", required: ["type", "id", "data"], properties: { type: { const: "ping" } } };
-    const file = join(configDir, "schema.json");
-    await writeFile(file, JSON.stringify(schema));
-    expect((await runJson("inbox", "update", "bots", "--schema", file)).config.schema).toEqual(schema);
-
-    await writeFile(file, JSON.stringify({ type: "object" }));
-    await expect(run("inbox", "update", "bots", "--schema", file)).rejects.toThrow(/Invalid request/);
-    await expect(run("inbox", "update", "bots", "--schema", join(configDir, "missing.json"))).rejects.toThrow(
-      /Could not read a JSON schema/,
-    );
-  });
-
-  describe("schedule inboxes", () => {
-    async function scheduleInbox(name = "clock") {
-      const key = await configured();
-      const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
-      return client.createInbox({
-        name,
-        source_type: "schedule",
-        config: { schedule: { every: "hour" }, messages: [{ type: "standup", message: "Write the standup" }] },
-      });
-    }
-
-    it("adds, replaces and removes a message type, keeping the others", async () => {
-      await scheduleInbox();
-      let updated = await runJson("inbox", "update", "clock", "--message", "codex=Check codex = models");
-      expect(updated.config.messages).toEqual([
-        { type: "standup", message: "Write the standup" },
-        { type: "codex", message: "Check codex = models" },
-      ]);
-      const file = join(configDir, "long.txt");
-      await writeFile(file, "line one\nline two\n");
-      updated = await runJson("inbox", "update", "clock", "--message-file", `standup=${file}`, "--message", "a=b");
-      expect(updated.config.messages).toEqual([
-        { type: "standup", message: "line one\nline two" },
-        { type: "codex", message: "Check codex = models" },
-        { type: "a", message: "b" },
-      ]);
-      updated = await runJson("inbox", "update", "clock", "--remove-message", "a", "--remove-message", "codex");
-      expect(updated.config.messages).toEqual([{ type: "standup", message: "line one\nline two" }]);
-    });
-
-    it("changes the schedule and replaces the config from a file", async () => {
-      await scheduleInbox();
-      let updated = await runJson("inbox", "update", "clock", "--every", "day", "--hour", "9");
-      expect(updated.config.schedule).toEqual({ every: "day", hour: 9 });
-      updated = await runJson("inbox", "update", "clock", "--hour", "14");
-      expect(updated.config.schedule).toEqual({ every: "day", hour: 14 });
-      updated = await runJson("inbox", "update", "clock", "--every", "week", "--day", "mon");
-      expect(updated.config.schedule).toEqual({ every: "week", day: 1, hour: 14 });
-      updated = await runJson("inbox", "update", "clock", "--day", "6", "--hour", "13");
-      expect(updated.config.schedule).toEqual({ every: "week", day: 6, hour: 13 });
-      updated = await runJson("inbox", "update", "clock", "--every", "hour");
-      expect(updated.config.schedule).toEqual({ every: "hour" });
-
-      const file = join(configDir, "schedule.json");
-      const config = { schedule: { every: "day", hour: 3 }, messages: [{ type: "only", message: "one" }] };
-      await writeFile(file, JSON.stringify(config));
-      expect((await runJson("inbox", "update", "clock", "--config", file)).config).toEqual(config);
-    });
-
-    it("prints the schedule and messages after an update", async () => {
-      await scheduleInbox();
-      const out = await run("inbox", "update", "clock", "--message", "codex=Check codex");
-      expect(out).toMatch(/schedule\s+every hour/);
-      expect(out).toMatch(/Check codex/);
-    });
-
-    it("shows a weekly schedule in words", async () => {
-      await scheduleInbox();
-      await run("inbox", "update", "clock", "--every", "week", "--day", "mon", "--hour", "13");
-      expect(await run("inbox", "show", "clock")).toMatch(/schedule\s+weekly on Monday at 13:00 UTC/);
-    });
-
-    it("shows the schedule and each message", async () => {
-      await scheduleInbox();
-      const shown = await run("inbox", "show", "clock");
-      expect(shown).toMatch(/schedule\s+every hour/);
-      expect(shown).toMatch(/standup/);
-      expect(shown).toMatch(/Write the standup/);
-    });
-
-    it("rejects bad flags with clear errors", async () => {
-      await scheduleInbox();
-      await expect(run("inbox", "update", "clock")).rejects.toThrow(/Pass --name, --every/);
-      await expect(run("inbox", "update", "clock", "--every", "day")).rejects.toThrow(/needs --hour/);
-      await expect(run("inbox", "update", "clock", "--hour", "24")).rejects.toThrow(/0 to 23/);
-      await expect(run("inbox", "update", "clock", "--hour", "5")).rejects.toThrow(
-        /only applies with --every day or week/,
-      );
-      await expect(run("inbox", "update", "clock", "--every", "month")).rejects.toThrow(/"hour", "day" or "week"/);
-      await expect(run("inbox", "update", "clock", "--every", "week", "--hour", "9")).rejects.toThrow(/needs --day/);
-      await expect(run("inbox", "update", "clock", "--every", "week", "--day", "9")).rejects.toThrow(/mon\.\.sun/);
-      await expect(run("inbox", "update", "clock", "--every", "week", "--day", "funday")).rejects.toThrow(/mon\.\.sun/);
-      await expect(run("inbox", "update", "clock", "--day", "1")).rejects.toThrow(/only applies with --every week/);
-      await expect(run("inbox", "update", "clock", "--message", "nope")).rejects.toThrow(/<type>=<value>/);
-      await expect(run("inbox", "update", "clock", "--message", "Bad Type=x")).rejects.toThrow(/lowercase/);
-      await expect(run("inbox", "update", "clock", "--message", "x=")).rejects.toThrow(/needs some text/);
-      await expect(run("inbox", "update", "clock", "--message", `x=${"a".repeat(10_001)}`)).rejects.toThrow(/limit/);
-      await expect(run("inbox", "update", "clock", "--remove-message", "nope")).rejects.toThrow(/no message type/);
-      await expect(run("inbox", "update", "clock", "--remove-message", "standup")).rejects.toThrow(/at least one/);
-      await expect(run("inbox", "update", "clock", "--secret", "s")).rejects.toThrow(/don't apply/);
-      await expect(
-        run("inbox", "update", "clock", ...Array.from({ length: 20 }, (_, i) => ["--message", `t${i}=x`]).flat()),
-      ).rejects.toThrow(/up to 20/);
-      await expect(run("inbox", "update", "clock", "--message-file", `a=${join(configDir, "none")}`)).rejects.toThrow(
-        /Could not read/,
-      );
-    });
-
-    it("passes the server's errors through and rejects schedule flags on other sources", async () => {
-      await scheduleInbox();
-      const file = join(configDir, "bad.json");
-      await writeFile(file, JSON.stringify({ schedule: { every: "year" }, messages: [{ type: "a", message: "b" }] }));
-      await expect(run("inbox", "update", "clock", "--config", file)).rejects.toThrow(/Invalid request/);
-
-      await runJson("inbox", "create", "--name", "gh", "--source", "github");
-      await expect(run("inbox", "update", "gh", "--every", "hour")).rejects.toThrow(/only work on schedule inboxes/);
-    });
-  });
-
-  describe("creating schedule inboxes", () => {
-    it("creates one from flags and shows its schedule", async () => {
-      await configured();
-      const file = join(configDir, "long.txt");
-      await writeFile(file, "line one\nline two\n");
-      const out = await run(
-        "inbox",
-        "create",
-        "--name",
-        "clock",
-        "--source",
-        "schedule",
-        "--every",
-        "day",
-        "--hour",
-        "9",
-        "--message",
-        "standup=Write the standup",
-        "--message-file",
-        `report=${file}`,
-      );
-      expect(out).toMatch(/schedule\s+daily at 9:00 UTC/);
-      expect(out).not.toMatch(/webhook/i);
-      const shown = await run("inbox", "show", "clock");
-      expect(shown).toMatch(/schedule\s+daily at 9:00 UTC/);
-      expect(shown).toContain("Write the standup");
-      const inbox = await runJson("inbox", "show", "clock");
-      expect(inbox.config.messages).toEqual([
-        { type: "standup", message: "Write the standup" },
-        { type: "report", message: "line one\nline two" },
-      ]);
-    });
-
-    it("creates a weekly one with --day", async () => {
-      await configured();
-      const inbox = await runJson(
-        "inbox",
-        "create",
-        "--name",
-        "clock",
-        "--source",
-        "schedule",
-        "--every",
-        "week",
-        "--day",
-        "mon",
-        "--hour",
-        "13",
-        "--message",
-        "a=b",
-      );
-      expect(inbox.config.schedule).toEqual({ every: "week", day: 1, hour: 13 });
-    });
-
-    it("creates one from --config, with flags applied on top", async () => {
-      await configured();
-      const file = join(configDir, "schedule.json");
-      await writeFile(file, JSON.stringify({ schedule: { every: "hour" }, messages: [{ type: "a", message: "b" }] }));
-      const inbox = await runJson(
-        "inbox",
-        "create",
-        "--name",
-        "clock",
-        "--source",
-        "schedule",
-        "--config",
-        file,
-        "--every",
-        "day",
-        "--hour",
-        "3",
-      );
-      expect(inbox.config).toEqual({ schedule: { every: "day", hour: 3 }, messages: [{ type: "a", message: "b" }] });
-    });
-
-    it("refuses without messages or a schedule, and webhook or schedule flags on the wrong source", async () => {
-      await configured();
-      const base = ["inbox", "create", "--name", "clock", "--source", "schedule"];
-      await expect(run(...base, "--every", "hour")).rejects.toThrow(/at least one message/);
-      await expect(run(...base, "--message", "a=b")).rejects.toThrow(/needs --every/);
-      await expect(run(...base, "--every", "day", "--message", "a=b")).rejects.toThrow(/needs --hour/);
-      await expect(run(...base, "--every", "hour", "--message", "A=b")).rejects.toThrow(/lowercase/);
-      await expect(run(...base, "--every", "hour", "--message", "a=b", "--secret", "x")).rejects.toThrow(
-        /don't apply to a schedule inbox/,
-      );
-      await expect(run(...base, "--every", "hour", "--message", "a=b", "--events", "x")).rejects.toThrow(
-        /don't apply to a schedule inbox/,
-      );
-      await expect(run("inbox", "create", "--name", "gh", "--source", "github", "--every", "hour")).rejects.toThrow(
-        /only work with --source schedule/,
-      );
-      expect(await run("inbox", "list")).toContain("No inboxes yet");
-    });
-  });
-
-  it("creates a granola inbox without a secret and sets it with update", async () => {
-    await configured();
-    const inbox = await runJson("inbox", "create", "--name", "notes", "--source", "granola");
-    expect(inbox.config).toEqual({ events: ["*"], secret_set: false });
-    const secret = "whsec_" + Buffer.from("granola-key").toString("base64");
-    const updated = await runJson("inbox", "update", "notes", "--secret", secret);
-    expect(updated.config).toEqual({ events: ["*"], secret_set: true });
-    expect(updated.setup.secret).toBe("set");
+    expect(await run("source", "types")).toMatch(/schedule/);
   });
 });
 
 describe("messages", () => {
-  it("list filters, paginates with --all, and get shows one", async () => {
+  it("pushes, lists newest first, gets one, and dedupes on --id", async () => {
     await configured();
-    const inbox = await inboxWithEvents(3);
-    const page = await runJson("messages", "list", inbox.id, "--limit", "2");
-    expect(page.data).toHaveLength(2);
-    expect(page.next_cursor).toBeTruthy();
-
-    const all = await runJson("messages", "list", inbox.id, "--limit", "2", "--all");
-    expect(all.data).toHaveLength(3);
-    expect(all.next_cursor).toBeNull();
-    expect(await run("messages", "list", inbox.id)).toContain("com.github.pull_request.opened");
-
-    const id = all.data[0].id;
-    expect((await runJson("messages", "get", inbox.id, id)).event.subject).toBe("1");
-    expect(JSON.parse(await run("messages", "get", inbox.id, id, "--data"))).toEqual(pr(1));
+    expect(await run("push", "build.done", "--subject", "main", "--data", '{"ok":true}', "--id", "b1")).toMatch(
+      /Pushed/,
+    );
+    expect(await run("push", "build.done", "--id", "b1")).toMatch(/Already stored/);
+    await run("push", "build.started");
+    const list = await runJson("messages", "list");
+    expect(list.map((m: { event: { type: string } }) => m.event.type)).toEqual(["build.started", "build.done"]);
+    expect(await run("messages", "get", list[1].id, "--data")).toContain('"ok": true');
   });
 
-  it("rejects bad numbers before calling the API", async () => {
+  it("rejects bad data before calling the API", async () => {
     await configured();
-    await expect(run("messages", "list", "x", "--limit", "0")).rejects.toThrow(/positive integer/);
+    await expect(run("push", "t", "--data", "{nope")).rejects.toThrow(/must be JSON/);
+    await expect(run("push", "t", "--data", "1", "--data-file", "f")).rejects.toThrow(/not both/);
+    await expect(run("messages", "list", "--limit", "0")).rejects.toThrow(/positive integer/);
+  });
+});
+
+describe("tokens", () => {
+  it("makes a token that works as LOOPWAY_API_KEY, and revokes it by name", async () => {
+    await configured();
+    const { token } = await runJson("token", "create", "poller");
+    expect(token).toMatch(/^lw_/);
+    const client = new LoopwayClient({ baseUrl: API, apiKey: token, fetch: apiFetch });
+    expect((await client.me()).username).toBeTruthy();
+    expect(await run("token", "list")).toMatch(/poller/);
+    await run("token", "revoke", "poller");
+    await expect(client.me()).rejects.toThrow(/invalid or expired/);
+    await expect(run("token", "revoke", "poller")).rejects.toThrow(/No token/);
+  });
+});
+
+describe("read and poll", () => {
+  /** A reader that appends each message's type to a file, and throws on the type in the FAIL_ON file if there is one. */
+  async function writeReader(dir: string, name = "reader.mjs") {
+    const path = join(dir, name);
+    await writeFile(
+      path,
+      `import { appendFile, readFile } from "node:fs/promises";
+export default async function (msg, ctx) {
+  const fail = await readFile(${JSON.stringify(join(dir, "fail-on"))}, "utf8").catch(() => "");
+  if (msg.type === fail) throw new Error("no thanks");
+  await appendFile(${JSON.stringify(join(dir, "seen"))}, msg.type + "\\n");
+  if (msg.type === "echo") await ctx.push({ type: "echoed" });
+}
+`,
+    );
+    return path;
+  }
+  const seen = (dir: string) =>
+    readFile(join(dir, "seen"), "utf8").then(
+      (t) => t.trim().split("\n"),
+      () => [] as string[],
+    );
+  /** Past the server's read holdback. */
+  const age = () => db.query(`UPDATE loopway.messages SET received_at = received_at - interval '1 minute'`);
+  const clear = () => db.query(`DELETE FROM loopway.messages`);
+
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "loopway-reader-"));
+    await clear();
+  });
+  afterEach(() => rm(dir, { recursive: true, force: true }));
+
+  it("starts a new reader from now, then delivers only what's new, once", async () => {
+    await configured();
+    const reader = await writeReader(dir);
+    await run("push", "before");
+    await db.query(`UPDATE loopway.messages SET received_at = received_at - interval '5 minutes'`);
+    await run("read", reader);
+    expect(notes.join("\n")).toMatch(/starting from now/);
+    expect(await seen(dir)).toEqual([]);
+
+    // Time passes: the cursor falls a minute behind, and something arrives in that minute.
+    const [file] = await readdir(join(configDir, "cursors"));
+    const path = join(configDir, "cursors", file!);
+    const cursor = JSON.parse(await readFile(path, "utf8")) as { since: string };
+    await writeFile(path, JSON.stringify({ ...cursor, since: String(BigInt(cursor.since) - 60_000_000n) }));
+    await run("push", "after");
+    await db.query(
+      `UPDATE loopway.messages SET received_at = clock_timestamp() - interval '30 seconds' WHERE ce_type = 'after'`,
+    );
+    await run("read", reader);
+    expect(await seen(dir)).toEqual(["after"]);
+    await run("read", reader);
+    expect(await seen(dir)).toEqual(["after"]);
+    expect(notes.join("\n")).toMatch(/Read 0 messages/);
+  });
+
+  it("backfills with --since, and that moves the cursor for later reads", async () => {
+    await configured();
+    const reader = await writeReader(dir);
+    await run("push", "old");
+    await run("push", "older");
+    await age();
+    await run("read", reader, "--since", "2h");
+    expect((await seen(dir)).sort()).toEqual(["old", "older"]);
+    await run("read", reader);
+    expect(await seen(dir)).toHaveLength(2);
+    await run("read", reader, "--since", "2h", "--type", "older");
+    expect(await seen(dir)).toHaveLength(3);
+  });
+
+  it("resets to an exact microsecond from a message's received_at", async () => {
+    await configured();
+    const reader = await writeReader(dir);
+    await run("push", "one");
+    await run("push", "two");
+    await age();
+    const [newest] = await runJson("messages", "list", "--limit", "1");
+    await run("read", reader, "--since", newest.received_at);
+    expect(await seen(dir)).toEqual(["two"]);
+    await run("read", reader, "--since", newest.received_us);
+    expect(await seen(dir)).toEqual(["two", "two"]);
+  });
+
+  it("stops on a throw, leaves the cursor there, and delivers that message again", async () => {
+    await configured();
+    const reader = await writeReader(dir);
+    await run("push", "a");
+    await run("push", "b");
+    await run("push", "c");
+    await age();
+    await writeFile(join(dir, "fail-on"), "b");
+    await expect(run("read", reader, "--since", "2h")).rejects.toThrow(/reader failed on message .*no thanks/);
+    expect(await seen(dir)).toEqual(["a"]);
+    // The next read has no --since: it's the cursor that was left there.
+    await expect(run("read", reader)).rejects.toThrow(/no thanks/);
+    expect(await seen(dir)).toEqual(["a"]);
+    await rm(join(dir, "fail-on"));
+    await run("read", reader);
+    expect(await seen(dir)).toEqual(["a", "b", "c"]);
+  });
+
+  it("walks more than a page", async () => {
+    await configured();
+    const reader = await writeReader(dir);
+    const key = (await savedConfig()).api_key as string;
+    const client = new LoopwayClient({ baseUrl: API, apiKey: key, fetch: apiFetch });
+    for (let i = 0; i < 105; i++) await client.pushMessage({ type: `m${i}` });
+    await age();
+    await run("read", reader, "--since", "2h");
+    expect(new Set(await seen(dir)).size).toBe(105);
+  });
+
+  it("keeps a cursor per reader, per user, per --type", async () => {
+    await configured();
+    const a = await writeReader(dir, "a.mjs");
+    const b = await writeReader(dir, "b.mjs");
+    await run("read", a);
+    await run("read", b);
+    await run("read", a, "--type", "x.*");
+    await configured("Other");
+    await run("read", a);
+    expect(await readdir(join(configDir, "cursors"))).toHaveLength(4);
+  });
+
+  it("gives the reader the CloudEvent with received_at, and a push that lands in the same inbox", async () => {
+    await configured();
+    const reader = join(dir, "r.mjs");
+    await writeFile(
+      reader,
+      `import { writeFile } from "node:fs/promises";
+export default async function (msg) { await writeFile(${JSON.stringify(join(dir, "msg.json"))}, JSON.stringify(msg)); }`,
+    );
+    await run("push", "note", "--subject", "s", "--data", '{"n":1}');
+    await age();
+    await run("read", reader, "--since", "2h");
+    const msg = JSON.parse(await readFile(join(dir, "msg.json"), "utf8"));
+    expect(msg).toMatchObject({ specversion: "1.0", type: "note", subject: "s", data: { n: 1 } });
+    expect(msg.received_at).toMatch(/\.\d{6}Z$/);
+    expect(msg.message_id).toMatch(/^[0-9a-f-]{36}$/);
+
+    const echo = await writeReader(dir, "echo.mjs");
+    await run("push", "echo");
+    await age();
+    await run("read", echo, "--since", "2h", "--type", "echo");
+    const types = (await runJson("messages", "list")).map((m: { event: { type: string } }) => m.event.type);
+    expect(types).toContain("echoed");
+  });
+
+  it("explains a reader it can't use", async () => {
+    await configured();
+    await expect(run("read", join(dir, "missing.mjs"))).rejects.toThrow(/No reader at/);
+    await writeFile(join(dir, "none.mjs"), "export const x = 1;");
+    await expect(run("read", join(dir, "none.mjs"))).rejects.toThrow(/must have a default export/);
+    await writeFile(join(dir, "broken.mjs"), "this is not javascript");
+    await expect(run("read", join(dir, "broken.mjs"))).rejects.toThrow(/Could not load/);
+  });
+
+  it("explains a corrupt cursor", async () => {
+    await configured();
+    const reader = await writeReader(dir);
+    await run("read", reader);
+    const [file] = await readdir(join(configDir, "cursors"));
+    await writeFile(join(configDir, "cursors", file!), "{half");
+    await expect(run("read", reader)).rejects.toThrow(/Can't read the cursor/);
+    await run("read", reader, "--since", "1h");
+  });
+
+  it("refuses a since the server can't use", async () => {
+    await configured();
+    await expect(run("read", await writeReader(dir), "--since", "yesterday")).rejects.toThrow(/since must be/);
+  });
+
+  describe("poll", () => {
+    const ctxFor = () => {
+      const lines: string[] = [];
+      const ctx: Context = {
+        configDir,
+        env: {},
+        interactive: false,
+        out: () => {},
+        err: (t) => lines.push(t),
+        fetch: apiFetch,
+      };
+      return { ctx, lines };
+    };
+
+    it("keeps delivering, retries a failing reader from the same message, and slows when quiet", async () => {
+      await configured();
+      const reader = await writeReader(dir);
+      const { ctx, lines } = ctxFor();
+      const stop = new AbortController();
+      const waits: number[] = [];
+      await run("push", "a");
+      await run("push", "b");
+      await age();
+      await writeFile(join(dir, "fail-on"), "b");
+      const steps = [
+        async () => {
+          expect(await seen(dir)).toEqual(["a"]);
+          await rm(join(dir, "fail-on"));
+        },
+        async () => expect(await seen(dir)).toEqual(["a", "b"]),
+        async () => undefined,
+        async () => undefined,
+        async () => stop.abort(),
+      ];
+      await poll(ctx, reader, { since: "2h", interval: 2 }, stop.signal, async (ms) => {
+        waits.push(ms);
+        await steps.shift()?.();
+      });
+      expect(lines.join("\n")).toMatch(/no thanks/);
+      expect(waits).toEqual([4000, 2000, 4000, 8000, 16000]);
+    });
+
+    it("gives up on what waiting can't fix", async () => {
+      await configured();
+      const reader = await writeReader(dir);
+      const { ctx } = ctxFor();
+      await writeConfig(configDir, { api_url: API, api_key: "lw_revoked" });
+      await expect(poll(ctx, reader, {}, new AbortController().signal, async () => undefined)).rejects.toThrow(
+        /invalid or expired/,
+      );
+    });
+
+    it("finishes the message in hand when stopped, and saves its cursor", async () => {
+      await configured();
+      const stop = new AbortController();
+      const reader = join(dir, "stop.mjs");
+      await writeFile(
+        reader,
+        `import { appendFile } from "node:fs/promises";
+export default async function (msg) {
+  await appendFile(${JSON.stringify(join(dir, "seen"))}, msg.type + "\\n");
+  globalThis.loopwayTestStop?.();
+}`,
+      );
+      await run("push", "a");
+      await run("push", "b");
+      await age();
+      (globalThis as { loopwayTestStop?: () => void }).loopwayTestStop = () => stop.abort();
+      const { ctx } = ctxFor();
+      await poll(ctx, reader, { since: "2h" }, stop.signal, async () => undefined);
+      delete (globalThis as { loopwayTestStop?: () => void }).loopwayTestStop;
+      expect(await seen(dir)).toEqual(["a"]);
+      await run("read", reader);
+      expect(await seen(dir)).toEqual(["a", "b"]);
+    });
+  });
+});
+
+describe("sinceValue", () => {
+  it("turns a duration into a time, and leaves anything else for the API to check", () => {
+    const now = Date.parse("2026-11-04T12:00:00Z");
+    expect(sinceValue("2h", now)).toBe("2026-11-04T10:00:00.000Z");
+    expect(sinceValue("3d", now)).toBe("2026-11-01T12:00:00.000Z");
+    expect(sinceValue("1762300800000000", now)).toBe("1762300800000000");
+    expect(sinceValue("2026-11-04T12:00:00.123456Z", now)).toBe("2026-11-04T12:00:00.123456Z");
   });
 });
