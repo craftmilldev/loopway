@@ -372,22 +372,22 @@ export async function insertMessage(
       String(INSERT_TIMEOUT_MS),
     ]);
     return tx.query<{ id: string }>(
-      `INSERT INTO loopway.inbox_messages (id, user_id, source_id, ce_id, ce_source, ce_type, ce_subject, ce_time, cloudevent)
+      `INSERT INTO loopway.messages (id, user_id, source_id, ce_id, ce_source, ce_type, ce_subject, ce_time, cloudevent)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
-       ON CONFLICT ON CONSTRAINT inbox_messages_ce_unique DO NOTHING
+       ON CONFLICT ON CONSTRAINT messages_ce_unique DO NOTHING
        RETURNING id`,
       [uuidv7(), userId, sourceId, ce.id, ce.source, ce.type, ce.subject ?? null, ce.time ?? null, ce],
     );
   });
   if (inserted[0]) return { id: inserted[0].id, duplicate: false };
   const [existing] = await db.query<{ id: string; expired: boolean }>(
-    `SELECT id, received_at < now() - ${RETAINED} AS expired FROM loopway.inbox_messages
+    `SELECT id, received_at < now() - ${RETAINED} AS expired FROM loopway.messages
      WHERE user_id = $1 AND ce_source = $2 AND ce_id = $3`,
     [userId, ce.source, ce.id],
   );
   if (existing && !existing.expired) return { id: existing.id, duplicate: true };
   // Expired, or the purge took it between the two statements: either way, it's new.
-  if (existing) await db.query(`DELETE FROM loopway.inbox_messages WHERE id = $1`, [existing.id]);
+  if (existing) await db.query(`DELETE FROM loopway.messages WHERE id = $1`, [existing.id]);
   return insertMessage(db, userId, sourceId, ce);
 }
 
@@ -446,7 +446,7 @@ export async function readMessages(
   if (opts.type) where.push(typeFilter(opts.type, params));
   params.push(opts.limit + 1);
   const rows = await db.query<MessageRow>(
-    `SELECT ${MESSAGE_COLS} FROM loopway.inbox_messages WHERE ${where.join(" AND ")}
+    `SELECT ${MESSAGE_COLS} FROM loopway.messages WHERE ${where.join(" AND ")}
      ORDER BY received_at, id LIMIT $${params.length}`,
     params,
   );
@@ -468,7 +468,7 @@ export async function latestMessages(db: Db, userId: string, opts: { limit: numb
   if (opts.type) where.push(typeFilter(opts.type, params));
   params.push(opts.limit);
   return db.query<MessageRow>(
-    `SELECT ${MESSAGE_COLS} FROM loopway.inbox_messages WHERE ${where.join(" AND ")}
+    `SELECT ${MESSAGE_COLS} FROM loopway.messages WHERE ${where.join(" AND ")}
      ORDER BY received_at DESC, id DESC LIMIT $${params.length}`,
     params,
   );
@@ -476,7 +476,7 @@ export async function latestMessages(db: Db, userId: string, opts: { limit: numb
 
 export async function getMessage(db: Db, userId: string, id: string): Promise<MessageRow | undefined> {
   const [row] = await db.query<MessageRow>(
-    `SELECT ${MESSAGE_COLS} FROM loopway.inbox_messages
+    `SELECT ${MESSAGE_COLS} FROM loopway.messages
      WHERE id = $1 AND user_id = $2 AND received_at >= now() - ${RETAINED}`,
     [id, userId],
   );
@@ -485,7 +485,7 @@ export async function getMessage(db: Db, userId: string, id: string): Promise<Me
 
 export async function countMessages(db: Db, userId: string): Promise<number> {
   const [row] = await db.query<{ messages: number }>(
-    `SELECT count(*)::int AS messages FROM loopway.inbox_messages WHERE user_id = $1 AND received_at >= now() - ${RETAINED}`,
+    `SELECT count(*)::int AS messages FROM loopway.messages WHERE user_id = $1 AND received_at >= now() - ${RETAINED}`,
     [userId],
   );
   return row!.messages;
@@ -494,6 +494,6 @@ export async function countMessages(db: Db, userId: string): Promise<number> {
 /** Deletes what's past retention, and login codes nobody used. Returns how many messages went. */
 export async function purgeMessages(db: Db): Promise<number> {
   await db.query(`DELETE FROM loopway.login_codes WHERE expires_at <= now()`);
-  const rows = await db.query(`DELETE FROM loopway.inbox_messages WHERE received_at < now() - ${RETAINED} RETURNING 1`);
+  const rows = await db.query(`DELETE FROM loopway.messages WHERE received_at < now() - ${RETAINED} RETURNING 1`);
   return rows.length;
 }

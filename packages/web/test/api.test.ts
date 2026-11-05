@@ -241,7 +241,7 @@ describe("reading messages", () => {
     expect(m.received_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/);
     expect(m.received_us).toMatch(/^\d{16}$/);
     const [row] = await db.query<{ same: boolean }>(
-      `SELECT received_at = $2::text::timestamptz AS same FROM loopway.inbox_messages WHERE id = $1`,
+      `SELECT received_at = $2::text::timestamptz AS same FROM loopway.messages WHERE id = $1`,
       [m.id, m.received_at],
     );
     expect(row!.same).toBe(true);
@@ -266,7 +266,7 @@ describe("reading messages", () => {
     expect(seen).toEqual(
       (
         await db.query<{ id: string }>(
-          `SELECT m.id FROM loopway.inbox_messages m WHERE m.id = ANY($1::uuid[]) ORDER BY received_at, id`,
+          `SELECT m.id FROM loopway.messages m WHERE m.id = ANY($1::uuid[]) ORDER BY received_at, id`,
           [seen],
         )
       ).map((r) => r.id),
@@ -276,9 +276,7 @@ describe("reading messages", () => {
   it("makes progress through a page of ties in one microsecond", async () => {
     const { key } = await seeded(5);
     const id = await userId(key);
-    await db.query(`UPDATE loopway.inbox_messages SET received_at = now() - interval '1 minute' WHERE user_id = $1`, [
-      id,
-    ]);
+    await db.query(`UPDATE loopway.messages SET received_at = now() - interval '1 minute' WHERE user_id = $1`, [id]);
     const seen: string[] = [];
     let qs = "since=0&limit=2";
     for (let pages = 0; ; pages++) {
@@ -299,7 +297,7 @@ describe("reading messages", () => {
     expect(page.data).toEqual([]);
     // The cursor stays behind the message, so it comes as soon as it's old enough.
     await db.query(
-      `UPDATE loopway.inbox_messages SET received_at = clock_timestamp() - interval '10 seconds' WHERE user_id = $1`,
+      `UPDATE loopway.messages SET received_at = clock_timestamp() - interval '10 seconds' WHERE user_id = $1`,
       [a.userId],
     );
     expect(BigInt(page.next_since)).toBeLessThanOrEqual(BigInt(Date.now()) * 1000n);
@@ -327,8 +325,8 @@ describe("reading messages", () => {
     const { key } = await seeded(2);
     const id = await userId(key);
     const [old] = await db.query<{ id: string }>(
-      `UPDATE loopway.inbox_messages SET received_at = now() - interval '14 days 1 second'
-       WHERE id = (SELECT id FROM loopway.inbox_messages WHERE user_id = $1 ORDER BY id LIMIT 1) RETURNING id`,
+      `UPDATE loopway.messages SET received_at = now() - interval '14 days 1 second'
+       WHERE id = (SELECT id FROM loopway.messages WHERE user_id = $1 ORDER BY id LIMIT 1) RETURNING id`,
       [id],
     );
     expect((await read(key, "since=0")).body.data).toHaveLength(1);
@@ -402,7 +400,7 @@ describe("a slow insert", () => {
     const stamped = new Promise<void>((done) => (inserted = done));
     const slow = db.transaction(async (tx) => {
       await tx.query(
-        `INSERT INTO loopway.inbox_messages (id, user_id, ce_id, ce_source, ce_type, cloudevent)
+        `INSERT INTO loopway.messages (id, user_id, ce_id, ce_source, ce_type, cloudevent)
          VALUES ($1, $2, 'slow', 'urn:test', 'slow', '{"type":"slow"}'::jsonb)`,
         [randomUUID(), id],
       );
@@ -417,10 +415,9 @@ describe("a slow insert", () => {
     expect(BigInt(during.next_since) - BigInt(cursor)).toBeLessThan(5_000_000n);
     release();
     await slow;
-    await db.query(
-      `UPDATE loopway.inbox_messages SET received_at = received_at - interval '1 minute' WHERE user_id = $1`,
-      [id],
-    );
+    await db.query(`UPDATE loopway.messages SET received_at = received_at - interval '1 minute' WHERE user_id = $1`, [
+      id,
+    ]);
     const after = (await call("GET", `/messages?since=${BigInt(cursor) - 120_000_000n}`, { key })).body;
     expect(after.data.map((m: { event: { type: string } }) => m.event.type).sort()).toEqual(["fast", "slow"]);
   });
@@ -436,7 +433,7 @@ describe("a slow insert", () => {
     // Something else is inserting the same message, so ours has to wait on its unique key.
     const blocker = db.transaction(async (tx) => {
       await tx.query(
-        `INSERT INTO loopway.inbox_messages (id, user_id, ce_id, ce_source, ce_type, cloudevent)
+        `INSERT INTO loopway.messages (id, user_id, ce_id, ce_source, ce_type, cloudevent)
          VALUES ($1, $2, 'blocked', 'urn:test', 't', '{}'::jsonb)`,
         [randomUUID(), id],
       );
@@ -461,9 +458,7 @@ describe("a message past retention", () => {
     const id = await userId(key);
     const first = await store.insertMessage(db, id, null, ce);
     expect((await store.insertMessage(db, id, null, ce)).duplicate).toBe(true);
-    await db.query(`UPDATE loopway.inbox_messages SET received_at = now() - interval '15 days' WHERE id = $1`, [
-      first.id,
-    ]);
+    await db.query(`UPDATE loopway.messages SET received_at = now() - interval '15 days' WHERE id = $1`, [first.id]);
     const second = await store.insertMessage(db, id, null, ce);
     expect(second).toMatchObject({ duplicate: false });
     expect(second.id).not.toBe(first.id);
@@ -474,7 +469,7 @@ describe("a message past retention", () => {
     const key = await newUser();
     const id = await userId(key);
     const first = await store.insertMessage(db, id, null, ce);
-    await db.query(`DELETE FROM loopway.inbox_messages WHERE id = $1`, [first.id]);
+    await db.query(`DELETE FROM loopway.messages WHERE id = $1`, [first.id]);
     expect((await store.insertMessage(db, id, null, ce)).duplicate).toBe(false);
   });
 });

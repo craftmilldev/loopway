@@ -754,10 +754,9 @@ ALTER TABLE loopway.threads ADD COLUMN title text;
   },
   {
     // loopway 1.0: one inbox per user. A username used to be the slug of the user's personal org, so it moves onto the
-    // user. Nothing reads inboxes, bots, runners, threads or orgs any more, but this leaves them alone: the build runs
-    // this while the old deployment is still serving, and a failed build or a rollback has to find its tables. A later
-    // migration drops them, once this version has been seen working in production. So the new messages get a table of
-    // their own.
+    // user, and everything else from before goes: inboxes, messages, bots, runners, threads and orgs, with the functions
+    // that served them. Every sender's webhook URL changes, so each secret is registered again as a source. There is no
+    // way back from this but a backup, and the deployment it replaces can't serve once it has run.
     //
     // received_at comes from clock_timestamp(), not now(): it is the read cursor, and now() is the start of the
     // transaction. (received_at, id) is the read order, and the id breaks ties within a microsecond.
@@ -766,6 +765,23 @@ ALTER TABLE loopway.threads ADD COLUMN title text;
 SET LOCAL lock_timeout = '5s';
 ALTER TABLE loopway.users ADD COLUMN username text UNIQUE;
 UPDATE loopway.users u SET username = o.slug FROM loopway.orgs o WHERE o.personal_user_id = u.id;
+DROP TABLE
+  loopway.thread_events,
+  loopway.thread_messages,
+  loopway.thread_subjects,
+  loopway.threads,
+  loopway.bot_inboxes,
+  loopway.bot_versions,
+  loopway.bots,
+  loopway.runners,
+  loopway.messages,
+  loopway.inboxes,
+  loopway.org_invites,
+  loopway.org_members,
+  loopway.orgs;
+DROP FUNCTION loopway.guard_personal_org_member();
+DROP FUNCTION loopway.guard_personal_org_invite();
+DROP FUNCTION loopway.touch_updated_at();
 CREATE TABLE loopway.sources (
   id                    uuid PRIMARY KEY,
   user_id               uuid NOT NULL REFERENCES loopway.users(id) ON DELETE CASCADE,
@@ -779,7 +795,7 @@ CREATE TABLE loopway.sources (
   CONSTRAINT sources_user_name_unique UNIQUE (user_id, name)
 );
 CREATE INDEX sources_type_idx ON loopway.sources (source_type);
-CREATE TABLE loopway.inbox_messages (
+CREATE TABLE loopway.messages (
   id           uuid PRIMARY KEY,
   user_id      uuid NOT NULL REFERENCES loopway.users(id) ON DELETE CASCADE,
   source_id    uuid REFERENCES loopway.sources(id) ON DELETE SET NULL,
@@ -790,10 +806,10 @@ CREATE TABLE loopway.inbox_messages (
   ce_time      timestamptz,
   cloudevent   jsonb NOT NULL,
   received_at  timestamptz NOT NULL DEFAULT clock_timestamp(),
-  CONSTRAINT inbox_messages_ce_unique UNIQUE (user_id, ce_source, ce_id)
+  CONSTRAINT messages_ce_unique UNIQUE (user_id, ce_source, ce_id)
 );
-CREATE INDEX inbox_messages_read_idx ON loopway.inbox_messages (user_id, received_at, id);
-CREATE INDEX inbox_messages_received_idx ON loopway.inbox_messages (received_at);
+CREATE INDEX messages_read_idx ON loopway.messages (user_id, received_at, id);
+CREATE INDEX messages_received_idx ON loopway.messages (received_at);
 CREATE TABLE loopway.api_tokens (
   id           uuid PRIMARY KEY,
   user_id      uuid NOT NULL REFERENCES loopway.users(id) ON DELETE CASCADE,
@@ -804,7 +820,7 @@ CREATE TABLE loopway.api_tokens (
 );
 CREATE INDEX api_tokens_user_idx ON loopway.api_tokens (user_id);
 ALTER TABLE loopway.sources        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE loopway.inbox_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE loopway.messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE loopway.api_tokens     ENABLE ROW LEVEL SECURITY;
 `,
   },

@@ -12,7 +12,7 @@ describe("migration 040_v1", () => {
     expect(migrations.at(-1)!.version).toBe("040_v1");
   });
 
-  it("moves usernames onto users and adds the new tables, leaving the old deployment's alone", async () => {
+  it("moves usernames onto users, and leaves nothing else from before", async () => {
     const db = await openTestDb();
     try {
       await migrateBefore(db, "040_v1");
@@ -68,14 +68,22 @@ describe("migration 040_v1", () => {
         { id: id.nameless, username: null },
         { id: id.user, username: "existing" },
       ]);
-      // The old tables stay, with their rows: the deployment this replaces is still serving when this runs.
-      const old = ["orgs", "org_members", "inboxes", "messages", "bots", "bot_inboxes"];
-      for (const table of old) {
-        expect((await db.query(`SELECT 1 FROM loopway.${table}`)).length, table).toBeGreaterThan(0);
-      }
-      const inboxes = await db.query(`SELECT id FROM loopway.inboxes WHERE org_id = $1`, [id.personal]);
-      expect(inboxes).toEqual([{ id: id.inbox }]);
-      expect(await db.query(`SELECT 1 FROM loopway.inbox_messages`)).toEqual([]);
+      expect(await db.query(`SELECT 1 FROM loopway.messages`)).toEqual([]);
+      const tables = await db.query<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'loopway' ORDER BY 1`,
+      );
+      expect(tables.map((t) => t.table_name)).toEqual([
+        "api_tokens",
+        "login_codes",
+        "messages",
+        "schema_migrations",
+        "sources",
+        "users",
+      ]);
+      const leftovers = await db.query(
+        `SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'loopway'`,
+      );
+      expect(leftovers).toEqual([]);
       // A source belongs to its user.
       await db.query(`INSERT INTO loopway.sources (id, user_id, name, source_type) VALUES ($1, $2, 'gh', 'github')`, [
         randomUUID(),

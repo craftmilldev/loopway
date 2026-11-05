@@ -119,7 +119,7 @@ export const prPayload = (n: number) => ({
 
 /** Reads every message a test can see, past the holdback: `since=0` with the row's received_at moved back. */
 export async function ageMessages(seconds = 60) {
-  await db.query(`UPDATE loopway.inbox_messages SET received_at = received_at - make_interval(secs => $1)`, [seconds]);
+  await db.query(`UPDATE loopway.messages SET received_at = received_at - make_interval(secs => $1)`, [seconds]);
 }
 
 /** All of a user's messages, oldest first. */
