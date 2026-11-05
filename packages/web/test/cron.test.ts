@@ -10,6 +10,15 @@ const tick = () =>
   );
 
 describe("the cron tick", () => {
+  it("clears login codes nobody used", async () => {
+    await db.query(
+      `INSERT INTO loopway.login_codes (id, email, code_hash, expires_at)
+       VALUES (gen_random_uuid(), 'gone@example.com', 'h', now() - interval '1 minute')`,
+    );
+    await tick();
+    expect(await db.query(`SELECT 1 FROM loopway.login_codes WHERE email = 'gone@example.com'`)).toEqual([]);
+  });
+
   it("purges what's past retention and nothing else", async () => {
     const key = await newUser();
     const a = await newSource(key);

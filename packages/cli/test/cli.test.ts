@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApi } from "@loopway/web/api";
@@ -536,9 +536,60 @@ export default async function (msg) { await writeFile(${JSON.stringify(join(dir,
     await run("read", reader, "--since", "1h");
   });
 
-  it("refuses a since the server can't use", async () => {
+  it("leaves the cursor alone when the server refuses a --since", async () => {
     await configured();
-    await expect(run("read", await writeReader(dir), "--since", "yesterday")).rejects.toThrow(/since must be/);
+    const reader = await writeReader(dir);
+    await run("read", reader);
+    const [file] = await readdir(join(configDir, "cursors"));
+    const before = await readFile(join(configDir, "cursors", file!), "utf8");
+    await expect(run("read", reader, "--since", "yesterday")).rejects.toThrow(/since must be/);
+    await expect(run("read", reader, "--since", "99999999999d")).rejects.toThrow(/before 1970/);
+    expect(await readFile(join(configDir, "cursors", file!), "utf8")).toBe(before);
+    await run("read", reader);
+  });
+
+  it("warns when a cursor is older than the inbox keeps messages", async () => {
+    await configured();
+    await run("read", await writeReader(dir), "--since", "16d");
+    expect(notes.join("\n")).toMatch(/older than the inbox keeps messages/);
+  });
+
+  it("refuses a cursor it can't read, rather than starting over", async () => {
+    await configured();
+    const reader = await writeReader(dir);
+    await run("read", reader);
+    const [file] = await readdir(join(configDir, "cursors"));
+    const path = join(configDir, "cursors", file!);
+    await rm(path);
+    await mkdir(path);
+    await expect(run("read", reader)).rejects.toThrow(/Can't read the cursor/);
+  });
+
+  it("loads compiled CommonJS, and survives a reader throwing what can't be printed", async () => {
+    await configured();
+    await writeFile(
+      join(dir, "cjs.cjs"),
+      `Object.defineProperty(exports, "__esModule", { value: true });
+exports.default = async function () { throw Object.create(null); };`,
+    );
+    await run("push", "a");
+    await age();
+    await expect(run("read", join(dir, "cjs.cjs"), "--since", "2h")).rejects.toThrow(/can't be printed/);
+  });
+
+  it("says what happened to the commands 1.0 removed", async () => {
+    await configured();
+    await expect(run("bots", "run", "--org", "x")).rejects.toThrow(/removed in 1\.0/);
+  });
+
+  it("shows other people's control characters as text, not as terminal escapes", async () => {
+    await configured();
+    await run("push", "evil\u001b]52;c;aGk=\u0007", "--subject", "a\u001b[2Ab");
+    const out = await run("messages", "list");
+    expect(out).toContain("evil\\x1b]52;c;aGk=\\x07");
+    expect(out).toContain("a\\x1b[2Ab");
+    const [m] = await runJson("messages", "list");
+    expect(await run("messages", "get", m.id)).toContain("\\x1b");
   });
 
   describe("poll", () => {
@@ -581,6 +632,23 @@ export default async function (msg) { await writeFile(${JSON.stringify(join(dir,
       });
       expect(lines.join("\n")).toMatch(/no thanks/);
       expect(waits).toEqual([4000, 2000, 4000, 8000, 16000]);
+    });
+
+    it("waits for a server that isn't up yet", async () => {
+      await configured();
+      const reader = await writeReader(dir);
+      const { ctx, lines } = ctxFor();
+      let up = false;
+      const flaky = ((input: string | URL | Request, init?: RequestInit) =>
+        up ? apiFetch(input, init) : Promise.reject(new Error("refused"))) as typeof fetch;
+      const stop = new AbortController();
+      let waits = 0;
+      await poll({ ...ctx, fetch: flaky }, reader, {}, stop.signal, async () => {
+        up = true;
+        if (++waits === 2) stop.abort();
+      });
+      expect(lines.join("\n")).toMatch(/refused/);
+      expect(await readdir(join(configDir, "cursors"))).toHaveLength(1);
     });
 
     it("gives up on what waiting can't fix", async () => {

@@ -84,6 +84,9 @@ describe("the hosted MCP endpoint", () => {
     const key = await newUser();
     expect(await tool(key, "push_message", {})).toMatchObject({ isError: true, text: expect.stringContaining("type") });
     expect(await tool(key, "pull_messages", { since: "soon" })).toMatchObject({ isError: true });
+    expect((await tool(key, "push_message", { type: "t", data: "a\u0000" })).isError).toBe(false);
+    const odd = await rpc(key, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: { toString: 1 } } });
+    expect(odd.status).toBe(200);
     const code = async (body: unknown) =>
       ((await rpc(key, body)).body as { error?: { code: number } } | null)?.error?.code;
     expect(await code("{nope")).toBe(-32700);

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Installs the loopway CLI from a GitHub release:  curl -fsSL https://loopway.craftmill.dev/install.sh | sh
-# LOOPWAY_VERSION=0.3.0 installs that release instead of the latest.
+# LOOPWAY_VERSION=1.0.0 installs that release instead of the latest.
 # The release lists its own tarballs in manifest.txt, so this script doesn't change when the package list does.
 # Needs Node 22+ and npm. Uses npm's global prefix, so it may need the same permissions as `npm i -g`.
 set -eu

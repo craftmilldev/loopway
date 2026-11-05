@@ -61,6 +61,19 @@ describe("linear webhooks", () => {
     expect(events).toContainEqual(expect.objectContaining({ type: "com.linear.comment.create", subject: "iss_1" }));
   });
 
+  it("refuses a delivery whose signed timestamp is old, so a captured one can't be replayed", async () => {
+    const key = await newUser();
+    const source = await newSource(key, { type: "linear", secret: SECRET });
+    const body = (webhookTimestamp: number) => ({
+      type: "Issue",
+      action: "create",
+      data: { id: "i" },
+      webhookTimestamp,
+    });
+    expect((await sendLinear(source.userId, body(Date.now()))).status).toBe(202);
+    expect((await sendLinear(source.userId, body(Date.now() - 3_600_000))).status).toBe(401);
+  });
+
   it("rejects bad signatures and dedupes redeliveries", async () => {
     const key = await newUser();
     const source = await linearSource(key, SECRET);

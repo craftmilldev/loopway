@@ -187,6 +187,21 @@ describe("the inbox URL", () => {
     expect((await readAll(key)).map((m) => m.source_id)).toEqual([gh.id, push.id]);
   });
 
+  it("doesn't let anyone probe which sources a user has, or read a whole body it has no use for", async () => {
+    const key = await newUser();
+    const id = await userId(key);
+    const probe = (headers: Record<string, string>) =>
+      app.request(`/api/webhooks/${id}`, { method: "POST", headers, body: "{}" });
+    const before = await probe({ "x-hub-signature-256": "sha256=x" });
+    await newSource(key);
+    await newSource(key, { type: "resend", secret: "whsec_" + Buffer.from("k").toString("base64") });
+    await newSource(key, { type: "granola", secret: "whsec_" + Buffer.from("k").toString("base64") });
+    expect(before.status).toBe(401);
+    expect((await probe({ "x-hub-signature-256": "sha256=x" })).status).toBe(401);
+    expect((await probe({ "svix-signature": "v1,x" })).status).toBe(401);
+    expect((await probe({ "webhook-signature": "v1,x" })).status).toBe(401);
+  });
+
   it("keeps one user's secret from opening another's inbox", async () => {
     const a = await newSource(await newUser("a"));
     const bKey = await newUser("b");
@@ -341,10 +356,26 @@ describe("reading messages", () => {
     expect((await read(key, "order=desc&since=0")).status).toBe(400);
   });
 
+  it("echoes where a page started, and the retention cutoff", async () => {
+    const { key } = await seeded(1);
+    const iso = "2026-11-04T12:00:00.123456Z";
+    const page = (await read(key, `since=${encodeURIComponent(iso)}`)).body;
+    expect(page.since).toBe(String(BigInt(Date.parse("2026-11-04T12:00:00Z")) * 1000n + 123456n));
+    expect(BigInt(page.retained_from)).toBeLessThan(BigInt(Date.now()) * 1000n - 13n * 86_400_000_000n);
+  });
+
+  it("takes every time it hands out", async () => {
+    const { key } = await seeded(1);
+    const far = "6000-01-01T00:00:00Z";
+    const page = (await read(key, `since=${far}`)).body;
+    expect((await read(key, `since=${page.next_since}`)).status).toBe(200);
+  });
+
   it("refuses a since or after it can't use", async () => {
     const { key } = await seeded(1);
     expect((await read(key, "since=yesterday")).body.error.code).toBe("invalid_since");
     expect((await read(key, "since=2026-13-45T00:00:00Z")).status).toBe(400);
+    expect((await read(key, "since=2026-02-30T00:00:00Z")).status).toBe(400);
     expect((await read(key, "since=99999999999999999999")).status).toBe(400);
     expect((await read(key, "after=not-a-uuid&since=0")).status).toBe(400);
     expect((await read(key, `after=${randomUUID()}`)).status).toBe(400);
@@ -370,12 +401,11 @@ describe("a slow insert", () => {
     const held = new Promise<void>((done) => (release = done));
     const stamped = new Promise<void>((done) => (inserted = done));
     const slow = db.transaction(async (tx) => {
-      await store.insertMessage(tx as never, id, null, {
-        specversion: "1.0",
-        id: "slow",
-        source: "urn:test",
-        type: "slow",
-      });
+      await tx.query(
+        `INSERT INTO loopway.inbox_messages (id, user_id, ce_id, ce_source, ce_type, cloudevent)
+         VALUES ($1, $2, 'slow', 'urn:test', 'slow', '{"type":"slow"}'::jsonb)`,
+        [randomUUID(), id],
+      );
       inserted();
       await held;
     });
@@ -387,7 +417,6 @@ describe("a slow insert", () => {
     expect(BigInt(during.next_since) - BigInt(cursor)).toBeLessThan(5_000_000n);
     release();
     await slow;
-
     await db.query(
       `UPDATE loopway.inbox_messages SET received_at = received_at - interval '1 minute' WHERE user_id = $1`,
       [id],
@@ -396,14 +425,74 @@ describe("a slow insert", () => {
     expect(after.data.map((m: { event: { type: string } }) => m.event.type).sort()).toEqual(["fast", "slow"]);
   });
 
-  it("stores a message whose duplicate the purge takes mid-insert", async () => {
+  it("gives up rather than commit behind a reader: a blocked insert fails, and the sender retries", async () => {
     const key = await newUser();
     const id = await userId(key);
-    const ce = { specversion: "1.0", id: "again", source: "urn:test", type: "t" } as const;
+    const ce = { specversion: "1.0", id: "blocked", source: "urn:test", type: "t" } as const;
+    let release!: () => void;
+    let holding!: () => void;
+    const held = new Promise<void>((done) => (release = done));
+    const locked = new Promise<void>((done) => (holding = done));
+    // Something else is inserting the same message, so ours has to wait on its unique key.
+    const blocker = db.transaction(async (tx) => {
+      await tx.query(
+        `INSERT INTO loopway.inbox_messages (id, user_id, ce_id, ce_source, ce_type, cloudevent)
+         VALUES ($1, $2, 'blocked', 'urn:test', 't', '{}'::jsonb)`,
+        [randomUUID(), id],
+      );
+      holding();
+      await held;
+      throw new Error("roll back");
+    });
+    await locked;
+    const started = Date.now();
+    await expect(store.insertMessage(db, id, null, ce)).rejects.toThrow();
+    expect(Date.now() - started).toBeLessThan(store.READ_HOLDBACK_SECONDS * 1000);
+    release();
+    await blocker.catch(() => undefined);
+  });
+});
+
+describe("a message past retention", () => {
+  const ce = { specversion: "1.0", id: "again", source: "urn:test", type: "t" } as const;
+
+  it("isn't a duplicate of the new one, which takes its place", async () => {
+    const key = await newUser();
+    const id = await userId(key);
     const first = await store.insertMessage(db, id, null, ce);
     expect((await store.insertMessage(db, id, null, ce)).duplicate).toBe(true);
+    await db.query(`UPDATE loopway.inbox_messages SET received_at = now() - interval '15 days' WHERE id = $1`, [
+      first.id,
+    ]);
+    const second = await store.insertMessage(db, id, null, ce);
+    expect(second).toMatchObject({ duplicate: false });
+    expect(second.id).not.toBe(first.id);
+    expect(await readAll(key)).toHaveLength(1);
+  });
+
+  it("is new after all if the purge takes the row mid-insert", async () => {
+    const key = await newUser();
+    const id = await userId(key);
+    const first = await store.insertMessage(db, id, null, ce);
     await db.query(`DELETE FROM loopway.inbox_messages WHERE id = $1`, [first.id]);
     expect((await store.insertMessage(db, id, null, ce)).duplicate).toBe(false);
+  });
+});
+
+describe("text Postgres can't store", () => {
+  it("is taken out of a message rather than losing it to a 500", async () => {
+    const key = await newUser();
+    const body = { type: "a\u0000b", subject: "s\u0000", data: { "k\u0000": "v\u0000", half: "\ud800x", ok: "😀" } };
+    expect((await call("POST", "/messages", { key, body })).status).toBe(202);
+    const [m] = await readAll(key);
+    expect(m!.event).toMatchObject({ type: "ab", subject: "s", data: { k: "v", half: "\ufffdx", ok: "😀" } });
+  });
+
+  it("is a 400 where it's a parameter", async () => {
+    const key = await newUser();
+    expect((await call("GET", "/messages?since=0&type=%00", { key })).status).toBe(400);
+    expect((await call("POST", "/tokens", { key, body: { name: "a\u0000" } })).status).toBe(400);
+    expect((await call("POST", "/sources", { key, body: { type: "github", name: "a\u0000" } })).status).toBe(400);
   });
 });
 
@@ -625,6 +714,40 @@ describe("login", () => {
     await post(a, "/auth/login", { email: "old@example.com" });
     const { created } = await (await post(a, "/auth/verify", { email: "old@example.com", code: lastCode() })).json();
     expect(created).toBe(false);
+  });
+
+  it("lets an address out of guesses ask again, so nobody can lock it out of login", async () => {
+    const a = loginApp();
+    const email = "locked@example.com";
+    await post(a, "/auth/login", { email });
+    for (let i = 0; i < 5; i++) await post(a, "/auth/verify", { email, code: "00000000", username: "locked" });
+    const before = sent.length;
+    await post(a, "/auth/login", { email });
+    expect(sent.length).toBe(before);
+    await db.query(`UPDATE loopway.login_codes SET created_at = now() - interval '2 minutes' WHERE email = $1`, [
+      email,
+    ]);
+    await post(a, "/auth/login", { email });
+    expect(sent.length).toBe(before + 1);
+    expect((await post(a, "/auth/verify", { email, code: lastCode(), username: "locked" })).status).toBe(201);
+  });
+
+  it("sends another code if the last email never went out", async () => {
+    let failing = true;
+    const a = createApi({
+      getDb: async () => db,
+      tokenSecret: SECRET,
+      inboxSecretKey: TEST_INBOX_KEY,
+      sendEmail: async (e) => {
+        if (failing) throw new Error("no");
+        sent.push(e);
+      },
+    });
+    expect((await post(a, "/auth/login", { email: "flaky@example.com" })).status).toBe(500);
+    failing = false;
+    const before = sent.length;
+    await post(a, "/auth/login", { email: "flaky@example.com" });
+    expect(sent.length).toBe(before + 1);
   });
 
   it("locks a code after too many wrong guesses", async () => {
