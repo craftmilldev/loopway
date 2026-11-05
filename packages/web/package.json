@@ -26,7 +26,6 @@
   },
   "dependencies": {
     "@loopway/sources": "*",
-    "ajv": "^8.20.0",
     "hono": "^4.13.13",
     "marked": "^18.1.0",
     "postgres": "^3.4.9",

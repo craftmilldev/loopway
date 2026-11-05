@@ -104,8 +104,10 @@ img {
   --loopway-cream: #f6e8e5;
 }
 
-/* Landing page (client/landing.tsx). Each section is .lp-section with its layout (.lp-wide, .lp-split, ...) and its
-   id (.lp-id-levels, ...), so a section's look follows the `{#id}` it has in content/home.md. */
+/* Landing page (client/landing.tsx). Each section is .lp-section with its layout (.lp-wide,
+.lp-split,
+...),
+so a section's look follows the ` {#id}` it has in content/home.md. */
 .lp-masthead {
   max-width: 1280px;
   margin: 0 auto;
@@ -167,10 +169,6 @@ main.lp {
 .lp-side {
   min-width: 0;
 }
-.lp-id-examples,
-.lp-id-runners {
-  background: var(--paper-100);
-}
 .lp-label {
   padding-bottom: 10px;
   border-bottom: 1px solid var(--rule-hair);
@@ -231,23 +229,6 @@ main.lp {
 }
 .lp-caption {
   margin-bottom: 12px;
-}
-.lp-swatch {
-  flex: none;
-  width: 10px;
-  height: 10px;
-}
-.lp-level-1 {
-  display: none;
-}
-.lp-level-2 {
-  background: var(--ink-300);
-}
-.lp-level-3 {
-  background: var(--indigo-600);
-}
-.lp-level-4 {
-  background: var(--madder-600);
 }
 
 /* Lists: by default a grid of columns between rules */
@@ -464,69 +445,24 @@ main.lp {
 }
 
 /* Columns side by side, a line between each: levels, how it works, runners */
-.lp-id-levels .lp-items,
-.lp-id-first .lp-items,
-.lp-id-runners .lp-items {
+.lp-id-first .lp-items {
   display: flex;
 }
-.lp-id-levels .lp-items > li,
-.lp-id-first .lp-items > li,
-.lp-id-runners .lp-items > li {
+.lp-id-first .lp-items > li {
   flex: 1 1 0;
   min-width: 0;
   gap: 10px;
   padding: 20px 20px 24px;
   border-bottom: 0;
 }
-.lp-id-levels .lp-items > li:first-child,
-.lp-id-first .lp-items > li:first-child,
-.lp-id-runners .lp-items > li:first-child {
+.lp-id-first .lp-items > li:first-child {
   padding-left: 0;
 }
-.lp-id-levels .lp-items > li + li,
-.lp-id-first .lp-items > li + li,
-.lp-id-runners .lp-items > li + li {
+.lp-id-first .lp-items > li + li {
   border-left: 1px solid var(--rule-hair);
 }
-.lp-id-levels .lp-title,
 .lp-id-first .lp-title {
   font-size: 26px;
-}
-.lp-id-levels .lp-note {
-  margin-top: auto;
-  padding-top: 10px;
-  color: var(--ink-500);
-}
-.lp-id-levels .lp-at-1 .lp-title,
-.lp-id-levels .lp-at-1 .lp-text {
-  color: var(--ink-600);
-}
-.lp-id-levels .lp-at-3,
-.lp-id-levels .lp-at-4 {
-  background: var(--ink-900);
-}
-.lp-id-levels .lp-items > .lp-at-3 + .lp-at-4 {
-  border-left-color: color-mix(in srgb, var(--paper-100) 16%, transparent);
-}
-.lp-id-levels .lp-at-3 .lp-title,
-.lp-id-levels .lp-at-4 .lp-title {
-  color: var(--paper-100);
-}
-.lp-id-levels .lp-at-3 .lp-text,
-.lp-id-levels .lp-at-4 .lp-text {
-  color: var(--paper-300);
-}
-.lp-id-levels .lp-at-3 .lp-kicker,
-.lp-id-levels .lp-at-3 .lp-note,
-.lp-id-levels .lp-at-4 .lp-kicker,
-.lp-id-levels .lp-at-4 .lp-note {
-  color: var(--ink-200);
-}
-.lp-id-levels .lp-at-3 .lp-level-3 {
-  background: var(--indigo-200);
-}
-.lp-id-levels .lp-at-4 .lp-level-4 {
-  background: var(--madder-300);
 }
 .lp-id-first .lp-items {
   border-bottom: 1px solid var(--rule-hair);
@@ -534,30 +470,8 @@ main.lp {
 .lp-id-first .lp-items > li:not(:last-child) .lp-num::after {
   content: "→";
 }
-.lp-id-runners .lp-items > li {
-  padding-bottom: 8px;
-}
-.lp-id-runners .lp-title {
-  font-family: var(--font-type);
-  font-size: 12px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-900);
-}
 
 /* Examples: two captioned rows of bots */
-.lp-id-examples .lp-items {
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-}
-.lp-id-examples .lp-items > li {
-  padding: 20px 24px 24px 0;
-}
-.lp-id-examples .lp-caption {
-  margin-top: 16px;
-}
-.lp-id-examples .lp-note {
-  order: -1;
-}
 
 /* Start: the call to action, with the license note to the side */
 .lp-section.lp-close {
@@ -624,26 +538,15 @@ main.lp {
     padding-left: 16px;
     padding-right: 16px;
   }
-  .lp-id-levels .lp-items,
-  .lp-id-first .lp-items,
-  .lp-id-runners .lp-items {
+  .lp-id-first .lp-items {
     flex-direction: column;
   }
-  .lp-id-levels .lp-items > li,
-  .lp-id-first .lp-items > li,
-  .lp-id-runners .lp-items > li {
+  .lp-id-first .lp-items > li {
     flex-basis: auto;
     padding-left: 0;
     padding-right: 0;
   }
-  .lp-id-levels .lp-items > .lp-at-3,
-  .lp-id-levels .lp-items > .lp-at-4 {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-  .lp-id-levels .lp-items > li + li,
-  .lp-id-first .lp-items > li + li,
-  .lp-id-runners .lp-items > li + li {
+  .lp-id-first .lp-items > li + li {
     border-left: 0;
     border-top: 1px solid var(--rule-hair);
   }

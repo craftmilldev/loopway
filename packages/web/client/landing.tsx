@@ -16,14 +16,12 @@ export interface Item {
   title?: string;
   text: string;
   note?: string;
-  /** The automation level the item (or the list's caption) names, for its swatch. */
-  level?: number;
 }
 
 export type Block =
   | { kind: "prose"; html: string; text: string }
   | { kind: "buttons"; links: { href: string; html: string; solid: boolean }[] }
-  | { kind: "list"; ordered: boolean; start: number; caption?: string; level?: number; items: Item[] }
+  | { kind: "list"; ordered: boolean; start: number; caption?: string; items: Item[] }
   | { kind: "well"; label: string; code: string };
 
 export interface Section {
@@ -36,11 +34,6 @@ export interface Section {
   heading?: string;
   blocks: Block[];
 }
-
-const levelOf = (text: string) => {
-  const m = /\blevel (\d)\b/i.exec(text);
-  return m ? Number(m[1]) : undefined;
-};
 
 function item(raw: string): Item {
   const lines = raw.split("\n");
@@ -56,7 +49,6 @@ function item(raw: string): Item {
     title: inline(title),
     text: inline(m[2]!),
     note,
-    level: levelOf(kicker ?? title),
   };
 }
 
@@ -94,7 +86,7 @@ export function parseHome(markdown: string): Section[] {
       });
     } else if (t.type === "list") {
       const list = t as Tokens.List;
-      // A paragraph ending in a colon just before a list is the list's caption ("A level 4 loop:").
+      // A paragraph ending in a colon just before a list is the list's caption.
       const prev = blocks.at(-1);
       const caption = prev?.kind === "prose" && prev.text.endsWith(":") ? prev.text.slice(0, -1) : undefined;
       if (caption !== undefined) blocks.pop();
@@ -103,7 +95,6 @@ export function parseHome(markdown: string): Section[] {
         ordered: list.ordered,
         start: typeof list.start === "number" ? list.start : 1,
         caption: caption && inline(caption),
-        level: caption ? levelOf(caption) : undefined,
         items: list.items.map((i) => item(i.text)),
       });
     } else blocks.push({ kind: "prose", html: md.parser([t]), text: "text" in t ? String(t.text as unknown) : "" });
@@ -128,9 +119,6 @@ const Html = ({
   className?: string;
   html: string;
 }) => <As className={className} dangerouslySetInnerHTML={{ __html: html }} />;
-
-const Swatch = ({ level }: { level?: number }) =>
-  level ? <span className={`lp-swatch lp-level-${level}`} aria-hidden="true" /> : null;
 
 const linkTarget = (href: string) =>
   href.startsWith("#") ? "anchor" : href === "/login" ? "login" : href.includes("github.com") ? "github" : "other";
@@ -172,23 +160,20 @@ function List({ list }: { list: Extract<Block, { kind: "list" }> }) {
     <div className={list.ordered ? "lp-list lp-list-ordered" : "lp-list"}>
       {list.caption && (
         <div className="lp-caption">
-          <Swatch level={list.level} />
           <span dangerouslySetInnerHTML={{ __html: list.caption }} />
         </div>
       )}
       <Tag className="lp-items" start={list.ordered && list.start !== 1 ? list.start : undefined}>
         {list.items.map((it, i) => (
-          <li key={i} className={it.level ? `lp-at-${it.level}` : undefined}>
+          <li key={i}>
             {list.ordered && <span className="lp-num">{String(list.start + i).padStart(2, "0")}</span>}
             {it.kicker && (
               <div className="lp-kicker">
-                <Swatch level={it.level} />
                 <span dangerouslySetInnerHTML={{ __html: it.kicker }} />
               </div>
             )}
             {it.title && (
               <h3 className="lp-title">
-                {!it.kicker && <Swatch level={it.level} />}
                 <span dangerouslySetInnerHTML={{ __html: it.title }} />
               </h3>
             )}

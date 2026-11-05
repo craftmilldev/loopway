@@ -122,14 +122,13 @@ export const github = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter
   claims: (headers) => headers.has("x-github-event") || headers.has("x-hub-signature-256"),
 
   receive({ headers, rawBody, receivedAt }, secret) {
-    const event = headers.get("x-github-event");
-    if (!event) return { kind: "rejected", status: 400, message: "Missing X-GitHub-Event header" };
-
     const signature = headers.get("x-hub-signature-256");
     if (!signature) return { kind: "rejected", status: 401, message: "Missing X-Hub-Signature-256 header" };
     const expected = "sha256=" + createHmac("sha256", secret).update(rawBody, "utf8").digest("hex");
     if (!safeEqual(signature, expected)) return { kind: "rejected", status: 401, message: "Signature mismatch" };
 
+    const event = headers.get("x-github-event");
+    if (!event) return { kind: "rejected", status: 400, message: "Missing X-GitHub-Event header" };
     if (event === "ping") return { kind: "ignored", reason: "ping" };
 
     const delivery = headers.get("x-github-delivery");

@@ -48,9 +48,9 @@ A reader's default export is called once per message, oldest first, and each cal
 - `ctx.push({type, subject?, id?, data?})` puts a message in the same inbox. `ctx.signal` aborts when the command is stopping.
 - **When it resolves,** the cursor moves past the message. **When it throws,** the cursor stays. `read` stops with an error and the message comes again on the next read. `poll` tries it again after a pause.
 
-**Delivery is at least once.** A crash after your reader finishes a message and before its cursor is saved means that message comes again, and so do two `read`s of the same reader running at once. If a repeat would do harm, dedupe on `msg.message_id`.
+**Delivery is at least once.** A crash after your reader finishes a message and before its cursor is saved means that message comes again, and so do two `read`s of the same reader running at once. If a repeat would do harm, dedupe on `msg.message_id`. A reader that stays away for more than 14 days misses what expired, and `read` says so when it comes back.
 
-**Cursors** are files in `~/.loopway/cursors`, one per reader file, user, server and `--type`. A new reader starts from now, so pointing one at your inbox can't replay 14 days of work. To start somewhere else, or go back:
+**Cursors** are files in `~/.loopway/cursors`, one per reader file, user, server and `--type`. Moving or renaming a reader makes it a new reader. A new reader starts from now, so pointing one at your inbox can't replay 14 days of work. To start somewhere else, or go back:
 
 ```bash
 loopway read reader.js --since 2h                           # how long ago: s, m, h or d

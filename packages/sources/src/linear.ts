@@ -14,6 +14,9 @@ import type { SourceAdapter, SourceDeps } from "./types.js";
  *   data    = the whole webhook body
  */
 
+/** How far webhookTimestamp may be from now, either way. */
+const TOLERANCE_MS = 5 * 60 * 1000;
+
 export const linear = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter => ({
   type: "linear",
   label: "Linear",
@@ -37,6 +40,12 @@ export const linear = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter
       body = value as Payload;
     } catch {
       return { kind: "rejected", status: 400, message: "Body must be a JSON object" };
+    }
+
+    // Signed, unlike the delivery header, so a captured delivery can't be replayed for long under a new id.
+    const sentAt = Number(body.webhookTimestamp);
+    if (body.webhookTimestamp !== undefined && !(Math.abs(receivedAt.getTime() - sentAt) <= TOLERANCE_MS)) {
+      return { kind: "rejected", status: 401, message: "webhookTimestamp is too old or too far in the future" };
     }
 
     const resource = str(body.type);

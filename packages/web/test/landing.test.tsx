@@ -84,7 +84,6 @@ describe("the landing page from markdown", () => {
 
     const [first, second] = [...bots!.querySelectorAll("li")];
     expect(first!.querySelector(".lp-kicker")?.textContent).toBe("Level 3");
-    expect(first!.querySelector(".lp-swatch.lp-level-3")).not.toBeNull();
     expect(first!.querySelector(".lp-title")?.textContent).toBe("A bot starts it");
     expect(first!.querySelector(".lp-note")?.textContent).toBe("A bot starts it. You answer it.");
     expect(second!.querySelector(".lp-title")).toBeNull();

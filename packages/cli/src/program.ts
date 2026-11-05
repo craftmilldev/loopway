@@ -13,7 +13,7 @@ import {
   updateSource,
 } from "./commands/sources.js";
 import { createToken, listTokens, revokeToken } from "./commands/tokens.js";
-import type { Context } from "./context.js";
+import { UsageError, type Context } from "./context.js";
 import { updateBeforeCommand, updateCommand } from "./update.js";
 import { CLI_VERSION } from "./version.js";
 
@@ -251,6 +251,21 @@ A CLI installed from a release updates itself to the newest one; turn that off w
     .description("revoke a token")
     .argument("<token>", "token id or name")
     .action((ref) => revokeToken(ctx, ref));
+
+  // ---------- gone in 1.0 ----------
+
+  // A supervisor or a script may still run these after updating itself, so they say what happened.
+  for (const name of ["bots", "bot", "runners", "runner", "chats", "orgs", "org"]) {
+    program
+      .command(name, { hidden: true })
+      .allowUnknownOption()
+      .allowExcessArguments()
+      .action(() => {
+        throw new UsageError(
+          `\`loopway ${name}\` was removed in 1.0: loopway no longer runs bots. Write a reader instead, and run it with \`loopway poll\`. See https://github.com/craftmilldev/loopway/blob/main/CHANGELOG.md`,
+        );
+      });
+  }
 
   return program;
 }

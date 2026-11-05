@@ -90,8 +90,12 @@ export interface ReadQuery {
 
 export interface ReadResult {
   data: Message[];
-  next_since: string | null;
-  next_after: string | null;
+  /** Where this page started, as microseconds. Missing with `order: "desc"`, like the rest of the cursor. */
+  since?: string;
+  /** Messages older than this are gone. */
+  retained_from?: string;
+  next_since?: string;
+  next_after?: string | null;
   has_more: boolean;
 }
 

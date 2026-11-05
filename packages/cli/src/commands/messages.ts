@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { Message } from "../client.js";
 import { authedClient, UsageError, type Context } from "../context.js";
-import { ago, bold, dim, fields, json, table } from "../format.js";
+import { ago, bold, dim, fields, json, plain, table } from "../format.js";
 import { sinceValue } from "./read.js";
 
 interface JsonOpt {
@@ -33,7 +33,7 @@ export async function listMessages(
   ctx.out(
     table(
       ["ID", "TYPE", "SUBJECT", "RECEIVED"],
-      messages.map((e) => [e.id, e.event.type, e.event.subject ?? "", dim(ago(e.received_at))]),
+      messages.map((e) => [e.id, plain(e.event.type), plain(e.event.subject ?? ""), dim(ago(e.received_at))]),
     ),
   );
   if (more) ctx.out(dim("\nMore messages: add --all"));
@@ -82,12 +82,12 @@ function readFileOrThrow(path: string): string {
 
 function describe(e: Message): string {
   return [
-    bold(e.event.type),
+    bold(plain(e.event.type)),
     fields([
       ["id", e.id],
-      ["subject", e.event.subject],
-      ["source", e.event.source],
-      ["time", e.event.time],
+      ["subject", e.event.subject && plain(e.event.subject)],
+      ["source", plain(e.event.source)],
+      ["time", e.event.time && plain(e.event.time)],
       ["received", `${e.received_at} ${dim(`(${ago(e.received_at)})`)}`],
     ]),
   ].join("\n");

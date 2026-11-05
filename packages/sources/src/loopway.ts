@@ -15,6 +15,7 @@ import type { SourceAdapter, SourceDeps } from "./types.js";
  */
 
 const MIN_SECRET = 16;
+const MAX_BODY = 1024 * 1024;
 
 export const loopway = ({ uuidv7, safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter => ({
   type: "loopway",
@@ -32,6 +33,10 @@ export const loopway = ({ uuidv7, safeEqual, makeCloudEvent }: SourceDeps): Sour
       ?.trim();
     if (!token) return { kind: "rejected", status: 401, message: "Missing Authorization: Bearer <token>" };
     if (!safeEqual(token, secret)) return { kind: "rejected", status: 401, message: "Wrong token" };
+
+    if (Buffer.byteLength(rawBody) > MAX_BODY) {
+      return { kind: "rejected", status: 400, message: `Body must be at most ${MAX_BODY} bytes` };
+    }
 
     const contentType = (headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
     if (contentType !== "application/json") {

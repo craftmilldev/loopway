@@ -20,7 +20,7 @@ const UPDATED_ENV = "LOOPWAY_UPDATED";
 export interface UpdateDeps {
   /** Whether this CLI was installed from a release (npm i -g), as opposed to run from a git checkout. */
   installed: boolean;
-  /** The other packages (`rules` for @loopway/rules) a downloaded CLI tarball depends on, which are released alongside it. */
+  /** The other @loopway packages a downloaded CLI tarball depends on, which are released alongside it. */
   needs: (cliTarball: string) => Promise<string[]>;
   /** Installs the given tarballs globally. */
   install: (files: string[]) => Promise<void>;
@@ -151,7 +151,7 @@ export async function installRelease(
 /**
  * Runs this same command again, on whatever is installed now. `mark` is what the new process finds in LOOPWAY_UPDATED.
  * Where Node can (process.execve, 22.15+ and 23.11+, not on Windows) the new version takes over this process, so a
- * runner that updates many times is still one process. Otherwise this one waits on a child and exits with its status.
+ * poller that updates many times is still one process. Otherwise this one waits on a child and exits with its status.
  */
 export function reexec(mark = "1", proc: Pick<typeof process, "execve"> = process): never {
   const args = [...process.execArgv, ...process.argv.slice(1)];

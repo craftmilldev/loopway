@@ -174,47 +174,59 @@ export function createApi(opts: ApiOptions) {
       throw new ApiError(404, "not_found", "Inbox not found");
     }
     const headers = c.req.raw.headers;
+    const claimed = (await store.listSources(c.var.db, userId)).filter((row) => {
+      const source = sources.get(row.source_type);
+      return row.secret_enc && source?.receive && source.claims?.(headers);
+    });
+    const received = (outcome: string, extra?: Record<string, unknown>) =>
+      metrics.capture("webhook_received", userId, { outcome, tried: claimed.length, ...extra });
+    if (!claimed.length) {
+      await received("unverified");
+      throw new ApiError(401, "unverified", "No registered source verifies this delivery");
+    }
     const rawBody = await c.req.text();
     const receivedAt = new Date();
     const url = inboxUrl(c, userId);
     let unreadable = false;
 
-    for (const row of await store.listSources(c.var.db, userId)) {
-      const source = sources.get(row.source_type);
-      if (!source?.receive || !source.claims?.(headers) || !row.secret_enc) continue;
-      const received = (outcome: string, extra?: Record<string, unknown>) =>
-        metrics.capture("webhook_received", userId, { source_type: row.source_type, outcome, ...extra });
+    for (const row of claimed) {
+      const source_type = row.source_type;
       let secret: string;
       try {
-        secret = box.open(row.secret_enc, row.id);
+        secret = box.open(row.secret_enc!, row.id);
       } catch (err) {
         // No key on this deploy, or one that doesn't open this secret: not the sender's fault, but another source may
         // still verify it, so carry on, and say so only if none does.
         console.error(err);
-        await received("failed", { reason: "secret_unreadable" });
         unreadable = true;
         continue;
       }
-      const result = await source.receive({ headers, rawBody, receivedAt, webhookUrl: url }, secret);
+      const result = await sources.get(source_type)!.receive!(
+        { headers, rawBody, receivedAt, webhookUrl: url },
+        secret,
+      );
       if (result.kind === "rejected") {
         // Not noted on the source: this URL is public, so a refused delivery can come from anyone, and with two sources
         // of a sender a good delivery for one is a refusal from the other.
-        await received("rejected", { status: result.status });
         if (result.status === 401) continue;
+        await received("rejected", { source_type, status: result.status });
         throw new ApiError(result.status, "rejected", result.message);
       }
       if (result.kind === "ignored") {
         await recordDelivery(c.var.db, row, `ignored:${result.reason}`);
-        await received("ignored", { reason: result.reason });
+        await received("ignored", { source_type, reason: result.reason });
         return c.json({ ignored: true, reason: result.reason }, 200);
       }
       const stored = await store.insertMessage(c.var.db, userId, row.id, result.event);
       await recordDelivery(c.var.db, row, "accepted");
-      await received(stored.duplicate ? "duplicate" : "accepted");
+      await received(stored.duplicate ? "duplicate" : "accepted", { source_type });
       return c.json({ id: stored.id, duplicate: stored.duplicate }, stored.duplicate ? 200 : 202);
     }
-    if (unreadable) throw new ApiError(500, "internal", "Internal server error");
-    await metrics.capture("webhook_received", userId, { outcome: "unverified" });
+    if (unreadable) {
+      await received("failed", { reason: "secret_unreadable" });
+      throw new ApiError(500, "internal", "Internal server error");
+    }
+    await received("unverified");
     throw new ApiError(401, "unverified", "No registered source verifies this delivery");
   });
 
@@ -228,8 +240,10 @@ export function createApi(opts: ApiOptions) {
       await metrics.capture("schedule_tick_rejected", ANONYMOUS, { reason: opts.cronSecret ? "bad_token" : "unset" });
       throw new ApiError(401, "unauthorized", "Missing or wrong cron secret");
     }
+    // First, so that schedules that run long can't keep it from happening.
+    const purged = await store.purgeMessages(c.var.db);
     const now = new Date();
-    const total = { sources: 0, accepted: 0, duplicate: 0, failed: 0, disabled: 0, purged: 0 };
+    const total = { sources: 0, accepted: 0, duplicate: 0, failed: 0, disabled: 0, purged };
     const rejected = new Set<string>();
     for (const row of await store.sourcesOfType(c.var.db, "schedule")) {
       total.sources++;
@@ -247,16 +261,13 @@ export function createApi(opts: ApiOptions) {
         for (const event of sources.get(row.source_type)!.tick!(row.config, row.id, now)) {
           const { duplicate } = await store.insertMessage(c.var.db, row.user_id, row.id, event);
           total[duplicate ? "duplicate" : "accepted"]++;
-          await metrics.capture("schedule_message", row.user_id, { outcome: duplicate ? "duplicate" : "accepted" });
         }
       } catch (err) {
         // One bad source (e.g. a config that no longer parses) must not stop the others.
         console.error(err);
         total.failed++;
-        await metrics.capture("schedule_message", row.user_id, { outcome: "failed" });
       }
     }
-    total.purged = await store.purgeMessages(c.var.db);
     await metrics.capture("schedule_ticked", ANONYMOUS, total);
     return c.json(total);
   });
@@ -278,6 +289,7 @@ export function createApi(opts: ApiOptions) {
           text: `Your loopway login code is ${login.code}\n\nIt expires in ${store.LOGIN_CODE_TTL_MINUTES} minutes. If you didn't ask for it, ignore this email.`,
         });
       } catch (err) {
+        await store.dropLoginCode(c.var.db, login.email);
         await metrics.capture("login_email_failed", ANONYMOUS);
         throw err;
       }
@@ -394,7 +406,7 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.post("/tokens", async (c) => {
-    const { name } = z.object({ name: z.string().trim().min(1).max(100) }).parse(await jsonBody(c));
+    const { name } = z.object({ name: storableText.trim().min(1).max(100) }).parse(await jsonBody(c));
     const { token, row } = await store.createApiToken(c.var.db, c.var.user.id, name);
     await metrics.capture("api_token_created", c.var.user.id);
     // The one response that carries it: only its hash is stored.
@@ -450,7 +462,7 @@ export function createApi(opts: ApiOptions) {
     return {};
   }
 
-  const sourceName = z.string().trim().min(1).max(100);
+  const sourceName = storableText.trim().min(1).max(100);
 
   authed.get("/sources", async (c) => {
     const rows = await store.listSources(c.var.db, c.var.user.id);
@@ -533,7 +545,7 @@ export function createApi(opts: ApiOptions) {
       since: z.string().optional(),
       after: z.string().refine(isUuid, "after must be a message id").optional(),
       limit: z.coerce.number().int().min(1).max(100).default(50),
-      type: z.string().min(1).max(200).optional(),
+      type: storableText.min(1).max(200).optional(),
     })
     .strict();
 
@@ -555,6 +567,8 @@ export function createApi(opts: ApiOptions) {
     });
     return {
       data: page.messages.map(serializeMessage),
+      since: page.since,
+      retained_from: page.retainedFrom,
       next_since: page.nextSince,
       next_after: page.nextAfter,
       has_more: page.hasMore,
@@ -605,7 +619,7 @@ export function createApi(opts: ApiOptions) {
     }
     const q = readQuery.parse(rest);
     const rows = await store.latestMessages(c.var.db, c.var.user.id, { limit: q.limit, type: q.type });
-    return c.json({ data: rows.map(serializeMessage), next_since: null, next_after: null, has_more: false });
+    return c.json({ data: rows.map(serializeMessage), has_more: false });
   });
 
   authed.post("/messages", async (c) => {
@@ -732,18 +746,24 @@ const PUSH_SOURCE = "urn:loopway:push";
 
 const nameTaken = (name: string) => new ApiError(409, "source_name_taken", `You already have a source named "${name}"`);
 
-const ISO_TIME = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?(Z|[+-]\d{2}:\d{2})$/;
+/** Text Postgres can store: it has no NUL. */
+const storableText = z.string().refine((s) => !s.includes("\0"), "can't contain a NUL character");
+
+const ISO_TIME = /^((\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?(Z|[+-]\d{2}:\d{2})$/;
 
 /** `now` (null), or a time as microseconds since the epoch. A JS Date stops at milliseconds, so ISO's fraction is kept apart. */
 function parseSince(value: string): string | null {
   if (value === "now") return null;
-  if (/^\d{1,17}$/.test(value)) return value;
+  if (/^\d{1,18}$/.test(value)) return value;
   const m = ISO_TIME.exec(value);
-  const ms = m ? Date.parse(m[1]! + m[3]!) : NaN;
-  if (Number.isNaN(ms) || ms < 0) {
+  const ms = m ? Date.parse(m[1]! + m[6]!) : NaN;
+  // Date.parse rolls Feb 30 over to March, so the calendar date is checked by making it again.
+  const [year, month, day] = m ? [Number(m[2]), Number(m[3]), Number(m[4])] : [0, 0, 0];
+  const real = new Date(Date.UTC(year, month - 1, day)).getUTCDate() === day;
+  if (Number.isNaN(ms) || ms < 0 || !real) {
     throw new ApiError(400, "invalid_since", "since must be now, microseconds since the epoch, or an ISO 8601 time");
   }
-  return (BigInt(ms) * 1000n + BigInt((m![2] ?? "").padEnd(6, "0"))).toString();
+  return (BigInt(ms) * 1000n + BigInt((m![5] ?? "").padEnd(6, "0"))).toString();
 }
 
 function bearer(c: Context): string | undefined {

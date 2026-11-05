@@ -35,7 +35,7 @@ export const granola = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapte
     if (!id || !timestamp || !signatures) {
       return {
         kind: "rejected",
-        status: 400,
+        status: 401,
         message: "Missing webhook-id, webhook-timestamp or webhook-signature header",
       };
     }

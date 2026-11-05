@@ -25,7 +25,8 @@ const rpcError = (id: unknown, code: number, message: string) => ({
 function toolError(err: unknown): string {
   if (err instanceof ApiError) return err.message;
   if (err instanceof ZodError) return err.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; ");
-  throw err;
+  console.error(err);
+  return "Internal error";
 }
 
 /** The answer to one JSON-RPC message, or null for a notification, which gets none. */
@@ -58,8 +59,9 @@ export async function handleMcp(body: string, tools: McpTool[]): Promise<unknown
         tools: tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
       });
     case "tools/call": {
-      const tool = tools.find((t) => t.name === req.params?.name);
-      if (!tool) return rpcError(req.id, -32602, `Unknown tool ${String(req.params?.name)}`);
+      const name = req.params?.name;
+      const tool = tools.find((t) => t.name === name);
+      if (!tool) return rpcError(req.id, -32602, `Unknown tool ${typeof name === "string" ? name : ""}`.trim());
       try {
         return answer({ content: [{ type: "text", text: await tool.call(req.params?.arguments ?? {}) }] });
       } catch (err) {

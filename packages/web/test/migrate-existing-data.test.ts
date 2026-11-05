@@ -12,7 +12,7 @@ describe("migration 040_v1", () => {
     expect(migrations.at(-1)!.version).toBe("040_v1");
   });
 
-  it("moves usernames onto users, drops everything else, and makes sources and tokens", async () => {
+  it("moves usernames onto users and adds the new tables, leaving the old deployment's alone", async () => {
     const db = await openTestDb();
     try {
       await migrateBefore(db, "040_v1");
@@ -68,25 +68,20 @@ describe("migration 040_v1", () => {
         { id: id.nameless, username: null },
         { id: id.user, username: "existing" },
       ]);
-      expect(await db.query(`SELECT 1 FROM loopway.messages`)).toEqual([]);
-      const tables = await db.query<{ table_name: string }>(
-        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'loopway' ORDER BY 1`,
-      );
-      expect(tables.map((t) => t.table_name)).toEqual([
-        "api_tokens",
-        "login_codes",
-        "messages",
-        "schema_migrations",
-        "sources",
-        "users",
-      ]);
-      // A source belongs to its user, and goes with them.
+      // The old tables stay, with their rows: the deployment this replaces is still serving when this runs.
+      const old = ["orgs", "org_members", "inboxes", "messages", "bots", "bot_inboxes"];
+      for (const table of old) {
+        expect((await db.query(`SELECT 1 FROM loopway.${table}`)).length, table).toBeGreaterThan(0);
+      }
+      const inboxes = await db.query(`SELECT id FROM loopway.inboxes WHERE org_id = $1`, [id.personal]);
+      expect(inboxes).toEqual([{ id: id.inbox }]);
+      expect(await db.query(`SELECT 1 FROM loopway.inbox_messages`)).toEqual([]);
+      // A source belongs to its user.
       await db.query(`INSERT INTO loopway.sources (id, user_id, name, source_type) VALUES ($1, $2, 'gh', 'github')`, [
         randomUUID(),
         id.user,
       ]);
-      await db.query(`DELETE FROM loopway.users WHERE id = $1`, [id.user]);
-      expect(await db.query(`SELECT 1 FROM loopway.sources`)).toEqual([]);
+      expect(await db.query(`SELECT 1 FROM loopway.sources`)).toHaveLength(1);
     } finally {
       await db.close();
     }

@@ -54,7 +54,7 @@ Each source of the user whose sender claims the delivery (by its signature heade
 - `202 {id, duplicate:false}` stored
 - `200 {id, duplicate:true}` redelivery of a message already stored (same CloudEvent `source`+`id`)
 - `200 {ignored:true, reason}` a verified delivery with nothing to store, like GitHub's `ping`
-- `400` malformed body · `401` no source verifies it, and nothing is stored · `404` unknown user · `415` unsupported content type
+- `400` malformed body, once verified · `401` no source verifies it, and nothing is stored · `404` unknown user · `415` unsupported content type
 
 ## Messages
 
@@ -82,7 +82,7 @@ A message is a stored delivery. It has no status, and nothing marks one done. It
 
 ### Reading
 
-`GET /api/messages` returns `{data, next_since, next_after, has_more}`, oldest first, ordered by `(received_at, id)`.
+`GET /api/messages` returns `{data, since, retained_from, next_since, next_after, has_more}`, oldest first, ordered by `(received_at, id)`. `since` is where this page started, as microseconds. `retained_from` is the 14-day cutoff, also as microseconds.
 
 | Query   |                                                                                                                                                                       |
 | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -94,11 +94,12 @@ A message is a stored delivery. It has no status, and nothing marks one done. It
 To read everything, pass `next_since` and `next_after` back until `has_more` is false, and keep them for next time.
 
 - **Delivery is at least once.** Nothing on the server tracks a reader. Whoever holds the cursor decides when it moves, so a crash means a repeat, not a loss. Going back is a matter of asking for an earlier `since`.
+- The promise covers what's still held. A message past retention is gone, and a `since` older than `retained_from` may have missed some.
 - `after` is what makes paging exact. Two messages can share a microsecond, so `since` alone can't say where a page ended.
 - `since=now` returns no messages and the `next_since` a new reader should start from.
-- Reads stop 5 seconds behind the clock. A message's time is set when its insert runs, but the row is only visible once it commits, so without this a reader could move past a message that hadn't appeared yet. Read to the end, `next_since` is that 5-second mark and `next_after` is null. A message with exactly that time comes next.
+- Reads stop 5 seconds behind the clock. A message's time is set when its insert runs, but the row is only visible once it commits, so without this a reader could move past a message that hadn't appeared yet. An insert that would run for more than 3 seconds fails instead, and the sender retries it, which keeps every insert inside that window. Read to the end, `next_since` is that 5-second mark and `next_after` is null. A message with exactly that time comes next.
 
-`GET /api/messages?order=desc` returns the newest messages first, for looking at an inbox. It takes `limit` and `type`, has no holdback, and gives no cursor: `since` or `after` with it is a `400`.
+`GET /api/messages?order=desc` returns the newest messages first, for looking at an inbox. It takes `limit` and `type`, has no holdback, and gives no cursor: the answer is `{data, has_more}`, and `since` or `after` with it is a `400`.
 
 `GET /api/messages/:id` returns one message, or `404` once it's past retention.
 

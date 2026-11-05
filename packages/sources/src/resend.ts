@@ -34,7 +34,7 @@ export const resend = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter
     const timestamp = headers.get("svix-timestamp");
     const signatures = headers.get("svix-signature");
     if (!id || !timestamp || !signatures) {
-      return { kind: "rejected", status: 400, message: "Missing svix-id, svix-timestamp or svix-signature header" };
+      return { kind: "rejected", status: 401, message: "Missing svix-id, svix-timestamp or svix-signature header" };
     }
 
     const sentAt = Number(timestamp);

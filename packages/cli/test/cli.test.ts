@@ -390,8 +390,8 @@ export default async function (msg, ctx) {
       () => [] as string[],
     );
   /** Past the server's read holdback. */
-  const age = () => db.query(`UPDATE loopway.messages SET received_at = received_at - interval '1 minute'`);
-  const clear = () => db.query(`DELETE FROM loopway.messages`);
+  const age = () => db.query(`UPDATE loopway.inbox_messages SET received_at = received_at - interval '1 minute'`);
+  const clear = () => db.query(`DELETE FROM loopway.inbox_messages`);
 
   let dir: string;
   beforeEach(async () => {
@@ -404,7 +404,7 @@ export default async function (msg, ctx) {
     await configured();
     const reader = await writeReader(dir);
     await run("push", "before");
-    await db.query(`UPDATE loopway.messages SET received_at = received_at - interval '5 minutes'`);
+    await db.query(`UPDATE loopway.inbox_messages SET received_at = received_at - interval '5 minutes'`);
     await run("read", reader);
     expect(notes.join("\n")).toMatch(/starting from now/);
     expect(await seen(dir)).toEqual([]);
@@ -416,7 +416,7 @@ export default async function (msg, ctx) {
     await writeFile(path, JSON.stringify({ ...cursor, since: String(BigInt(cursor.since) - 60_000_000n) }));
     await run("push", "after");
     await db.query(
-      `UPDATE loopway.messages SET received_at = clock_timestamp() - interval '30 seconds' WHERE ce_type = 'after'`,
+      `UPDATE loopway.inbox_messages SET received_at = clock_timestamp() - interval '30 seconds' WHERE ce_type = 'after'`,
     );
     await run("read", reader);
     expect(await seen(dir)).toEqual(["after"]);

@@ -56,15 +56,15 @@ The CLI talks to `https://loopway.craftmill.dev` until told otherwise. For your 
 ```bash
 curl -fsSL https://loopway.craftmill.dev/install.sh | sh   # installs the CLI (needs Node 22+)
 loopway config update --url https://<your-deploy>  # saved in ~/.loopway/config.json
-loopway login                                      # emails a one-time code to the deploy's login page
+loopway login                                      # emails a one-time code
 loopway config                                     # shows the URL the CLI now uses
 ```
 
-Without `--url` the command prompts for it. `loopway config update` only changes the settings you pass (`--posthog-host`, `--auto-update` and the GitHub bot flags are the others), and `loopway clear-config` goes back to the defaults. The URL lives in `~/.loopway/config.json`, so each machine running `loopway bots run` needs the same `config update` first.
+Without `--url` the command prompts for it. `loopway config update` only changes the settings you pass (`--posthog-host`, `--auto-update` is the other), and `loopway clear-config` goes back to the defaults. The URL lives in `~/.loopway/config.json`, so each machine needs the same `config update` first.
 
 `/llms.txt` is how a coding agent learns about the deploy. Every command in it names the deploy: it fills in `PUBLIC_BASE_URL` when that is set, else the origin the request came to. So an agent given `https://<your-deploy>/llms.txt` installs the CLI (your deploy's copy of `install.sh`, which fetches the `craftmilldev/loopway` release) and, once `config update --url` has been run, talks to it. The dashboard's "Create your bot with your agent" prompt links to the same file. Set `PUBLIC_BASE_URL` if the deploy answers on more than one address (a Vercel `*.vercel.app` URL and a custom domain, say), so the file always names the one you want people to use.
 
-The CLI updates itself to the newest release on GitHub (see [Releasing the CLI](#releasing-the-cli)), and your deploy only changes when you update it. A newer CLI can therefore talk to an older deploy; keep the deploy current (below), or turn the CLI's self-update off with `loopway config update --auto-update off` if you want to hold both back together.
+The CLI updates itself to the newest release on GitHub (see [Releasing the CLI](#releasing-the-cli)), and your deploy only changes when you update it. A CLI can get ahead of your deploy, and across a major version the two can't talk to each other, so keep the deploy current (below), or turn the CLI's self-update off with `loopway config update --auto-update off` if you want to hold both back together.
 
 ## Updating a self-hosted deploy
 

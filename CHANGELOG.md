@@ -29,6 +29,7 @@ loopway stops running bots and becomes a notification system for them. Every use
 
 ### Moving from 0.x
 
-- 0.x CLIs get a `426` from the server and update themselves.
-- Every inbox, message, bot, thread and org is deleted. Users and usernames stay.
+- 0.x CLIs get a `426` from the server and update themselves. `loopway bots run` stops there: the command is gone, and it says so. Write a reader instead.
+- Inboxes, messages, bots, threads and orgs aren't carried over. Users and usernames stay.
+- A self-hosted deploy should update with its CLI: a 0.x server and a 1.0 CLI can't talk to each other.
 - Every sender's webhook URL changes, so point each one at your new inbox URL and register its secret again.

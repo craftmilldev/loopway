@@ -57,8 +57,13 @@ const MAX_LOGIN_ATTEMPTS = 5;
 export async function createLoginCode(db: Db, email: string): Promise<{ email: string; code?: string }> {
   const addr = email.toLowerCase();
   const code = newLoginCode();
-  // email is unique, so concurrent requests can't both get a code.
-  await db.query(`DELETE FROM loopway.login_codes WHERE email = $1 AND expires_at <= now()`, [addr]);
+  // email is unique, so concurrent requests can't both get a code. A code out of guesses goes after a minute, or
+  // anyone could keep an address from logging in by burning its code and asking for another whenever it expired.
+  await db.query(
+    `DELETE FROM loopway.login_codes
+     WHERE email = $1 AND (expires_at <= now() OR (attempts >= $2 AND created_at < now() - interval '1 minute'))`,
+    [addr, MAX_LOGIN_ATTEMPTS],
+  );
   const issued = await db.query(
     `INSERT INTO loopway.login_codes (id, email, code_hash, expires_at)
      VALUES ($1, $2, $3, now() + $4::int * interval '1 minute')
@@ -66,6 +71,11 @@ export async function createLoginCode(db: Db, email: string): Promise<{ email: s
     [uuidv7(), addr, sha256(code), LOGIN_CODE_TTL_MINUTES],
   );
   return { email: addr, code: issued.length ? code : undefined };
+}
+
+/** Forgets a code whose email never went out, so asking again sends another. */
+export async function dropLoginCode(db: Db, email: string): Promise<void> {
+  await db.query(`DELETE FROM loopway.login_codes WHERE email = $1`, [email]);
 }
 
 /** Why a code could not be redeemed: it is wrong or expired, or the email is new and needs a username. */
@@ -308,6 +318,12 @@ const RETAINED = `make_interval(days => ${RETENTION_DAYS})`;
  */
 export const READ_HOLDBACK_SECONDS = 5;
 
+/**
+ * The longest an insert may run, kept well under the holdback. A stuck insert (a lock wait, a slow disk) fails instead
+ * of committing behind a reader's cursor, and the sender retries it. This is what the holdback's promise rests on.
+ */
+const INSERT_TIMEOUT_MS = 3000;
+
 export interface MessageRow {
   id: string;
   user_id: string;
@@ -323,26 +339,56 @@ const MESSAGE_COLS = `id, user_id, source_id, cloudevent,
   to_char(received_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS received_at,
   (extract(epoch FROM received_at) * 1000000)::bigint::text AS received_us`;
 
-/** A microsecond count as a timestamptz, exactly: `to_timestamp` goes through a float. */
-const fromMicros = (param: string) => `('epoch'::timestamptz + ${param}::bigint * interval '1 microsecond')`;
+/** A microsecond count as a timestamptz, exactly: `to_timestamp` and a big `bigint * interval` go through a float. */
+const fromMicros = (param: string) =>
+  `('epoch'::timestamptz + (${param}::bigint / 1000000) * interval '1 second' + (${param}::bigint % 1000000) * interval '1 microsecond')`;
+const toMicros = (expr: string) => `(extract(epoch FROM ${expr}) * 1000000)::bigint::text`;
 
-/** Stores a message. A redelivery (same CE source and id) returns the one already stored. */
-export async function insertMessage(db: Db, userId: string, sourceId: string | null, ce: CloudEvent) {
-  const [inserted] = await db.query<{ id: string }>(
-    `INSERT INTO loopway.messages (id, user_id, source_id, ce_id, ce_source, ce_type, ce_subject, ce_time, cloudevent)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
-     ON CONFLICT ON CONSTRAINT messages_ce_unique DO NOTHING
-     RETURNING id`,
-    [uuidv7(), userId, sourceId, ce.id, ce.source, ce.type, ce.subject ?? null, ce.time ?? null, ce],
-  );
-  if (inserted) return { id: inserted.id, duplicate: false };
-  const [existing] = await db.query<{ id: string }>(
-    `SELECT id FROM loopway.messages WHERE user_id = $1 AND ce_source = $2 AND ce_id = $3`,
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
+
+/** What Postgres can't store in jsonb or text, taken out of a message: NUL, and half a surrogate pair. */
+function storable<T>(value: T): T {
+  if (typeof value === "string") return value.replaceAll("\0", "").replace(LONE_SURROGATE, "�") as T;
+  if (Array.isArray(value)) return value.map(storable) as T;
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [storable(k), storable(v)])) as T;
+  }
+  return value;
+}
+
+/**
+ * Stores a message. A redelivery (same CE source and id) returns the one already stored, unless that one is past
+ * retention: no read will show it, so the new one takes its place rather than being dropped as a duplicate of nothing.
+ */
+export async function insertMessage(
+  db: Db,
+  userId: string,
+  sourceId: string | null,
+  event: CloudEvent,
+): Promise<{ id: string; duplicate: boolean }> {
+  const ce = storable(event);
+  const inserted = await db.transaction(async (tx) => {
+    await tx.query(`SELECT set_config('statement_timeout', $1, true), set_config('lock_timeout', $1, true)`, [
+      String(INSERT_TIMEOUT_MS),
+    ]);
+    return tx.query<{ id: string }>(
+      `INSERT INTO loopway.inbox_messages (id, user_id, source_id, ce_id, ce_source, ce_type, ce_subject, ce_time, cloudevent)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+       ON CONFLICT ON CONSTRAINT inbox_messages_ce_unique DO NOTHING
+       RETURNING id`,
+      [uuidv7(), userId, sourceId, ce.id, ce.source, ce.type, ce.subject ?? null, ce.time ?? null, ce],
+    );
+  });
+  if (inserted[0]) return { id: inserted[0].id, duplicate: false };
+  const [existing] = await db.query<{ id: string; expired: boolean }>(
+    `SELECT id, received_at < now() - ${RETAINED} AS expired FROM loopway.inbox_messages
+     WHERE user_id = $1 AND ce_source = $2 AND ce_id = $3`,
     [userId, ce.source, ce.id],
   );
-  // The purge can take the row it conflicted with between the two statements: then it's new after all.
-  if (!existing) return insertMessage(db, userId, sourceId, ce);
-  return { id: existing.id, duplicate: true };
+  if (existing && !existing.expired) return { id: existing.id, duplicate: true };
+  // Expired, or the purge took it between the two statements: either way, it's new.
+  if (existing) await db.query(`DELETE FROM loopway.inbox_messages WHERE id = $1`, [existing.id]);
+  return insertMessage(db, userId, sourceId, ce);
 }
 
 const typeFilter = (type: string, params: unknown[]) => {
@@ -356,6 +402,10 @@ const typeFilter = (type: string, params: unknown[]) => {
 
 export interface ReadPage {
   messages: MessageRow[];
+  /** Where this page started, as microseconds, whatever form `since` came in. */
+  since: string;
+  /** Messages older than this are gone. A `since` before it may have missed some. */
+  retainedFrom: string;
   /** Pass these back as `since` and `after` to carry on. */
   nextSince: string;
   nextAfter: string | null;
@@ -373,11 +423,14 @@ export async function readMessages(
   userId: string,
   opts: { since: string | null; after?: string; limit: number; type?: string },
 ): Promise<ReadPage> {
-  const [row] = await db.query<{ head: string }>(
-    `SELECT (extract(epoch FROM clock_timestamp() - make_interval(secs => ${READ_HOLDBACK_SECONDS})) * 1000000)::bigint::text AS head`,
+  const [row] = await db.query<{ head: string; retained: string }>(
+    `SELECT ${toMicros(`clock_timestamp() - make_interval(secs => ${READ_HOLDBACK_SECONDS})`)} AS head,
+            ${toMicros(`now() - ${RETAINED}`)} AS retained`,
   );
-  const head = row!.head;
-  if (opts.since === null) return { messages: [], nextSince: head, nextAfter: null, hasMore: false };
+  const { head, retained: retainedFrom } = row!;
+  if (opts.since === null) {
+    return { messages: [], since: head, retainedFrom, nextSince: head, nextAfter: null, hasMore: false };
+  }
   const params: unknown[] = [userId, opts.since, head];
   const since = fromMicros("$2");
   const where = [
@@ -393,18 +446,19 @@ export async function readMessages(
   if (opts.type) where.push(typeFilter(opts.type, params));
   params.push(opts.limit + 1);
   const rows = await db.query<MessageRow>(
-    `SELECT ${MESSAGE_COLS} FROM loopway.messages WHERE ${where.join(" AND ")}
+    `SELECT ${MESSAGE_COLS} FROM loopway.inbox_messages WHERE ${where.join(" AND ")}
      ORDER BY received_at, id LIMIT $${params.length}`,
     params,
   );
   const hasMore = rows.length > opts.limit;
   const messages = hasMore ? rows.slice(0, opts.limit) : rows;
   const last = messages.at(-1);
-  if (hasMore) return { messages, nextSince: last!.received_us, nextAfter: last!.id, hasMore };
+  const page = { messages, since: opts.since, retainedFrom, hasMore };
+  if (hasMore) return { ...page, nextSince: last!.received_us, nextAfter: last!.id };
   // Read to the end, so the cursor can move up to the head: rows at the head itself weren't returned, and `since` is
   // inclusive, so they come next. A cursor set in the future stays where it is.
   const ahead = BigInt(opts.since) > BigInt(head);
-  return { messages, nextSince: ahead ? opts.since : head, nextAfter: ahead ? (opts.after ?? null) : null, hasMore };
+  return { ...page, nextSince: ahead ? opts.since : head, nextAfter: ahead ? (opts.after ?? null) : null };
 }
 
 /** The newest messages, newest first, for looking at an inbox. Not for reading it: there's no cursor and no holdback. */
@@ -414,7 +468,7 @@ export async function latestMessages(db: Db, userId: string, opts: { limit: numb
   if (opts.type) where.push(typeFilter(opts.type, params));
   params.push(opts.limit);
   return db.query<MessageRow>(
-    `SELECT ${MESSAGE_COLS} FROM loopway.messages WHERE ${where.join(" AND ")}
+    `SELECT ${MESSAGE_COLS} FROM loopway.inbox_messages WHERE ${where.join(" AND ")}
      ORDER BY received_at DESC, id DESC LIMIT $${params.length}`,
     params,
   );
@@ -422,7 +476,7 @@ export async function latestMessages(db: Db, userId: string, opts: { limit: numb
 
 export async function getMessage(db: Db, userId: string, id: string): Promise<MessageRow | undefined> {
   const [row] = await db.query<MessageRow>(
-    `SELECT ${MESSAGE_COLS} FROM loopway.messages
+    `SELECT ${MESSAGE_COLS} FROM loopway.inbox_messages
      WHERE id = $1 AND user_id = $2 AND received_at >= now() - ${RETAINED}`,
     [id, userId],
   );
@@ -431,14 +485,15 @@ export async function getMessage(db: Db, userId: string, id: string): Promise<Me
 
 export async function countMessages(db: Db, userId: string): Promise<number> {
   const [row] = await db.query<{ messages: number }>(
-    `SELECT count(*)::int AS messages FROM loopway.messages WHERE user_id = $1 AND received_at >= now() - ${RETAINED}`,
+    `SELECT count(*)::int AS messages FROM loopway.inbox_messages WHERE user_id = $1 AND received_at >= now() - ${RETAINED}`,
     [userId],
   );
   return row!.messages;
 }
 
-/** Deletes what's past retention. Returns how many went. */
+/** Deletes what's past retention, and login codes nobody used. Returns how many messages went. */
 export async function purgeMessages(db: Db): Promise<number> {
-  const rows = await db.query(`DELETE FROM loopway.messages WHERE received_at < now() - ${RETAINED} RETURNING 1`);
+  await db.query(`DELETE FROM loopway.login_codes WHERE expires_at <= now()`);
+  const rows = await db.query(`DELETE FROM loopway.inbox_messages WHERE received_at < now() - ${RETAINED} RETURNING 1`);
   return rows.length;
 }

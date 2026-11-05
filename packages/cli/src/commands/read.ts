@@ -52,7 +52,10 @@ const UNITS: Record<string, number> = { s: 1_000, m: 60_000, h: 3_600_000, d: 86
 /** A `--since`, as the API takes it. `2h` and `3d` are that long ago; anything else goes as it is, and the API checks it. */
 export function sinceValue(value: string, now = Date.now()): string {
   const m = /^(\d+)([smhd])$/.exec(value);
-  return m ? new Date(now - Number(m[1]) * UNITS[m[2]!]!).toISOString() : value;
+  if (!m) return value;
+  const then = now - Number(m[1]) * UNITS[m[2]!]!;
+  if (then < 0) throw new UsageError(`--since ${value} is before 1970`);
+  return new Date(then).toISOString();
 }
 
 /** A reader's file on disk, loaded. Its default export is called once per message. */
@@ -69,13 +72,18 @@ async function loadReader(path: string): Promise<{ reader: Reader; file: string 
   } catch (err) {
     throw new UsageError(`Could not load ${path}: ${err instanceof Error ? err.message : String(err)}`);
   }
-  if (typeof loaded.default !== "function") {
+  // A compiled CommonJS `export default` arrives here as `{default: {default: fn}}`.
+  const reader = (loaded.default as { default?: unknown } | undefined)?.default ?? loaded.default;
+  if (typeof reader !== "function") {
     throw new UsageError(`${path} must have a default export: a function that takes a message`);
   }
-  return { reader: loaded.default as Reader, file };
+  return { reader: reader as Reader, file };
 }
 
-/** The cursor's file: named by everything that makes this read a different read. `--since` only moves it. */
+/**
+ * The cursor's file: named by everything that makes this read a different read. `--since` only moves it. Moving or
+ * renaming a reader makes it a new reader, and a new reader starts from now.
+ */
 function cursorFile(ctx: Context, parts: (string | undefined)[]) {
   const name = createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 32);
   return join(ctx.configDir, "cursors", `${name}.json`);
@@ -85,8 +93,10 @@ async function readCursor(file: string): Promise<Cursor | undefined> {
   let text: string;
   try {
     text = await readFile(file, "utf8");
-  } catch {
-    return undefined;
+  } catch (err) {
+    // Only a cursor that isn't there means a new reader. One we can't read must not be replaced with "now".
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw new UsageError(`Can't read the cursor in ${file}: ${(err as Error).message}`);
   }
   try {
     const { since, after } = JSON.parse(text) as Partial<Cursor>;
@@ -112,19 +122,28 @@ const toReaderMessage = (m: Message): ReaderMessage => ({
   received_us: m.received_us,
 });
 
+/** What a reader threw, as text. It can throw anything, including what `String` can't print. */
+function describeThrown(thrown: unknown): string {
+  if (thrown instanceof Error) return thrown.message;
+  try {
+    return String(thrown);
+  } catch {
+    return "something that can't be printed";
+  }
+}
+
 /** Thrown when a reader's function throws. The cursor is left on that message, so it comes again. */
 export class ReaderError extends Error {
   constructor(
     readonly message_id: string,
     cause: unknown,
   ) {
-    super(`The reader failed on message ${message_id}: ${cause instanceof Error ? cause.message : String(cause)}`, {
-      cause,
-    });
+    super(`The reader failed on message ${message_id}: ${describeThrown(cause)}`, { cause });
   }
 }
 
 interface Run {
+  ctx: Context;
   client: LoopwayClient;
   reader: Reader;
   file: string;
@@ -140,7 +159,7 @@ interface Run {
  * a repeat, never a loss. Returns how many it delivered.
  */
 async function drain(run: Run): Promise<number> {
-  const { client, reader, file, cursorPath, type, signal } = run;
+  const { ctx, client, reader, file, cursorPath, type, signal } = run;
   const readerCtx: ReaderContext = { push: (m) => client.pushMessage(m), signal };
   let delivered = 0;
   for (;;) {
@@ -150,6 +169,11 @@ async function drain(run: Run): Promise<number> {
       limit: PAGE_SIZE,
       type,
     });
+    if (BigInt(run.cursor.since) < BigInt(page.retained_from!)) {
+      ctx.err?.(
+        `This cursor is older than the inbox keeps messages, so anything before ${page.retained_from} is gone.`,
+      );
+    }
     for (const m of page.data) {
       if (signal.aborted) return delivered;
       try {
@@ -161,7 +185,7 @@ async function drain(run: Run): Promise<number> {
       await writeCursor(cursorPath, file, run.cursor);
       delivered++;
     }
-    const next = { since: page.next_since!, after: page.next_after };
+    const next = { since: page.next_since!, after: page.next_after ?? null };
     if (next.since !== run.cursor.since || next.after !== run.cursor.after) {
       run.cursor = next;
       await writeCursor(cursorPath, file, run.cursor);
@@ -176,18 +200,18 @@ async function prepare(ctx: Context, path: string, opts: ReadOptions, signal: Ab
   const client = await authedClient(ctx);
   const { api_url } = await loadConfig(ctx.configDir, ctx.env);
   const me = await client.me();
-  const cursorPath = cursorFile(ctx, [file, api_url, me.id, opts.type]);
+  const cursorPath = cursorFile(ctx, [file, api_url.replace(/\/+$/, ""), me.id, opts.type]);
   const saved = opts.since === undefined ? await readCursor(cursorPath) : undefined;
   let cursor = saved;
   if (!cursor) {
+    // The server says what the start is, and whether it's a time at all, before the saved cursor is touched: a --since
+    // it refuses must leave a reader where it was. Saved before anything is delivered, so a reader that throws on its
+    // first message resumes from here.
     const since = opts.since === undefined ? "now" : sinceValue(opts.since);
-    // Named before anything is delivered: a reader that throws on its first message resumes from here, not from
-    // wherever it was before --since. `now` has to ask the server: its clock and holdback decide where now is.
-    const start = since === "now" ? (await client.readMessages({ since: "now", limit: 1 })).next_since! : since;
-    cursor = { since: start, after: null };
+    cursor = { since: (await client.readMessages({ since, limit: 1 })).since!, after: null };
     await writeCursor(cursorPath, file, cursor);
   }
-  const run: Run = { client, reader, file, cursorPath, cursor, type: opts.type, signal };
+  const run: Run = { ctx, client, reader, file, cursorPath, cursor, type: opts.type, signal };
   return { run, started: !saved && opts.since === undefined };
 }
 
@@ -202,13 +226,15 @@ export async function read(ctx: Context, path: string, opts: ReadOptions, signal
 const wait = (ms: number, signal: AbortSignal) =>
   new Promise<void>((done) => {
     if (signal.aborted) return done();
-    const timer = setTimeout(done, ms);
-    signal.addEventListener("abort", () => (clearTimeout(timer), done()), { once: true });
+    const stop = () => (clearTimeout(timer), done());
+    const timer = setTimeout(() => (signal.removeEventListener("abort", stop), done()), ms);
+    signal.addEventListener("abort", stop, { once: true });
   });
 
 /** What a poll can't get past by waiting: it needs a person. */
 const fatal = (err: unknown) =>
-  err instanceof UsageError || (err instanceof ApiError && (err.status === 401 || err.status === 426));
+  err instanceof UsageError ||
+  (err instanceof ApiError && err.status >= 400 && err.status < 500 && err.status !== 408 && err.status !== 429);
 
 /**
  * `loopway poll`: `read`, again and again, until stopped. A reader that throws, or a server that can't be reached, is
@@ -216,18 +242,24 @@ const fatal = (err: unknown) =>
  * once a minute when quiet, and goes back to `interval` when there's something to read.
  */
 export async function poll(ctx: Context, path: string, opts: PollOptions, signal: AbortSignal, sleep = wait) {
-  const { run, started } = await prepare(ctx, path, opts, signal);
-  if (started) ctx.err?.("First read of this reader: starting from now. Use --since to go further back.");
   const fastest = opts.interval ?? DEFAULT_INTERVAL;
+  const slowest = Math.max(MAX_INTERVAL, fastest);
   let delay = fastest;
+  let run: Run | undefined;
   while (!signal.aborted) {
     try {
+      if (!run) {
+        const prepared = await prepare(ctx, path, opts, signal);
+        run = prepared.run;
+        if (prepared.started)
+          ctx.err?.("First read of this reader: starting from now. Use --since to go further back.");
+      }
       const delivered = await drain(run);
-      delay = delivered ? fastest : Math.min(delay * 2, Math.max(MAX_INTERVAL, fastest));
+      delay = delivered ? fastest : Math.min(delay * 2, slowest);
     } catch (err) {
       if (fatal(err)) throw err;
       ctx.err?.(err instanceof Error ? err.message : String(err));
-      delay = Math.min(delay * 2, Math.max(MAX_INTERVAL, fastest));
+      delay = Math.min(delay * 2, slowest);
     }
     await sleep(delay * 1000, signal);
   }
