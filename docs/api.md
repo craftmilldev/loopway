@@ -111,7 +111,7 @@ To read everything, pass `next_since` and `next_after` back until `has_more` is 
 
 `POST /api/mcp` is a stateless MCP server over Streamable HTTP: one JSON-RPC message per request, a JSON answer, no sessions and no stream (`GET` and `DELETE` are `405`). It takes the same bearer tokens as the API, and always acts on the caller's own inbox.
 
-- `push_message` `{type, subject?, id?, data?}`: the same as `POST /api/messages`.
+- `push_message` `{subject?, id?, data?}`: the same as `POST /api/messages`, with the type fixed to `com.loopway.mcp.message`. Sending `type` is an error.
 - `pull_messages` `{since?, after?, limit?, type?}`: the same as `GET /api/messages`.
 
 Each returns its JSON as text. Bad input is a tool result with `isError: true`, with a message the agent can act on.

@@ -584,9 +584,10 @@ export function createApi(opts: ApiOptions) {
     })
     .strict();
 
+  const mcpPushInput = pushInput.omit({ type: true });
+
   /** Stores a message the user sent. Shared by the HTTP push and the MCP tool. */
-  async function pushMessage(userId: string, input: unknown) {
-    const body = pushInput.parse(input);
+  async function pushMessage(userId: string, body: z.infer<typeof pushInput>) {
     const data = body.data === undefined ? undefined : JSON.stringify(body.data);
     if (data !== undefined && Buffer.byteLength(data) > MAX_PUSH_BYTES) {
       throw new ApiError(400, "too_large", `data must be at most ${MAX_PUSH_BYTES} bytes`);
@@ -623,7 +624,7 @@ export function createApi(opts: ApiOptions) {
   });
 
   authed.post("/messages", async (c) => {
-    const stored = await pushMessage(c.var.user.id, await jsonBody(c));
+    const stored = await pushMessage(c.var.user.id, pushInput.parse(await jsonBody(c)));
     return c.json(stored, stored.duplicate ? 200 : 202);
   });
 
@@ -640,19 +641,18 @@ export function createApi(opts: ApiOptions) {
     {
       name: "push_message",
       description:
-        "Put a message in your loopway inbox, as a CloudEvent, for whatever reads it. Give `id` to make repeats of the same message one message.",
+        "Put a message in your loopway inbox, as a CloudEvent, for whatever reads it. Say what the message is in `subject` and `data`: every push gets the type com.loopway.mcp.message. Give `id` to make repeats of the same message one message.",
       inputSchema: {
         type: "object",
         properties: {
-          type: { type: "string", description: "The CloudEvent type, e.g. build.finished" },
           subject: { type: "string", description: "What the message is about" },
           id: { type: "string", description: "A dedupe id. Pushing it again stores nothing new." },
           data: { description: "Any JSON" },
         },
-        required: ["type"],
         additionalProperties: false,
       },
-      call: async (args) => JSON.stringify(await pushMessage(userId, args)),
+      call: async (args) =>
+        JSON.stringify(await pushMessage(userId, { ...mcpPushInput.parse(args), type: MCP_PUSH_TYPE })),
     },
     {
       name: "pull_messages",
@@ -743,6 +743,8 @@ const MAX_PUSH_BYTES = 1024 * 1024;
 
 /** The CloudEvent `source` of a pushed message. Its ids are unique per user, so a repeat of one is a duplicate. */
 const PUSH_SOURCE = "urn:loopway:push";
+
+const MCP_PUSH_TYPE = "com.loopway.mcp.message";
 
 const nameTaken = (name: string) => new ApiError(409, "source_name_taken", `You already have a source named "${name}"`);
 
