@@ -1,144 +1,53 @@
 import * as p from "@clack/prompts";
-import { HARNESSES } from "@loopway/harnesses";
 import { ApiError, LoopwayClient } from "../client.js";
-import {
-  clearConfig as removeConfig,
-  configPath,
-  loadConfig,
-  loadGithubBot,
-  readGithubBot,
-  readManagerSettings,
-  resolveAuth,
-  writeConfig,
-  type GithubBot,
-} from "../config.js";
+import { clearConfig as removeConfig, configPath, loadConfig, resolveAuth, writeConfig } from "../config.js";
 import { authedClient, CancelledError, UsageError, type Context } from "../context.js";
 import { bold, dim, fields, json } from "../format.js";
 
-/**
- * Sets the API URL, PostHog host, GitHub bot, auto-update and manager settings: flags, else prompts for the API
- * URL and the GitHub bot (starting from what's saved), else what's set.
- * Tokens are `loopway login`'s job, so it's the next step.
- */
+/** Sets the API URL, PostHog host and auto-update: flags, else a prompt for the API URL, else what's set. */
 export async function configure(
   ctx: Context,
   opts: {
     url?: string;
     posthogHost?: string;
-    githubToken?: string;
-    githubName?: string;
-    githubEmail?: string;
     autoUpdate?: "on" | "off";
-    manager?: boolean;
-    managerHarness?: string;
-    managerModel?: string;
   },
 ) {
-  if (opts.managerHarness && !HARNESSES.some((h) => h.name === opts.managerHarness)) {
-    await ctx.metrics?.capture("config_update_rejected", { reason: "unknown_manager_harness" });
-    throw new UsageError(
-      `Unknown harness "${opts.managerHarness}" (known: ${HARNESSES.map((h) => h.name).join(", ")})`,
-    );
-  }
   const current = await loadConfig(ctx.configDir, ctx.env);
   const url = opts.url ?? (ctx.interactive ? await promptUrl(current.api_url) : current.api_url);
-  let github: GithubBot | undefined;
-  try {
-    github = await configureGithubBot(ctx, opts);
-  } catch (err) {
-    await ctx.metrics?.capture("config_update_rejected", { reason: "github_bot_incomplete" });
-    throw err;
-  }
-  const setManager = opts.manager !== undefined || !!opts.managerHarness || !!opts.managerModel;
-  const manager = setManager
-    ? {
-        ...(await readManagerSettings(ctx.configDir)),
-        ...(opts.manager !== undefined && { enabled: opts.manager }),
-        ...(opts.managerHarness && { harness: opts.managerHarness }),
-        ...(opts.managerModel && { model: opts.managerModel }),
-      }
-    : undefined;
   await writeConfig(ctx.configDir, {
     api_url: url,
     ...(opts.posthogHost && { posthog_host: opts.posthogHost }),
-    ...(github && { github }),
     ...(opts.autoUpdate && { auto_update: opts.autoUpdate === "on" }),
-    ...(manager && { manager }),
   });
   ctx.out(`Configured ${url}. Run \`loopway login\` next.`);
-  if (github) ctx.out(`GitHub bot: ${bold(github.name)} <${github.email}>`);
   if (opts.autoUpdate) ctx.out(`Self-update: ${bold(opts.autoUpdate)}`);
-  if (manager) ctx.out(`Manager: ${bold(manager.enabled ? "on" : "off")}`);
   if (opts.posthogHost) ctx.out(`Metrics host: ${bold(opts.posthogHost)}`);
   ctx.out(dim(`Saved to ${configPath(ctx.configDir)}`));
   await ctx.metrics?.capture("config_updated", {
     url: !!opts.url,
     posthog_host: !!opts.posthogHost,
-    github_bot: !!(opts.githubToken || opts.githubName || opts.githubEmail),
     auto_update: opts.autoUpdate ?? "unchanged",
-    manager: opts.manager === undefined ? "unchanged" : opts.manager ? "on" : "off",
-    manager_harness: !!opts.managerHarness,
-    manager_model: !!opts.managerModel,
   });
 }
 
 const MASK = "******";
 
-/** Prints the settings commands would use, env included, with the API key and GitHub token masked. */
+/** Prints the settings commands would use, env included, with the API key masked. */
 export async function showConfig(ctx: Context) {
   const config = await loadConfig(ctx.configDir, ctx.env);
-  let bot: GithubBot | undefined;
-  let botError: string | undefined;
-  try {
-    bot = await loadGithubBot(ctx.configDir, ctx.env);
-  } catch (err) {
-    botError = (err as Error).message;
-  }
   ctx.out(
     fields([
       ["api_url", config.api_url],
       ["api_key", config.api_key ? MASK : "(not logged in)"],
       ["posthog_host", config.posthog_host],
       ["auto_update", config.auto_update ? "on" : "off"],
-      ["manager", config.manager_enabled ? "on" : "off"],
-      ["manager_harness", config.manager_harness],
-      ["manager_model", config.manager_model ?? "(default)"],
-      ["github_token", bot ? MASK : botError ? "(incomplete)" : "(not set)"],
-      ["github_name", bot?.name],
-      ["github_email", bot?.email],
     ]),
   );
-  if (botError) ctx.out(botError);
   ctx.out(dim(`Config file: ${configPath(ctx.configDir)}`));
   await ctx.metrics?.capture("config_shown", {
     logged_in: !!config.api_key,
-    github_bot: !!bot,
-    bot_incomplete: !!botError,
-    manager: config.manager_enabled,
   });
-}
-
-/**
- * The bot from flags, else prompts (an empty answer keeps the saved value), else what config.json has.
- * Undefined when none of the three is set; a usage error when only some are, so nothing is saved.
- */
-async function configureGithubBot(
-  ctx: Context,
-  opts: { githubToken?: string; githubName?: string; githubEmail?: string },
-): Promise<GithubBot | undefined> {
-  const saved = await readGithubBot(ctx.configDir);
-  const token = opts.githubToken || (ctx.interactive ? await promptGithubToken(saved.token) : "") || saved.token;
-  // Without a token there's no bot, so there's no point asking for its name and email.
-  const ask = ctx.interactive && !!token;
-  const name = opts.githubName || (ask ? await promptGithub("name", saved.name) : "") || saved.name;
-  const email = opts.githubEmail || (ask ? await promptGithub("email", saved.email) : "") || saved.email;
-  if (!token && !name && !email) return undefined;
-  if (!token || !name || !email) {
-    throw new UsageError(
-      "The GitHub bot needs a token, name and email (--github-token, --github-name, --github-email).",
-    );
-  }
-  return { token, name, email };
 }
 
 /** Emails a one-time code, trades it for a 30-day session token, and saves it (as `api_key` in the config). Creates the account if the email is new. */
@@ -171,41 +80,11 @@ export async function login(ctx: Context, opts: { url?: string; email?: string; 
 
   // Signup asks for the username, so only an account from before that can lack one. The token is already saved.
   const authed = new LoopwayClient({ baseUrl: url, apiKey: token, fetch: ctx.fetch });
-  let org = user.username;
-  if (!org) org = await chooseUsername(ctx, authed, opts.username);
-  await showNextSteps(ctx, authed, url, org, created);
-}
-
-/**
- * After a signup, or a login while the user has no bot in any org, says how to get a first bot running: the same
- * three steps as the dashboard's zero state. Never fails the login.
- */
-async function showNextSteps(ctx: Context, client: LoopwayClient, url: string, org: string, created: boolean) {
-  try {
-    if (!created) {
-      const orgs = await client.listOrgs();
-      const bots = await Promise.all(orgs.map((o) => client.listBots(o.slug)));
-      if (bots.some((b) => b.length > 0)) return;
-    }
-    const base = url.replace(/\/+$/, "");
+  if (!user.username) await chooseUsername(ctx, authed, opts.username);
+  if (created)
     ctx.out(
-      [
-        "",
-        bold(`Next, get your first bot running in org ${org}:`),
-        "  1. Start a runner on this machine, in the directory your bots should work in, and leave it running:",
-        `       loopway bots run --org ${org}`,
-        "  2. Make an inbox and a bot:",
-        `       loopway inbox create --org ${org}`,
-        `       loopway bots create --org ${org} --name <name> --inbox <inbox> --harness <harness> --preset <preset> --model <model>`,
-        "     Or hand this to your coding agent:",
-        dim(`       Read ${base}/llms.txt and set up a loopway bot for me in org "${org}".`),
-        `  3. Watch it run: ${base}/${org}`,
-      ].join("\n"),
+      `\n${bold("Next:")} \`loopway inbox\` shows your inbox URL; \`loopway source types\` lists what can send to it.`,
     );
-    await ctx.metrics?.capture("login_next_steps_shown", { created });
-  } catch {
-    // The login worked; the hint is a bonus.
-  }
 }
 
 /**
@@ -239,12 +118,12 @@ async function verify(ctx: Context, client: LoopwayClient, email: string, code: 
   }
 }
 
-/** Sets or renames the username (the slug of your personal org). */
+/** Sets or renames the username. */
 export async function username(ctx: Context, name: string | undefined) {
   await chooseUsername(ctx, await authedClient(ctx), name);
 }
 
-/** The error codes a refused username or org slug comes back with. */
+/** The error codes a refused username comes back with. */
 export const USERNAME_ERRORS = ["invalid_username", "username_reserved", "username_taken"];
 
 /**
@@ -303,20 +182,6 @@ async function promptUrl(current: string) {
   });
   if (p.isCancel(v)) throw new CancelledError();
   return v;
-}
-
-async function promptGithubToken(saved?: string) {
-  const v = await p.password({
-    message: saved ? "GitHub bot token (Enter keeps the saved one)" : "GitHub bot token (Enter for none)",
-  });
-  if (p.isCancel(v)) throw new CancelledError();
-  return v.trim();
-}
-
-async function promptGithub(field: "name" | "email", saved?: string) {
-  const v = await p.text({ message: `GitHub bot ${field}`, initialValue: saved });
-  if (p.isCancel(v)) throw new CancelledError();
-  return v.trim();
 }
 
 async function promptEmail() {

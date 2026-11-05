@@ -11,32 +11,8 @@ export interface Config {
   api_key: string;
   /** Where product metrics go; Craftmill's shared proxy (https://a.craftmill.dev/api/ingest) when unset. Set it to send straight to PostHog (https://us.i.posthog.com), EU or self-hosted. */
   posthog_host?: string;
-  /** The GitHub bot `loopway bots run` sessions act as. Set by `loopway config update`; `login` keeps it. */
-  github?: GithubBot;
   /** Whether the CLI updates itself from GitHub releases. On unless this is false (or LOOPWAY_NO_UPDATE is set). */
   auto_update?: boolean;
-  /** The opt-in manager bot. Off unless `enabled` is true. */
-  manager?: ManagerSettings;
-  /** The org commands use when `--org` isn't given. Set by `loopway orgs use`; `login` keeps it. */
-  org?: string;
-}
-
-/** What the manager bot runs on; the harness defaults to DEFAULT_MANAGER_HARNESS. */
-export interface ManagerSettings {
-  enabled?: boolean;
-  harness?: string;
-  model?: string;
-}
-
-/** The harness the manager uses unless told otherwise (a name from `@loopway/harnesses`). */
-export const DEFAULT_MANAGER_HARNESS = "claude";
-
-/** A GitHub user account, and its token, for sessions to comment, push and commit as. */
-export interface GithubBot {
-  token: string;
-  /** Author and committer of the bot's commits. */
-  name: string;
-  email: string;
 }
 
 /** The shared PostHog proxy every Craftmill product sends events through. */
@@ -59,9 +35,6 @@ export async function loadConfig(
   api_key?: string;
   posthog_host: string;
   auto_update: boolean;
-  manager_enabled: boolean;
-  manager_harness: string;
-  manager_model?: string;
 }> {
   const file = await readConfig(dir);
   const api_url = env.LOOPWAY_API_URL || file?.api_url || DEFAULTS.api_url;
@@ -71,11 +44,6 @@ export async function loadConfig(
     // Metrics go through Craftmill's shared PostHog proxy unless pointed elsewhere.
     posthog_host: env.POSTHOG_HOST || file?.posthog_host || POSTHOG_PROXY,
     auto_update: !(env.LOOPWAY_NO_UPDATE && env.LOOPWAY_NO_UPDATE !== "0") && file?.auto_update !== false,
-    // LOOPWAY_MANAGER=1/0 beats the file; any other value (or empty) falls through to it.
-    manager_enabled:
-      env.LOOPWAY_MANAGER === "1" ? true : env.LOOPWAY_MANAGER === "0" ? false : file?.manager?.enabled === true,
-    manager_harness: env.LOOPWAY_MANAGER_HARNESS || file?.manager?.harness || DEFAULT_MANAGER_HARNESS,
-    manager_model: env.LOOPWAY_MANAGER_MODEL || file?.manager?.model,
   };
 }
 
@@ -86,76 +54,21 @@ export async function resolveAuth(dir: string, env: NodeJS.ProcessEnv = process.
   return { api_url, api_key };
 }
 
-/**
- * The GitHub bot for `loopway bots run`: LOOPWAY_GITHUB_TOKEN / LOOPWAY_GITHUB_NAME / LOOPWAY_GITHUB_EMAIL,
- * then config.json's `github`. Undefined when none of the three is set; an error when only some are.
- */
-export async function loadGithubBot(dir: string, env: NodeJS.ProcessEnv = process.env): Promise<GithubBot | undefined> {
-  const file = await readGithubBot(dir);
-  const token = env.LOOPWAY_GITHUB_TOKEN || file.token;
-  const name = env.LOOPWAY_GITHUB_NAME || file.name;
-  const email = env.LOOPWAY_GITHUB_EMAIL || file.email;
-  if (!token && !name && !email) return undefined;
-  if (!token || !name || !email) {
-    throw new Error(
-      "The GitHub bot needs a token, name and email: run `loopway config update`, or set LOOPWAY_GITHUB_TOKEN/NAME/EMAIL.",
-    );
-  }
-  return { token, name, email };
-}
-
-/** Just config.json's `github`, without env; any of the three may be missing. */
-export async function readGithubBot(dir: string): Promise<Partial<GithubBot>> {
-  const raw = await readJson(configPath(dir));
-  const file = raw && typeof raw === "object" ? (raw as Partial<Config>).github : undefined;
-  const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
-  return { token: str(file?.token), name: str(file?.name), email: str(file?.email) };
-}
-
 /** Just config.json, without env or defaults; everything else should go through loadConfig. */
 async function readConfig(dir: string): Promise<Partial<Config> | undefined> {
   const raw = await readJson(configPath(dir));
   if (!raw || typeof raw !== "object") return undefined;
-  const { api_url, api_key, posthog_host, auto_update, manager } = raw as Partial<Config>;
+  const { api_url, api_key, posthog_host, auto_update } = raw as Partial<Config>;
   return {
     api_url: typeof api_url === "string" ? api_url : undefined,
     api_key: typeof api_key === "string" ? api_key : undefined,
     posthog_host: typeof posthog_host === "string" && posthog_host ? posthog_host : undefined,
     auto_update: typeof auto_update === "boolean" ? auto_update : undefined,
-    manager: manager && typeof manager === "object" ? readManager(manager) : undefined,
   };
-}
-
-function readManager(raw: ManagerSettings): ManagerSettings {
-  return {
-    enabled: typeof raw.enabled === "boolean" ? raw.enabled : undefined,
-    harness: typeof raw.harness === "string" && raw.harness ? raw.harness : undefined,
-    model: typeof raw.model === "string" && raw.model ? raw.model : undefined,
-  };
-}
-
-/** The org `loopway orgs use` saved, if any. */
-export async function readSavedOrg(dir: string): Promise<string | undefined> {
-  const raw = await readJson(configPath(dir));
-  const org = raw && typeof raw === "object" ? (raw as Partial<Config>).org : undefined;
-  return typeof org === "string" && org ? org : undefined;
-}
-
-/** Saves (or with undefined, forgets) the org commands default to, keeping the rest of config.json. */
-export async function writeSavedOrg(dir: string, org: string | undefined): Promise<void> {
-  const existing = await readJson(configPath(dir));
-  const rest = { ...(existing && typeof existing === "object" ? existing : {}) } as Record<string, unknown>;
-  delete rest.org;
-  await writeJson(configPath(dir), org ? { ...rest, org } : rest);
-}
-
-/** Just config.json's `manager`, without env or defaults. */
-export async function readManagerSettings(dir: string): Promise<ManagerSettings> {
-  return (await readConfig(dir))?.manager ?? {};
 }
 
 /**
- * Saves the settings it's given, keeping anything else config.json already has (like `github`).
+ * Saves the settings it's given, keeping anything else config.json already has.
  * The key is optional so `loopway config update` can set the URL before `loopway login`.
  */
 export async function writeConfig(
@@ -164,9 +77,7 @@ export async function writeConfig(
     api_url: string;
     api_key?: string;
     posthog_host?: string;
-    github?: GithubBot;
     auto_update?: boolean;
-    manager?: ManagerSettings;
   },
 ): Promise<void> {
   const existing = await readJson(configPath(dir));

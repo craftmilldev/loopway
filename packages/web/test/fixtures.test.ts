@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type Db } from "../src/db/index.js";
 import { openTestDb, seedFixtures } from "../src/db/testing.js";
-import { listThreads, getBot, listRunners } from "../src/store.js";
+import { getMessage, getSource } from "../src/store.js";
 
 let db: Db;
 let fx: Awaited<ReturnType<typeof seedFixtures>>;
@@ -13,11 +13,8 @@ afterAll(() => db.close());
 
 describe("seedFixtures", () => {
   it("builds a connected world on the migrated schema", async () => {
-    const bot = await getBot(db, fx.botId, fx.userId);
-    expect(bot).toMatchObject({ org_id: fx.orgId, inbox_ids: [fx.inboxId] });
-    const threads = await listThreads(db, fx.botId, "all");
-    expect(threads.map((t) => t.id)).toEqual([fx.threadId]);
-    expect((await listRunners(db, fx.userId)).map((r) => r.id)).toEqual([fx.runnerId]);
+    expect(await getSource(db, fx.sourceId, fx.userId)).toMatchObject({ id: fx.sourceId, user_id: fx.userId });
+    expect(await getMessage(db, fx.userId, fx.messageId)).toMatchObject({ source_id: fx.sourceId });
   });
 
   it("seeds each database on its own", async () => {

@@ -6,6 +6,12 @@ export const dim = (s: string) => styleText("dim", s);
 export const red = (s: string) => styleText("red", s);
 export const cyan = (s: string) => styleText("cyan", s);
 
+/** Text from someone else, made safe to print: control characters (terminal escapes, newlines) show as `\xNN`. */
+export function plain(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/[\x00-\x1f\x7f-\x9f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`);
+}
+
 export function table(headers: string[], rows: string[][]): string {
   const all = [headers.map((h) => bold(h)), ...rows];
   const widths = headers.map((_, i) => Math.max(...all.map((r) => visible(r[i] ?? ""))));

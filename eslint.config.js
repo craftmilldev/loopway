@@ -13,7 +13,9 @@ export default defineConfig(
     languageOptions: {
       globals: globals.node,
       parserOptions: {
-        projectService: { allowDefaultProject: ["eslint.config.js", "packages/web/vitest.config.ts"] },
+        projectService: {
+          allowDefaultProject: ["eslint.config.js", "packages/web/vitest.config.ts", "packages/cli/vitest.config.ts"],
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -32,7 +34,7 @@ export default defineConfig(
   { files: ["packages/cli/src/program.ts"], rules: { "@typescript-eslint/no-unsafe-argument": "off" } },
   // Tests read JSON responses as `any` all over; checking those types would mean a cast per assertion.
   {
-    files: ["packages/*/test/**", "packages/*/ee/test/**"],
+    files: ["packages/*/test/**"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unsafe-argument": "off",
@@ -44,7 +46,7 @@ export default defineConfig(
   },
   // Tests that touch the database use the one openTestDb() builds from the migrations, never their own store or DB fake.
   {
-    files: ["packages/*/test/**", "packages/*/ee/test/**"],
+    files: ["packages/*/test/**"],
     rules: {
       "no-restricted-imports": [
         "error",

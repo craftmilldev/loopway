@@ -13,7 +13,6 @@ export function uuidv7(now = Date.now()): string {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isUuid = (s: string) => UUID_RE.test(s);
 
-export const newLockToken = () => `lk_${randomBytes(18).toString("base64url")}`;
 /**
  * Eight characters (40 bits) of Crockford base32, which has no I/L/O/U look-alikes, for a person to type.
  * 32 divides 256, so taking each random byte mod 32 is unbiased.
@@ -25,6 +24,10 @@ export const newLoginCode = () => Array.from(randomBytes(8), (b) => CROCKFORD[b 
 export const normalizeLoginCode = (s: string) =>
   s.replace(/[\s-]/g, "").toUpperCase().replace(/O/g, "0").replace(/[IL]/g, "1");
 export const newSecret = () => randomBytes(32).toString("hex");
+
+/** A long-lived API token. The prefix tells it from a session JWT, in code and at a glance. */
+export const API_TOKEN_PREFIX = "lw_";
+export const newApiToken = () => API_TOKEN_PREFIX + randomBytes(32).toString("base64url");
 
 export const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 

@@ -12,88 +12,72 @@ How the page reads it:
   has no buttons: a link alone on a line there is a plain text link.
 - A fenced code block is a terminal well. Its info string is the well's label (`install`, `cli`, `http`). The
   `install` well wraps a long command onto a second line; the others scroll sideways.
-- `{agents}` is replaced with the coding agents a bot can run on (the harness labels in packages/harnesses).
-- Sample data in the figure (the terminal) lives in the page code, not here.
 -->
 
 ## A Craftmill project {#top}
 
 # A notification system for your bots.
 
-Loopway is a project, not a service. It told an agent when there was work to do: a call ended, an email landed, an issue was filed, and a bot picked it up, on {agents}. We built it, ran our own work on it for a few weeks and put it down. It takes no new accounts, and the code is open on [GitHub](https://github.com/craftmilldev).
+A call ends, a deploy fails, a pull request opens. Loopway puts each of those in one inbox, and your own code reads it, wherever that code runs.
 
-## Listened to {#listens}
+```install
+curl -fsSL https://loopway.craftmill.dev/install.sh | sh
+```
 
-- **GitHub** · **Linear** · **Vercel** · **Granola** · **Resend** · **a clock** · **other bots**
+## Listens to {#listens}
 
-Each one became a CloudEvent in an inbox, and bots read their inboxes in order.
+- **GitHub** · **Linear** · **Vercel** · **Granola** · **Resend** · **a clock** · **you**
 
-## What it did {#first}
+Each one becomes a CloudEvent in your inbox, and stays for 14 days.
 
-### A call ends, and the action items are in your tracker
+## How it works {#first}
 
-The first bot we ran filed the action items from call notes. You never opened loopway to see it work: the tasks showed up in the tracker already in use.
+### One URL in, one function out
 
-1. **The call ends** — Granola saves the notes, and loopway puts the event in your bot's inbox.
-2. **The bot reads the note** — Your agent, with the bot's prompt, finds the clear action items and leaves the vague ones alone.
-3. **The tasks appear** — Each one is an issue in Linear or GitHub, or a card in Trello or Asana if your agent has that connected.
+Agents wait to be asked. Loopway tells them when there's work to do, and leaves what happens next to you.
 
-## Why we built it {#levels}
+1. **Register a sender** — `loopway source register github` stores its signing secret. Anything loopway can't verify is refused.
+2. **Give it your inbox** — You have one URL, and every sender uses it.
+3. **Write a reader** — A function that takes one message. `loopway read` calls it for each new one, in order.
 
-### Most of us sit at level 2, and the tools keep us there
+## A reader {#reader}
 
-Agents wait to be asked, so the work starts with a person. Loopway was an attempt to make the other levels the default: give a bot a role, a set of events to listen to, and rules for which thread each event joins. loopway recorded the level of every thread, so you could see the work move up.
+### It's a file you own
 
-- **Level 1 · Assisted** — You ask a model, read the answer, and do the work yourself. Nothing for loopway to run.
-  *You start it. You do it.*
-- **Level 2 · You start it** — A person opens the issue or sends the message, and a bot carries the work from there.
-  *You start it. A bot does it.*
-- **Level 3 · A bot starts it, you take part** — A call ending, a deploy or a schedule starts the work. The bot asks when it needs a decision, where you already are: a comment, a review, an issue.
-  *A bot starts it. You answer it.*
-- **Level 4 · No one has to** — Bots start the work and finish it, handing it to each other. You read the results and change the rules, not the work.
-  *Bots start it. Bots finish it.*
+Start a Claude session, file an issue, post to Slack, or do nothing. Loopway never needs to know.
 
-## How it was built {#runners}
+```reader.js
+export default async function (msg) {
+  if (msg.type === "ai.granola.note.generated") {
+    await fileActionItems(msg.data);
+  }
+}
+```
 
-### The inboxes were hosted; the bots ran on your own agent
+```cli
+loopway read reader.js    # everything since the last read
+loopway poll reader.js    # and keep going
+```
 
-The inboxes lived on a server. The bots ran wherever you started the runner, on the agent subscription you already paid for, with the permissions your agent's own settings allowed. Three bots built most of loopway itself: a planner, an implementer and a reviewer, and one person reading what they made.
+## What it promises {#promises}
 
-## What we learned {#learned}
+### Simple rules you can build on
 
-### Engineers build this themselves, and the agent vendors will too
+- **At least once** — The cursor moves past a message when your reader finishes with it. If your reader throws, that message comes again.
+- **Time is the cursor** — Every read is from a microsecond timestamp, so going back is `--since` a time, not a guess at a number.
+- **Your own machine** — Your readers run where you run them, on your own agent, with your own permissions.
 
-About thirty conversations with software engineers found no pull. People who are comfortable with agents wire up their own triggers in an afternoon, and the question that kept coming back was why the agent's own vendor wouldn't just ship this. We had no good answer, so we stopped. The idea that held up: agents should hear about work as it happens, and bots with roles are a better frame than one assistant.
+## For agents {#agents}
 
-## Examples {#examples}
+### Push and pull over MCP
 
-### Bots you could run
-
-These are examples, not the bots we ran ourselves. Each is a prompt and a few rules, on the agent that suits it.
-
-For your work:
-
-- **call-notes** — When meeting notes land, files their action items in your tracker.
-  *Granola*
-- **email-triage** — Sorts what lands in your inbox and drafts replies for the ones that need you.
-  *Resend*
-- **requests-to-tasks** — Turns each request sent to loopway into a task, or asks what it's missing.
-  *loopway*
-
-For your code:
-
-- **issue-to-pr** — Works each ready issue through to a pull request, then follows its reviews and CI.
-  *GitHub*
-- **second-look** — Reviews each pull request and talks its feedback through. It never changes the code.
-  *GitHub*
-- **deploy-medic** — When a production deploy fails, finds out why and files an issue so it gets fixed.
-  *Vercel*
+A hosted MCP server gives an agent the same inbox with no CLI installed: one tool to push a message, and one to pull them.
 
 ## The code {#start}
 
 ### It's open, so run your own.
 
-loopway is open core. Everything is MIT-licensed except `packages/web/ee`. The source, the docs and how to deploy your own copy are on GitHub.
+loopway is open source and MIT-licensed. The source, the docs and how to deploy your own copy are on GitHub.
 
 [Craftmill on GitHub](https://github.com/craftmilldev)
 [Read the code](https://github.com/craftmilldev/loopway)

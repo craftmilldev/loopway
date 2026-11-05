@@ -1,23 +1,15 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { app, call, newUser } from "../helpers.js";
+import { app, call, newSource, newUser, readAll } from "../helpers.js";
 
 describe("vercel webhooks", () => {
   const VERCEL_SECRET = "vercel-made-this-secret";
 
-  async function vercelInbox(key: string, config?: unknown) {
-    const r = await call("POST", "/inboxes", { key, body: { name: "vc", source_type: "vercel", config } });
-    expect(r.status).toBe(201);
-    return r.body as {
-      id: string;
-      config: { secret: string | null; events: string[] };
-      setup: Record<string, unknown>;
-    };
-  }
+  const vercelSource = (key: string, secret?: string) => newSource(key, { type: "vercel", secret });
 
-  function sendVercel(inboxId: string, body: unknown, secret = VERCEL_SECRET) {
+  function sendVercel(userId: string, body: unknown, secret = VERCEL_SECRET) {
     const raw = JSON.stringify(body);
-    return app.request(`/api/webhooks/${inboxId}`, {
+    return app.request(`/api/webhooks/${userId}`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -40,27 +32,26 @@ describe("vercel webhooks", () => {
     },
   });
 
-  it("creates without a secret and rejects deliveries until one is set", async () => {
+  it("registers without a secret and rejects deliveries until one is set", async () => {
     const key = await newUser();
-    const inbox = await vercelInbox(key);
-    expect(inbox.config).toEqual({ events: ["*"], secret_set: false });
-    expect(inbox.setup.secret).toMatch(/not set yet/);
-    const early = await sendVercel(inbox.id, deployment("deployment.created"));
+    const source = await vercelSource(key);
+    expect(source).toMatchObject({ secret_set: false });
+    const early = await sendVercel(source.userId, deployment("deployment.created"));
     expect(early.status).toBe(401);
+    expect((await early.json()).error.code).toBe("unverified");
 
-    const r = await call("PATCH", `/inboxes/${inbox.id}`, { key, body: { config: { secret: VERCEL_SECRET } } });
-    expect(r.body.config).toEqual({ events: ["*"], secret_set: true });
-    expect(r.body.setup.secret).toBe("set");
-    expect((await sendVercel(inbox.id, deployment("deployment.created"))).status).toBe(202);
+    const r = await call("PATCH", `/sources/${source.id}`, { key, body: { secret: VERCEL_SECRET } });
+    expect(r.body.secret_set).toBe(true);
+    expect((await sendVercel(source.userId, deployment("deployment.created"))).status).toBe(202);
   });
 
   it("stores a signed event as a CloudEvent with the deployment as subject", async () => {
     const key = await newUser();
-    const inbox = await vercelInbox(key, { secret: VERCEL_SECRET });
+    const source = await vercelSource(key, VERCEL_SECRET);
     const body = deployment("deployment.error", "evt_1");
-    expect((await sendVercel(inbox.id, body)).status).toBe(202);
-    const e = (await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data[0];
-    expect(e.event).toMatchObject({
+    expect((await sendVercel(source.userId, body)).status).toBe(202);
+    const [e] = await readAll(key);
+    expect(e!.event).toMatchObject({
       specversion: "1.0",
       id: "evt_1",
       type: "com.vercel.deployment.error",
@@ -74,7 +65,7 @@ describe("vercel webhooks", () => {
 
   it("gives every event a subject", async () => {
     const key = await newUser();
-    const inbox = await vercelInbox(key, { secret: VERCEL_SECRET });
+    const source = await vercelSource(key, VERCEL_SECRET);
     const cases: [type: string, payload: unknown, source: string, subject: string][] = [
       [
         "deployment.rollback",
@@ -114,25 +105,22 @@ describe("vercel webhooks", () => {
       ],
       ["something.new", {}, "https://vercel.com", "evt_new"],
     ];
-    for (const [type, payload, source, subject] of cases) {
+    for (const [type, payload, ceSource, subject] of cases) {
       const id = type === "something.new" ? "evt_new" : randomUUID();
-      expect((await sendVercel(inbox.id, { id, type, createdAt: Date.now(), payload })).status).toBe(202);
-      const e = (await call("GET", `/inboxes/${inbox.id}/messages?type=com.vercel.${type}`, { key })).body.data[0];
-      expect(e.event).toMatchObject({ source, subject });
+      expect((await sendVercel(source.userId, { id, type, createdAt: Date.now(), payload })).status).toBe(202);
+      const e = (await readAll(key)).find((m) => m.event.type === `com.vercel.${type}`);
+      expect(e!.event).toMatchObject({ source: ceSource, subject });
     }
   });
 
-  it("rejects bad signatures, dedupes redeliveries, and rejects filtered events", async () => {
+  it("rejects bad signatures and dedupes redeliveries", async () => {
     const key = await newUser();
-    const inbox = await vercelInbox(key, { secret: VERCEL_SECRET, events: ["deployment.error"] });
-    expect((await sendVercel(inbox.id, deployment("deployment.error"), "wrong")).status).toBe(401);
-    expect((await sendVercel(inbox.id, deployment("deployment.error", "same"))).status).toBe(202);
-    const dup = await sendVercel(inbox.id, deployment("deployment.error", "same"));
+    const source = await vercelSource(key, VERCEL_SECRET);
+    expect((await sendVercel(source.userId, deployment("deployment.error"), "wrong")).status).toBe(401);
+    expect((await sendVercel(source.userId, deployment("deployment.error", "same"))).status).toBe(202);
+    const dup = await sendVercel(source.userId, deployment("deployment.error", "same"));
     expect(dup.status).toBe(200);
     expect((await dup.json()).duplicate).toBe(true);
-    const filtered = await sendVercel(inbox.id, deployment("deployment.created"));
-    expect(filtered.status).toBe(422);
-    expect((await filtered.json()).error.message).toBe('event "deployment.created" not enabled for this inbox');
-    expect((await call("GET", `/inboxes/${inbox.id}/messages`, { key })).body.data).toHaveLength(1);
+    expect(await readAll(key)).toHaveLength(1);
   });
 });

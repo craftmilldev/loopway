@@ -5,8 +5,6 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { context } from "esbuild";
 import { Hono } from "hono";
 import { getDb, migrate } from "../src/db/index.js";
-import { secretBox } from "../src/secrets.js";
-import { encryptInboxSecrets } from "../src/store.js";
 import { clientBuild } from "./client.js";
 
 if (!process.env.TOKEN_SECRET) {
@@ -23,7 +21,6 @@ const { default: app } = await import("../src/index.js"); // after TOKEN_SECRET 
 // Open and migrate up front so the first request isn't slow and a fresh local database has its tables.
 const db = await getDb();
 await migrate(db);
-await encryptInboxSecrets(db, secretBox(process.env.INBOX_SECRET_KEY));
 
 // Rebuild the web UI bundle into public/ on change, and serve public/ the way Vercel's CDN serves the icons in
 // production.

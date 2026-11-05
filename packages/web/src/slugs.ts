@@ -1,12 +1,11 @@
 import { RESERVED_SLUGS } from "./reserved-slugs.js";
 
-// Org slugs, which are also usernames: a user's personal org has their username as its slug, so both share one
-// namespace. The reserved names are in reserved-slugs.ts.
+// Usernames. The reserved names are in reserved-slugs.ts.
 
 const SLUG_MIN = 2;
 const SLUG_MAX = 39;
 
-/** Why a slug can't be used. `taken` isn't something slugProblem can see: it takes the database (see usernameProblem). */
+/** Why a username can't be used. `taken` isn't something slugProblem can see: it takes the database (see usernameProblem). */
 export type SlugProblem = "too_short" | "too_long" | "invalid_chars" | "edge_hyphen" | "reserved" | "taken";
 
 /** Lowercase `[a-z0-9-]`, 2-39 characters, no leading or trailing `-`, not reserved. Undefined when it's fine. */
@@ -26,14 +25,4 @@ export const USERNAME_PROBLEM_MESSAGES: Record<SlugProblem, string> = {
   edge_hyphen: "Usernames can't start or end with a hyphen",
   reserved: "That username is reserved",
   taken: "That username is taken",
-};
-
-/** The same problems as USERNAME_PROBLEM_MESSAGES, worded for an org's slug. */
-export const ORG_SLUG_PROBLEM_MESSAGES: Record<SlugProblem, string> = {
-  too_short: `Org slugs are at least ${SLUG_MIN} characters`,
-  too_long: `Org slugs are at most ${SLUG_MAX} characters`,
-  invalid_chars: "Org slugs use only lowercase letters, numbers and hyphens",
-  edge_hyphen: "Org slugs can't start or end with a hyphen",
-  reserved: "That slug is reserved",
-  taken: "That slug is taken",
 };

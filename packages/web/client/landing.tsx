@@ -1,7 +1,5 @@
-import { HARNESS_LABELS } from "@loopway/harnesses/labels";
 import { Marked, type Tokens } from "marked";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { LedeTerminal } from "./lede-terminal.js";
 import { track } from "./metrics.js";
 
 // The landing page, built from content/home.md: its comment says how the markdown maps to the page. Parsing turns
@@ -18,14 +16,12 @@ export interface Item {
   title?: string;
   text: string;
   note?: string;
-  /** The automation level the item (or the list's caption) names, for its swatch. */
-  level?: number;
 }
 
 export type Block =
   | { kind: "prose"; html: string; text: string }
   | { kind: "buttons"; links: { href: string; html: string; solid: boolean }[] }
-  | { kind: "list"; ordered: boolean; start: number; caption?: string; level?: number; items: Item[] }
+  | { kind: "list"; ordered: boolean; start: number; caption?: string; items: Item[] }
   | { kind: "well"; label: string; code: string };
 
 export interface Section {
@@ -38,19 +34,6 @@ export interface Section {
   heading?: string;
   blocks: Block[];
 }
-
-/** The coding agents a bot can run on, as the page names them. */
-export const AGENTS: readonly string[] = Object.values(HARNESS_LABELS);
-
-/** "A, B, C or D". */
-export function agentList(names: readonly string[]) {
-  return names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} or ${names.at(-1)}`;
-}
-
-const levelOf = (text: string) => {
-  const m = /\blevel (\d)\b/i.exec(text);
-  return m ? Number(m[1]) : undefined;
-};
 
 function item(raw: string): Item {
   const lines = raw.split("\n");
@@ -66,7 +49,6 @@ function item(raw: string): Item {
     title: inline(title),
     text: inline(m[2]!),
     note,
-    level: levelOf(kicker ?? title),
   };
 }
 
@@ -75,10 +57,10 @@ const isButtons = (p: Tokens.Paragraph) =>
   p.tokens.some((t) => t.type === "link") &&
   p.tokens.every((t) => t.type === "link" || (t.type === "text" && t.raw.trim() === ""));
 
-/** Splits home.md into its sections. `{agents}` becomes the agent list. */
-export function parseHome(markdown: string, agents: readonly string[] = AGENTS): Section[] {
+/** Splits home.md into its sections. */
+export function parseHome(markdown: string): Section[] {
   const sections: Section[] = [];
-  for (const t of md.lexer(markdown.replaceAll("{agents}", agentList(agents)))) {
+  for (const t of md.lexer(markdown)) {
     const heading = t.type === "heading" ? (t as Tokens.Heading) : undefined;
     if (heading?.depth === 2) {
       const m = /^(.*?)\s*\{#([\w-]+)\}$/.exec(heading.text);
@@ -104,7 +86,7 @@ export function parseHome(markdown: string, agents: readonly string[] = AGENTS):
       });
     } else if (t.type === "list") {
       const list = t as Tokens.List;
-      // A paragraph ending in a colon just before a list is the list's caption ("A level 4 loop:").
+      // A paragraph ending in a colon just before a list is the list's caption.
       const prev = blocks.at(-1);
       const caption = prev?.kind === "prose" && prev.text.endsWith(":") ? prev.text.slice(0, -1) : undefined;
       if (caption !== undefined) blocks.pop();
@@ -113,20 +95,12 @@ export function parseHome(markdown: string, agents: readonly string[] = AGENTS):
         ordered: list.ordered,
         start: typeof list.start === "number" ? list.start : 1,
         caption: caption && inline(caption),
-        level: caption ? levelOf(caption) : undefined,
         items: list.items.map((i) => item(i.text)),
       });
     } else blocks.push({ kind: "prose", html: md.parser([t]), text: "text" in t ? String(t.text as unknown) : "" });
   }
   return sections;
 }
-
-/**
- * The figure for a section, by id: the terminal (top).
- */
-export const FIGURES: Record<string, () => ReactNode> = {
-  top: () => <LedeTerminal />,
-};
 
 /** How each section lays out, by id. Any other id is "wide": the heading and its prose side by side, then the rest. */
 const LAYOUTS: Record<string, "split" | "strip" | "close" | "foot"> = {
@@ -145,9 +119,6 @@ const Html = ({
   className?: string;
   html: string;
 }) => <As className={className} dangerouslySetInnerHTML={{ __html: html }} />;
-
-const Swatch = ({ level }: { level?: number }) =>
-  level ? <span className={`lp-swatch lp-level-${level}`} aria-hidden="true" /> : null;
 
 const linkTarget = (href: string) =>
   href.startsWith("#") ? "anchor" : href === "/login" ? "login" : href.includes("github.com") ? "github" : "other";
@@ -189,23 +160,20 @@ function List({ list }: { list: Extract<Block, { kind: "list" }> }) {
     <div className={list.ordered ? "lp-list lp-list-ordered" : "lp-list"}>
       {list.caption && (
         <div className="lp-caption">
-          <Swatch level={list.level} />
           <span dangerouslySetInnerHTML={{ __html: list.caption }} />
         </div>
       )}
       <Tag className="lp-items" start={list.ordered && list.start !== 1 ? list.start : undefined}>
         {list.items.map((it, i) => (
-          <li key={i} className={it.level ? `lp-at-${it.level}` : undefined}>
+          <li key={i}>
             {list.ordered && <span className="lp-num">{String(list.start + i).padStart(2, "0")}</span>}
             {it.kicker && (
               <div className="lp-kicker">
-                <Swatch level={it.level} />
                 <span dangerouslySetInnerHTML={{ __html: it.kicker }} />
               </div>
             )}
             {it.title && (
               <h3 className="lp-title">
-                {!it.kicker && <Swatch level={it.level} />}
                 <span dangerouslySetInnerHTML={{ __html: it.title }} />
               </h3>
             )}
@@ -242,9 +210,9 @@ function Well({ label, code }: { label: string; code: string }) {
       <pre>
         <code>
           {code.split("\n").map((line, i, all) => (
-            // A line that doesn't start indented is a command, and gets a prompt; an indented one continues it, and a
-            // blank one gets nothing.
-            <span key={i} className={line === "" || /^\s/.test(line) ? undefined : "lp-cmd"}>
+            // In a well of commands, a line that doesn't start indented gets a prompt; an indented one continues the
+            // command above, and a blank one gets nothing. A well named for a file is code: no prompts.
+            <span key={i} className={/\.\w+$/.test(label) || line === "" || /^\s/.test(line) ? undefined : "lp-cmd"}>
               {line}
               {i < all.length - 1 ? "\n" : ""}
             </span>
@@ -269,15 +237,6 @@ function Blocks({ section, blocks, plain }: { section: string; blocks: Block[]; 
   );
 }
 
-const Figure = ({ id }: { id: string }) => {
-  const figure = FIGURES[id];
-  return figure ? (
-    <div className="lp-figure" data-figure={id}>
-      {figure()}
-    </div>
-  ) : null;
-};
-
 function SectionView({ s }: { s: Section }) {
   const layout = LAYOUTS[s.id] ?? "wide";
   const label = <div className="lp-label">{s.label}</div>;
@@ -298,7 +257,6 @@ function SectionView({ s }: { s: Section }) {
           {heading}
           {blocks(s.blocks)}
         </div>
-        <Figure id={s.id} />
       </>
     );
   else if (layout === "close") {
@@ -334,7 +292,6 @@ function SectionView({ s }: { s: Section }) {
           </div>
           {intro.length > 0 && <div className="lp-intro">{blocks(intro)}</div>}
         </div>
-        <Figure id={s.id} />
         {cut >= 0 && blocks(s.blocks.slice(cut))}
       </>
     );

@@ -1,6 +1,4 @@
 import { migrate, openDb } from "./index.js";
-import { secretBox } from "../secrets.js";
-import { encryptInboxSecrets } from "../store.js";
 import { ANONYMOUS, type Metrics } from "../metrics.js";
 
 /**
@@ -19,7 +17,7 @@ export interface RunMigrationsOptions {
 }
 
 /**
- * Applies pending migrations (the Vercel build runs this before bundling). Records `migrations_applied` (with how many
+ * Applies pending migrations (the Vercel build runs this after bundling). Records `migrations_applied` (with how many
  * ran, none included) or `migrations_failed`, then rethrows so a failure fails the build. Returns the applied
  * versions, or null when no database URL is set and there was nothing to migrate.
  */
@@ -30,14 +28,11 @@ export async function runMigrations(opts: RunMigrationsOptions): Promise<string[
     log("No DATABASE_URL_UNPOOLED, DATABASE_URL or POSTGRES_URL_NON_POOLING set; skipping migrations.");
     return null;
   }
-  const key = (opts.env ?? process.env).INBOX_SECRET_KEY;
   let applied: string[];
-  let moved: number | null;
   try {
     const db = await openDb({ databaseUrl });
     try {
       applied = await migrate(db);
-      moved = await encryptInboxSecrets(db, secretBox(key));
     } finally {
       await db.close();
     }
@@ -48,8 +43,6 @@ export async function runMigrations(opts: RunMigrationsOptions): Promise<string[
     throw err;
   }
   await opts.metrics.capture("migrations_applied", ANONYMOUS, { count: applied.length });
-  if (moved) await opts.metrics.capture("inbox_secrets_encrypted", ANONYMOUS, { count: moved });
   log(applied.length ? `Applied: ${applied.join(", ")}` : "Migrations up to date.");
-  if (moved) log(`Encrypted ${moved} inbox secrets.`);
   return applied;
 }

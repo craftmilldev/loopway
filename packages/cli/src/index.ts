@@ -21,6 +21,9 @@ const program = createProgram(ctx);
 
 try {
   await program.parseAsync();
+  // A reader can leave a timer or a socket open, and that mustn't keep `read` from exiting. Output first.
+  await new Promise((done) => process.stdout.write("", done));
+  process.exit(0);
 } catch (err) {
   // Counted by kind, so the metrics show where commands stop.
   const kind = err instanceof ApiError ? `api:${err.code}` : err instanceof Error ? err.constructor.name : "unknown";

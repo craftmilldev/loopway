@@ -60,7 +60,7 @@ describe("metrics", () => {
   });
 
   it("gives the browser the PostHog key only when one is set", async () => {
-    const without = await (await app.request("/dashboard")).text();
+    const without = await (await app.request("/")).text();
     expect(without).not.toContain("posthog-key");
     const keyed = createApi({
       getDb: async () => db,
@@ -68,8 +68,8 @@ describe("metrics", () => {
       inboxSecretKey: TEST_INBOX_KEY,
       posthogKey: "phc_test",
     });
-    expect(await (await keyed.request("/dashboard")).text()).toContain('<meta name="posthog-key" content="phc_test">');
-    expect(await (await keyed.request("/dashboard")).text()).toContain('content="https://us.posthog.com"');
+    expect(await (await keyed.request("/")).text()).toContain('<meta name="posthog-key" content="phc_test">');
+    expect(await (await keyed.request("/")).text()).toContain('content="https://us.posthog.com"');
   });
 
   it("records nothing without a PostHog key", () => {
@@ -90,7 +90,7 @@ describe("metrics", () => {
   });
 
   it("puts the escaped host in a meta tag, and only when there is a key", async () => {
-    const page = async (opts: Parameters<typeof createWeb>[0]) => (await createWeb(opts).request("/login")).text();
+    const page = async (opts: Parameters<typeof createWeb>[0]) => (await createWeb(opts).request("/")).text();
     expect(await page({})).not.toContain("posthog-host");
     expect(await page({ posthogKey: "phc_test" })).toContain(`<meta name="posthog-host" content="${POSTHOG_PROXY}">`);
     expect(await page({ posthogKey: "phc_test", posthogHost: 'https://x.test/"><b>' })).toContain(

@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
-import { HARNESS_LABELS } from "@loopway/harnesses/labels";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import home from "../content/home.md";
 import { track } from "../client/metrics.js";
-import { agentList, AGENTS, LandingSections, parseHome } from "../client/landing.js";
+import { LandingSections, parseHome } from "../client/landing.js";
 
 vi.mock("../client/metrics.js", () => ({ track: vi.fn() }));
 
@@ -19,7 +18,7 @@ const FIXTURE = `<!-- not on the page -->
 
 # Bots that *ask*.
 
-Run by {agents}.
+Run by people.
 
 [Get started](/login)
 [Read the docs](https://example.com/docs)
@@ -53,8 +52,7 @@ loopway bots run
 \`\`\`
 `;
 
-const draw = (md: string, agents?: readonly string[]) =>
-  render(<LandingSections sections={parseHome(md, agents)} />).container;
+const draw = (md: string) => render(<LandingSections sections={parseHome(md)} />).container;
 
 describe("the landing page from markdown", () => {
   it("makes a section for each ## with its id and label, and drops what comes before the first", () => {
@@ -86,7 +84,6 @@ describe("the landing page from markdown", () => {
 
     const [first, second] = [...bots!.querySelectorAll("li")];
     expect(first!.querySelector(".lp-kicker")?.textContent).toBe("Level 3");
-    expect(first!.querySelector(".lp-swatch.lp-level-3")).not.toBeNull();
     expect(first!.querySelector(".lp-title")?.textContent).toBe("A bot starts it");
     expect(first!.querySelector(".lp-note")?.textContent).toBe("A bot starts it. You answer it.");
     expect(second!.querySelector(".lp-title")).toBeNull();
@@ -148,27 +145,6 @@ describe("the landing page from markdown", () => {
     await waitFor(() => expect(track).toHaveBeenCalledWith("landing_well_copy_failed", { well: "install" }));
     expect(button.textContent).toBe("Copy");
   });
-
-  it("fills the top figure with the terminal", () => {
-    const c = draw(FIXTURE);
-    expect(c.querySelector('#top .lp-figure[data-figure="top"] .lt')).not.toBeNull();
-    expect(c.querySelector("#how .lp-figure")).toBeNull();
-  });
-
-  it("names the agents from the harness labels, so a new one shows up in the text", () => {
-    expect(AGENTS).toEqual(Object.values(HARNESS_LABELS));
-    expect(draw(FIXTURE).textContent).toContain(`Run by ${agentList(AGENTS)}.`);
-    cleanup();
-    const more = [...AGENTS, "Gemini"];
-    expect(draw(FIXTURE, more).textContent).toContain(`Run by ${agentList(more)}.`);
-    expect(agentList(more)).toMatch(/ or Gemini$/);
-  });
-
-  it("joins agent names as A, B, C or D", () => {
-    expect(agentList(["A"])).toBe("A");
-    expect(agentList(["A", "B"])).toBe("A or B");
-    expect(agentList(["A", "B", "C", "D"])).toBe("A, B, C or D");
-  });
 });
 
 describe("content/home.md", () => {
@@ -179,21 +155,26 @@ describe("content/home.md", () => {
       "top",
       "listens",
       "first",
-      "levels",
-      "runners",
-      "learned",
-      "examples",
+      "reader",
+      "promises",
+      "agents",
       "start",
       "colophon",
     ]);
   });
 
-  it("has no buttons in the lede, and no install command or sign-up anywhere", () => {
+  it("has the install command in the lede, and no way to log in on the web", () => {
     const c = draw(home);
     expect(c.querySelector("#top .btn")).toBeNull();
-    expect(c.querySelector(".lp-well-wrap")).toBeNull();
-    expect(c.textContent).not.toMatch(/install\.sh|loopway login|sign up|get started/i);
+    expect(c.querySelector("#top .lp-well")?.textContent).toContain("install.sh");
     expect(c.innerHTML).not.toContain('href="/login"');
+  });
+
+  it("gives a file's code no shell prompts", () => {
+    const c = draw(home);
+    const wells = [...c.querySelectorAll("#reader .lp-well")];
+    expect(wells[0]!.querySelector(".lp-cmd")).toBeNull();
+    expect(wells[1]!.querySelector(".lp-cmd")).not.toBeNull();
   });
 
   it("points the close at GitHub with plain links", () => {
@@ -204,22 +185,5 @@ describe("content/home.md", () => {
       "https://github.com/craftmilldev/loopway",
     ]);
     expect(links[0]!.parentElement?.className).toBe("lp-links");
-  });
-
-  it("names every agent in the lede, and says nothing of a sandbox", () => {
-    const c = draw(home);
-    expect(c.querySelector("#top")!.textContent).toContain(agentList(AGENTS));
-    expect(c.textContent).not.toMatch(/sandbox/i);
-  });
-});
-
-describe("the examples", () => {
-  it("has two captioned rows, one for work and one for code", () => {
-    const c = draw(home).querySelector("#examples")!;
-    expect([...c.querySelectorAll(".lp-caption")].map((e) => e.textContent)).toEqual([
-      "For your work",
-      "For your code",
-    ]);
-    expect([...c.querySelectorAll(".lp-items")].map((l) => l.querySelectorAll("li").length)).toEqual([3, 3]);
   });
 });

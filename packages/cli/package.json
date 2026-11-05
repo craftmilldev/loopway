@@ -1,6 +1,6 @@
 {
   "name": "@loopway/cli",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "private": true,
   "license": "MIT",
   "description": "Command-line client for the loopway API.",
@@ -21,22 +21,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@loopway/harnesses": "*",
-    "@loopway/palette": "*",
-    "@loopway/presets": "*",
-    "@loopway/rules": "*",
     "@clack/prompts": "^1.8.1",
-    "chalk": "^6.0.1",
     "commander": "^15.0.0",
-    "ink": "^8.0.0",
-    "posthog-node": "^5.55.1",
-    "react": "^19.3.0"
+    "posthog-node": "^5.55.1"
   },
   "devDependencies": {
     "@loopway/web": "*",
     "@types/node": "^22.0.0",
-    "@types/react": "^19.3.0",
-    "ink-testing-library": "^4.0.0",
     "tsx": "^4.23.15",
     "typescript": "^5.9.0",
     "vitest": "^5.0.3"

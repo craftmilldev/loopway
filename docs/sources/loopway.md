@@ -1,34 +1,26 @@
 # Loopway
 
-An inbox with `source_type: "loopway"` receives messages posted straight to it. Bots and backends use these inboxes to send each other messages.
+A source of type `loopway` lets scripts, CI jobs and services with no signed webhooks of their own post messages straight to your inbox.
 
-## Config
+## Setup
 
-`{ "secret"?: string (≥16 chars, generated if omitted), "events"?: ["build.finished", ...] (default ["*"]), "schema"?: JSON Schema }`
-
-loopway makes the secret; it is the inbox token senders use as a bearer token. It is shown once, in the response that creates the inbox, and never returned again.
-
-`schema` is a JSON Schema (2020-12) every message must match. Its `required` must include `type`, `id` and `data`; the default, `{"type": "object", "required": ["type", "id", "data"]}`, accepts any values for them. Set it with `loopway inbox create --schema schema.json` or `loopway inbox update <inbox> --schema schema.json`.
+`loopway source register loopway --name builds` prints your inbox URL and a secret. The secret is the bearer token senders use. loopway makes it and shows it once; it is stored encrypted and never returned again. To use your own, pass `--secret` (at least 16 characters). Register one source per sender if you want to revoke them apart.
 
 ## Sending a message
 
 ```sh
-curl -X POST <webhook_url> \
-  -H "Authorization: Bearer <inbox token>" \
+curl -X POST <inbox URL> \
+  -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"type": "build.finished", "id": "build-42", "data": {"ok": true}}'
 ```
 
-`type` is a non-empty string, `id` is a string or number naming what the message is about, and `data` is the message.
+`type` is a non-empty string, `id` is a string or number naming what the message is about, and `data`, which is optional, is the message.
 
 ## Delivery
 
-Messages are authenticated by `Authorization: Bearer <inbox token>`. A body that doesn't match the inbox schema answers `400`; a `type` not in `config.events` answers `422`. Every message is stored as a new event, so nothing is deduped.
+Messages are authenticated by `Authorization: Bearer <token>`, trying each of your `loopway` sources. A message none of them verifies answers `401` with code `unverified` and is not stored. Your login session or API token is not a source's token, and answers the same. A content type other than `application/json` answers `415`; a body that isn't a JSON object, or has a bad `type` or `id`, answers `400`. Every message is stored as a new event, so nothing is deduped.
 
 ## CloudEvent mapping
 
-`id` = a new UUID per message, `type` = body `type`, `source` = the inbox's webhook URL, `subject` = `<type>/<id>` with body `id` (so every message about the same thing shares a subject), `time` = receive time, `data` = body `data`.
-
-## Test message
-
-The test message is `{"type": "test", "id": "test-1", "data": {"message": "A test message from loopway"}}`, sent with the inbox token. If `config.events` leaves out `test`, its `type` is the first type the inbox accepts. A message the inbox schema refuses is refused for the test too.
+`id` = a new UUID per message, `type` = body `type`, `source` = your inbox URL, `subject` = `<type>/<id>` with body `id` (so every message about the same thing shares a subject), `time` = receive time, `data` = body `data`.

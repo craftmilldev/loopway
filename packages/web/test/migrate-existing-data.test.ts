@@ -5,19 +5,22 @@ import { migrations } from "../src/db/migrations.js";
 import { openTestDb } from "../src/db/testing.js";
 import { migrateBefore } from "./migrate-before.js";
 
-// Migrations run on every deploy, against data that is already there. This rolls a database back to just before the
-// newest migration, fills it as production would be then, applies the newest migration and checks the rows survived.
-// The rows below are written for the schema before the newest migration: when a new migration lands, this test
-// then rolls back to before *that* one, so update the INSERTs to its previous schema if they no longer fit.
-describe("the newest migration over existing data", () => {
-  it("keeps every row", async () => {
-    const newest = migrations.at(-1)!.version;
+// Migrations run on every deploy, against data that is already there. Each test rolls a database back to just before a
+// migration, fills it as production would be then, applies the rest and checks what is left.
+describe("migration 040_v1", () => {
+  it("is the newest, so this test's rows are written for the schema before it", () => {
+    expect(migrations.at(-1)!.version).toBe("040_v1");
+  });
+
+  it("moves usernames onto users, and leaves nothing else from before", async () => {
     const db = await openTestDb();
     try {
-      await migrateBefore(db, newest);
+      await migrateBefore(db, "040_v1");
       const id = {
         user: randomUUID(),
-        org: randomUUID(),
+        nameless: randomUUID(),
+        personal: randomUUID(),
+        shared: randomUUID(),
         inbox: randomUUID(),
         bot: randomUUID(),
         thread: randomUUID(),
@@ -25,120 +28,68 @@ describe("the newest migration over existing data", () => {
         message: randomUUID(),
       };
       const actor = `user:${id.user}`;
-      await db.query(`INSERT INTO loopway.users (id, name, email) VALUES ($1, 'u', 'u@example.com')`, [id.user]);
       await db.query(
-        `INSERT INTO loopway.orgs (id, slug, name, personal_user_id) VALUES ($1, 'existing', 'existing', $2)`,
-        [id.org, id.user],
-      );
-      await db.query(`INSERT INTO loopway.org_members (org_id, user_id, created_by) VALUES ($1, $2, $3)`, [
-        id.org,
-        id.user,
-        actor,
-      ]);
-      await db.query(
-        `INSERT INTO loopway.inboxes (id, created_by, org_id, name, source_type) VALUES ($1, $2, $3, 'i', 'github')`,
-        [id.inbox, actor, id.org],
+        `INSERT INTO loopway.users (id, name, email) VALUES ($1, 'u', 'u@example.com'), ($2, 'n', 'n@example.com')`,
+        [id.user, id.nameless],
       );
       await db.query(
-        `INSERT INTO loopway.bots (id, created_by, org_id, name, model, harness) VALUES ($1, $2, $3, 'b', 'sonnet', 'claude')`,
-        [id.bot, actor, id.org],
+        `INSERT INTO loopway.orgs (id, slug, name, personal_user_id)
+         VALUES ($1, 'existing', 'existing', $2), ($3, 'team', 'team', NULL)`,
+        [id.personal, id.user, id.shared],
+      );
+      await db.query(
+        `INSERT INTO loopway.org_members (org_id, user_id, created_by) VALUES ($1, $2, $3), ($4, $2, $3)`,
+        [id.personal, id.user, actor, id.shared],
+      );
+      await db.query(
+        `INSERT INTO loopway.inboxes (id, created_by, org_id, name, source_type, config)
+         VALUES ($1, $2, $3, 'gh', 'github', '{}'::jsonb)`,
+        [id.inbox, actor, id.personal],
+      );
+      await db.query(
+        `INSERT INTO loopway.messages (id, inbox_id, ce_id, ce_source, ce_type, cloudevent)
+         VALUES ($1, $2, 'ce-1', 'src', 'com.github.push', '{}'::jsonb)`,
+        [id.message, id.inbox],
+      );
+      await db.query(
+        `INSERT INTO loopway.bots (id, created_by, org_id, name, model, harness)
+         VALUES ($1, $2, $3, 'b', 'sonnet', 'claude')`,
+        [id.bot, actor, id.personal],
       );
       await db.query(`INSERT INTO loopway.bot_inboxes (bot_id, inbox_id, org_id) VALUES ($1, $2, $3)`, [
         id.bot,
         id.inbox,
-        id.org,
+        id.personal,
       ]);
-      await db.query(`INSERT INTO loopway.runners (id, created_by, org_id, name) VALUES ($1, $2, $3, 'r')`, [
-        id.runner,
-        actor,
-        id.org,
+
+      expect(await migrate(db)).toEqual(["040_v1"]);
+
+      expect(await db.query(`SELECT id, username FROM loopway.users ORDER BY email`)).toEqual([
+        { id: id.nameless, username: null },
+        { id: id.user, username: "existing" },
       ]);
-      await db.query(`INSERT INTO loopway.threads (id, bot_id, created_by, org_id) VALUES ($1, $2, $3, $4)`, [
-        id.thread,
-        id.bot,
-        `bot:${id.bot}`,
-        id.org,
-      ]);
-      await db.query(
-        `INSERT INTO loopway.messages (id, inbox_id, ce_id, ce_source, ce_type, cloudevent) VALUES ($1, $2, 'ce-1', 'src', 'com.example.t', $3::jsonb)`,
-        [id.message, id.inbox, { specversion: "1.0", id: "ce-1", source: "src", type: "com.example.t" }],
+      expect(await db.query(`SELECT 1 FROM loopway.messages`)).toEqual([]);
+      const tables = await db.query<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'loopway' ORDER BY 1`,
       );
-
-      // The columns every migration should leave alone, read before and after (a new column may be added, not these changed).
-      const snapshot = async () => ({
-        inboxes: await db.query(`SELECT id, created_by, org_id, name, source_type FROM loopway.inboxes ORDER BY id`),
-        bots: await db.query(`SELECT id, created_by, org_id, name, model, harness FROM loopway.bots ORDER BY id`),
-        threads: await db.query(`SELECT id, bot_id, created_by, org_id FROM loopway.threads ORDER BY id`),
-        runners: await db.query(`SELECT id, created_by, org_id, name FROM loopway.runners ORDER BY id`),
-        messages: await db.query(`SELECT id, inbox_id, ce_id, cloudevent FROM loopway.messages ORDER BY id`),
-      });
-      const before = await snapshot();
-
-      await migrate(db);
-
-      expect(await snapshot()).toEqual(before);
-
-      const count = async (table: string) =>
-        Number((await db.query<{ n: string }>(`SELECT count(*) AS n FROM loopway.${table}`))[0]!.n);
-      for (const table of [
-        "users",
-        "orgs",
-        "org_members",
-        "inboxes",
-        "bots",
-        "bot_inboxes",
-        "runners",
-        "threads",
+      expect(tables.map((t) => t.table_name)).toEqual([
+        "api_tokens",
+        "login_codes",
         "messages",
-      ])
-        expect(await count(table), table).toBe(1);
-      expect(
-        await db.query(`SELECT id FROM loopway.threads WHERE id = $1 AND bot_id = $2`, [id.thread, id.bot]),
-      ).toHaveLength(1);
-      expect(await db.query(`SELECT 1 FROM loopway.schema_migrations WHERE version = $1`, [newest])).toHaveLength(1);
-    } finally {
-      await db.close();
-    }
-  });
-});
-
-describe("migration 037_drop_bot_leases", () => {
-  it("drops the bot's lease columns, keeping the bot and its cursor, even for a bot that was leased", async () => {
-    const db = await openTestDb();
-    try {
-      await migrateBefore(db, "037_drop_bot_leases");
-      const id = { user: randomUUID(), org: randomUUID(), bot: randomUUID(), runner: randomUUID() };
-      const actor = `user:${id.user}`;
-      await db.query(`INSERT INTO loopway.users (id, name, email) VALUES ($1, 'u', 'u@example.com')`, [id.user]);
-      await db.query(
-        `INSERT INTO loopway.orgs (id, slug, name, personal_user_id) VALUES ($1, 'existing', 'existing', $2)`,
-        [id.org, id.user],
-      );
-      await db.query(`INSERT INTO loopway.runners (id, created_by, org_id, name) VALUES ($1, $2, $3, 'r')`, [
-        id.runner,
-        actor,
-        id.org,
+        "schema_migrations",
+        "sources",
+        "users",
       ]);
-      await db.query(
-        `INSERT INTO loopway.bots (id, created_by, org_id, name, model, harness, cursor, lock_token, locked_until, runner_id)
-         VALUES ($1, $2, $3, 'b', 'sonnet', 'claude', 7, 'lk_old', now() + interval '1 hour', $4)`,
-        [id.bot, actor, id.org, id.runner],
+      const leftovers = await db.query(
+        `SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'loopway'`,
       );
-
-      await migrate(db);
-
-      const columns = (
-        await db.query<{ column_name: string }>(
-          `SELECT column_name FROM information_schema.columns WHERE table_schema = 'loopway' AND table_name = 'bots'`,
-        )
-      ).map((c) => c.column_name);
-      expect(columns).toContain("cursor");
-      for (const gone of ["lock_token", "locked_until", "runner_id"]) expect(columns).not.toContain(gone);
-      const [bot] = await db.query<{ name: string; cursor: string }>(
-        `SELECT name, cursor FROM loopway.bots WHERE id = $1`,
-        [id.bot],
-      );
-      expect(bot).toMatchObject({ name: "b", cursor: "7" });
+      expect(leftovers).toEqual([]);
+      // A source belongs to its user.
+      await db.query(`INSERT INTO loopway.sources (id, user_id, name, source_type) VALUES ($1, $2, 'gh', 'github')`, [
+        randomUUID(),
+        id.user,
+      ]);
+      expect(await db.query(`SELECT 1 FROM loopway.sources`)).toHaveLength(1);
     } finally {
       await db.close();
     }
