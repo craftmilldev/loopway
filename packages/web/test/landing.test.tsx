@@ -170,6 +170,13 @@ describe("content/home.md", () => {
     expect(c.innerHTML).not.toContain('href="/login"');
   });
 
+  it("gives a file's code no shell prompts", () => {
+    const c = draw(home);
+    const wells = [...c.querySelectorAll("#reader .lp-well")];
+    expect(wells[0]!.querySelector(".lp-cmd")).toBeNull();
+    expect(wells[1]!.querySelector(".lp-cmd")).not.toBeNull();
+  });
+
   it("points the close at GitHub with plain links", () => {
     const c = draw(home);
     const links = within(c.querySelector<HTMLElement>("#start")!).getAllByRole("link");

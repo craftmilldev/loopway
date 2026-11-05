@@ -210,9 +210,9 @@ function Well({ label, code }: { label: string; code: string }) {
       <pre>
         <code>
           {code.split("\n").map((line, i, all) => (
-            // A line that doesn't start indented is a command, and gets a prompt; an indented one continues it, and a
-            // blank one gets nothing.
-            <span key={i} className={line === "" || /^\s/.test(line) ? undefined : "lp-cmd"}>
+            // In a well of commands, a line that doesn't start indented gets a prompt; an indented one continues the
+            // command above, and a blank one gets nothing. A well named for a file is code: no prompts.
+            <span key={i} className={/\.\w+$/.test(label) || line === "" || /^\s/.test(line) ? undefined : "lp-cmd"}>
               {line}
               {i < all.length - 1 ? "\n" : ""}
             </span>
