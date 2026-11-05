@@ -53,13 +53,16 @@ describe("the hosted MCP endpoint", () => {
     const { tools } = (body as unknown as { result: { tools: { name: string; inputSchema: object }[] } }).result;
     expect(tools.map((t) => t.name)).toEqual(["push_message", "pull_messages"]);
     for (const t of tools) expect(t.inputSchema).toMatchObject({ type: "object" });
+    const push = tools[0]!.inputSchema as { properties: object; required?: string[] };
+    expect(push.properties).not.toHaveProperty("type");
+    expect(push.required).toBeUndefined();
   });
 
   it("pushes and pulls the same messages as the API", async () => {
     const key = await newUser();
     const a = await newSource(key);
     await sendGithub(a, "pull_request", prPayload(1));
-    const pushed = await tool(key, "push_message", { type: "note", data: { n: 1 } });
+    const pushed = await tool(key, "push_message", { data: { n: 1 } });
     expect(pushed.isError).toBe(false);
     expect(JSON.parse(pushed.text)).toMatchObject({ duplicate: false });
     await ageMessages();
@@ -69,22 +72,27 @@ describe("the hosted MCP endpoint", () => {
     const rest = JSON.parse(
       (await tool(key, "pull_messages", { since: pulled.next_since, after: pulled.next_after })).text,
     );
-    expect(rest.data.map((m: { event: { type: string } }) => m.event.type)).toEqual(["note"]);
+    expect(rest.data.map((m: { event: { type: string } }) => m.event.type)).toEqual(["com.loopway.mcp.message"]);
   });
 
   it("only ever reads its caller's inbox", async () => {
     const a = await newUser("a");
     const b = await newUser("b");
-    await tool(a, "push_message", { type: "private" });
+    await tool(a, "push_message", { subject: "private" });
     await ageMessages();
     expect(JSON.parse((await tool(b, "pull_messages", { since: "0" })).text).data).toEqual([]);
   });
 
   it("makes bad input a tool error the agent can read, and bad protocol a JSON-RPC one", async () => {
     const key = await newUser();
-    expect(await tool(key, "push_message", {})).toMatchObject({ isError: true, text: expect.stringContaining("type") });
+    expect(await tool(key, "push_message", { type: "note" })).toMatchObject({
+      isError: true,
+      text: expect.stringContaining("type"),
+    });
+    await ageMessages();
+    expect(JSON.parse((await tool(key, "pull_messages", { since: "0" })).text).data).toEqual([]);
     expect(await tool(key, "pull_messages", { since: "soon" })).toMatchObject({ isError: true });
-    expect((await tool(key, "push_message", { type: "t", data: "a\u0000" })).isError).toBe(false);
+    expect((await tool(key, "push_message", { data: "a\u0000" })).isError).toBe(false);
     const odd = await rpc(key, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: { toString: 1 } } });
     expect(odd.status).toBe(200);
     const code = async (body: unknown) =>
