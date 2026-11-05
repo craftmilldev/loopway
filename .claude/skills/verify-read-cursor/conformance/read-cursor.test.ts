@@ -40,7 +40,7 @@ async function blockInsertsOf(user: string, ce: CloudEvent) {
   const blocker = db
     .transaction(async (tx) => {
       await tx.query(
-        `INSERT INTO loopway.inbox_messages (id, user_id, ce_id, ce_source, ce_type, cloudevent)
+        `INSERT INTO loopway.messages (id, user_id, ce_id, ce_source, ce_type, cloudevent)
          VALUES (gen_random_uuid(), $1, $2, $3, $4, $5::jsonb)`,
         [user, ce.id, ce.source, ce.type, ce],
       );
@@ -69,9 +69,7 @@ const stallingBeforeCommit = (ms: number): Db => ({
 
 /** Moves every message of this user behind the hold-back, so a test needn't wait it out. */
 const age = (user: string) =>
-  db.query(`UPDATE loopway.inbox_messages SET received_at = received_at - interval '1 minute' WHERE user_id = $1`, [
-    user,
-  ]);
+  db.query(`UPDATE loopway.messages SET received_at = received_at - interval '1 minute' WHERE user_id = $1`, [user]);
 
 interface Cursor {
   since: string;
@@ -133,7 +131,7 @@ describe("what the model takes from the code", () => {
     const { cursor } = await drain(user, 50, fromTheStart);
     expect(cursor.after).toBeUndefined();
     await db.query(
-      `UPDATE loopway.inbox_messages SET received_at = 'epoch'::timestamptz + $1::bigint * interval '1 microsecond' WHERE id = $2`,
+      `UPDATE loopway.messages SET received_at = 'epoch'::timestamptz + $1::bigint * interval '1 microsecond' WHERE id = $2`,
       [cursor.since, id],
     );
     await sleep(5);
@@ -190,9 +188,7 @@ describe("paging", () => {
     const ids: string[] = [];
     for (let i = 0; i < 7; i++) ids.push(await insert(user));
     // clock_timestamp() rarely ties on its own, so this makes the tie the code has to survive.
-    await db.query(`UPDATE loopway.inbox_messages SET received_at = now() - interval '1 minute' WHERE user_id = $1`, [
-      user,
-    ]);
+    await db.query(`UPDATE loopway.messages SET received_at = now() - interval '1 minute' WHERE user_id = $1`, [user]);
     expect((await drain(user, limit, fromTheStart)).seen).toEqual([...ids].sort());
   });
 

@@ -23,7 +23,7 @@ Run `loopway source register schedule`. Nothing else: the cron does the rest.
 - **Tick.** Run `curl -s -H "authorization: Bearer $CRON_SECRET" "$URL/api/cron/tick"`. `"accepted":1`.
 - **Repeat.** Run it again. `"accepted":0,"duplicate":1`.
 - **Stored once.** Run `"$V/lw.sh" "$RUN" messages list --type 'dev.craftmill.*'`. One row, of type `dev.craftmill.loopway.schedule.daily.report`.
-- **Purge.** Run `"$V/lw.sh" "$RUN" push old.message --id x-1`, age it with `docker exec loopway-postgres-1 psql -q -U postgres -d "$DB" -c "UPDATE loopway.inbox_messages SET received_at = now() - interval '15 days' WHERE ce_id = 'x-1'"`, then tick. `"purged":1`, and `messages list` doesn't show it.
+- **Purge.** Run `"$V/lw.sh" "$RUN" push old.message --id x-1`, age it with `docker exec loopway-postgres-1 psql -q -U postgres -d "$DB" -c "UPDATE loopway.messages SET received_at = now() - interval '15 days' WHERE ce_id = 'x-1'"`, then tick. `"purged":1`, and `messages list` doesn't show it.
 
 ## Gotchas
 
