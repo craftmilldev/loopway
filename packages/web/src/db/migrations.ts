@@ -752,4 +752,33 @@ CREATE INDEX threads_bot_updated_idx ON loopway.threads (bot_id, updated_at);
 ALTER TABLE loopway.threads ADD COLUMN title text;
 `,
   },
+  {
+    // loopway v2: an inbox belongs to a user and nothing reads bots, runners, threads or orgs any more. A username used
+    // to be the slug of the user's personal org, so it moves onto the user before the orgs go. Inboxes aren't carried
+    // over (each sender's webhook URL changes, so its secret is registered again), and their messages go with them.
+    version: "040_v2",
+    sql: `
+ALTER TABLE loopway.users ADD COLUMN username text UNIQUE;
+UPDATE loopway.users u SET username = o.slug FROM loopway.orgs o WHERE o.personal_user_id = u.id;
+DROP TABLE
+  loopway.thread_events,
+  loopway.thread_messages,
+  loopway.thread_subjects,
+  loopway.threads,
+  loopway.bot_inboxes,
+  loopway.bot_versions,
+  loopway.bots,
+  loopway.runners,
+  loopway.org_invites,
+  loopway.org_members
+  CASCADE;
+DELETE FROM loopway.inboxes;
+ALTER TABLE loopway.inboxes
+  DROP COLUMN org_id,
+  DROP COLUMN created_by,
+  ADD COLUMN user_id uuid NOT NULL REFERENCES loopway.users(id) ON DELETE CASCADE;
+CREATE INDEX inboxes_user_idx ON loopway.inboxes (user_id);
+DROP TABLE loopway.orgs;
+`,
+  },
 ];

@@ -12,15 +12,13 @@ How the page reads it:
   has no buttons: a link alone on a line there is a plain text link.
 - A fenced code block is a terminal well. Its info string is the well's label (`install`, `cli`, `http`). The
   `install` well wraps a long command onto a second line; the others scroll sideways.
-- `{agents}` is replaced with the coding agents a bot can run on (the harness labels in packages/harnesses).
-- Sample data in the figure (the terminal) lives in the page code, not here.
 -->
 
 ## A Craftmill project {#top}
 
 # A notification system for your bots.
 
-Loopway is a project, not a service. It told an agent when there was work to do: a call ended, an email landed, an issue was filed, and a bot picked it up, on {agents}. We built it, ran our own work on it for a few weeks and put it down. It takes no new accounts, and the code is open on [GitHub](https://github.com/craftmilldev).
+Loopway is a project, not a service. It told an agent when there was work to do: a call ended, an email landed, an issue was filed, and a bot picked it up, on Claude Code, Codex, Cursor or Hermes. We built it, ran our own work on it for a few weeks and put it down. It takes no new accounts, and the code is open on [GitHub](https://github.com/craftmilldev).
 
 ## Listened to {#listens}
 
@@ -93,7 +91,7 @@ For your code:
 
 ### It's open, so run your own.
 
-loopway is open core. Everything is MIT-licensed except `packages/web/ee`. The source, the docs and how to deploy your own copy are on GitHub.
+loopway is open source and MIT-licensed. The source, the docs and how to deploy your own copy are on GitHub.
 
 [Craftmill on GitHub](https://github.com/craftmilldev)
 [Read the code](https://github.com/craftmilldev/loopway)

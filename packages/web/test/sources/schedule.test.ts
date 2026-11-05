@@ -164,16 +164,15 @@ describe("schedule inboxes", () => {
           headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
           body: JSON.stringify(body),
         });
-      const org = (await call("GET", "/orgs", { key })).body.data.find((o: { personal: boolean }) => o.personal).slug;
       events.length = 0;
-      const hourly = await post({ org, name: "clock", source_type: "schedule", config });
+      const hourly = await post({ name: "clock", source_type: "schedule", config });
       expect(hourly.status).toBe(400);
       expect((await hourly.json()).error.code).toBe("schedule_option_disabled");
       expect(events).toContainEqual({
         event: "schedule_option_rejected",
         properties: { option: "hour", action: "create" },
       });
-      expect((await post({ org, name: "clock", source_type: "schedule", config: daily })).status).toBe(201);
+      expect((await post({ name: "clock", source_type: "schedule", config: daily })).status).toBe(201);
 
       const inbox = (await scheduleInbox(key, daily)).body;
       const patch = await dayOnly().request(`/api/inboxes/${inbox.id}`, {

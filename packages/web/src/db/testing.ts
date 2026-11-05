@@ -1,14 +1,5 @@
-import { randomBytes, randomUUID } from "node:crypto";
-import {
-  createBot,
-  createInbox,
-  createUser,
-  insertMessage,
-  setUsername,
-  upsertRunner,
-  writeAssignments,
-} from "../store.js";
-import { botActor } from "../actor.js";
+import { randomBytes } from "node:crypto";
+import { createInbox, createUser, insertMessage, setUsername } from "../store.js";
 import { migrate, openDb, type Db } from "./index.js";
 
 /** The docker-compose.yml Postgres; CI sets TEST_DATABASE_URL to its service container. */
@@ -88,33 +79,15 @@ export async function openTestDb(): Promise<Db> {
 }
 
 /**
- * The same small world in every test database: a user with a personal org, an inbox with one message, a bot reading it
- * with a thread holding that message, and a runner. Written through the store, so it is what the app itself would
- * write on the schema the migrations built. It goes away with the database, so there is nothing to tear down.
+ * The same small world in every test database: a user with an inbox holding one message. Written through the store,
+ * so it is what the app itself would write on the schema the migrations built. It goes away with the database, so
+ * there is nothing to tear down.
  */
 export async function seedFixtures(db: Db) {
   const { user } = await createUser(db, { name: "Fixture", email: "fixture@example.com" });
   const username = await setUsername(db, user.id, "fixture");
   if ("problem" in username) throw new Error(`Fixture username rejected: ${username.problem}`);
-  const [org] = await db.query<{ id: string }>(`SELECT id FROM loopway.orgs WHERE personal_user_id = $1`, [user.id]);
-  const orgId = org!.id;
-  const inbox = await createInbox(db, {
-    userId: user.id,
-    orgId,
-    name: "fixture-inbox",
-    sourceType: "github",
-    config: {},
-  });
-  const bot = await createBot(db, {
-    userId: user.id,
-    orgId,
-    name: "fixture-bot",
-    model: "sonnet",
-    harness: "claude",
-    inboxIds: [inbox.id],
-    prompt: "Fixture prompt",
-  });
-  const runner = await upsertRunner(db, user.id, orgId, randomUUID(), "fixture-runner");
+  const inbox = await createInbox(db, { userId: user.id, name: "fixture-inbox", sourceType: "github", config: {} });
   const message = await insertMessage(
     db,
     inbox.id,
@@ -129,21 +102,7 @@ export async function seedFixtures(db: Db) {
     },
     false,
   );
-  const threadId = randomUUID();
-  await db.transaction((tx) =>
-    writeAssignments(tx, bot.id, orgId, botActor(bot.id), [
-      { message_id: message.id, thread_id: threadId, subject: "pull/1", author_kind: "human" },
-    ]),
-  );
-  return {
-    userId: user.id,
-    orgId,
-    inboxId: inbox.id,
-    botId: bot.id,
-    runnerId: runner!.id,
-    messageId: message.id,
-    threadId,
-  };
+  return { userId: user.id, inboxId: inbox.id, messageId: message.id };
 }
 
 /** An `INBOX_SECRET_KEY` for tests that create inboxes. */

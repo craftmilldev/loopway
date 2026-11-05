@@ -131,7 +131,7 @@ describe("POST /inboxes/:id/test", () => {
     expect((await call("POST", `/inboxes/${id}/test`, { key, body: { from: "elsewhere" } })).status).toBe(400);
   });
 
-  it("is for members of the inbox's org only", async () => {
+  it("is for the inbox's owner only", async () => {
     const owner = await newUser("owner");
     const stranger = await newUser("stranger");
     const id = await makeInbox(owner, "github");

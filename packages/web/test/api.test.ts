@@ -173,27 +173,6 @@ describe("messages", () => {
   });
 });
 
-describe("bots", () => {
-  /** Ages an inbox's events past the holdback window, as if they'd arrived a minute ago. */
-  it("a bot has no lease: those routes are gone and the bot doesn't say who holds it", async () => {
-    const key = await newUser();
-    const inbox = await newInbox(key);
-    const bot = (
-      await call("POST", "/bots", {
-        key,
-        body: { name: "b", model: "sonnet", harness: "claude", inbox_ids: [inbox.id] },
-      })
-    ).body;
-    const base = `/bots/${bot.id}`;
-    for (const path of ["lease", "release", "cursor", "assign"])
-      expect((await call("POST", `${base}/${path}`, { key, body: {} })).status, path).toBe(404);
-    const got = (await call("GET", base, { key })).body;
-    for (const field of ["lock_token", "locked_until", "leased_until", "runner_id"])
-      expect(got).not.toHaveProperty(field);
-    expect(got.cursor).toBe(0);
-  });
-});
-
 describe("session tokens", () => {
   it("rejects expired, tampered and wrongly signed tokens", async () => {
     const { user } = await createUser(db, { name: "Tok" });
@@ -226,7 +205,7 @@ describe("login", () => {
     });
   const lastCode = () => sent.at(-1)!.text.match(/\b([0-9A-Z]{8})\b/)![1]!;
 
-  it("refuses an unknown email, and an invite for one, when signups are closed", async () => {
+  it("refuses an unknown email when signups are closed", async () => {
     const a = createApi({
       getDb: async () => db,
       tokenSecret: SECRET,
@@ -246,20 +225,6 @@ describe("login", () => {
     expect((await post(a, "/auth/login", { email: "CLOSED-OLD@example.com" })).status).toBe(202);
     const res = await post(a, "/auth/verify", { email: "closed-old@example.com", code: lastCode() });
     expect(res.status).toBe(201);
-    const { token } = await res.json();
-    const headers = { "content-type": "application/json", authorization: `Bearer ${token}` };
-    const org = await a.request("/api/orgs", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ slug: "closed-team" }),
-    });
-    expect(org.status).toBe(201);
-    const invite = await a.request("/api/orgs/closed-team/members", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ email: "stranger@example.com" }),
-    });
-    expect(invite.status).toBe(403);
   });
 
   it("emails a code and trades it for a session token", async () => {
@@ -316,14 +281,16 @@ describe("login", () => {
     expect(created).toBe(true);
     expect(user).toMatchObject({ name: "new-person", email: "new.person@example.com", username: "new-person" });
     expect((await a.request("/api/me", { headers: { authorization: `Bearer ${api_key}` } })).status).toBe(200);
-    const orgs = await call("GET", "/orgs", { key: api_key });
-    expect(orgs.body.data).toMatchObject([{ slug: "new-person", personal: true }]);
   });
 
   it("needs a free username to sign up, and keeps the code valid so they can retry", async () => {
     const a = loginApp();
     await newUser("Holder");
-    const slug = (await db.query<{ slug: string }>(`SELECT slug FROM loopway.orgs ORDER BY id DESC LIMIT 1`))[0]!.slug;
+    const slug = (
+      await db.query<{ username: string }>(
+        `SELECT username FROM loopway.users WHERE username IS NOT NULL ORDER BY id DESC LIMIT 1`,
+      )
+    )[0]!.username;
     await post(a, "/auth/login", { email: "retry@example.com" });
     const code = lastCode();
     const verify = async (username?: string) => {
@@ -387,40 +354,11 @@ describe("web ui", () => {
   }
 
   it("serves the page shell without auth", async () => {
-    const id = randomUUID();
-    const paths = [
-      "/",
-      "/login",
-      "/dashboard",
-      "/dashboard/bots",
-      "/dashboard/bots/new",
-      "/dashboard/inboxes",
-      `/dashboard/inboxes/${id}`,
-      `/dashboard/bots/${id}`,
-      `/dashboard/bots/${id}/prompt`,
-      "/acme",
-      "/acme/bots",
-      "/acme/bots/new",
-      "/acme/inboxes",
-      `/acme/inboxes/${id}`,
-      `/acme/bots/${id}`,
-      `/acme/bots/${id}/prompt`,
-      `/acme/bots/${id}/threads/${id}`,
-    ];
-    for (const path of [...paths, `/dashboard/bots/${id}/threads/${id}`]) {
-      const r = await get(path);
-      expect(r.status, path).toBe(200);
-      expect(r.type).toContain("text/html");
-      expect(r.text).toContain('<script type="module" src="/app.js">');
-      expect(r.text).toContain('<link rel="icon" href="/favicon.ico"');
-    }
-  });
-
-  it("redirects the old inbox page", async () => {
-    const id = randomUUID();
-    const res = await app.request(`/dashboard/${id}`);
-    expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe(`/dashboard/inboxes/${id}`);
+    const r = await get("/");
+    expect(r.status).toBe(200);
+    expect(r.type).toContain("text/html");
+    expect(r.text).toContain('<script type="module" src="/app.js">');
+    expect(r.text).toContain('<link rel="icon" href="/favicon.ico"');
   });
 
   it("serves the built bundle without auth", async () => {
@@ -440,13 +378,10 @@ describe("web ui", () => {
     expect(await call("GET", "")).toEqual({ status: 200, body: { ok: true } });
     expect(await call("GET", "/health")).toEqual({ status: 200, body: { ok: true } });
     expect((await call("GET", "/inboxes")).status).toBe(401);
-    // The org pages' /:org/bots must not take /api/bots.
-    expect((await call("GET", "/bots")).status).toBe(401);
   });
 
   it("answers 404 on the old top-level API paths", async () => {
     const id = "00000000-0000-7000-8000-000000000000";
-    // Not the GETs: a path like /me is the page of an org of that name, which RESERVED_SLUGS keeps anyone from making.
     for (const [method, path] of [
       ["POST", "/auth/login"],
       ["POST", `/webhooks/${id}`],

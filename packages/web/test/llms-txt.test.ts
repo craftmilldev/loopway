@@ -1,10 +1,9 @@
-import { HARNESSES } from "@loopway/harnesses";
 import { describe, expect, it } from "vitest";
 import { sources } from "../src/sources.js";
 import { createWeb } from "../src/ui.js";
 
 describe("GET /llms.txt", () => {
-  it("serves plain text that covers what bots, rules and the CLI are", async () => {
+  it("serves plain text that covers what inboxes, messages and the CLI are", async () => {
     const captured: string[] = [];
     const app = createWeb({ metrics: { capture: async (event) => void captured.push(event) } });
     const res = await app.request("/llms.txt");
@@ -12,17 +11,16 @@ describe("GET /llms.txt", () => {
     expect(res.headers.get("content-type")).toContain("text/plain");
     const body = await res.text();
     expect(body).toMatch(/^# loopway/);
-    for (const part of ["## How a bot's rules work", "loopway bots create", "loopway inbox create"]) {
+    for (const part of ["loopway inbox create", "loopway messages list"]) {
       expect(body).toContain(part);
     }
     expect(captured).toEqual(["llms_txt_served"]);
   });
 
-  it("names every agent and every source the code has", async () => {
+  it("names every source the code has", async () => {
     const body = await (await createWeb().request("/llms.txt")).text();
     // Look in the concept that lists each, since some names (`loopway`) also show up elsewhere.
     const concept = (name: string) => body.split("\n").find((line) => line.startsWith(`- **${name}**:`)) ?? "";
-    for (const harness of HARNESSES) expect(concept("Bot")).toContain(`\`${harness.name}\``);
     for (const type of sources.types()) expect(concept("Inbox")).toContain(`\`${type}\``);
   });
 

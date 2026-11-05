@@ -20,7 +20,6 @@ Deliveries are authenticated by `Linear-Signature` (HMAC-SHA256 over the raw bod
 
 `id` = the `Linear-Delivery` header, `type` = `com.linear.<type>.<action>` lowercased (e.g. `com.linear.issue.create`), `source` = `https://linear.app/<organizationId>`, `subject` = the issue the event is about (`data.issueId` for comments, else `data.id`), `time` = `createdAt`, `data` = the whole body.
 
-This source only stores messages. It isn't tied into thread assignment yet.
 
 ## Test message
 

@@ -18,24 +18,6 @@ export function str(v: unknown): string | undefined {
   return typeof v === "string" ? v : typeof v === "number" || typeof v === "boolean" ? String(v) : undefined;
 }
 
-const LINE_MAX = 80;
-
-/** First non-empty line of `text`, whitespace collapsed and cut to a line's length. */
-export function firstLine(text: string | undefined): string | undefined {
-  const line = text
-    ?.split(/\r?\n/)
-    .map((l) => l.replace(/\s+/g, " ").trim())
-    .find(Boolean);
-  if (!line) return undefined;
-  return line.length > LINE_MAX ? line.slice(0, LINE_MAX - 1).trimEnd() + "…" : line;
-}
-
-/** `head`, then `: ` and the first line of `text` when there is one. */
-export function withText(head: string, text: string | undefined): string {
-  const line = firstLine(text);
-  return line ? `${head}: ${line}` : head;
-}
-
 /** The Standard Webhooks (Svix) signature of a delivery, as the `v1,<base64>` header value. `secret` is `whsec_<base64>`. */
 export function standardWebhookSignature(secret: string, id: string, timestamp: string, body: string): string {
   const key = Buffer.from(secret.slice("whsec_".length), "base64");

@@ -4,13 +4,11 @@ import type { Inbox, LoopwayClient, Source } from "../client.js";
 import { authedClient, CancelledError, UsageError, type Context } from "../context.js";
 import { ago, bold, dim, fields, humanize, json, table } from "../format.js";
 
-import { resolveOrg } from "./orgs.js";
-
 // ---------- list / show ----------
 
-export async function listInboxes(ctx: Context, opts: { json?: boolean; org?: string }) {
+export async function listInboxes(ctx: Context, opts: { json?: boolean }) {
   const client = await authedClient(ctx);
-  const inboxes = await client.listInboxes(await resolveOrg(ctx, client, opts.org, "inbox"));
+  const inboxes = await client.listInboxes();
   if (opts.json) return ctx.out(json(inboxes));
   if (!inboxes.length) return ctx.out("No inboxes yet. Create one with `loopway inbox create`.");
   ctx.out(
@@ -21,9 +19,9 @@ export async function listInboxes(ctx: Context, opts: { json?: boolean; org?: st
   );
 }
 
-export async function showInbox(ctx: Context, ref: string, opts: { json?: boolean; org?: string }) {
+export async function showInbox(ctx: Context, ref: string, opts: { json?: boolean }) {
   const client = await authedClient(ctx);
-  const inbox = await client.getInbox(await resolveInbox(ctx, client, ref, opts.org));
+  const inbox = await client.getInbox(await resolveInbox(client, ref));
   if (opts.json) return ctx.out(json(inbox));
   const { stats } = inbox;
   ctx.out(
@@ -47,9 +45,9 @@ export async function showInbox(ctx: Context, ref: string, opts: { json?: boolea
   );
 }
 
-export async function testInbox(ctx: Context, ref: string, opts: { json?: boolean; org?: string }) {
+export async function testInbox(ctx: Context, ref: string, opts: { json?: boolean }) {
   const client = await authedClient(ctx);
-  const sent = await client.testInbox(await resolveInbox(ctx, client, ref, opts.org));
+  const sent = await client.testInbox(await resolveInbox(client, ref));
   if (opts.json) return ctx.out(json(sent));
   ctx.out(`Sent test message ${sent.message_id} (seq ${sent.seq}).`);
 }
@@ -57,7 +55,6 @@ export async function testInbox(ctx: Context, ref: string, opts: { json?: boolea
 // ---------- create ----------
 
 export interface CreateOptions {
-  org?: string;
   name?: string;
   source?: string;
   events?: string[];
@@ -81,7 +78,6 @@ const OTHER = "__other__";
  */
 export async function createInbox(ctx: Context, opts: CreateOptions) {
   const client = await authedClient(ctx);
-  opts = { ...opts, org: await resolveOrg(ctx, client, opts.org, "inbox") };
   const inbox = ctx.interactive ? await createInteractive(ctx, client, opts) : await createFromFlags(ctx, client, opts);
   if (inbox.source_type === "schedule") await ctx.metrics?.capture("schedule_created", { how: scheduleHow(ctx, opts) });
   if (opts.json) return ctx.out(json(inbox));
@@ -108,7 +104,7 @@ async function createFromFlags(ctx: Context, client: LoopwayClient, opts: Create
         "--every, --hour, --day, --message, --message-file and --config only work with --source schedule",
       );
     }
-    return client.createInbox({ org: opts.org!, name: opts.name, source_type: source, config: flagConfig(opts) });
+    return client.createInbox({ name: opts.name, source_type: source, config: flagConfig(opts) });
   }
 
   const reject = async (reason: string, message: string): Promise<never> => {
@@ -130,19 +126,12 @@ async function createFromFlags(ctx: Context, client: LoopwayClient, opts: Create
       "no_schedule",
       "A schedule inbox needs --every hour, --every day with --hour <0-23>, or --every week with --day and --hour",
     );
-  return createScheduleInbox(ctx, client, opts.org!, opts.name, config);
+  return createScheduleInbox(ctx, client, opts.name, config);
 }
 
-async function createScheduleInbox(
-  ctx: Context,
-  client: LoopwayClient,
-  org: string,
-  name: string,
-  config: ScheduleConfig,
-) {
+async function createScheduleInbox(ctx: Context, client: LoopwayClient, name: string, config: ScheduleConfig) {
   try {
     return await client.createInbox({
-      org,
       name,
       source_type: "schedule",
       config: config,
@@ -217,7 +206,7 @@ async function createInteractive(ctx: Context, client: LoopwayClient, opts: Crea
   spin.start("Creating inbox");
   let inbox: Inbox;
   try {
-    inbox = await client.createInbox({ org: opts.org!, name, source_type: source.type, config });
+    inbox = await client.createInbox({ name, source_type: source.type, config });
   } catch (err) {
     spin.error("Could not create inbox");
     throw err;
@@ -250,7 +239,7 @@ async function createScheduleInteractive(ctx: Context, client: LoopwayClient, op
   spin.start("Creating inbox");
   let inbox: Inbox;
   try {
-    inbox = await createScheduleInbox(ctx, client, opts.org!, name, config);
+    inbox = await createScheduleInbox(ctx, client, name, config);
   } catch (err) {
     spin.error("Could not create inbox");
     throw err;
@@ -336,8 +325,6 @@ function flagConfig(opts: CreateOptions): Record<string, unknown> | undefined {
 // ---------- update ----------
 
 export interface UpdateOptions {
-  /** The org the inbox is in, to find it by name. */
-  org?: string;
   name?: string;
   events?: string[];
   secret?: string;
@@ -367,7 +354,7 @@ const SCHEDULE_FLAG_NAMES = "--every, --hour, --day, --message, --message-file, 
  */
 export async function updateInbox(ctx: Context, ref: string, opts: UpdateOptions) {
   const client = await authedClient(ctx);
-  const id = await resolveInbox(ctx, client, ref, opts.org);
+  const id = await resolveInbox(client, ref);
   const scheduleFlags = SCHEDULE_FLAGS.filter((f) => opts[f] !== undefined);
   const hasFlags = !!(opts.name || opts.events || opts.secret || opts.schema) || scheduleFlags.length > 0;
 
@@ -755,15 +742,10 @@ export const splitList = (s: string) =>
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Commands take an inbox id or an exact inbox name, which is looked up in the org (see `resolveOrg`). */
-export async function resolveInbox(
-  ctx: Context,
-  client: LoopwayClient,
-  ref: string,
-  org: string | undefined,
-): Promise<string> {
+/** Commands take an inbox id or an exact inbox name. */
+export async function resolveInbox(client: LoopwayClient, ref: string): Promise<string> {
   if (UUID_RE.test(ref)) return ref;
-  const matches = (await client.listInboxes(await resolveOrg(ctx, client, org, "inbox"))).filter((i) => i.name === ref);
+  const matches = (await client.listInboxes()).filter((i) => i.name === ref);
   if (matches.length === 1) return matches[0]!.id;
   if (!matches.length) throw new UsageError(`No inbox with id or name "${ref}". See \`loopway inbox list\`.`);
   throw new UsageError(

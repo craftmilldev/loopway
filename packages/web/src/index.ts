@@ -1,5 +1,4 @@
 // Vercel entry point. Vercel detects Hono at src/index.ts and serves the default export as a Function.
-import { waitUntil } from "@vercel/functions";
 import { Hono } from "hono";
 import { createApi, parseScheduleOptions } from "./api.js";
 import { minCliVersion } from "./cli-version.js";
@@ -28,17 +27,9 @@ app.route(
     posthogHost: posthogHost(),
     posthogUiHost: posthogUiHost(),
     publicBaseUrl: process.env.PUBLIC_BASE_URL || undefined,
-    selfHosted: ["1", "true"].includes(process.env.SELF_HOSTED ?? ""),
     signupsClosed: /^closed$/i.test(process.env.SIGNUPS ?? ""),
     minCliVersion: minCliVersion(process.env.MIN_CLI_VERSION),
-    enterpriseLicense: process.env.CRAFTMILL_ENTERPRISE_LICENSE || undefined,
-    sourceRequests:
-      process.env.SOURCE_REQUEST_URL && process.env.SOURCE_REQUEST_TOKEN
-        ? { url: process.env.SOURCE_REQUEST_URL, token: process.env.SOURCE_REQUEST_TOKEN }
-        : undefined,
     sendEmail: senderFromEnv(),
-    defer: waitUntil,
-    serverRouting: !/^(0|off|false)$/i.test(process.env.SERVER_ROUTING ?? ""),
   }),
 );
 

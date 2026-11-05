@@ -21,32 +21,10 @@ describe("GET /", () => {
   });
 });
 
-describe("GET / on a self-hosted deploy", () => {
-  it("redirects to /login and records it", async () => {
-    const captured: string[] = [];
-    const app = createWeb({ selfHosted: true, metrics: { capture: async (event) => void captured.push(event) } });
-    const res = await app.request("/");
-    expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("/login");
-    expect(captured).toEqual(["home_redirected_to_login"]);
-    expect((await app.request("/login")).status).toBe(200);
-  });
-});
-
 describe("the marketing home", () => {
-  it("shows Log in to an anonymous visitor", () => {
+  it("shows the page's headline, and no way to log in", () => {
     render(marketingPage("/"));
     expect(screen.getByRole("heading", { level: 1 })).toBeTruthy();
-    expect(within(screen.getByRole("navigation")).getByRole("link", { name: "Log in" })).toBeTruthy();
-  });
-
-  it("shows the same page with Dashboard to a signed-in visitor", () => {
-    localStorage.setItem("loopway_token", "t");
-    render(marketingPage("/"));
-    expect(screen.getByRole("heading", { level: 1 })).toBeTruthy();
-    expect(within(screen.getByRole("navigation")).getByRole("link", { name: "Dashboard" }).getAttribute("href")).toBe(
-      "/dashboard",
-    );
     expect(within(screen.getByRole("navigation")).queryByRole("link", { name: "Log in" })).toBeNull();
   });
 
@@ -78,7 +56,7 @@ describe("the marketing home", () => {
   });
 });
 
-describe("marketing pages and org slugs", () => {
+describe("marketing pages and usernames", () => {
   it("reserves the first segment of every marketing path", () => {
     for (const path of Object.keys(CONTENT)) {
       const slug = path.split("/")[1]!;

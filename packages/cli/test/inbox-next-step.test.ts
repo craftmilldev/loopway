@@ -4,7 +4,6 @@ import type { Inbox } from "../src/client.js";
 
 const inbox = (source_type: string, config: Record<string, unknown>): Inbox => ({
   id: "i1",
-  created_by: "user:u1",
   name: "Match to ticket",
   source_type,
   config,

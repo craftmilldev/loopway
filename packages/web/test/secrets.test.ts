@@ -31,11 +31,7 @@ describe("encryptInboxSecrets", () => {
     try {
       const { user } = await createUser(db, { name: "M", email: "m@example.com" });
       await setUsername(db, user.id, "mattw");
-      const [org] = await db.query<{ id: string }>(`SELECT id FROM loopway.orgs WHERE personal_user_id = $1`, [
-        user.id,
-      ]);
-      const make = (config: object) =>
-        createInbox(db, { userId: user.id, orgId: org!.id, name: "i", sourceType: "github", config });
+      const make = (config: object) => createInbox(db, { userId: user.id, name: "i", sourceType: "github", config });
       const withSecret = await make({ secret: "s".repeat(20), events: ["*"] });
       const unset = await make({ secret: null, events: ["*"] });
       const none = await make({ events: ["*"] });

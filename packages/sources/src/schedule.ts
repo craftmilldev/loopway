@@ -120,15 +120,6 @@ export const schedule = ({ makeCloudEvent }: SourceDeps): SourceAdapter<Schedule
     return { kind: "rejected", status: 404, message: "This inbox is fed by a schedule, not webhooks" };
   },
 
-  summarize(event) {
-    const message = (event.data as { message?: unknown } | undefined)?.message;
-    return typeof message === "string" ? message.split("\n")[0]!.slice(0, 200) : null;
-  },
-
-  title() {
-    return null;
-  },
-
   tick(config, inboxId, now) {
     const start = windowStart(config.schedule, now).toISOString();
     return config.messages.map((m) => {

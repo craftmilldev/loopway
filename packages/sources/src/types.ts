@@ -86,10 +86,6 @@ export interface SourceAdapter<Config = unknown> {
   publicConfig(config: Config): unknown;
   /** Setup hints shown on inbox responses (e.g. which content type to pick in GitHub). */
   setup?(config: Config, webhookUrl: string): Record<string, unknown>;
-  /** One line on what the event is, e.g. "alice commented on #12: Looks good". Null when there's nothing to say. */
-  summarize(event: CloudEvent): string | null;
-  /** The title of the thing the event is about (an issue or pull request), for a thread's title. Null if it has none. */
-  title(event: CloudEvent): string | null;
   /** For sources that fill themselves on a clock: the events due at `now`. The server's cron route stores them; repeats must dedupe (same CE source and id). */
   tick?(config: Config, inboxId: string, now: Date): CloudEvent[];
   /**

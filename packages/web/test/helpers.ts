@@ -5,8 +5,6 @@ import { afterAll, beforeAll, expect } from "vitest";
 import { createApi } from "../src/api.js";
 import { type Db } from "../src/db/index.js";
 import { openTestDb, TEST_INBOX_KEY } from "../src/db/testing.js";
-import { botActor } from "../src/actor.js";
-import * as store from "../src/store.js";
 import { createLoginCode, createUser } from "../src/store.js";
 import { signSessionToken } from "../src/tokens.js";
 
@@ -15,11 +13,6 @@ export const SECRET = "test-secret";
 export let db: Db;
 export let app: ReturnType<typeof createApi>;
 /** The metrics events the API has recorded in this file's tests. */
-/** The routing the API deferred until after a response (see `defer` in ApiOptions); `settled()` waits for it. */
-const deferred: Promise<unknown>[] = [];
-export async function settled() {
-  while (deferred.length) await deferred.shift();
-}
 export const events: { event: string; distinctId: string; properties?: Record<string, unknown> }[] = [];
 
 // Each test file gets its own migrated database on the local Postgres (`npm run db:up`).
@@ -30,44 +23,17 @@ beforeAll(async () => {
     publicBaseUrl: "https://loopway.test",
     tokenSecret: SECRET,
     inboxSecretKey: TEST_INBOX_KEY,
-    defer: (work) => void deferred.push(work),
     metrics: { capture: async (event, distinctId, properties) => void events.push({ event, distinctId, properties }) },
   });
 });
 afterAll(() => db.close());
 
-const personalOrgs = new Map<string, string>();
-
-const LISTS = ["/inboxes", "/bots", "/runners", "/events", "/inboxes/activity", "/bots/activity"];
-
-/**
- * Calls the API as `key`. Creating an inbox, bot or runner needs an `org`, and so does listing them; unless the body
- * or query names one (or `noOrg` is set, to test its absence) the caller's personal org is filled in, so tests needn't
- * repeat it.
- */
+/** Calls the API as `key`. */
 export async function call(
   method: string,
   path: string,
-  opts: { key?: string; body?: unknown; noOrg?: boolean; headers?: Record<string, string> } = {},
+  opts: { key?: string; body?: unknown; headers?: Record<string, string> } = {},
 ) {
-  const [route = "", query = ""] = path.split("?");
-  const named = opts.body && typeof opts.body === "object" && "org" in opts.body;
-  const fill =
-    opts.key &&
-    !opts.noOrg &&
-    ((method === "POST" && ["/inboxes", "/bots", "/runners"].includes(path) && !!opts.body && !named) ||
-      (method === "GET" && LISTS.includes(route) && !new URLSearchParams(query).has("org")));
-  if (fill) {
-    if (!personalOrgs.has(opts.key!)) {
-      const orgs = await call("GET", "/orgs", { key: opts.key });
-      personalOrgs.set(opts.key!, orgs.body.data.find((o: { personal: boolean }) => o.personal).slug);
-    }
-    const org = personalOrgs.get(opts.key!)!;
-    if (method === "GET") path += `${query ? "&" : "?"}org=${org}`;
-    else {
-      opts = { ...opts, body: { ...(opts.body as Record<string, unknown>), org } };
-    }
-  }
   const res = await app.request("/api" + path, {
     method,
     headers: {
@@ -94,8 +60,8 @@ export async function newUser(name = "Matthew") {
   return res.body.token as string;
 }
 
-/** A user who hasn't picked a username yet, so has no personal org. */
-export async function newUserWithoutOrg(name = "Matthew") {
+/** A user who hasn't picked a username yet. */
+export async function newUserWithoutUsername(name = "Matthew") {
   const { user } = await createUser(db, { name });
   return signSessionToken(user.id, SECRET).token;
 }
@@ -138,16 +104,3 @@ export const prPayload = (n: number) => ({
   pull_request: { updated_at: "2026-10-01T12:00:00Z" },
   repository: { url: "https://api.github.com/repos/craftmill/loopway" },
 });
-
-/**
- * Puts messages on threads the way the server's routing does (creating the threads, adding subjects, setting levels)
- * without needing rules: for tests that start from a thread. `runner_id` on an assignment makes a new thread start on
- * that runner. Moves the bot's cursor to `cursor` if that is further.
- */
-export async function assign(botId: string, assignments: store.Assignment[], cursor = 0) {
-  const [bot] = await db.query<{ org_id: string }>(`SELECT org_id FROM loopway.bots WHERE id = $1`, [botId]);
-  return db.transaction(async (tx) => {
-    await tx.query(`UPDATE loopway.bots SET cursor = GREATEST(cursor, $2::bigint) WHERE id = $1`, [botId, cursor]);
-    return store.writeAssignments(tx, botId, bot!.org_id, botActor(botId), assignments);
-  });
-}

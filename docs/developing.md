@@ -2,7 +2,7 @@
 
 - **Stack:** TypeScript + [Hono](https://hono.dev), zero-config on Vercel.
 - **DB:** Postgres 17 everywhere, through [postgres.js](https://github.com/porsager/postgres). Locally a Docker container (`docker-compose.yml`); on Vercel, [Supabase](https://supabase.com) from the Vercel Marketplace (`POSTGRES_URL`, or `DATABASE_URL` to point it anywhere else). Tests run against the same local Postgres, so they exercise the engine that is deployed.
-- **Data types:** `Org` → owns `Inbox`es and `Bot`s; an inbox receives `Message`s; a bot reads the messages of one or more inboxes.
+- **Data types:** `User` → owns `Inbox`es; an inbox receives `Message`s.
 - **Sources:** `github`, `granola`, `linear`, `loopway`, `resend`, `schedule`, `vercel` (more can be added in `packages/sources/src/`, see [Adding a source](#adding-a-source)).
 - **Packages:** npm workspaces — [`packages/web`](../packages/web) (the server) and [`packages/cli`](../packages/cli) (the `loopway` command, a client of the [API](api.md)).
 
@@ -37,10 +37,9 @@ The Deploy with Vercel button in the [README](../README.md) clones the repo into
 | `TOKEN_SECRET` | prompt | signs session tokens; `openssl rand -hex 32` |
 | `CRON_SECRET` | prompt | Vercel Cron's bearer token for the schedule route; `openssl rand -hex 32` |
 | `INBOX_SECRET_KEY` | prompt | encrypts inbox webhook secrets at rest; `openssl rand -base64 32`; keep a copy, losing it loses the secrets |
-| `SELF_HOSTED` | prompt | enter `1`, so `/` redirects to `/login` instead of the landing page |
 | `RESEND_API_KEY`, `EMAIL_FROM` | prompt | login emails (see [Login email](#login-email-resend-on-the-one-click-deploy)) |
 
-Vercel's clone link has no way to preset a value, so `SELF_HOSTED` is a prompt you answer with `1`. The schedule needs nothing: `SCHEDULE_OPTIONS` defaults to `day,week`, which is all a Hobby account's daily cron can run. Everything else under [Deploy (Vercel + Supabase)](#deploy-vercel--supabase) is optional (`PUBLIC_BASE_URL`, `POSTHOG_API_KEY`, `MIN_CLI_VERSION`).
+The schedule needs nothing: `SCHEDULE_OPTIONS` defaults to `day,week`, which is all a Hobby account's daily cron can run. Everything else under [Deploy (Vercel + Supabase)](#deploy-vercel--supabase) is optional (`PUBLIC_BASE_URL`, `POSTHOG_API_KEY`, `MIN_CLI_VERSION`).
 
 The Supabase product is the `stores` parameter of the link (`integrationSlug` and `productSlug` `supabase`, `protocol` `storage`). Pick a Supabase region near the functions (Vercel's default `iad1` is `us-east-1`): every request is a few round trips to the database. Vercel's docs call the parameter `stores`; the same JSON is described as `products` elsewhere.
 
@@ -93,7 +92,7 @@ The same thing by hand:
 
 1. Add Supabase from the Vercel Marketplace (Storage → Supabase) and connect it to the project; it sets `POSTGRES_URL` (Supavisor in transaction mode, port 6543) and `POSTGRES_URL_NON_POOLING` (session mode, port 5432), among others. Or take both from Supabase → Connect. Use the pooler hosts, not `db.<ref>.supabase.co`: that direct host is IPv6-only and Vercel can't reach it.
 2. Nothing to run by hand: the Vercel build applies pending migrations before it bundles (see step 4). To migrate from your machine instead, `DATABASE_URL='postgresql://...' npm run db:migrate` against the session-mode URL, or put it in `packages/web/.env.production` (gitignored; `db:migrate` reads it ahead of `.env`), which also makes `npm run update` migrate prod.
-3. In Vercel, import the repo, set **Root Directory** to `packages/web`, and set env vars (the Supabase integration has already set the database ones): `TOKEN_SECRET` (signs session tokens; `openssl rand -hex 32`), `INBOX_SECRET_KEY` (encrypts inbox webhook secrets at rest; `openssl rand -base64 32`; keep a copy, since losing it loses the secrets; the build needs it too, because it encrypts any plaintext secrets left from before), and optionally `PUBLIC_BASE_URL` (also the URL `/llms.txt` names), `SELF_HOSTED=1` (`/` redirects to `/login` instead of serving the landing page), `SIGNUPS=closed` (no new accounts: an unknown email can't log in or be invited, and gets a `signups_closed` error; existing users are unaffected) and `MIN_CLI_VERSION` (see [Releasing the CLI](#releasing-the-cli)). The server uses `DATABASE_URL_POOLED` when it's set, else `DATABASE_URL`, else `POSTGRES_URL`; the build migrates `DATABASE_URL_UNPOOLED`, else `DATABASE_URL`, else `POSTGRES_URL_NON_POOLING`. So `DATABASE_URL*` overrides the integration, and setups that set `DATABASE_URL_POOLED` (pooled) and `DATABASE_URL` (direct), or Neon's `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED` (direct), keep working unchanged. Craftmill's own deployment also sets `CRAFTMILL_ENTERPRISE_LICENSE` (any non-empty value; it turns on the routes under `ee/`, which `ee/LICENSE` covers) plus `SOURCE_REQUEST_URL` and `SOURCE_REQUEST_TOKEN` (the webhook URL and inbox token of its `source-requests` loopway inbox); without all three the dashboard doesn't offer source requests.
+3. In Vercel, import the repo, set **Root Directory** to `packages/web`, and set env vars (the Supabase integration has already set the database ones): `TOKEN_SECRET` (signs session tokens; `openssl rand -hex 32`), `INBOX_SECRET_KEY` (encrypts inbox webhook secrets at rest; `openssl rand -base64 32`; keep a copy, since losing it loses the secrets; the build needs it too, because it encrypts any plaintext secrets left from before), and optionally `PUBLIC_BASE_URL` (also the URL `/llms.txt` names), `SIGNUPS=closed` (no new accounts: an unknown email can't log in or be invited, and gets a `signups_closed` error; existing users are unaffected) and `MIN_CLI_VERSION` (see [Releasing the CLI](#releasing-the-cli)). The server uses `DATABASE_URL_POOLED` when it's set, else `DATABASE_URL`, else `POSTGRES_URL`; the build migrates `DATABASE_URL_UNPOOLED`, else `DATABASE_URL`, else `POSTGRES_URL_NON_POOLING`. So `DATABASE_URL*` overrides the integration, and setups that set `DATABASE_URL_POOLED` (pooled) and `DATABASE_URL` (direct), or Neon's `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED` (direct), keep working unchanged. Craftmill's own deployment also sets `CRAFTMILL_ENTERPRISE_LICENSE` (any non-empty value; it turns on the routes under `ee/`, which `ee/LICENSE` covers) plus `SOURCE_REQUEST_URL` and `SOURCE_REQUEST_TOKEN` (the webhook URL and inbox token of its `source-requests` loopway inbox); without all three the dashboard doesn't offer source requests.
 4. Deploy. Vercel picks up `packages/web/src/index.ts` as a Hono app automatically, and runs `npm run build`, which applies pending migrations (a failure fails the build, so the previous deployment stays live; it records `migrations_applied` or `migrations_failed`) and then bundles the web UI into `packages/web/public/`. The app serves `app.js` and `app.css` itself, since Vercel's CDN only serves the files in `public/` that are committed. Only `main` deploys: `packages/web/vercel.json` turns off preview deployments for every other branch.
 5. Create users with `loopway login` pointed at your deployment (`loopway config update` sets the URL).
 
@@ -120,7 +119,7 @@ The CLI is released on its own, separately from the web deploy, and nobody has t
 
 The next version is a patch bump of the last tag (`0.3.0` → `0.3.1`), so `packages/cli/package.json` doesn't need to change for a release. For a minor or major release, raise the version in `packages/cli/package.json` above the last tag (for example to `0.4.0`) and merge it. That version is used instead, and later patches count up from it. Between releases the version in `packages/cli/package.json` can be behind the released one; the workflow sets the real version before it builds. To retry a release, run the workflow from the Actions tab. It releases nothing when nothing has changed.
 
-The workflow builds, packs `@loopway/cli` with `@loopway/harnesses`, `@loopway/presets`, `@loopway/rules` and `@loopway/palette` as `loopway-cli.tgz`, `loopway-harnesses.tgz`, `loopway-presets.tgz`, `loopway-rules.tgz` and `loopway-palette.tgz`, checks that they install and run, and publishes them as a GitHub release. Nothing goes to npm.
+The workflow builds, packs `@loopway/cli` as `loopway-cli.tgz`, checks that it installs and runs, and publishes it as a GitHub release. Nothing goes to npm.
 
 People install with `curl -fsSL https://loopway.craftmill.dev/install.sh | sh` (`packages/web/content/install.sh`), which installs the latest release with `npm install -g`; `LOOPWAY_VERSION=0.3.0` picks another. The script installs the tarballs listed in the release's `manifest.txt` (made by `release-cli.yml`), so a new workspace package only needs adding to the pack step there; releases without a manifest (before 0.3.0) can't be installed this way. It needs Node 22+.
 
@@ -130,16 +129,14 @@ The CLI sends its version in an `x-loopway-cli-version` header on every request.
 
 ## Web UI
 
-The same Hono app serves a small web UI: `/` (how to use loopway), `/login` (same email-code flow as the CLI; the session token is kept in `localStorage`), `/<org>` (the overview), `/<org>/bots` (the org's bots), `/<org>/bots/new` (the new-bot form), `/<org>/inboxes` (your inboxes with a create form; where source requests are on, the form's Source list ends with "Something else…", which asks for a new source type instead), `/<org>/runners` and `/<org>/members` (your runners and the org's members), `/<org>/inboxes/<inbox>` (messages with their `seq`, newest first, expandable JSON, a marker where each bot reading the inbox has read up to, and, for sources whose sender makes the secret, like Vercel, Linear, Granola and Resend, a form to paste it; the old `/dashboard/inboxes/<inbox>` and `/dashboard/<inbox>` redirect there), `/<org>/bots/<bot>` (inboxes, cursor and lease holder; rename, change inboxes or delete the bot; its threads with owner and message counts, and a Release button for threads whose runner is offline) and `/<org>/bots/<bot>/threads/<thread>` (subjects, flags, owner, and the waiting, inflight and delivered messages). Each org has its own address, `/<org-slug>`, and its pages show only that org's bots, runners and inboxes (the list endpoints take `?org=<slug>` for this; a slug you aren't a member of is a `404`, as is the page). The header's org switcher moves between your orgs and the last one you used is remembered in the browser. `/dashboard/...` still works: it redirects to the same page under the org that owns the bot or inbox it names, else your last-used org. The dashboard only reads threads and runners; transcripts stay on the runner. `GET /api` is a bare health check, and every JSON route lives under `/api`.
-
-The pages are a React app in `packages/web/client/`. The homepage copy is markdown in [`packages/web/content/home.md`](../packages/web/content/home.md). `/llms.txt` (for tools like Codex and Claude Code) is served from [`packages/web/content/llms.txt`](../packages/web/content/llms.txt); keep it in step with the CLI. `npm run build -w @loopway/web` bundles the app with esbuild into `packages/web/public/` (git-ignored); `npm run dev` rebuilds it on change and serves it.
+The same Hono app serves the landing page at `/`, with `/llms.txt` and `/install.sh`. There is no dashboard and no web login: everything else happens in the CLI. The page is a small React app in `packages/web/client/`, and its copy is markdown in [`packages/web/content/home.md`](../packages/web/content/home.md).
 
 ## Layout
 
 ```
 packages/sources/
   src/                  one file per source (github.ts, linear.ts, ...): its webhook adapter, a function of the
-                        SourceDeps (ids, secrets, CloudEvent validation) the host injects, and optionally its rule helpers;
+                        SourceDeps (ids, secrets, CloudEvent validation) the host injects, 
                         index.ts registers them (createSources)
 packages/web/
   src/sources.ts        the sources, wired to the server's real SourceDeps
@@ -147,9 +144,8 @@ packages/web/
   src/index.ts          Vercel entry (default-exports the Hono app)
   src/api.ts            routes, auth, serialization
   src/ui.ts             the HTML shell, the bundle, /llms.txt and /install.sh
-  client/               the React UI (pages, components, styles)
+  client/               the landing page
   content/              home.md, llms.txt, install.sh
-  ee/                   enterprise-licensed routes and client code (source and harness requests)
   src/store.ts          all SQL
   src/db/               postgres.js adapter + migrations; run-migrations.ts runs them (the Vercel build); testing.ts opens a
                         throwaway test database
@@ -159,34 +155,18 @@ packages/web/
 packages/cli/
   src/index.ts          `loopway` entry: error handling + exit codes
   src/program.ts        commands and flags (commander)
-  src/commands/         auth, orgs, inboxes (incl. the create TUI, @clack/prompts), messages, bots, botThreads, runners, bots-run (`loopway bots run`)
+  src/commands/         auth, inboxes (incl. the create TUI, @clack/prompts), messages
   src/client.ts         typed API client
   src/config.ts         ~/.loopway/config.json
-  src/mcp.ts            minimal MCP server (HTTP, localhost) the bots dispatcher serves to its sessions
-  src/bots/             `loopway bots run`: dispatcher.ts (runner lease, work feed, claim, deliver), runner.ts (runs the sessions),
-                        workdirs.ts (the loopway.json working directories), github.ts, tools.ts (MCP link/end),
-                        tui.tsx (the Ink TUI), colors.ts, transcript.ts (stream-json log → readable lines)
   test/cli.test.ts      runs commands against the real API app in-process
-  test/tui.test.tsx     renders the threads TUI with ink-testing-library
-packages/harnesses/
-  src/                  one file per harness a bot can run on (claude.ts, codex.ts, cursor.ts, hermes.ts, script.ts); index.ts lists them
-packages/rules/
-  src/index.ts          CEL assign rules: message → thread
-packages/presets/
-  src/                  bot presets: github-threads has its prompt and starting rules
-packages/palette/
-  src/index.ts          the brand colors, each in its paper (light) and ink (dark) tone
-packages/bb-plugin-loopway/
-                        `loopway bots run` as a bb plugin: server.ts, the Loopway page (app.tsx), status.ts
 ```
 
 ### Adding a source
 
 1. Add `packages/sources/src/<type>.ts` exporting a function from `SourceDeps` to a `SourceAdapter` (`types.ts`); use the injected `newSecret`, `uuidv7`, `safeEqual` and `makeCloudEvent` rather than importing your own:
    - what clients show: `label`, `description`, common `events`, `secret` (`{from: "loopway", minLength}` if loopway makes it, `{from: "sender"}` if the sender shows one after the webhook is added) and `webhookSettings`
-   - optional `rules`: the CEL helpers (`<type>_<helper>`) bot rules can call on its event types
    - `parseConfig` (validate + defaults), `publicConfig`, optional `setup`, and `receive(headers, rawBody) → event | ignored | rejected`
 2. Add it to `createSources` in `packages/sources/src/index.ts`.
 3. Add `packages/web/test/sources/<type>.test.ts` (`test/helpers.ts` gives it an app and database) and write `docs/sources/<type>.md` (config, setup in the sender, delivery rules, CloudEvent mapping) like the [existing ones](sources/).
 
-Nothing else names a source: the API, `loopway inbox create` and the dashboard build their forms from `GET /sources`, and the inbox page offers a secret form for any `sender` source.
+Nothing else names a source: the API and `loopway inbox create` work from `GET /sources`.

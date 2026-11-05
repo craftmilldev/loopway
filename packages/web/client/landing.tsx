@@ -1,7 +1,5 @@
-import { HARNESS_LABELS } from "@loopway/harnesses/labels";
 import { Marked, type Tokens } from "marked";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { LedeTerminal } from "./lede-terminal.js";
 import { track } from "./metrics.js";
 
 // The landing page, built from content/home.md: its comment says how the markdown maps to the page. Parsing turns
@@ -39,14 +37,6 @@ export interface Section {
   blocks: Block[];
 }
 
-/** The coding agents a bot can run on, as the page names them. */
-export const AGENTS: readonly string[] = Object.values(HARNESS_LABELS);
-
-/** "A, B, C or D". */
-export function agentList(names: readonly string[]) {
-  return names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} or ${names.at(-1)}`;
-}
-
 const levelOf = (text: string) => {
   const m = /\blevel (\d)\b/i.exec(text);
   return m ? Number(m[1]) : undefined;
@@ -75,10 +65,10 @@ const isButtons = (p: Tokens.Paragraph) =>
   p.tokens.some((t) => t.type === "link") &&
   p.tokens.every((t) => t.type === "link" || (t.type === "text" && t.raw.trim() === ""));
 
-/** Splits home.md into its sections. `{agents}` becomes the agent list. */
-export function parseHome(markdown: string, agents: readonly string[] = AGENTS): Section[] {
+/** Splits home.md into its sections. */
+export function parseHome(markdown: string): Section[] {
   const sections: Section[] = [];
-  for (const t of md.lexer(markdown.replaceAll("{agents}", agentList(agents)))) {
+  for (const t of md.lexer(markdown)) {
     const heading = t.type === "heading" ? (t as Tokens.Heading) : undefined;
     if (heading?.depth === 2) {
       const m = /^(.*?)\s*\{#([\w-]+)\}$/.exec(heading.text);
@@ -120,13 +110,6 @@ export function parseHome(markdown: string, agents: readonly string[] = AGENTS):
   }
   return sections;
 }
-
-/**
- * The figure for a section, by id: the terminal (top).
- */
-export const FIGURES: Record<string, () => ReactNode> = {
-  top: () => <LedeTerminal />,
-};
 
 /** How each section lays out, by id. Any other id is "wide": the heading and its prose side by side, then the rest. */
 const LAYOUTS: Record<string, "split" | "strip" | "close" | "foot"> = {
@@ -269,15 +252,6 @@ function Blocks({ section, blocks, plain }: { section: string; blocks: Block[]; 
   );
 }
 
-const Figure = ({ id }: { id: string }) => {
-  const figure = FIGURES[id];
-  return figure ? (
-    <div className="lp-figure" data-figure={id}>
-      {figure()}
-    </div>
-  ) : null;
-};
-
 function SectionView({ s }: { s: Section }) {
   const layout = LAYOUTS[s.id] ?? "wide";
   const label = <div className="lp-label">{s.label}</div>;
@@ -298,7 +272,6 @@ function SectionView({ s }: { s: Section }) {
           {heading}
           {blocks(s.blocks)}
         </div>
-        <Figure id={s.id} />
       </>
     );
   else if (layout === "close") {
@@ -334,7 +307,6 @@ function SectionView({ s }: { s: Section }) {
           </div>
           {intro.length > 0 && <div className="lp-intro">{blocks(intro)}</div>}
         </div>
-        <Figure id={s.id} />
         {cut >= 0 && blocks(s.blocks.slice(cut))}
       </>
     );

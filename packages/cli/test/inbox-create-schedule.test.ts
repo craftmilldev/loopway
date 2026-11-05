@@ -21,7 +21,6 @@ vi.mock("@clack/prompts", () => {
     password: next,
   };
 });
-vi.mock("../src/commands/orgs.js", () => ({ resolveOrg: async () => "me" }));
 vi.mock("../src/context.js", async (orig) => ({
   ...(await orig<typeof import("../src/context.js")>()),
   authedClient: async () => ({
@@ -64,7 +63,6 @@ describe("inbox create, interactive schedule", () => {
     mocks.answers = ["clock", "schedule", "day", "7", "add", "standup", "Write the standup", "done"];
     await createInbox(ctx, {});
     expect(mocks.createInbox).toHaveBeenCalledWith({
-      org: "me",
       name: "clock",
       source_type: "schedule",
       config: { schedule: { every: "day", hour: 7 }, messages: [{ type: "standup", message: "Write the standup" }] },

@@ -1,11 +1,7 @@
 import { createHmac } from "node:crypto";
 import { z } from "zod";
-import { firstLine, get, standardWebhookSignature, str, withText } from "./payload.js";
-import type { CloudEvent, SourceAdapter, SourceDeps } from "./types.js";
-
-/** What the event is about: an email's subject line, a contact's address or a domain's name. */
-const label = (event: CloudEvent) =>
-  str(get(event.data, "data.subject")) ?? str(get(event.data, "data.email")) ?? str(get(event.data, "data.name"));
+import { get, standardWebhookSignature, str } from "./payload.js";
+import type { SourceAdapter, SourceDeps } from "./types.js";
 
 /**
  * Resend webhooks → CloudEvents. Resend signs with Svix (the Standard Webhooks scheme under svix-* headers):
@@ -116,14 +112,6 @@ export const resend = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapter
       },
       rawBody,
     };
-  },
-
-  summarize(event) {
-    return withText(`Resend ${event.type.replace(/^com\.resend\./, "").replace(/[._]/g, " ")}`, label(event));
-  },
-
-  title(event) {
-    return firstLine(label(event)) ?? null;
   },
 
   receive({ headers, rawBody, receivedAt }, config) {

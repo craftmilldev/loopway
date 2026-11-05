@@ -2,15 +2,19 @@ import { useEffect } from "react";
 import home from "../content/home.md";
 import { MARKETING_PATHS, type MarketingPath } from "../src/marketing.js";
 import { LandingSections, parseHome, type Section } from "./landing.js";
-import { Wordmark } from "./layout.js";
-import { lastOrgPath, token } from "./lw.js";
 import { track } from "./metrics.js";
+import wordmark from "./wordmark.svg";
 
 // The markdown for each marketing page, keyed by path. Typed on the path list in src/marketing.ts, so a path added
 // there doesn't compile until its content is here.
 export const CONTENT: Record<MarketingPath, string> = {
   "/": home,
 };
+
+/** The Loopway wordmark, inlined so the --loopway-* colors apply; labelled "Loopway" by the SVG itself. */
+export function Wordmark({ href }: { href: string }) {
+  return <a className="wordmark" href={href} dangerouslySetInnerHTML={{ __html: wordmark }} />;
+}
 
 /** The sections the top bar links to, by id; each link reads as its section's label. */
 const NAV = ["first", "levels", "runners", "learned", "examples"];
@@ -19,7 +23,6 @@ function Marketing({ sections }: { sections: Section[] }) {
   useEffect(() => {
     document.title = "loopway";
   }, []);
-  const account = token() ? <a href={lastOrgPath()}>Dashboard</a> : <a href="/login">Log in</a>;
   return (
     <>
       <header className="lp-masthead">
@@ -37,7 +40,6 @@ function Marketing({ sections }: { sections: Section[] }) {
                   {s.label}
                 </a>
               ))}
-            {account}
           </nav>
         </div>
       </header>

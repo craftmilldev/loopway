@@ -1,6 +1,5 @@
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import { z } from "zod";
-import { firstLine, get, str, withText } from "./payload.js";
 import type { SourceAdapter, SourceDeps } from "./types.js";
 
 /**
@@ -118,15 +117,6 @@ export const loopway = ({
       headers: { authorization: `Bearer ${config.secret}`, "content-type": "application/json" },
       rawBody: JSON.stringify({ type, id: "test-1", data: { message: "A test message from loopway" } }),
     };
-  },
-
-  summarize(event) {
-    const id = event.subject?.slice(event.type.length + 1);
-    return withText(id ? `${event.type} ${id}` : event.type, str(get(event.data, "title")));
-  },
-
-  title(event) {
-    return firstLine(str(get(event.data, "title"))) ?? null;
   },
 
   receive({ headers, rawBody, receivedAt, webhookUrl }, config) {

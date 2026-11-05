@@ -1,10 +1,7 @@
 import { createHmac } from "node:crypto";
 import { z } from "zod";
-import { firstLine, get, standardWebhookSignature, str, withText } from "./payload.js";
-import type { CloudEvent, SourceAdapter, SourceDeps } from "./types.js";
-
-/** The note's title, when the webhook carries one. */
-const noteTitle = (event: CloudEvent) => str(get(event.data, "title")) ?? str(get(event.data, "note.title"));
+import { standardWebhookSignature } from "./payload.js";
+import type { SourceAdapter, SourceDeps } from "./types.js";
 
 /**
  * Granola webhooks → CloudEvents. Granola signs with the Standard Webhooks scheme:
@@ -94,14 +91,6 @@ export const granola = ({ safeEqual, makeCloudEvent }: SourceDeps): SourceAdapte
       },
       rawBody,
     };
-  },
-
-  summarize(event) {
-    return withText(`Granola ${event.type.replace(/^ai\.granola\./, "").replace(/[._]/g, " ")}`, noteTitle(event));
-  },
-
-  title(event) {
-    return firstLine(noteTitle(event)) ?? null;
   },
 
   receive({ headers, rawBody, receivedAt }, config) {
