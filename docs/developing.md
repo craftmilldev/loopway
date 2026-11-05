@@ -68,7 +68,7 @@ The CLI updates itself to the newest release on GitHub (see [Releasing the CLI](
 
 ## Updating a self-hosted deploy
 
-A deploy made with the Vercel button is a copy of the repo in your GitHub account, not a fork: it has no link to craftmilldev/loopway, so nothing tells you when `main` moves and nothing pulls it in. Updating means getting upstream's commits into your copy's `main` branch. Vercel redeploys on every push to `main`, and the build applies pending database migrations before it bundles (a failure fails the build).
+A deploy made with the Vercel button is a copy of the repo in your GitHub account, not a fork: it has no link to craftmilldev/loopway, so nothing tells you when `main` moves and nothing pulls it in. Updating means getting upstream's commits into your copy's `main` branch. Vercel redeploys on every push to `main`, and the build applies pending database migrations after it bundles (a failure fails the build).
 
 **A copy made by the button** (what the button creates): add this repo as a second remote once, then merge and push.
 
