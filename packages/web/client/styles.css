@@ -19,6 +19,9 @@
   --madder-500: #b8412c;
   --madder-300: #d08a76;
 
+  --indigo-600: #2c4a53;
+  --indigo-200: #9db4ba;
+
   --rule-hair: rgba(22, 19, 14, 0.16);
   --rule-soft: rgba(22, 19, 14, 0.32);
   --rule-strong: var(--ink-900);
@@ -371,11 +374,6 @@ main.lp {
   display: flex;
   flex-direction: column;
   gap: 24px;
-}
-.lp-figure {
-  flex: 1.3 1 520px;
-  /* So a wide figure, like the bots table, scrolls in its own box instead of widening the page. */
-  min-width: 0;
 }
 .lp-id-top .lp-in {
   padding-bottom: 64px;
