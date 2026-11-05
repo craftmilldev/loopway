@@ -17,7 +17,7 @@ export interface RunMigrationsOptions {
 }
 
 /**
- * Applies pending migrations (the Vercel build runs this before bundling). Records `migrations_applied` (with how many
+ * Applies pending migrations (the Vercel build runs this after bundling). Records `migrations_applied` (with how many
  * ran, none included) or `migrations_failed`, then rethrows so a failure fails the build. Returns the applied
  * versions, or null when no database URL is set and there was nothing to migrate.
  */

@@ -101,7 +101,7 @@ The conformance test `LIMIT: a commit that stalls past the hold-back is lost to 
 
 ## Coverage
 
-Sync commit: `a5f87c5`
+Sync commit: `7ed8868`
 
 - `packages/web/src/store.ts`: `insertMessage`, `readMessages`, `READ_HOLDBACK_SECONDS`, `INSERT_TIMEOUT_MS`
 - `packages/web/src/api.ts`: `readPage`, `GET /messages`

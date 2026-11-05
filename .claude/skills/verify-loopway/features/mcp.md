@@ -21,8 +21,8 @@ Preconditions: `T` from `tokens.md`, not revoked. Define:
 
 - **Initialize.** Run `mcp '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"verify","version":"1"}}}'`. `serverInfo.name` is `loopway`.
 - **Tools.** Run `mcp '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'`. `push_message` and `pull_messages`.
-- **Push.** Run `mcp '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"push_message","arguments":{"type":"from.mcp","id":"m-1"}}}'`. The text has `"duplicate":false`.
-- **Pull.** Run `sleep 6`, then `mcp '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"pull_messages","arguments":{"limit":100}}}'`. The text has `from.mcp`, `next_since` and `has_more`.
+- **Push.** Run `mcp '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"push_message","arguments":{"subject":"from.mcp","id":"m-1"}}}'`. The text has `"duplicate":false`.
+- **Pull.** Run `sleep 6`, then `mcp '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"pull_messages","arguments":{"limit":100}}}'`. The text has `com.loopway.mcp.message`, `from.mcp`, `next_since` and `has_more`.
 - **Auth.** Run `curl -s -o /dev/null -w '%{http_code}\n' -X POST "$URL/api/mcp" -d '{}'`. `401`.
 
 ## Gotchas
