@@ -3,7 +3,7 @@
 // every @loopway/* package reachable from its package.json, plus the root files the build reads, diffed against the
 // last successful deploy (VERCEL_GIT_PREVIOUS_SHA, not HEAD^, so skipped merges followed by a web change build once).
 //
-// The web build runs DB migrations (scripts/build.ts); migrations live in packages/web, so a migration change builds.
+// The web package is a static page with no build step, so the deploy only needs to run when it changes.
 // Everything web reads at build or run time must sit inside packages/web or come through an @loopway/* dependency.
 // If web ever reads a file elsewhere in the repo, add it to ROOT_INPUTS (and keep AGENTS.md in step).
 // When unsure (no previous SHA, unreadable package.json, git failure) it builds: an unneeded build is the worst case.

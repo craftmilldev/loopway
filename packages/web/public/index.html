@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>loopway</title>
+    <meta
+      name="description"
+      content="loopway polls the collaboration tools your agents work in, from your own machine, and tells you what changed."
+    />
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <style>
+      :root {
+        --paper: #e4ddc9;
+        --ink: #16130e;
+        --ink-soft: #4b4534;
+        --madder: #9e2b1c;
+        --rule: rgba(22, 19, 14, 0.32);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink-soft);
+        font:
+          17px/1.5 "Sorts Mill Goudy",
+          Georgia,
+          "Times New Roman",
+          serif;
+      }
+      main {
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 72px 24px;
+      }
+      .mark {
+        font:
+          14px "Courier Prime",
+          Courier,
+          ui-monospace,
+          monospace;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--madder);
+      }
+      h1 {
+        margin: 12px 0 16px;
+        color: var(--ink);
+        font-size: 40px;
+        font-weight: 400;
+        line-height: 1.1;
+        letter-spacing: -0.02em;
+      }
+      pre {
+        margin: 24px 0;
+        padding: 16px;
+        overflow-x: auto;
+        border: 1px solid var(--rule);
+        color: var(--ink);
+        font:
+          14px/1.5 "Courier Prime",
+          Courier,
+          ui-monospace,
+          monospace;
+      }
+      a {
+        color: var(--ink);
+      }
+      footer {
+        margin-top: 48px;
+        padding-top: 16px;
+        border-top: 1px solid var(--rule);
+        font-size: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="mark">A Craftmill project</div>
+      <h1>Watch the work your agents do.</h1>
+      <p>
+        loopway runs on your machine and polls GitHub. It prints every new issue and pull request by you or your bot,
+        and every comment, review, label, state change and CI result on the ones it knows. No webhooks, no server.
+      </p>
+      <pre>
+$ loopway
+2026-11-10 14:02 new    owner/repo#12 issue "Fix the login bug" by mcwhittemore
+2026-11-10 14:03 update owner/repo#12 comment by loopway-bot</pre>
+      <p>This is version 2.0, an alpha. It grows from a poller into a place to run agents on the work it finds.</p>
+      <footer>
+        <a href="https://github.com/craftmilldev/loopway">github.com/craftmilldev/loopway</a> · MIT licensed
+      </footer>
+    </main>
+  </body>
+</html>

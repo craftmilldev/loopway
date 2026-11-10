@@ -1,28 +1,20 @@
 {
   "name": "loopway",
-  "version": "1.0.0",
+  "version": "2.0.0-alpha",
   "private": true,
   "license": "MIT",
-  "description": "A notification system for your bots: every webhook you care about lands in one CloudEvents inbox, and you read it from where you are.",
+  "description": "Local polling for the collaboration tools your agents work in: loopway watches GitHub and tells you what changed.",
   "type": "module",
   "engines": {
     "node": ">=22"
   },
   "workspaces": [
-    "packages/sources",
     "packages/web",
     "packages/cli"
   ],
   "scripts": {
-    "postinstall": "npm run build -w @loopway/sources",
-    "dev": "npm run dev -w @loopway/web",
-    "start": "npm run start -w @loopway/web",
-    "db:up": "docker compose -p loopway up -d --wait",
-    "db:down": "docker compose -p loopway down",
-    "db:migrate": "npm run db:migrate -w @loopway/web",
     "cli": "npm run start -w @loopway/cli --",
     "build": "npm run build --workspaces --if-present",
-    "update": "git pull && npm install && npm run db:migrate && npm run build",
     "test": "npm test --workspaces",
     "typecheck": "npm run typecheck --workspaces",
     "lint": "eslint .",
@@ -33,7 +25,6 @@
     "@eslint/js": "^10.0.1",
     "eslint": "^10.12.0",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.13.0",
     "prettier": "^3.9.9",
     "typescript-eslint": "^8.71.1"

@@ -14,20 +14,6 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # Same Postgres major version as docker-compose.yml and Supabase.
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 54329:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -35,6 +21,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run build
       - run: npm test
       - run: npm run typecheck
       - run: npm run lint
