@@ -126,18 +126,19 @@ export class GitHubSource implements SubjectSource {
     // Only now is what the probe saw safe to call "seen": a failure above leaves the subject changed for next time.
     const signature = this.pending.get(subject.key);
     if (signature) this.signatures.set(subject.key, signature);
-    return { updates, version: JSON.stringify({ updatedAt: look.issue.updated_at, bodyHash: look.bodyHash }) };
+    return { updates, version: JSON.stringify({ updatedAt: look.item.updated_at, bodyHash: look.bodyHash }) };
   }
 
   /** The subject as it is now, and what the last poll knew of it. */
   private async look(subject: Subject, version?: string): Promise<Look> {
     const [repo, number] = subject.key.split("#") as [string, string];
     const before = parseVersion(version);
-    const issue = await this.get<Issue>(`/repos/${repo}/issues/${number}`);
-    const pr = issue.pull_request ? await this.get<Pull>(`/repos/${repo}/pulls/${number}`) : undefined;
-    const bodyHash = hash(`${issue.title}\n${issue.body ?? ""}`);
-    // Everything but CI bumps updated_at, so a subject that hasn't moved costs a request or two.
-    return { repo, number, issue, pr, bodyHash, before, moved: before.updatedAt !== issue.updated_at };
+    // A pull request is read from its own endpoint, which has everything the issue one does plus its head commit.
+    const pr = subject.kind === "pull_request" ? await this.get<Pull>(`/repos/${repo}/pulls/${number}`) : undefined;
+    const item = pr ?? (await this.get<Issue>(`/repos/${repo}/issues/${number}`));
+    const bodyHash = hash(`${item.title}\n${item.body ?? ""}`);
+    // Everything but CI bumps updated_at, so a subject that has not moved costs a request or two.
+    return { repo, number, item, pr, bodyHash, before, moved: before.updatedAt !== item.updated_at };
   }
 
   private async events(l: Look): Promise<Update[]> {
@@ -170,7 +171,7 @@ export class GitHubSource implements SubjectSource {
         kind: "review",
         detail: r.state.toLowerCase().replace("_", " "),
         actor: r.user?.login ?? "ghost",
-        at: r.submitted_at ?? l.issue.updated_at,
+        at: r.submitted_at ?? l.item.updated_at,
       }));
   }
 
@@ -183,9 +184,7 @@ export class GitHubSource implements SubjectSource {
   /** A changed title or body. The first look only learns what it is; every later one reports a change. */
   private edits(l: Look): Update[] {
     if (!l.moved || !l.before.bodyHash || l.before.bodyHash === l.bodyHash) return [];
-    return [
-      { id: `edit:${l.bodyHash}`, kind: "edited", actor: l.issue.user?.login ?? "ghost", at: l.issue.updated_at },
-    ];
+    return [{ id: `edit:${l.bodyHash}`, kind: "edited", actor: l.item.user?.login ?? "ghost", at: l.item.updated_at }];
   }
 
   /** CI belongs to the head commit and never touches the pull request's updated_at, so it is asked every time. */
@@ -199,7 +198,7 @@ export class GitHubSource implements SubjectSource {
       kind: "check_run",
       detail: `${run.name} ${run.conclusion ?? run.status}`,
       actor: run.app?.slug ?? "github",
-      at: run.completed_at ?? run.started_at ?? l.issue.updated_at,
+      at: run.completed_at ?? run.started_at ?? l.item.updated_at,
     }));
   }
 
@@ -288,7 +287,7 @@ export class GitHubSource implements SubjectSource {
 interface Look {
   repo: string;
   number: string;
-  issue: Issue;
+  item: Item;
   /** Set for a pull request. */
   pr?: Pull;
   bodyHash: string;
@@ -327,16 +326,18 @@ function nextLink(link: string | null): string | undefined {
 interface User {
   login: string;
 }
-interface Issue {
-  number: number;
+interface Item {
   title: string;
   body: string | null;
   user: User | null;
-  created_at: string;
   updated_at: string;
+}
+interface Issue extends Item {
+  number: number;
+  created_at: string;
   pull_request?: unknown;
 }
-interface Pull {
+interface Pull extends Item {
   state: string;
   head: { sha: string };
 }

@@ -113,9 +113,8 @@ describe("updates", () => {
 
   it("covers reviews, review comments and CI on an open pull request", async () => {
     const sha = "abc123";
-    const { source } = fakeGitHub({
-      "/repos/o/r/issues/7": issue({ pull_request: {} }),
-      "/repos/o/r/pulls/7": { state: "open", head: { sha } },
+    const { source, requests } = fakeGitHub({
+      "/repos/o/r/pulls/7": issue({ state: "open", head: { sha } }),
       "/repos/o/r/issues/7/events": [],
       "/repos/o/r/issues/7/comments": [],
       "/repos/o/r/pulls/7/reviews": [
@@ -144,6 +143,8 @@ describe("updates", () => {
       },
     });
     const { updates } = await source.updates(subject("pull_request"));
+    // The pull request's own endpoint has everything: the issue one is never read.
+    expect(requests).not.toContain("/repos/o/r/issues/7");
     expect(updates.map((u) => [u.kind, u.detail])).toEqual([
       ["review", "changes requested"],
       ["review comment", undefined],
@@ -154,8 +155,7 @@ describe("updates", () => {
 
   it("reports a check run again when its result changes, but not when it repeats", async () => {
     const routes: Record<string, unknown> = {
-      "/repos/o/r/issues/7": issue({ pull_request: {} }),
-      "/repos/o/r/pulls/7": { state: "open", head: { sha: "s" } },
+      "/repos/o/r/pulls/7": issue({ state: "open", head: { sha: "s" } }),
       "/repos/o/r/issues/7/events": [],
       "/repos/o/r/issues/7/comments": [],
       "/repos/o/r/pulls/7/reviews": [],
