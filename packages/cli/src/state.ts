@@ -1,5 +1,5 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Subject } from "./source.js";
 
 /** What loopway remembers between runs, in `<home>/state.json`. */
@@ -24,10 +24,11 @@ export async function loadState(home: string): Promise<State> {
   return { repos: raw.repos ?? {}, subjects: raw.subjects ?? {} };
 }
 
-/** Writes beside the file and renames, so a crash never leaves half a state. */
-export async function saveState(home: string, state: State): Promise<void> {
-  await mkdir(home, { recursive: true, mode: 0o700 });
-  const file = join(home, "state.json");
-  await writeFile(file + ".tmp", JSON.stringify(state, null, 2) + "\n");
+export const saveState = (home: string, state: State) => writeJson(join(home, "state.json"), state);
+
+/** Writes beside the file and renames, so a crash never leaves half a file. */
+export async function writeJson(file: string, value: unknown): Promise<void> {
+  await mkdir(dirname(file), { recursive: true, mode: 0o700 });
+  await writeFile(file + ".tmp", JSON.stringify(value, null, 2) + "\n");
   await rename(file + ".tmp", file);
 }
