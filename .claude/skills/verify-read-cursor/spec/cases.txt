@@ -1,8 +1,0 @@
-# case|Page|Inclusive|HoldBack|MaxCommitLag|CursorFirst|MoveOnFullPage|breaks (comma-separated, or none)|what it is
-built|1|FALSE|2|2|FALSE|FALSE|none|the code: (received_at, id) cursor, every row commits within the hold-back, page of one
-built-larger-page|3|FALSE|2|2|FALSE|FALSE|none|the code, with a page that holds every message
-slow-insert|1|FALSE|1|2|FALSE|FALSE|NoSkip,Delivered|LIMIT: a row that commits later than the hold-back is lost, so that bound is an assumption
-no-holdback|2|FALSE|0|2|FALSE|FALSE|NoSkip,Delivered|broken variant: no hold-back
-cursor-first|1|FALSE|2|2|TRUE|FALSE|NoSkip,Delivered|broken variant: the cursor is written before the reader finishes
-no-after|1|TRUE|2|2|FALSE|FALSE|NoNeedlessRepeat,Delivered|broken variant: no `after` id, so a tie as large as a page stops the reader
-head-on-full-page|1|FALSE|2|2|FALSE|TRUE|NoSkip,Delivered|broken variant: the cursor moves to head while rows are left

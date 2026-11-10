@@ -1,59 +1,47 @@
-import { stripVTControlCharacters, styleText } from "node:util";
+import type { Subject, Update } from "./source.js";
 
-// styleText drops the colors itself when stdout isn't a TTY or NO_COLOR is set.
-export const bold = (s: string) => styleText("bold", s);
-export const dim = (s: string) => styleText("dim", s);
-export const red = (s: string) => styleText("red", s);
-export const cyan = (s: string) => styleText("cyan", s);
+/** What the poller reports: a subject it just found, or something that happened to one it knows. */
+export type LoopwayEvent = { type: "new"; subject: Subject } | { type: "update"; subject: string; update: Update };
 
-/** Text from someone else, made safe to print: control characters (terminal escapes, newlines) show as `\xNN`. */
-export function plain(text: string): string {
-  // eslint-disable-next-line no-control-regex
-  return text.replace(/[\x00-\x1f\x7f-\x9f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`);
-}
+const pad = (n: number) => String(n).padStart(2, "0");
 
-export function table(headers: string[], rows: string[][]): string {
-  const all = [headers.map((h) => bold(h)), ...rows];
-  const widths = headers.map((_, i) => Math.max(...all.map((r) => visible(r[i] ?? ""))));
-  return all
-    .map((r) =>
-      r
-        .map((cell, i) => (i === r.length - 1 ? cell : cell + " ".repeat(widths[i]! - visible(cell))))
-        .join("  ")
-        .trimEnd(),
-    )
-    .join("\n");
-}
-
-/** "label  value" lines with the labels aligned. Undefined/null values are skipped. */
-export function fields(pairs: [string, string | number | null | undefined][]): string {
-  const kept = pairs.filter((p): p is [string, string | number] => p[1] != null && p[1] !== "");
-  const width = Math.max(0, ...kept.map(([k]) => k.length));
-  return kept.map(([k, v]) => `${dim(k.padEnd(width))}  ${v}`).join("\n");
-}
-
-export function ago(iso: string | null, now = Date.now()): string {
-  if (!iso) return "";
-  const s = Math.round((now - Date.parse(iso)) / 1000);
-  const abs = Math.abs(s);
-  const [n, unit] =
-    abs < 60 ? [abs, "s"] : abs < 3600 ? [abs / 60, "m"] : abs < 86400 ? [abs / 3600, "h"] : [abs / 86400, "d"];
-  const v = `${Math.floor(n)}${unit}`;
-  return s >= 0 ? `${v} ago` : `in ${v}`;
-}
-
-/** "13:04": the local time of day, for things due within the hour or so. */
-export function clock(iso: string): string {
+/** Local time, `2026-11-10 14:02`. */
+export function stamp(iso: string): string {
   const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** payload_url → "Payload URL" */
-export function humanize(key: string): string {
-  const s = key.replace(/_/g, " ").replace(/\b(url|id)\b/gi, (m) => m.toUpperCase());
-  return s.charAt(0).toUpperCase() + s.slice(1);
+export function formatLine(event: LoopwayEvent): string {
+  if (event.type === "new") {
+    const s = event.subject;
+    const kind = s.kind === "issue" ? "issue" : "pr";
+    return `${stamp(s.createdAt)} new    ${s.key} ${kind} ${JSON.stringify(s.title)} by ${s.author}`;
+  }
+  const u = event.update;
+  const what = u.detail ? `${u.kind} ${u.detail}` : u.kind;
+  return `${stamp(u.at)} update ${event.subject} ${what} by ${u.actor}`;
 }
 
-export const json = (v: unknown) => JSON.stringify(v, null, 2);
-
-const visible = (s: string) => stripVTControlCharacters(s).length;
+export function formatJson(event: LoopwayEvent): string {
+  if (event.type === "new") {
+    const s = event.subject;
+    return JSON.stringify({
+      type: "new",
+      time: s.createdAt,
+      subject: s.key,
+      kind: s.kind,
+      title: s.title,
+      author: s.author,
+    });
+  }
+  const u = event.update;
+  return JSON.stringify({
+    type: "update",
+    time: u.at,
+    subject: event.subject,
+    id: u.id,
+    kind: u.kind,
+    ...(u.detail ? { detail: u.detail } : {}),
+    actor: u.actor,
+  });
+}

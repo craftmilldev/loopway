@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.0-alpha
+
+loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and it polls GitHub, printing every new issue and pull request by you or your bot and every update to the ones it knows. See [#486](https://github.com/craftmilldev/loopway/issues/486).
+
+### Added
+
+- Bare `loopway`, with `--json`. Bots are `.loopway/<bot>.md` files; state is JSON under `~/.loopway/`.
+
+### Removed
+
+Everything in 1.0, with no migration: the hosted server and inbox, webhooks and sources, the MCP server, API tokens and login, the `read`/`poll`/`push` commands, and the install script. `packages/web` is now one static page.
+
 ## 1.0.0
 
 loopway stops running bots and becomes a notification system for them. Every user has one inbox, and your own code reads it. What happens to a message is up to the reader.

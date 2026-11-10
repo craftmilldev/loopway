@@ -1,12 +1,11 @@
 import js from "@eslint/js";
 import prettier from "eslint-config-prettier";
-import reactHooks from "eslint-plugin-react-hooks";
 import { defineConfig } from "eslint/config";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default defineConfig(
-  { ignores: ["**/dist/", ".claude/", ".data/", "packages/web/public/"] },
+  { ignores: ["**/dist/", ".claude/"] },
   js.configs.recommended,
   tseslint.configs.recommendedTypeChecked,
   {
@@ -14,7 +13,7 @@ export default defineConfig(
       globals: globals.node,
       parserOptions: {
         projectService: {
-          allowDefaultProject: ["eslint.config.js", "packages/web/vitest.config.ts", "packages/cli/vitest.config.ts"],
+          allowDefaultProject: ["eslint.config.js", "packages/web/vitest.config.ts"],
         },
         tsconfigRootDir: import.meta.dirname,
       },
@@ -22,17 +21,9 @@ export default defineConfig(
     // An async function with no await is how we satisfy interfaces that return promises.
     rules: { "@typescript-eslint/require-await": "off" },
   },
-  // The classic hook rules only; the rest of the plugin's recommended set is for the React Compiler, which we don't use.
-  {
-    files: ["**/*.tsx"],
-    plugins: { "react-hooks": reactHooks },
-    rules: { "react-hooks/rules-of-hooks": "error", "react-hooks/exhaustive-deps": "warn" },
-  },
   // Plain .mjs so Vercel can run it before `npm install`; it has no tsconfig, so no type-aware rules.
   { files: ["packages/web/scripts/should-build.mjs"], extends: [tseslint.configs.disableTypeChecked] },
-  // Commander types action arguments as `any`; the command functions declare the option shapes.
-  { files: ["packages/cli/src/program.ts"], rules: { "@typescript-eslint/no-unsafe-argument": "off" } },
-  // Tests read JSON responses as `any` all over; checking those types would mean a cast per assertion.
+  // Tests read JSON as `any`; checking those types would mean a cast per assertion.
   {
     files: ["packages/*/test/**"],
     rules: {
@@ -42,40 +33,6 @@ export default defineConfig(
       "@typescript-eslint/no-unsafe-call": "off",
       "@typescript-eslint/no-unsafe-member-access": "off",
       "@typescript-eslint/no-unsafe-return": "off",
-    },
-  },
-  // Tests that touch the database use the one openTestDb() builds from the migrations, never their own store or DB fake.
-  {
-    files: ["packages/*/test/**"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          paths: [
-            {
-              name: "../src/db/index.js",
-              importNames: ["openDb"],
-              message: "Get a database from openTestDb() in src/db/testing.ts.",
-            },
-          ],
-        },
-      ],
-      "no-restricted-syntax": [
-        "error",
-        {
-          selector: "TSAsExpression > TSTypeReference[typeName.name='Db']",
-          message: "Don't fake a Db: use openTestDb().",
-        },
-        {
-          selector:
-            "CallExpression[callee.object.name='vi'][callee.property.name='mock'][arguments.0.value=/(store|db)/]",
-          message: "Don't mock the store or db module: use openTestDb().",
-        },
-        {
-          selector: "Identifier[name=/^(fake|mock|stub|inMemory|memory)(Db|Store|Database|Pool)$/i]",
-          message: "Don't build a fake store or database: use openTestDb().",
-        },
-      ],
     },
   },
   { files: ["**/*.js"], extends: [tseslint.configs.disableTypeChecked] },
