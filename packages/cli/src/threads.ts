@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Bot } from "./bots.js";
@@ -6,12 +7,25 @@ import type { LoopwayEvent, ThreadEvent } from "./format.js";
 import { decide, type Action } from "./rules.js";
 import type { Update } from "./source.js";
 import { writeJson } from "./state.js";
-import type { Thread } from "./thread.js";
+import { holds, type Thread } from "./thread.js";
 
 /** Closed threads stay in `loopway threads` this long after their latest message. */
 export const CLOSED_SHOWN_MS = 3 * 24 * 60 * 60_000;
 
 export const threadsDir = (home: string) => join(home, "threads");
+
+/** The session log of a thread, appended to as its session runs. */
+export const threadLogPath = (home: string, id: string) => join(threadsDir(home), `${id}.log`);
+
+/** What a thread's session has logged so far; empty until it has. */
+export function readThreadLog(home: string, id: string): string {
+  try {
+    return readFileSync(threadLogPath(home, id), "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return "";
+    throw err;
+  }
+}
 
 export async function loadThreads(home: string): Promise<Thread[]> {
   let files: string[];
@@ -32,6 +46,9 @@ export function visibleThreads(threads: Thread[], now: number): Thread[] {
     (a, b) => Number(b.status === "open") - Number(a.status === "open") || a.createdAt.localeCompare(b.createdAt),
   );
 }
+
+/** The threads holding a subject. */
+export const withSubject = (threads: Thread[], key: string) => threads.filter((t) => holds(t, key));
 
 export interface ThreadsOptions {
   home: string;

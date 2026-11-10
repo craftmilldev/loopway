@@ -7,13 +7,17 @@ import { formatJson, formatLine, formatThread, formatThreadJson, type LoopwayEve
 import { ghToken, GitHubSource } from "./github.js";
 import { Poller } from "./poller.js";
 import { loadState, saveState } from "./state.js";
-import { loadThreads, Threads, visibleThreads } from "./threads.js";
+import { loadThreads, readThreadLog, Threads, visibleThreads } from "./threads.js";
+import { showTui } from "./tui.js";
 
 const HELP = `loopway: watches GitHub and prints every new issue and pull request by you or your bot,
 and every update to the ones it knows.
 
-Usage: loopway [--json]
+Usage: loopway [--no-tui] [--json]
        loopway threads [--json]
+
+In a terminal it opens a TUI: the open threads and those closed in the last 3 days. Enter opens a thread, q quits.
+With --no-tui, --json, or output that isn't a terminal, it prints a plain log instead.
 
 Each new issue or pull request starts a thread for every bot whose rules ask for it (on: issue, on: pull_request),
 and every update to it goes on the queue of the open threads that hold it. \`loopway threads\` lists the open ones,
@@ -23,13 +27,19 @@ Run it from a directory with a .loopway/ folder: one <bot>.md per bot, with fron
   repos: [owner/name]
 Credentials come from gh (gh auth login). State lives in ~/.loopway (or $LOOPWAY_HOME).
 
-  --json       print one JSON object per line
+  --no-tui     print the plain log even in a terminal
+  --json       print one JSON object per line (implies --no-tui)
   --version    print the version
 `;
 
 async function main(): Promise<number> {
   const { values, positionals } = parseArgs({
-    options: { json: { type: "boolean" }, help: { type: "boolean", short: "h" }, version: { type: "boolean" } },
+    options: {
+      json: { type: "boolean" },
+      "no-tui": { type: "boolean" },
+      help: { type: "boolean", short: "h" },
+      version: { type: "boolean" },
+    },
     allowPositionals: true,
   });
   if (values.help) {
@@ -63,8 +73,13 @@ async function main(): Promise<number> {
   const state = await loadState(home);
   const threads = await Threads.load({ home, bots });
 
-  console.error(`loopway ${pkg.version}: watching ${repos.join(", ")} for ${authors.join(" and ")}`);
-  const print = (event: LoopwayEvent) => console.log(values.json ? formatJson(event) : formatLine(event));
+  // In the TUI nothing prints: the bottom of the screen shows the latest line.
+  const tui = !values.json && !values["no-tui"] && !!process.stdout.isTTY && !!process.stdin.isTTY;
+  let latest = "";
+  const say = (line: string) => (tui ? (latest = line) : console.log(line));
+  const log = (message: string) => (tui ? (latest = message) : console.error(message));
+  if (!tui) console.error(`loopway ${pkg.version}: watching ${repos.join(", ")} for ${authors.join(" and ")}`);
+  const print = (event: LoopwayEvent) => say(values.json ? formatJson(event) : formatLine(event));
   // A thread's lines follow the line of the event that caused them.
   const emit = async (event: LoopwayEvent) => {
     print(event);
@@ -77,12 +92,21 @@ async function main(): Promise<number> {
     repos,
     authors,
     emit,
-    log: (message) => console.error(message),
+    log,
   });
 
   const stop = new AbortController();
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => stop.abort());
-  await poller.run(stop.signal);
+  const polling = poller.run(stop.signal);
+  if (tui) {
+    const props = {
+      threads: () => threads.all,
+      readLog: (id: string) => readThreadLog(home, id),
+      latest: () => latest,
+    };
+    await showTui(props).finally(() => stop.abort());
+  }
+  await polling;
   return 0;
 }
 
