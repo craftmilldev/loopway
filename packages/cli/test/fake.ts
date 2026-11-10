@@ -47,7 +47,16 @@ export class FakeSource implements SubjectSource {
 export const rateLimited = (resumeAt: number) => new RateLimitError(resumeAt);
 
 /** A poller over a fake source whose clock the test moves, and the events it printed. */
-export function harness(opts: { state?: State; authors?: string[]; repos?: string[]; start?: string } = {}) {
+export function harness(
+  opts: {
+    state?: State;
+    authors?: string[];
+    repos?: string[];
+    start?: string;
+    /** Runs after each event is recorded, like the threads do in the real command. */
+    react?: (event: LoopwayEvent, push: (e: LoopwayEvent) => void) => Promise<void>;
+  } = {},
+) {
   const source = new FakeSource();
   const state = opts.state ?? emptyState();
   const events: LoopwayEvent[] = [];
@@ -60,7 +69,10 @@ export function harness(opts: { state?: State; authors?: string[]; repos?: strin
     save: async (s) => void saved.push(JSON.stringify(s)),
     repos: opts.repos ?? ["o/r"],
     authors: opts.authors ?? ["me", "loopway-bot"],
-    emit: (e) => events.push(e),
+    emit: async (e) => {
+      events.push(e);
+      await opts.react?.(e, (x) => events.push(x));
+    },
     log: (m) => logs.push(m),
     now: () => clock.t,
   });

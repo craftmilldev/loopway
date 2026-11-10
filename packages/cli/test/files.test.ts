@@ -4,8 +4,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadBots, parseBot, reposOf } from "../src/bots.js";
 import { loadGitHubConfig, loopwayHome } from "../src/config.js";
-import { formatJson, formatLine } from "../src/format.js";
+import { formatJson, formatLine, formatThread, formatThreadJson } from "../src/format.js";
 import { emptyState, loadState, saveState } from "../src/state.js";
+import { aThread } from "./make.js";
 
 const tmp = () => mkdtemp(join(tmpdir(), "loopway-test-"));
 
@@ -13,6 +14,7 @@ describe("bots", () => {
   it("reads front matter as rules and the Markdown as the prompt", () => {
     const bot = parseBot("dev", "---\nrepos: [a/b, c/d]\non: issue\nharness: claude\n---\n\nYou are the dev bot.\n");
     expect(bot.repos).toEqual(["a/b", "c/d"]);
+    expect(bot.on).toEqual(["issue"]);
     expect(bot.rules).toMatchObject({ on: "issue", harness: "claude" }); // unknown keys are kept, not an error
     expect(bot.prompt).toBe("You are the dev bot.");
   });
@@ -20,6 +22,13 @@ describe("bots", () => {
   it("takes a block list, or a single repo", () => {
     expect(parseBot("x", "---\nrepos:\n  - a/b\n  - c/d\n---\n").repos).toEqual(["a/b", "c/d"]);
     expect(parseBot("x", "---\nrepos: a/b\n---\n").repos).toEqual(["a/b"]);
+  });
+
+  it("takes on: as one kind or a list, and rejects anything else", () => {
+    expect(parseBot("x", "---\non: pull_request\n---\n").on).toEqual(["pull_request"]);
+    expect(parseBot("x", "---\non: [issue, pull_request]\n---\n").on).toEqual(["issue", "pull_request"]);
+    expect(parseBot("x", "---\nrepos: [a/b]\n---\n").on).toEqual([]);
+    expect(() => parseBot("x", "---\non: project\n---\n", ".loopway/x.md")).toThrow(/\.loopway\/x\.md.*"on: project"/);
   });
 
   it("allows a file with no front matter", () => {
@@ -95,12 +104,30 @@ describe("output", () => {
   it("prints one line per event", () => {
     expect(formatLine({ type: "new", subject })).toBe('2026-11-10 14:02 new    o/r#12 issue "Fix it" by mcwhittemore');
     expect(formatLine({ type: "new", subject: { ...subject, kind: "pull_request" } })).toContain(" pr ");
-    expect(formatLine({ type: "update", subject: "o/r#12", update })).toBe(
+    expect(formatLine({ type: "update", subject, update })).toBe(
       "2026-11-10 14:05 update o/r#12 comment by loopway-bot",
     );
-    expect(
-      formatLine({ type: "update", subject: "o/r#12", update: { ...update, kind: "labeled", detail: "bug" } }),
-    ).toBe("2026-11-10 14:05 update o/r#12 labeled bug by loopway-bot");
+    expect(formatLine({ type: "update", subject, update: { ...update, kind: "labeled", detail: "bug" } })).toBe(
+      "2026-11-10 14:05 update o/r#12 labeled bug by loopway-bot",
+    );
+  });
+
+  it("prints thread lines", () => {
+    const thread = { ...aThread("abc12345", "dev", ["o/r#12"]), latestAt: "2026-11-10T14:06:00Z" };
+    expect(formatLine({ type: "thread_opened", thread })).toBe("2026-11-10 14:02 thread opened abc12345 dev o/r#12");
+    expect(formatLine({ type: "queued", subject: "o/r#12", update, thread: "abc12345" })).toBe(
+      "2026-11-10 14:05 queued o/r#12 comment -> abc12345",
+    );
+    expect(formatLine({ type: "thread_closed", thread })).toBe("2026-11-10 14:06 thread closed abc12345");
+    expect(formatThread({ ...thread, queue: [{ ...update, subject: "o/r#12" }] })).toBe(
+      "abc12345  dev      open   o/r#12  1 pending",
+    );
+    expect(JSON.parse(formatThreadJson(thread))).toMatchObject({ id: "abc12345", bot: "dev", pending: 0 });
+    expect(JSON.parse(formatJson({ type: "queued", subject: "o/r#12", update, thread: "abc12345" }))).toMatchObject({
+      type: "queued",
+      thread: "abc12345",
+      id: "comment:1",
+    });
   });
 
   it("prints NDJSON with --json", () => {
@@ -112,7 +139,7 @@ describe("output", () => {
       title: "Fix it",
       author: "mcwhittemore",
     });
-    expect(JSON.parse(formatJson({ type: "update", subject: "o/r#12", update }))).toMatchObject({
+    expect(JSON.parse(formatJson({ type: "update", subject, update }))).toMatchObject({
       type: "update",
       subject: "o/r#12",
       kind: "comment",

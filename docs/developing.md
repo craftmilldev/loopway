@@ -10,9 +10,11 @@
 npm install
 npm run build
 mkdir -p scratch/.loopway && cd scratch      # scratch/ is git-ignored
-printf -- '---\nrepos: [owner/name]\n---\nprompt\n' > .loopway/dev.md
+printf -- '---\nrepos: [owner/name]\non: issue\n---\nprompt\n' > .loopway/dev.md
+printf -- '---\nrepos: [owner/name]\non: pull_request\n---\nprompt\n' > .loopway/review.md
 npm run cli                                  # bare `loopway`, reading ./.loopway
 npm run cli -- --json                        # NDJSON
+npm run cli -- threads                       # the open threads, from another terminal
 ```
 
 It needs `gh auth login`. Use a repo you can write to if you want to see events, and read the README for what it prints.
@@ -37,6 +39,8 @@ CI runs `npm run build` and these four.
 | `github.ts` | `GitHubSource`: REST with ETags, rate-limit detection |
 | `poller.ts` | Discovery (2 min), updates (30 s), dedupe, backoff |
 | `bots.ts` | Reads `.loopway/<bot>.md` |
+| `rules.ts` | `decide(event, threads, bots) -> actions`: the thread rules, a pure function |
+| `thread.ts`, `threads.ts` | The `Thread` type; the store that applies the rules' actions and keeps `threads/<id>.json` |
 | `config.ts`, `state.ts` | `~/.loopway/config.json`'s `github` block, and `state.json` |
 | `format.ts` | The printed line, and `--json` |
 

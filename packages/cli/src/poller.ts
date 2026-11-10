@@ -13,7 +13,8 @@ export interface PollerOptions {
   repos: string[];
   /** Logins whose issues and pull requests become subjects: you and the bot user. */
   authors: string[];
-  emit: (event: LoopwayEvent) => void;
+  /** Awaited before the poller saves its own state, so whatever acts on an event has recorded it first. */
+  emit: (event: LoopwayEvent) => void | Promise<void>;
   log?: (message: string) => void;
   now?: () => number;
 }
@@ -49,8 +50,8 @@ export class Poller {
         if (Date.parse(subject.createdAt) > Date.parse(latest)) latest = subject.createdAt;
         if (state.subjects[subject.key] || !this.authors.has(subject.author.toLowerCase())) continue;
         state.subjects[subject.key] = { subject, seen: [] };
+        await this.o.emit({ type: "new", subject });
         await this.o.save(state);
-        this.o.emit({ type: "new", subject });
       }
       if (latest !== since) {
         state.repos[repo] = { since: latest };
@@ -82,7 +83,7 @@ export class Poller {
           if (seen.has(update.id)) continue;
           seen.add(update.id);
           known.seen.push(update.id);
-          this.o.emit({ type: "update", subject: key, update });
+          await this.o.emit({ type: "update", subject: known.subject, update });
         }
         known.version = got.version;
         await this.o.save(state);

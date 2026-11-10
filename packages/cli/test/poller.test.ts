@@ -196,7 +196,7 @@ it("a poller with no repos does nothing", async () => {
     save: async () => {},
     repos: [],
     authors: ["me"],
-    emit: (e) => events.push(e),
+    emit: (e) => void events.push(e),
   });
   await poller.discover();
   await poller.updates();
