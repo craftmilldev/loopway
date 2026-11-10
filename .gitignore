@@ -3,3 +3,5 @@ dist/
 .vercel/
 .claude/
 scratch/
+.env*
+.data/
