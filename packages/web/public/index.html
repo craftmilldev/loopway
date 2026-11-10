@@ -76,6 +76,29 @@
         font-size: 15px;
       }
     </style>
+    <!-- Craftmill's PostHog, through the shared proxy: a page load and clicks on GitHub links, nothing else. -->
+    <script src="https://a.craftmill.dev/api/ingest/static/array.js"></script>
+    <script>
+      posthog.init("phc_BPP9dYnbUgCbhLiRynBT4sEpWJaYAFWMVApuMZUshQMy", {
+        api_host: "https://a.craftmill.dev/api/ingest",
+        ui_host: "https://us.posthog.com",
+        defaults: "2026-05-30",
+        autocapture: false,
+        capture_pageleave: false,
+        capture_exceptions: false,
+        disable_session_recording: true,
+        disable_surveys: true,
+        advanced_disable_flags: true,
+        capture_dead_clicks: false,
+        capture_performance: false,
+        persistence: "localStorage",
+        loaded: (ph) => ph.register({ product: "loopway", app: "marketing" }),
+      });
+      document.addEventListener("click", (event) => {
+        const link = event.target.closest && event.target.closest('a[href^="https://github.com/"]');
+        if (link) posthog.capture("github_clicked", { href: link.href }, { transport: "sendBeacon" });
+      });
+    </script>
   </head>
   <body>
     <main>
