@@ -35,6 +35,11 @@ export interface SubjectSource {
   whoami(): Promise<string>;
   /** Issues and pull requests in `repo` created after `since`, newest first or not; the caller filters by author. */
   discover(repo: string, since: string): Promise<Subject[]>;
+  /**
+   * Optional, cheap, and batched: which of these subjects have something new since they were last polled. The poller
+   * polls only those. A source without it is polled for every subject. It may over-report; it must not under-report.
+   */
+  changed?(subjects: Subject[]): Promise<Set<string>>;
   /** Everything visible about a subject. Repeats are fine: the poller drops ids it has seen. */
   poll(subject: Subject, version?: string): Promise<Poll>;
 }

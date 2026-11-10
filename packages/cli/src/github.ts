@@ -4,6 +4,11 @@ import { RateLimitError, type Poll, type Subject, type SubjectSource, type Updat
 
 const API = "https://api.github.com";
 const MAX_PAGES = 10;
+const PROBE_BATCH = 50;
+// Enough to tell whether a subject, or the CI on its head commit, has moved.
+const PROBE = `... on Issue { updatedAt state }
+  ... on PullRequest { updatedAt state commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) { nodes {
+    __typename ... on CheckRun { name status conclusion } ... on StatusContext { context state } } } } } } } }`;
 
 /** Your `gh` login: GH_TOKEN or GITHUB_TOKEN if set, else `gh auth token`. */
 export function ghToken(env: NodeJS.ProcessEnv = process.env): string {
@@ -39,6 +44,9 @@ export class GitHubSource implements SubjectSource {
   private readonly now: () => number;
   private readonly token: string;
   private readonly cache = new Map<string, Cached>();
+  /** What `changed` last saw per subject, and what `poll` has since taken in. Only in memory: a restart polls all. */
+  private readonly pending = new Map<string, string>();
+  private readonly signatures = new Map<string, string>();
 
   constructor(options: Options) {
     this.token = options.token;
@@ -74,7 +82,44 @@ export class GitHubSource implements SubjectSource {
     return found;
   }
 
+  /**
+   * One GraphQL call per 50 subjects: each one's updatedAt, state and CI results. Anything that differs from what the
+   * last successful `poll` of it saw is reported as changed. The first look at a subject always is, so a start-up polls
+   * everything once.
+   */
+  async changed(subjects: Subject[]): Promise<Set<string>> {
+    const changed = new Set<string>();
+    for (let i = 0; i < subjects.length; i += PROBE_BATCH) {
+      const batch = subjects.slice(i, i + PROBE_BATCH);
+      const fields = batch.map((s, j) => {
+        const [repo, number] = s.key.split("#") as [string, string];
+        const [owner, name] = repo.split("/") as [string, string];
+        return `s${j}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { issueOrPullRequest(number: ${Number(number)}) { ${PROBE} } }`;
+      });
+      const data = await this.graphql(`query { ${fields.join("\n")} }`);
+      batch.forEach((s, j) => {
+        const node = data[`s${j}`]?.issueOrPullRequest;
+        const signature = node ? JSON.stringify(node) : undefined;
+        if (!signature)
+          changed.add(s.key); // gone or unreadable: let the REST poll say why
+        else {
+          if (this.signatures.get(s.key) !== signature) changed.add(s.key);
+          this.pending.set(s.key, signature);
+        }
+      });
+    }
+    return changed;
+  }
+
   async poll(subject: Subject, version?: string): Promise<Poll> {
+    const result = await this.pollSubject(subject, version);
+    // Only now is what the probe saw safe to call "seen": a failed poll above leaves it changed for next time.
+    const signature = this.pending.get(subject.key);
+    if (signature) this.signatures.set(subject.key, signature);
+    return result;
+  }
+
+  private async pollSubject(subject: Subject, version?: string): Promise<Poll> {
     const [repo, number] = subject.key.split("#") as [string, string];
     const before = parseVersion(version);
     const issue = await this.get<Issue>(`/repos/${repo}/issues/${number}`);
@@ -163,6 +208,22 @@ export class GitHubSource implements SubjectSource {
 
     updates.sort((a, b) => a.at.localeCompare(b.at));
     return { updates, version: JSON.stringify({ updatedAt: issue.updated_at, bodyHash }) };
+  }
+
+  private async graphql(query: string): Promise<Record<string, { issueOrPullRequest?: unknown } | null | undefined>> {
+    const res = await this.fetch(API + "/graphql", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${this.token}`,
+        "content-type": "application/json",
+        "user-agent": "loopway",
+      },
+      body: JSON.stringify({ query }),
+    });
+    if (!res.ok) throw await this.failure(res, "/graphql");
+    // Partial data with errors (a deleted issue, say) is fine: the subjects missing from it count as changed.
+    const body = (await res.json()) as { data?: Record<string, { issueOrPullRequest?: unknown } | null> };
+    return body.data ?? {};
   }
 
   private get<T>(path: string): Promise<T> {

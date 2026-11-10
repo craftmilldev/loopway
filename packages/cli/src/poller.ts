@@ -61,7 +61,20 @@ export class Poller {
 
   async updates(): Promise<void> {
     const { source, state } = this.o;
+    // One batched question first, so quiet subjects cost nothing beyond it. If it fails for any reason but a rate
+    // limit, ask about everything.
+    let due: Set<string> | undefined;
+    const subjects = Object.values(state.subjects).map((k) => k.subject);
+    if (source.changed && subjects.length > 0) {
+      try {
+        due = await source.changed(subjects);
+      } catch (err) {
+        if (err instanceof RateLimitError) throw err;
+        this.o.log?.(`checking for changes: ${(err as Error).message}`);
+      }
+    }
     for (const [key, known] of Object.entries(state.subjects)) {
+      if (due && !due.has(key)) continue;
       try {
         const poll = await source.poll(known.subject, known.version);
         const seen = new Set(known.seen);

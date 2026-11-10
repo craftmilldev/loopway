@@ -6,6 +6,8 @@ import { emptyState, type State } from "../src/state.js";
 /** GitHub, in memory. Tests add subjects and updates, and can make the next calls fail. */
 export class FakeSource implements SubjectSource {
   subjects: Subject[] = [];
+  /** Set to give the poller a batched probe. */
+  changed?: (subjects: Subject[]) => Promise<Set<string>>;
   updates = new Map<string, Update[]>();
   failWith: Error | undefined;
   calls: string[] = [];
