@@ -76,15 +76,15 @@ export class Poller {
     for (const [key, known] of Object.entries(state.subjects)) {
       if (due && !due.has(key)) continue;
       try {
-        const poll = await source.poll(known.subject, known.version);
+        const got = await source.updates(known.subject, known.version);
         const seen = new Set(known.seen);
-        for (const update of poll.updates) {
+        for (const update of got.updates) {
           if (seen.has(update.id)) continue;
           seen.add(update.id);
           known.seen.push(update.id);
           this.o.emit({ type: "update", subject: key, update });
         }
-        known.version = poll.version;
+        known.version = got.version;
         await this.o.save(state);
       } catch (err) {
         if (err instanceof RateLimitError) throw err;

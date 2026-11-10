@@ -84,7 +84,7 @@ describe("updates", () => {
     h.source.say("o/r#99", { id: "comment:1" });
     await h.poller.updates();
     expect(h.events).toEqual([]);
-    expect(h.source.calls).not.toContain("poll o/r#99");
+    expect(h.source.calls).not.toContain("updates o/r#99");
   });
 
   it("logs a subject that fails and goes on to the next", async () => {
@@ -94,10 +94,10 @@ describe("updates", () => {
     h.source.add("o/r#2", "me", "2026-11-10T12:02:00Z");
     await h.poller.discover();
     h.events.length = 0;
-    const poll = h.source.poll.bind(h.source);
-    h.source.poll = async (s) => {
+    const ask = h.source.updates.bind(h.source);
+    h.source.updates = async (s) => {
       if (s.key === "o/r#1") throw new Error("404");
-      return poll(s);
+      return ask(s);
     };
     h.source.say("o/r#2", { id: "comment:1" });
     await h.poller.updates();
@@ -119,7 +119,7 @@ describe("restarts", () => {
     // A new process: new poller and source, the state read back from disk.
     const second = harness({ state: JSON.parse(first.saved.at(-1)!) });
     second.source.subjects = first.source.subjects;
-    second.source.updates = first.source.updates;
+    second.source.said = first.source.said;
     await second.poller.discover();
     await second.poller.updates();
     expect(second.events).toEqual([]);

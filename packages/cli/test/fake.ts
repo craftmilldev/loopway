@@ -1,6 +1,6 @@
 import type { LoopwayEvent } from "../src/format.js";
 import { Poller } from "../src/poller.js";
-import { RateLimitError, type Poll, type Subject, type SubjectSource, type Update } from "../src/source.js";
+import { RateLimitError, type Updates, type Subject, type SubjectSource, type Update } from "../src/source.js";
 import { emptyState, type State } from "../src/state.js";
 
 /** GitHub, in memory. Tests add subjects and updates, and can make the next calls fail. */
@@ -8,7 +8,7 @@ export class FakeSource implements SubjectSource {
   subjects: Subject[] = [];
   /** Set to give the poller a batched probe. */
   changed?: (subjects: Subject[]) => Promise<Set<string>>;
-  updates = new Map<string, Update[]>();
+  said = new Map<string, Update[]>();
   failWith: Error | undefined;
   calls: string[] = [];
 
@@ -24,10 +24,10 @@ export class FakeSource implements SubjectSource {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
-  async poll(subject: Subject): Promise<Poll> {
-    this.calls.push(`poll ${subject.key}`);
+  async updates(subject: Subject): Promise<Updates> {
+    this.calls.push(`updates ${subject.key}`);
     this.maybeFail();
-    return { updates: this.updates.get(subject.key) ?? [] };
+    return { updates: this.said.get(subject.key) ?? [] };
   }
 
   add(key: string, author: string, createdAt: string, kind: Subject["kind"] = "issue") {
@@ -36,7 +36,7 @@ export class FakeSource implements SubjectSource {
 
   say(key: string, update: Partial<Update> & { id: string }) {
     const full: Update = { kind: "comment", actor: "me", at: "2026-11-10T14:00:00Z", ...update };
-    this.updates.set(key, [...(this.updates.get(key) ?? []), full]);
+    this.said.set(key, [...(this.said.get(key) ?? []), full]);
   }
 
   private maybeFail() {

@@ -60,7 +60,7 @@ describe("discover", () => {
   });
 });
 
-describe("poll", () => {
+describe("updates", () => {
   const events = [
     { id: 1, event: "labeled", actor: { login: "me" }, created_at: "2026-11-10T12:31:00Z", label: { name: "bug" } },
     { id: 2, event: "subscribed", actor: { login: "me" }, created_at: "2026-11-10T12:31:00Z" },
@@ -76,7 +76,7 @@ describe("poll", () => {
       "/repos/o/r/issues/7/events": events,
       "/repos/o/r/issues/7/comments": comments,
     });
-    const { updates } = await source.poll(subject());
+    const { updates } = await source.updates(subject());
     expect(updates.map((u) => [u.id, u.kind, u.detail, u.actor])).toEqual([
       ["event:1", "labeled", "bug", "me"],
       ["comment:10:2026-11-10T12:32:00Z", "comment", undefined, "loopway-bot"],
@@ -90,9 +90,9 @@ describe("poll", () => {
       "/repos/o/r/issues/7/events": events,
       "/repos/o/r/issues/7/comments": comments,
     });
-    const first = await source.poll(subject());
+    const first = await source.updates(subject());
     requests.length = 0;
-    const second = await source.poll(subject(), first.version);
+    const second = await source.updates(subject(), first.version);
     expect(second.updates).toEqual([]);
     expect(requests).toEqual(["/repos/o/r/issues/7"]);
   });
@@ -104,10 +104,10 @@ describe("poll", () => {
       "/repos/o/r/issues/7/comments": [],
     };
     const { source } = fakeGitHub(routes);
-    const first = await source.poll(subject());
+    const first = await source.updates(subject());
     expect(first.updates).toEqual([]);
     routes["/repos/o/r/issues/7"] = issue({ body: "new details", updated_at: "2026-11-10T12:40:00Z" });
-    const second = await source.poll(subject(), first.version);
+    const second = await source.updates(subject(), first.version);
     expect(second.updates.map((u) => u.kind)).toEqual(["edited"]);
   });
 
@@ -143,7 +143,7 @@ describe("poll", () => {
         ],
       },
     });
-    const { updates } = await source.poll(subject("pull_request"));
+    const { updates } = await source.updates(subject("pull_request"));
     expect(updates.map((u) => [u.kind, u.detail])).toEqual([
       ["review", "changes requested"],
       ["review comment", undefined],
@@ -166,12 +166,12 @@ describe("poll", () => {
       "/repos/o/r/commits/s/status": { statuses: [] },
     };
     const { source } = fakeGitHub(routes);
-    const a = await source.poll(subject("pull_request"));
-    const b = await source.poll(subject("pull_request"), a.version);
+    const a = await source.updates(subject("pull_request"));
+    const b = await source.updates(subject("pull_request"), a.version);
     routes["/repos/o/r/commits/s/check-runs"] = {
       check_runs: [{ id: 1, name: "ci", status: "completed", conclusion: "failure" }],
     };
-    const c = await source.poll(subject("pull_request"), b.version);
+    const c = await source.updates(subject("pull_request"), b.version);
     expect(a.updates[0]?.id).toBe(b.updates[0]?.id);
     expect(c.updates[0]?.id).not.toBe(a.updates[0]?.id);
     expect(c.updates[0]?.detail).toBe("ci failure");

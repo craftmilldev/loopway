@@ -19,8 +19,8 @@ export interface Update {
   at: string;
 }
 
-/** What polling a subject returned: its updates, plus where it stands now. */
-export interface Poll {
+/** What asking a subject for updates returned: its updates, plus where it stands now. */
+export interface Updates {
   updates: Update[];
   /** Opaque; hand it back on the next poll. A source uses it to skip work when nothing changed. */
   version?: string;
@@ -41,7 +41,7 @@ export interface SubjectSource {
    */
   changed?(subjects: Subject[]): Promise<Set<string>>;
   /** Everything visible about a subject. Repeats are fine: the poller drops ids it has seen. */
-  poll(subject: Subject, version?: string): Promise<Poll>;
+  updates(subject: Subject, version?: string): Promise<Updates>;
 }
 
 /** The source asked us to stop for a while. */

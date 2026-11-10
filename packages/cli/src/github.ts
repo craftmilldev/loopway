@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { RateLimitError, type Poll, type Subject, type SubjectSource, type Update } from "./source.js";
+import { RateLimitError, type Updates, type Subject, type SubjectSource, type Update } from "./source.js";
 
 const API = "https://api.github.com";
 const MAX_PAGES = 10;
@@ -111,103 +111,110 @@ export class GitHubSource implements SubjectSource {
     return changed;
   }
 
-  async poll(subject: Subject, version?: string): Promise<Poll> {
-    const result = await this.pollSubject(subject, version);
-    // Only now is what the probe saw safe to call "seen": a failed poll above leaves it changed for next time.
+  /** Everything visible about a subject, as a series of steps. Each step looks at one kind of thing and knows when to skip. */
+  async updates(subject: Subject, version?: string): Promise<Updates> {
+    const look = await this.look(subject, version);
+    const updates = [
+      ...(await this.events(look)),
+      ...(await this.comments(look)),
+      ...(await this.reviews(look)),
+      ...(await this.reviewComments(look)),
+      ...this.edits(look),
+      ...(await this.checkRuns(look)),
+      ...(await this.statuses(look)),
+    ].sort((a, b) => a.at.localeCompare(b.at));
+    // Only now is what the probe saw safe to call "seen": a failure above leaves the subject changed for next time.
     const signature = this.pending.get(subject.key);
     if (signature) this.signatures.set(subject.key, signature);
-    return result;
+    return { updates, version: JSON.stringify({ updatedAt: look.issue.updated_at, bodyHash: look.bodyHash }) };
   }
 
-  private async pollSubject(subject: Subject, version?: string): Promise<Poll> {
+  /** The subject as it is now, and what the last poll knew of it. */
+  private async look(subject: Subject, version?: string): Promise<Look> {
     const [repo, number] = subject.key.split("#") as [string, string];
     const before = parseVersion(version);
     const issue = await this.get<Issue>(`/repos/${repo}/issues/${number}`);
-    const isPr = Boolean(issue.pull_request);
-    const pr = isPr ? await this.get<Pull>(`/repos/${repo}/pulls/${number}`) : undefined;
+    const pr = issue.pull_request ? await this.get<Pull>(`/repos/${repo}/pulls/${number}`) : undefined;
     const bodyHash = hash(`${issue.title}\n${issue.body ?? ""}`);
-    const updates: Update[] = [];
+    // Everything but CI bumps updated_at, so a subject that hasn't moved costs a request or two.
+    return { repo, number, issue, pr, bodyHash, before, moved: before.updatedAt !== issue.updated_at };
+  }
 
-    // Everything but CI bumps updated_at, so a subject that hasn't moved costs one request (a 304 or two).
-    if (before.updatedAt !== issue.updated_at) {
-      for (const e of await this.list<IssueEvent>(`/repos/${repo}/issues/${number}/events`)) {
-        if (SKIPPED_EVENTS.has(e.event)) continue;
-        updates.push({
-          id: `event:${e.id}`,
-          kind: e.event,
-          detail: e.label?.name ?? e.assignee?.login ?? (e.rename ? `${e.rename.from} -> ${e.rename.to}` : undefined),
-          actor: e.actor?.login ?? "ghost",
-          at: e.created_at,
-        });
-      }
-      for (const c of await this.list<Comment>(`/repos/${repo}/issues/${number}/comments`)) {
-        const edited = c.updated_at !== c.created_at;
-        updates.push({
-          id: `comment:${c.id}:${c.updated_at}`,
-          kind: edited ? "comment edited" : "comment",
-          actor: c.user?.login ?? "ghost",
-          at: c.updated_at,
-        });
-      }
-      if (isPr) {
-        for (const r of await this.list<Review>(`/repos/${repo}/pulls/${number}/reviews`)) {
-          if (!r.submitted_at) continue; // a pending review is private to its author
-          updates.push({
-            id: `review:${r.id}`,
-            kind: "review",
-            detail: r.state.toLowerCase().replace("_", " "),
-            actor: r.user?.login ?? "ghost",
-            at: r.submitted_at,
-          });
-        }
-        for (const c of await this.list<Comment>(`/repos/${repo}/pulls/${number}/comments`)) {
-          const edited = c.updated_at !== c.created_at;
-          updates.push({
-            id: `review_comment:${c.id}:${c.updated_at}`,
-            kind: edited ? "review comment edited" : "review comment",
-            actor: c.user?.login ?? "ghost",
-            at: c.updated_at,
-          });
-        }
-      }
-      // The first poll only learns what the body is; every later one reports a change to it.
-      if (before.bodyHash && before.bodyHash !== bodyHash) {
-        updates.push({
-          id: `edit:${bodyHash}`,
-          kind: "edited",
-          actor: issue.user?.login ?? "ghost",
-          at: issue.updated_at,
-        });
-      }
-    }
+  private async events(l: Look): Promise<Update[]> {
+    if (!l.moved) return [];
+    const events = await this.list<IssueEvent>(`/repos/${l.repo}/issues/${l.number}/events`);
+    return events
+      .filter((e) => !SKIPPED_EVENTS.has(e.event))
+      .map((e) => ({
+        id: `event:${e.id}`,
+        kind: e.event,
+        detail: e.label?.name ?? e.assignee?.login ?? (e.rename ? `${e.rename.from} -> ${e.rename.to}` : undefined),
+        actor: e.actor?.login ?? "ghost",
+        at: e.created_at,
+      }));
+  }
 
-    // CI belongs to the head commit and never touches the pull request's updated_at.
-    if (pr && pr.state === "open") {
-      const sha = pr.head.sha;
-      const runs = await this.get<{ check_runs: CheckRun[] }>(`/repos/${repo}/commits/${sha}/check-runs?per_page=100`);
-      for (const run of runs.check_runs) {
-        updates.push({
-          id: `check_run:${run.id}:${run.status}:${run.conclusion ?? ""}`,
-          kind: "check_run",
-          detail: `${run.name} ${run.conclusion ?? run.status}`,
-          actor: run.app?.slug ?? "github",
-          at: run.completed_at ?? run.started_at ?? issue.updated_at,
-        });
-      }
-      const combined = await this.get<{ statuses: CommitStatus[] }>(`/repos/${repo}/commits/${sha}/status`);
-      for (const s of combined.statuses) {
-        updates.push({
-          id: `status:${s.id}:${s.state}`,
-          kind: "status",
-          detail: `${s.context} ${s.state}`,
-          actor: s.creator?.login ?? "github",
-          at: s.updated_at,
-        });
-      }
-    }
+  private async comments(l: Look): Promise<Update[]> {
+    if (!l.moved) return [];
+    const comments = await this.list<Comment>(`/repos/${l.repo}/issues/${l.number}/comments`);
+    return comments.map((c) => commentUpdate("comment", c));
+  }
 
-    updates.sort((a, b) => a.at.localeCompare(b.at));
-    return { updates, version: JSON.stringify({ updatedAt: issue.updated_at, bodyHash }) };
+  private async reviews(l: Look): Promise<Update[]> {
+    if (!l.moved || !l.pr) return [];
+    const reviews = await this.list<Review>(`/repos/${l.repo}/pulls/${l.number}/reviews`);
+    return reviews
+      .filter((r) => r.submitted_at) // a pending review is private to its author
+      .map((r) => ({
+        id: `review:${r.id}`,
+        kind: "review",
+        detail: r.state.toLowerCase().replace("_", " "),
+        actor: r.user?.login ?? "ghost",
+        at: r.submitted_at ?? l.issue.updated_at,
+      }));
+  }
+
+  private async reviewComments(l: Look): Promise<Update[]> {
+    if (!l.moved || !l.pr) return [];
+    const comments = await this.list<Comment>(`/repos/${l.repo}/pulls/${l.number}/comments`);
+    return comments.map((c) => commentUpdate("review comment", c));
+  }
+
+  /** A changed title or body. The first look only learns what it is; every later one reports a change. */
+  private edits(l: Look): Update[] {
+    if (!l.moved || !l.before.bodyHash || l.before.bodyHash === l.bodyHash) return [];
+    return [
+      { id: `edit:${l.bodyHash}`, kind: "edited", actor: l.issue.user?.login ?? "ghost", at: l.issue.updated_at },
+    ];
+  }
+
+  /** CI belongs to the head commit and never touches the pull request's updated_at, so it is asked every time. */
+  private async checkRuns(l: Look): Promise<Update[]> {
+    if (l.pr?.state !== "open") return [];
+    const { check_runs } = await this.get<{ check_runs: CheckRun[] }>(
+      `/repos/${l.repo}/commits/${l.pr.head.sha}/check-runs?per_page=100`,
+    );
+    return check_runs.map((run) => ({
+      id: `check_run:${run.id}:${run.status}:${run.conclusion ?? ""}`,
+      kind: "check_run",
+      detail: `${run.name} ${run.conclusion ?? run.status}`,
+      actor: run.app?.slug ?? "github",
+      at: run.completed_at ?? run.started_at ?? l.issue.updated_at,
+    }));
+  }
+
+  private async statuses(l: Look): Promise<Update[]> {
+    if (l.pr?.state !== "open") return [];
+    const { statuses } = await this.get<{ statuses: CommitStatus[] }>(
+      `/repos/${l.repo}/commits/${l.pr.head.sha}/status`,
+    );
+    return statuses.map((s) => ({
+      id: `status:${s.id}:${s.state}`,
+      kind: "status",
+      detail: `${s.context} ${s.state}`,
+      actor: s.creator?.login ?? "github",
+      at: s.updated_at,
+    }));
   }
 
   private async graphql(query: string): Promise<Record<string, { issueOrPullRequest?: unknown } | null | undefined>> {
@@ -275,6 +282,28 @@ export class GitHubSource implements SubjectSource {
     }
     return new Error(`GitHub ${res.status} on ${url}: ${text.slice(0, 200)}`);
   }
+}
+
+/** What one look at a subject learned, handed to each step of `updates`. */
+interface Look {
+  repo: string;
+  number: string;
+  issue: Issue;
+  /** Set for a pull request. */
+  pr?: Pull;
+  bodyHash: string;
+  before: { updatedAt?: string; bodyHash?: string };
+  /** Whether it has changed since the last poll (CI aside). */
+  moved: boolean;
+}
+
+function commentUpdate(what: "comment" | "review comment", c: Comment): Update {
+  return {
+    id: `${what.replace(" ", "_")}:${c.id}:${c.updated_at}`,
+    kind: c.updated_at !== c.created_at ? `${what} edited` : what,
+    actor: c.user?.login ?? "ghost",
+    at: c.updated_at,
+  };
 }
 
 // Noise that says nothing happened to the work itself.

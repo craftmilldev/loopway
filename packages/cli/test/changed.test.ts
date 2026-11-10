@@ -11,7 +11,7 @@ const subject = (n: number): Subject => ({
   createdAt: "2026-11-10T12:30:00Z",
 });
 
-/** A fetch that answers the batched probe from `nodes` and the few REST calls a poll makes, counting probes. */
+/** A fetch that answers the batched probe from `nodes` and the few REST calls an updates call makes, counting probes. */
 function probe(nodes: Record<string, unknown>, limited = false) {
   const queries: string[] = [];
   const rest: Record<string, unknown> = {
@@ -56,7 +56,7 @@ describe("the batched probe", () => {
     const nodes: Record<string, unknown> = { s0: { updatedAt: "a" }, s1: { updatedAt: "b" } };
     const { source } = probe(nodes);
     await source.changed(two);
-    await source.poll(subject(7)); // takes in #7 only
+    await source.updates(subject(7)); // takes in #7 only
     expect([...(await source.changed(two))]).toEqual(["o/r#8"]);
     nodes.s0 = { updatedAt: "a", checks: "now failing" };
     expect([...(await source.changed(two))]).toEqual(["o/r#7", "o/r#8"]);
@@ -94,7 +94,7 @@ describe("the poller with a probe", () => {
     const h = await two();
     h.source.changed = async () => new Set(["o/r#2"]);
     await h.poller.updates();
-    expect(h.source.calls).toEqual(["poll o/r#2"]);
+    expect(h.source.calls).toEqual(["updates o/r#2"]);
   });
 
   it("polls everything if the probe fails", async () => {
@@ -103,7 +103,7 @@ describe("the poller with a probe", () => {
       throw new Error("graphql down");
     };
     await h.poller.updates();
-    expect(h.source.calls).toEqual(["poll o/r#1", "poll o/r#2"]);
+    expect(h.source.calls).toEqual(["updates o/r#1", "updates o/r#2"]);
     expect(h.logs).toEqual(["checking for changes: graphql down"]);
   });
 
