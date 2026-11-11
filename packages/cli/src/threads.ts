@@ -12,30 +12,30 @@ import { holds, type Thread } from "./thread.js";
 /** Closed threads stay in `loopway threads` this long after their latest message. */
 export const CLOSED_SHOWN_MS = 3 * 24 * 60 * 60_000;
 
-export const threadsDir = (home: string) => join(home, "threads");
+export const threadsDir = (dir: string) => join(dir, "threads");
 
 /** The session log of a thread, appended to as its session runs. */
-export const threadLogPath = (home: string, id: string) => join(threadsDir(home), `${id}.log`);
+export const threadLogPath = (dir: string, id: string) => join(threadsDir(dir), `${id}.log`);
 
 /** What a thread's session has logged so far; empty until it has. */
-export function readThreadLog(home: string, id: string): string {
+export function readThreadLog(dir: string, id: string): string {
   try {
-    return readFileSync(threadLogPath(home, id), "utf8");
+    return readFileSync(threadLogPath(dir, id), "utf8");
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return "";
     throw err;
   }
 }
 
-export async function loadThreads(home: string): Promise<Thread[]> {
+export async function loadThreads(dir: string): Promise<Thread[]> {
   let files: string[];
   try {
-    files = (await readdir(threadsDir(home))).filter((f) => f.endsWith(".json")).sort();
+    files = (await readdir(threadsDir(dir))).filter((f) => f.endsWith(".json")).sort();
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw err;
   }
-  const threads = await Promise.all(files.map((f) => readFile(join(threadsDir(home), f), "utf8")));
+  const threads = await Promise.all(files.map((f) => readFile(join(threadsDir(dir), f), "utf8")));
   return threads.map((text) => JSON.parse(text) as Thread);
 }
 
@@ -51,13 +51,14 @@ export function visibleThreads(threads: Thread[], now: number): Thread[] {
 export const withSubject = (threads: Thread[], key: string) => threads.filter((t) => holds(t, key));
 
 export interface ThreadsOptions {
-  home: string;
+  /** The project's state directory. */
+  dir: string;
   bots: Bot[];
   now?: () => number;
   newId?: () => string;
 }
 
-/** Every thread, kept in memory and in `<home>/threads/<id>.json`. Applies what `decide` says to each event. */
+/** Every thread, kept in memory and in `<dir>/threads/<id>.json`. Applies what `decide` says to each event. */
 export class Threads {
   private readonly now: () => number;
   private readonly newId: () => string;
@@ -71,7 +72,7 @@ export class Threads {
   }
 
   static async load(o: ThreadsOptions): Promise<Threads> {
-    return new Threads(o, await loadThreads(o.home));
+    return new Threads(o, await loadThreads(o.dir));
   }
 
   /** Acts on an event from the poller: the thread changes are on disk when this returns. */
@@ -83,7 +84,7 @@ export class Threads {
       const thread = this.apply(action, events);
       touched.add(thread);
     }
-    for (const thread of touched) await writeJson(join(threadsDir(this.o.home), `${thread.id}.json`), thread);
+    for (const thread of touched) await writeJson(join(threadsDir(this.o.dir), `${thread.id}.json`), thread);
     return events;
   }
 

@@ -1,6 +1,6 @@
 import type { Subject, Update } from "./source.js";
 
-/** One bot plus the subjects it tracks. Stored as `<home>/threads/<id>.json`. */
+/** One bot plus the subjects it tracks. Stored as `<state dir>/threads/<id>.json`. */
 export interface Thread {
   id: string;
   bot: string;

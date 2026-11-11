@@ -4,15 +4,15 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { formatLine, type LoopwayEvent } from "../src/format.js";
 import { CLOSED_SHOWN_MS, loadThreads, Threads, threadsDir, visibleThreads } from "../src/threads.js";
-import type { State } from "../src/state.js";
+import { emptyState, loadState, stateDir, type State } from "../src/state.js";
 import { harness } from "./fake.js";
 import { aThread, dev, review } from "./make.js";
 
 /** The poller over a fake GitHub with threads acting on its events, as `loopway` wires them. */
-async function running(opts: { home?: string; state?: State; start?: string } = {}) {
-  const home = opts.home ?? (await mkdtemp(join(tmpdir(), "loopway-threads-")));
+async function running(opts: { dir?: string; state?: State; start?: string } = {}) {
+  const dir = opts.dir ?? (await mkdtemp(join(tmpdir(), "loopway-threads-")));
   let n = 0;
-  const threads = await Threads.load({ home, bots: [dev, review], newId: () => `t${++n + (opts.state ? 100 : 0)}` });
+  const threads = await Threads.load({ dir, bots: [dev, review], newId: () => `t${++n + (opts.state ? 100 : 0)}` });
   const h = harness({
     state: opts.state,
     start: opts.start,
@@ -21,7 +21,7 @@ async function running(opts: { home?: string; state?: State; start?: string } = 
     },
   });
   const lines = () => h.events.map((e) => formatLine(e).slice(17)); // without the time
-  return { ...h, home, threads, lines };
+  return { ...h, dir, threads, lines };
 }
 
 const sees = async (h: Awaited<ReturnType<typeof running>>) => {
@@ -103,7 +103,7 @@ describe("threads from a poller", () => {
     first.source.say("o/r#12", { id: "comment:1" });
     await first.poller.updates();
 
-    const second = await running({ home: first.home, state: JSON.parse(first.saved.at(-1)!) });
+    const second = await running({ dir: first.dir, state: JSON.parse(first.saved.at(-1)!) });
     second.source.subjects = first.source.subjects;
     second.source.said = first.source.said;
     await sees(second);
@@ -122,15 +122,15 @@ describe("threads from a poller", () => {
     h.source.add("o/r#12", "me", "2026-11-10T12:01:00Z");
     h.source.add("o/r#13", "me", "2026-11-10T12:02:00Z", "pull_request");
     await h.poller.discover();
-    expect((await readdir(threadsDir(h.home))).sort()).toEqual(["t1.json", "t2.json"]);
-    const stored = JSON.parse(await readFile(join(threadsDir(h.home), "t1.json"), "utf8"));
+    expect((await readdir(threadsDir(h.dir))).sort()).toEqual(["t1.json", "t2.json"]);
+    const stored = JSON.parse(await readFile(join(threadsDir(h.dir), "t1.json"), "utf8"));
     expect(stored).toMatchObject({
       id: "t1",
       bot: "dev",
       status: "open",
       subjects: [{ key: "o/r#12", status: "open" }],
     });
-    expect(await loadThreads(h.home)).toHaveLength(2);
+    expect(await loadThreads(h.dir)).toHaveLength(2);
   });
 });
 
@@ -149,7 +149,38 @@ describe("which threads are listed", () => {
 });
 
 it("handles only new subjects and updates", async () => {
-  const threads = await Threads.load({ home: await mkdtemp(join(tmpdir(), "loopway-threads-")), bots: [dev] });
+  const threads = await Threads.load({ dir: await mkdtemp(join(tmpdir(), "loopway-threads-")), bots: [dev] });
   const event: LoopwayEvent = { type: "thread_closed", thread: aThread("t", "dev", []) };
   expect(await threads.handle(event)).toEqual([]);
+});
+
+describe("per-project state", () => {
+  const home = "/home/me/.loopway";
+
+  it("is ~/.loopway/state/<slug of the project's .loopway folder>", () => {
+    expect(stateDir(home, "/work/my app")).toBe("/home/me/.loopway/state/-work-my-app--loopway");
+    expect(stateDir(home, "/work/a")).not.toBe(stateDir(home, "/work/b"));
+  });
+
+  it("keeps each project's threads and cursors to itself", async () => {
+    const loopwayHome = await mkdtemp(join(tmpdir(), "loopway-home-"));
+    const opens = async (project: string, key: string) => {
+      const h = await running({ dir: stateDir(loopwayHome, project) });
+      await h.poller.discover();
+      h.source.add(key, "me", "2026-11-10T12:01:00Z");
+      await h.poller.discover();
+    };
+    const subjectsIn = async (project: string) =>
+      (await loadThreads(stateDir(loopwayHome, project))).map((t) => t.subjects[0]?.key);
+
+    await opens("/work/a", "o/r#1");
+    expect(await subjectsIn("/work/a")).toEqual(["o/r#1"]);
+    expect(await subjectsIn("/work/b")).toEqual([]);
+    expect(await loadState(stateDir(loopwayHome, "/work/b"))).toEqual(emptyState());
+
+    await opens("/work/b", "o/r#2");
+    expect(await subjectsIn("/work/a")).toEqual(["o/r#1"]);
+    expect(await subjectsIn("/work/b")).toEqual(["o/r#2"]);
+    expect(await readdir(join(loopwayHome, "state"))).toHaveLength(2);
+  });
 });
