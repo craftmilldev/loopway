@@ -13,6 +13,7 @@ This is 2.0, an alpha. It started as a poller; threads are the second slice, and
 
 ```bash
 npm install && npm run build         # Node 22+
+npm link -w @loopway/cli             # puts your checkout's build on your PATH as `loopway`
 gh auth login                        # loopway acts as whoever gh is logged in as
 ```
 
@@ -36,10 +37,10 @@ on: pull_request
 
 You are the review bot. You read a pull request and review it.
 EOF
-node ../packages/cli/dist/index.js   # runs `loopway` here (`npm run build` first)
+loopway   # re-run `npm run build` in the checkout after changing the code
 ```
 
-To run it from a directory outside the checkout, `npm link -w @loopway/cli` puts `loopway` on your PATH. The plain log (see [The TUI](#the-tui)) is one line per event:
+`loopway` finds its project the way git finds a repo: it walks up from where you are to the nearest directory with a `.loopway/` folder, and `--project <dir>` names one instead. Its first line (and the TUI header) says which `.loopway` it found; with none above you, it exits and says where it looked. The plain log (see [The TUI](#the-tui)) is one line per event:
 
 ```
 2026-11-10 14:02 new    owner/repo#12 issue "Fix the login bug" by mcwhittemore
@@ -79,7 +80,7 @@ The bare `loopway` adds thread lines to its output, after the line of the event 
 
 ## Sessions
 
-Each open thread with queued updates and no run in flight gets all of them, oldest first, in one run of Claude Code (`claude -p --permission-mode auto --output-format stream-json`) in the directory `loopway` runs in. A new session gets the bot's prompt plus the updates; later batches run with `--resume <session id>`. `--max N` (default 3) caps the runs in flight.
+Each open thread with queued updates and no run in flight gets all of them, oldest first, in one run of Claude Code (`claude -p --permission-mode auto --output-format stream-json`) in the project directory (the one holding `.loopway/`). A new session gets the bot's prompt plus the updates; later batches run with `--resume <session id>`. `--max N` (default 3) caps the runs in flight.
 
 - A delivered batch leaves the queue. A run that fails (an API error, a usage limit, a bad exit, a bad model name) leaves it, marks the session `failed`, and the thread tries again after 5 minutes. A usage limit holds every delivery until it resets.
 - The session acts as the bot user (see Credentials). It talks only through loopway's own MCP server, which loopway hosts and passes with `--mcp-config`. The one tool so far is `comment(subject, body)`. Every message goes through it, so loopway records it on the thread (`sent`). A comment a thread sent is not queued back to that thread, but is queued to every other thread holding the subject. The comment carries a hidden `<!-- loopway:thread=<id> -->` so the poller can tell.
@@ -117,7 +118,7 @@ Per thread, the JSON has `session: { id, status: idle | running | blocked | fail
 
 ## Bots: `.loopway/`
 
-`loopway` reads the `.loopway/` folder in the directory it runs from. Each bot is one file, `.loopway/<bot>.md`: Markdown with YAML front matter. The front matter is the bot's rules; the Markdown is its prompt, which starts each thread's session. The keys: `repos`; `on: issue`, `on: pull_request` or a list of both, which says which new subjects start a thread for the bot; `model` (like `sonnet`, passed to Claude Code); `harness` (only `claude`, the default). Keys loopway does not know are ignored. It polls the union of every bot's repos.
+`loopway` reads the nearest `.loopway/` folder at or above where it runs (or the one `--project <dir>` names); sessions run in the directory that holds it. Each bot is one file, `.loopway/<bot>.md`: Markdown with YAML front matter. The front matter is the bot's rules; the Markdown is its prompt, which starts each thread's session. The keys: `repos`; `on: issue`, `on: pull_request` or a list of both, which says which new subjects start a thread for the bot; `model` (like `sonnet`, passed to Claude Code); `harness` (only `claude`, the default). Keys loopway does not know are ignored. It polls the union of every bot's repos.
 
 `.loopway/dev.md`:
 

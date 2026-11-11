@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { loadBots, reposOf, type Bot } from "./bots.js";
 import { claudeRunner } from "./claude.js";
@@ -8,6 +9,7 @@ import { formatJson, formatLine, formatThread, formatThreadJson, type LoopwayEve
 import { ghToken, GitHubSource } from "./github.js";
 import { startMcp } from "./mcp.js";
 import { Poller } from "./poller.js";
+import { findProject } from "./project.js";
 import { Sessions } from "./sessions.js";
 import { loadState, saveState, stateDir } from "./state.js";
 import { loadThreads, readThreadLog, Threads, visibleThreads } from "./threads.js";
@@ -17,8 +19,8 @@ import { formatPollStatus } from "./tui-text.js";
 const HELP = `loopway: watches GitHub and prints every new issue and pull request by you or your bot,
 and every update to the ones it knows.
 
-Usage: loopway [--no-tui] [--json] [--max N]
-       loopway threads [--json]
+Usage: loopway [--project DIR] [--no-tui] [--json] [--max N]
+       loopway threads [--project DIR] [--json]
 
 In a terminal it opens a TUI: the open threads and those closed in the last 3 days. Enter opens a thread, q quits.
 With --no-tui, --json, or output that isn't a terminal, it prints a plain log instead.
@@ -28,12 +30,14 @@ and every update to it goes on the queue of the open threads that hold it. Each 
 session that acts as the bot user and talks back through loopway's own MCP tool. \`loopway threads\` lists the open
 threads, and those closed in the last 3 days.
 
-Run it from a directory with a .loopway/ folder: one <bot>.md per bot, with front matter like
+Run it in a project: it walks up from where you are to the nearest directory with a .loopway/ folder, like git
+finds a repo, and prints which one it found. Each project has one <bot>.md per bot, with front matter like
   repos: [owner/name]
   model: sonnet
 Credentials come from gh (gh auth login), and the bot's from ~/.loopway/config.json (or $LOOPWAY_HOME).
 State is per project, in ~/.loopway/state/<the project's path>.
 
+  --project D  use the .loopway/ in directory D, and skip the search
   --no-tui     print the plain log even in a terminal
   --json       print one JSON object per line (implies --no-tui)
   --max N      runs in flight at once (default 3)
@@ -43,6 +47,7 @@ State is per project, in ~/.loopway/state/<the project's path>.
 async function main(): Promise<number> {
   const { values, positionals } = parseArgs({
     options: {
+      project: { type: "string" },
       json: { type: "boolean" },
       "no-tui": { type: "boolean" },
       max: { type: "string", default: "3" },
@@ -64,7 +69,7 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  const project = projectDir();
+  const project = findProject(process.cwd(), values.project);
   if (positionals[0] === "threads") return listThreads(stateDir(loopwayHome(), project), values.json);
   if (positionals.length > 0) throw new Error(`Unknown command "${positionals[0]}". Try loopway --help.`);
 
@@ -72,7 +77,7 @@ async function main(): Promise<number> {
   const repos = reposOf(bots);
   if (repos.length === 0) {
     console.error(
-      "Nothing to read. Add .loopway/<bot>.md here, with front matter like:\n\n---\nrepos: [owner/name]\n---",
+      `Nothing to read in ${join(project, ".loopway")}. Add <bot>.md files there, with front matter like:\n\n---\nrepos: [owner/name]\n---`,
     );
     return 1;
   }
@@ -90,7 +95,10 @@ async function main(): Promise<number> {
   let latest = "";
   const say = (line: string) => (tui ? (latest = line) : console.log(line));
   const log = (message: string) => (tui ? (latest = message) : console.error(message));
-  if (!tui) console.error(`loopway ${pkg.version}: watching ${repos.join(", ")} for ${authors.join(" and ")}`);
+  if (!tui)
+    console.error(
+      `loopway ${pkg.version}: ${join(project, ".loopway")}: watching ${repos.join(", ")} for ${authors.join(" and ")}`,
+    );
   const print = (event: LoopwayEvent) => say(values.json ? formatJson(event) : formatLine(event));
   const stop = new AbortController();
   const sessions = await startSessions({
@@ -129,6 +137,7 @@ async function main(): Promise<number> {
       latest: () => latest,
       status: (now: number) => formatPollStatus(repos, poller.status(), now),
       onRefresh: () => void poller.refresh(),
+      project,
     };
     await showTui(props).finally(() => stop.abort());
   }
@@ -136,9 +145,6 @@ async function main(): Promise<number> {
   await sessions?.done;
   return 0;
 }
-
-/** Where `loopway` was typed. Under `npm run`, INIT_CWD is the checkout root, not where you were: run the built file directly (`node ../packages/cli/dist/index.js`). */
-const projectDir = () => process.env.INIT_CWD || process.cwd();
 
 interface SessionsSetup {
   dir: string;

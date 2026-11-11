@@ -13,6 +13,8 @@ export interface MainViewProps {
   latest: string;
   /** What the poller is doing: last checked, next check. */
   status: string;
+  /** The project directory, so a wrong one is obvious. */
+  project: string;
   now: number;
   onSelect: (id: string) => void;
   onOpen: (id: string) => void;
@@ -37,7 +39,7 @@ export function MainView(props: MainViewProps) {
   return (
     <Box flexDirection="column">
       <Text bold>
-        loopway · {threads.length} threads
+        loopway · {props.project} · {threads.length} threads
         {filter && <Text color="cyan"> · filter {filter} (esc clears)</Text>}
       </Text>
       {threads.length === 0 && <Text dimColor>No threads yet.</Text>}

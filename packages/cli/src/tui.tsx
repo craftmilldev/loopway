@@ -16,6 +16,8 @@ export interface TuiProps {
   status: (now: number) => string;
   /** Polls GitHub now, instead of waiting for the poller's timers. */
   onRefresh: () => void;
+  /** The project directory the threads belong to, shown in the header. */
+  project: string;
   now?: () => number;
   refreshMs?: number;
 }
@@ -27,7 +29,16 @@ export async function showTui(props: TuiProps): Promise<void> {
 }
 
 /** The main view of threads, and the view of one thread. q quits; Ctrl-C does too. */
-export function Tui({ threads, readLog, latest, status, onRefresh, now = Date.now, refreshMs = 1000 }: TuiProps) {
+export function Tui({
+  threads,
+  readLog,
+  latest,
+  status,
+  onRefresh,
+  project,
+  now = Date.now,
+  refreshMs = 1000,
+}: TuiProps) {
   const { exit } = useApp();
   const [filter, setFilter] = useState<string>();
   const [selectedId, setSelectedId] = useState<string>();
@@ -61,6 +72,7 @@ export function Tui({ threads, readLog, latest, status, onRefresh, now = Date.no
         filter={filter}
         latest={latest()}
         status={status(now())}
+        project={project}
         now={now()}
         onSelect={setSelectedId}
         onOpen={setOpenId}

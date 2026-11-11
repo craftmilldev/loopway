@@ -14,7 +14,6 @@
   ],
   "scripts": {
     "init-scratch": "node tools/init-scratch.mjs",
-    "cli": "npm run start -w @loopway/cli --",
     "build": "npm run build --workspaces --if-present",
     "test": "npm test --workspaces",
     "typecheck": "npm run typecheck --workspaces",

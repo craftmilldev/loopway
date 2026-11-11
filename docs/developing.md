@@ -9,13 +9,17 @@
 ```bash
 npm install
 npm run build
-npm run init-scratch                      # scratch/ (git-ignored): dev and review bots on the sandbox repo
+npm link -w @loopway/cli     # `loopway` on your PATH is now this checkout's build; rebuild after changes
+npm run init-scratch         # scratch/ (git-ignored): dev and review bots on the sandbox repo
 cd scratch
-node ../packages/cli/dist/index.js                                   # bare `loopway`, reading ./.loopway
-node ../packages/cli/dist/index.js --no-tui                      # the plain log
-node ../packages/cli/dist/index.js --json                        # NDJSON
-node ../packages/cli/dist/index.js threads                       # the open threads, from another terminal
+loopway                      # bare `loopway`: the nearest .loopway/ above here, named on its first line
+loopway --no-tui             # the plain log
+loopway --json               # NDJSON
+loopway threads              # the open threads, from another terminal
+loopway --project scratch    # from anywhere, naming the project
 ```
+
+There is no `npm run` entry for loopway itself: npm runs scripts from the checkout root, which would read the checkout's own `.loopway`.
 
 It needs `gh auth login`. `npm run init-scratch` points both bots at `craftmilldev/loopway-sandbox`; run it again any time (it keeps bot files you edited and says so; `--force` puts the defaults back). `-- --reset` also clears the project's state in `~/.loopway/state/`, so you start with no threads, and `-- --dir <path>` makes the project somewhere else. Read the README for what loopway prints.
 
@@ -38,6 +42,7 @@ CI runs `npm run build` and these four.
 | `source.ts` | `SubjectSource`, the interface to a collaboration tool, and the types around it |
 | `github.ts` | `GitHubSource`: REST with ETags, rate-limit detection |
 | `poller.ts` | Discovery (2 min), updates (30 s), dedupe, backoff |
+| `project.ts` | `findProject`: walks up to the nearest `.loopway/`, or takes `--project` |
 | `bots.ts` | Reads `.loopway/<bot>.md` |
 | `rules.ts` | `decide(event, threads, bots) -> actions`: the thread rules, a pure function |
 | `thread.ts`, `threads.ts` | The `Thread` type; the store that applies the rules' actions and keeps `threads/<id>.json` |

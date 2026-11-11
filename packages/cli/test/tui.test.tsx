@@ -32,6 +32,7 @@ function show(threads: Thread[] | (() => Thread[]), more: Partial<TuiProps> = {}
       latest={() => "14:03 update o/r#12 comment by me"}
       status={() => "polling o/r · last checked 14:02 · next in 0:24"}
       onRefresh={() => {}}
+      project="/work/app"
       now={() => NOW}
       refreshMs={10}
       {...more}
@@ -50,6 +51,11 @@ describe("main view", () => {
     show([withQueue, running]);
     expect(screen()).toContain("▸ dev      open   no session yet  1 pending 2026-11-10 14:05 o/r#12");
     expect(screen()).toContain("  review   open   running         0 pending 2026-11-10 14:30 o/r#13");
+  });
+
+  it("names the project in the header", () => {
+    show([dev12()]);
+    expect(screen()).toContain("loopway · /work/app · 1 threads");
   });
 
   it("shows the latest poller line at the bottom", () => {
@@ -182,10 +188,10 @@ describe("thread view", () => {
     await press(KEYS.right);
     expect(screen()).toContain("Subjects");
     await press(KEYS.left);
-    expect(screen()).toContain("loopway · 1 threads");
+    expect(screen()).toContain("loopway · /work/app · 1 threads");
     await press(KEYS.enter);
     await press(KEYS.esc);
-    expect(screen()).toContain("loopway · 1 threads");
+    expect(screen()).toContain("loopway · /work/app · 1 threads");
   });
 
   it("says there is no session yet when the thread has none, and no log", async () => {
