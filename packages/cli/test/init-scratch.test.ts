@@ -7,56 +7,38 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { stateDir } from "../src/state.js";
 
 const script = join(import.meta.dirname, "../../../tools/init-scratch.mjs");
-const git = (...args: string[]) => execFileSync("git", args, { stdio: "pipe" });
-const commit = (repo: string, message: string) => {
-  git("-C", repo, "add", ".");
-  git("-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--quiet", "-m", message);
-  git("-C", repo, "push", "--quiet", "origin", "main");
-};
 
+let root: string;
 let home: string;
 let dir: string;
-let remote: string;
-let seed: string;
 
-/** Runs the script like `npm run init-scratch -- <args>`, with a local bare repo standing in for the sandbox. */
+/** Runs the script like `npm run init-scratch -- <args>`, from `root`, with a temp `LOOPWAY_HOME`. */
 const init = (...args: string[]) =>
-  execFileSync("node", [script, "--dir", dir, ...args], {
+  execFileSync("node", [script, "--dir", "scratch", ...args], {
     encoding: "utf8",
-    env: { ...process.env, LOOPWAY_HOME: home, LOOPWAY_SANDBOX_REMOTE: remote, INIT_CWD: "" },
+    cwd: root,
+    env: { ...process.env, LOOPWAY_HOME: home, INIT_CWD: "" },
   });
 
 beforeEach(async () => {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "loopway-init-")));
+  root = await realpath(await mkdtemp(join(tmpdir(), "loopway-init-")));
   home = join(root, "home");
   dir = join(root, "scratch");
-  remote = join(root, "sandbox.git");
-  seed = join(root, "seed");
-  git("init", "--bare", "--quiet", "-b", "main", remote);
-  git("clone", "--quiet", remote, seed);
-  await writeFile(join(seed, "README.md"), "sandbox\n");
-  commit(seed, "one");
 });
 
 describe("init-scratch", () => {
-  it("creates both bots and a clone of the sandbox, and says what to run next", async () => {
+  it("creates both bots on the sandbox repo, and says what to run next, with relative paths", async () => {
     const out = init();
     const dev = await readFile(join(dir, ".loopway/dev.md"), "utf8");
     expect(dev).toContain("repos: [craftmilldev/loopway-sandbox]");
     expect(dev).toContain("on: issue");
-    expect(dev).toContain("cwd: sandbox");
     expect(dev).toContain("Do what the issue asks, then comment with the result.");
+    expect(dev).not.toContain("cwd");
     expect(await readFile(join(dir, ".loopway/review.md"), "utf8")).toContain("on: pull_request");
-    expect(await readFile(join(dir, "sandbox/README.md"), "utf8")).toBe("sandbox\n");
-    expect(out).toMatch(/Next: cd .*scratch && (loopway|node .*dist\/index\.js)/);
-  });
-
-  it("fast-forwards the sandbox clone when run again", async () => {
-    init();
-    await writeFile(join(seed, "two.md"), "two\n");
-    commit(seed, "two");
-    expect(init()).toContain("updated");
-    expect(existsSync(join(dir, "sandbox/two.md"))).toBe(true);
+    expect(existsSync(join(dir, "sandbox"))).toBe(false);
+    expect(out).toContain("created    scratch/.loopway/dev.md\n");
+    expect(out).toContain("\nNext: cd scratch && loopway\n");
+    expect(out).not.toContain(root);
   });
 
   it("keeps a bot file you edited and says so, and --force puts the default back", async () => {
@@ -66,7 +48,7 @@ describe("init-scratch", () => {
     await writeFile(file, original.replace("sonnet", "opus"));
 
     const kept = init();
-    expect(kept).toMatch(/kept .*dev\.md/);
+    expect(kept).toMatch(/kept .*scratch\/\.loopway\/dev\.md/);
     expect(kept).toMatch(/unchanged .*review\.md/);
     expect(await readFile(file, "utf8")).toContain("model: opus");
 
@@ -77,7 +59,7 @@ describe("init-scratch", () => {
   it("--reset clears this project's state and no other project's", async () => {
     init();
     const mine = stateDir(home, dir);
-    const other = stateDir(home, join(dir, "..", "other"));
+    const other = stateDir(home, join(root, "other"));
     for (const state of [mine, other]) {
       await mkdir(join(state, "threads"), { recursive: true });
       await writeFile(join(state, "threads/a.json"), "{}");

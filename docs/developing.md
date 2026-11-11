@@ -9,7 +9,7 @@
 ```bash
 npm install
 npm run build
-npm run init-scratch                      # scratch/ (git-ignored): dev and review bots on the sandbox, and a clone of it
+npm run init-scratch                      # scratch/ (git-ignored): dev and review bots on the sandbox repo
 cd scratch
 node ../packages/cli/dist/index.js                                   # bare `loopway`, reading ./.loopway
 node ../packages/cli/dist/index.js --no-tui                      # the plain log
@@ -48,7 +48,7 @@ CI runs `npm run build` and these four.
 | `tui.tsx`, `tui-main.tsx`, `tui-thread.tsx`, `tui-text.ts` | The [Ink](https://github.com/vadimdemedes/ink) TUI: the main view, the thread view, and the subject filter. Reads threads from the in-process store and the session log from disk |
 | `format.ts` | The printed line, and `--json` |
 
-`tools/init-scratch.mjs` (`npm run init-scratch`) is a plain Node script, outside the packages; `test/init-scratch.test.ts` runs it against a local bare repo.
+`tools/init-scratch.mjs` (`npm run init-scratch`) is a plain Node script, outside the packages; `test/init-scratch.test.ts` runs it in a temp dir.
 
 Tests fake the source (`test/fake.ts`) for the poller, and fake `fetch` for `GitHubSource`. `test/fake-claude.mjs` stands in for `claude`: it emits stream-json and, in `comment` mode, calls the MCP tool.
 
