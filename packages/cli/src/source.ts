@@ -42,8 +42,16 @@ export interface SubjectSource {
    * polls only those. A source without it is polled for every subject. It may over-report; it must not under-report.
    */
   changed?(subjects: Subject[]): Promise<Set<string>>;
+  /** The reactions on a comment, by its URL. */
+  reactions(commentUrl: string): Promise<Reaction[]>;
   /** Everything visible about a subject. Repeats are fine: the poller drops ids it has seen. */
   updates(subject: Subject, version?: string): Promise<Updates>;
+}
+
+/** One reaction on a comment: GitHub's `content` (`+1`, `-1`, `heart`...) and who left it. */
+export interface Reaction {
+  content: string;
+  user: string;
 }
 
 /** The source asked us to stop for a while. */

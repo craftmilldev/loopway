@@ -26,6 +26,8 @@ export interface PollerOptions {
   authors: string[];
   /** Awaited before the poller saves its own state, so whatever acts on an event has recorded it first. */
   emit: (event: LoopwayEvent) => void | Promise<void>;
+  /** Runs at the end of every pass over the known subjects: where answers to open asks are read. */
+  answers?: () => Promise<void>;
   log?: (message: string) => void;
   now?: () => number;
 }
@@ -108,6 +110,7 @@ export class Poller {
         this.o.log?.(`${key}: ${(err as Error).message}`);
       }
     }
+    await this.o.answers?.();
   }
 
   /** Runs until `signal` aborts: discovery every 2 minutes, known subjects every 30 seconds, backing off on rate limits. */

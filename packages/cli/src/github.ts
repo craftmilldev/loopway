@@ -1,6 +1,13 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { RateLimitError, type Updates, type Subject, type SubjectSource, type Update } from "./source.js";
+import {
+  RateLimitError,
+  type Reaction,
+  type Updates,
+  type Subject,
+  type SubjectSource,
+  type Update,
+} from "./source.js";
 
 const API = "https://api.github.com";
 const MAX_PAGES = 10;
@@ -128,6 +135,16 @@ export class GitHubSource implements SubjectSource {
     });
     if (!res.ok) throw await this.failure(res, path);
     return ((await res.json()) as { html_url: string }).html_url;
+  }
+
+  /** The reactions on a comment, from the URL it was posted at (`.../issues/N#issuecomment-ID`). */
+  async reactions(commentUrl: string): Promise<Reaction[]> {
+    const found = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/(?:issues|pull)\/\d+#issuecomment-(\d+)$/.exec(commentUrl);
+    if (!found) throw new Error(`"${commentUrl}" is not a comment URL`);
+    const reactions = await this.list<{ content: string; user?: { login: string } }>(
+      `/repos/${found[1]}/issues/comments/${found[2]}/reactions`,
+    );
+    return reactions.map((r) => ({ content: r.content, user: r.user?.login ?? "ghost" }));
   }
 
   /** Everything visible about a subject, as a series of steps. Each step looks at one kind of thing and knows when to skip. */

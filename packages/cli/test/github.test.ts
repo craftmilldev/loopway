@@ -72,6 +72,25 @@ describe("comment", () => {
   });
 });
 
+describe("reactions", () => {
+  it("reads who reacted how from a comment's URL, on an issue or a pull request", async () => {
+    const { source, requests } = fakeGitHub({
+      "/repos/o/r/issues/comments/55/reactions": [
+        { content: "+1", user: { login: "me" } },
+        { content: "heart", user: { login: "other" } },
+      ],
+    });
+    const expected = [
+      { content: "+1", user: "me" },
+      { content: "heart", user: "other" },
+    ];
+    expect(await source.reactions("https://github.com/o/r/issues/7#issuecomment-55")).toEqual(expected);
+    expect(await source.reactions("https://github.com/o/r/pull/8#issuecomment-55")).toEqual(expected);
+    expect(requests[0]).toContain("/repos/o/r/issues/comments/55/reactions");
+    await expect(source.reactions("https://example.com/x")).rejects.toThrow("not a comment URL");
+  });
+});
+
 describe("a comment's text", () => {
   it("is on its update, and so is a review's", async () => {
     const { source } = fakeGitHub({

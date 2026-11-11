@@ -177,6 +177,41 @@ describe("thread view", () => {
     expect(frame).toContain("2026-11-10 14:10 comment o/r#12 https://github.com/o/r/1");
   });
 
+  it("shows what the thread is waiting on, with the links, and a blocked session on the main view", async () => {
+    const waiting = {
+      ...full(),
+      asks: [
+        {
+          id: "a1",
+          kind: "permission" as const,
+          commentUrl: "https://github.com/o/r/issues/12#issuecomment-5",
+          subject: "o/r#12",
+          tool: "Bash",
+          input: { command: "curl -s https://example.com" },
+          at: "2026-11-10T14:09:00Z",
+        },
+        {
+          id: "a0",
+          kind: "question" as const,
+          commentUrl: "u0",
+          subject: "o/r#12",
+          tool: "ask",
+          input: "Which?",
+          at: "2026-11-10T14:00:00Z",
+          answeredAt: "2026-11-10T14:01:00Z",
+        },
+      ],
+    };
+    show([waiting]);
+    expect(screen()).toContain("blocked");
+    await press(KEYS.enter);
+    const frame = screen();
+    expect(frame).toContain("Waiting on (1)");
+    expect(frame).toContain("2026-11-10 14:09 permission https://github.com/o/r/issues/12#issuecomment-5 Bash curl");
+    expect(frame).toContain("https://github.com/o/r/issues/12#issuecomment-5");
+    expect(frame).not.toContain("Which?");
+  });
+
   it("opens with the right arrow, and goes back with the left arrow or escape", async () => {
     show([full()]);
     await press(KEYS.right);

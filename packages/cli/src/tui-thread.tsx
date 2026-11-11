@@ -1,5 +1,6 @@
 import { Box, Text, useInput, useWindowSize } from "ink";
 import { useState, type ReactNode } from "react";
+import { askLabel, openAsks } from "./asks.js";
 import { stamp } from "./format.js";
 import type { Thread } from "./thread.js";
 import { lastOf, sessionColor, sessionText } from "./tui-text.js";
@@ -23,11 +24,13 @@ export interface ThreadViewProps {
  */
 export function ThreadView({ thread, log, onBack, onFilter }: ThreadViewProps) {
   const [subject, setSubject] = useState(0);
+  const open = openAsks(thread);
+  const asks = lastOf(open, LISTED);
   const pending = lastOf(thread.queue, LISTED);
   const sent = lastOf(thread.sent ?? [], LISTED);
   const lines = log.split("\n").filter((line, i, all) => line !== "" || i < all.length - 1);
   const { rows } = useWindowSize();
-  const logRows = Math.max(MIN_LOG_ROWS, rows - listedRows(thread, pending, sent) - 3);
+  const logRows = Math.max(MIN_LOG_ROWS, rows - listedRows(thread, asks, pending, sent) - 3);
   const [top, scrollLog] = useScroll(lines.length, logRows);
   const first = top ?? Math.max(0, lines.length - logRows);
 
@@ -54,6 +57,14 @@ export function ThreadView({ thread, log, onBack, onFilter }: ThreadViewProps) {
           <Text key={s.key} inverse={i === subject} dimColor={s.status === "closed"}>
             {i === subject ? "▸ " : "  "}
             {s.key} {s.status}
+          </Text>
+        ))}
+      </Section>
+      <Section title={`Waiting on (${open.length})`} hidden={asks.hidden} empty={asks.shown.length === 0}>
+        {asks.shown.map((a) => (
+          <Text key={a.id} wrap="truncate-end" color="yellow">
+            {"  "}
+            {stamp(a.at)} {a.kind} {a.commentUrl} {askLabel(a)}
           </Text>
         ))}
       </Section>

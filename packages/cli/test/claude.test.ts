@@ -3,12 +3,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { deny } from "../src/asks.js";
 import { claudeArgs, claudeRunner, type AgentRun } from "../src/claude.js";
 import { startMcp, type McpServer } from "../src/mcp.js";
 import { Sessions } from "../src/sessions.js";
 import { Threads } from "../src/threads.js";
 import { harness } from "./fake.js";
 import { aBot } from "./make.js";
+
+/** The tools of the MCP that a test does not use. */
+const noAsks = { ask: async () => "", permission: async () => deny("no") };
 
 const fakeClaude = fileURLToPath(new URL("./fake-claude.mjs", import.meta.url));
 
@@ -30,7 +34,11 @@ describe("claudeArgs", () => {
     expect(args.slice(0, 4)).toEqual(["-p", "--session-id", "sid", "--model"]);
     expect(args).toContain("--output-format");
     expect(args[args.indexOf("--permission-mode") + 1]).toBe("auto");
-    expect(args[args.indexOf("--allowedTools") + 1]).toBe("mcp__loopway__comment");
+    expect(args.slice(args.indexOf("--allowedTools") + 1, args.indexOf("--allowedTools") + 3)).toEqual([
+      "mcp__loopway__comment",
+      "mcp__loopway__ask",
+    ]);
+    expect(args[args.indexOf("--permission-prompt-tool") + 1]).toBe("mcp__loopway__permission");
     expect(JSON.parse(args[args.indexOf("--mcp-config") + 1]!)).toEqual({
       mcpServers: { loopway: { type: "http", url: "http://127.0.0.1:1/mcp/t1" } },
     });
@@ -95,6 +103,7 @@ describe("loopway's MCP server", () => {
   it("lists its comment tool, and runs it for the thread whose URL the session was given", async () => {
     const calls: unknown[][] = [];
     mcp = await startMcp({
+      ...noAsks,
       comment: async (...args) => {
         calls.push(args);
         return "https://github.com/o/r/issues/1#issuecomment-9";
@@ -110,7 +119,7 @@ describe("loopway's MCP server", () => {
     expect(init.body.result).toMatchObject({ protocolVersion: "2025-06-18", serverInfo: { name: "loopway" } });
     expect((await call(url, { jsonrpc: "2.0", method: "notifications/initialized" })).status).toBe(202);
     const list = await call(url, { jsonrpc: "2.0", id: 2, method: "tools/list" });
-    expect(list.body.result.tools.map((t: { name: string }) => t.name)).toEqual(["comment"]);
+    expect(list.body.result.tools.map((t: { name: string }) => t.name)).toEqual(["comment", "ask", "permission"]);
     const made = await call(url, {
       jsonrpc: "2.0",
       id: 3,
@@ -126,6 +135,7 @@ describe("loopway's MCP server", () => {
 
   it("answers a failed or malformed comment as a tool error the session can read", async () => {
     mcp = await startMcp({
+      ...noAsks,
       comment: async () => {
         throw new Error("dev does not read x/y");
       },
@@ -147,7 +157,7 @@ describe("loopway's MCP server", () => {
   });
 
   it("refuses other methods and other paths", async () => {
-    mcp = await startMcp({ comment: async () => "" });
+    mcp = await startMcp({ ...noAsks, comment: async () => "" });
     const unknown = await call(mcp.urlFor("t1"), { jsonrpc: "2.0", id: 1, method: "resources/list" });
     expect(unknown.body.error.code).toBe(-32601);
     expect((await call(mcp.urlFor("t1").replace("/mcp/t1", "/other"), {})).status).toBe(404);
@@ -163,7 +173,7 @@ describe("the whole loop: poller, threads, sessions, MCP and a claude stand-in",
     const posted: string[] = [];
     // eslint-disable-next-line prefer-const
     let sessions: Sessions;
-    const mcp = await startMcp({ comment: (id, subject, body) => sessions.comment(id, subject, body) });
+    const mcp = await startMcp({ ...noAsks, comment: (id, subject, body) => sessions.comment(id, subject, body) });
     const h = harness({
       start: "2026-11-10T12:00:00Z",
       react: async (event, push) => void (await threads.handle(event)).forEach(push),
