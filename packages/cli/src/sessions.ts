@@ -215,6 +215,8 @@ export class Sessions {
     const at = new Date(this.now()).toISOString();
     session.status = "failed";
     session.lastError = error;
+    // A run with nothing queued was a first run, and the news was the subject itself: it is told again, as a new session.
+    if (thread.queue.length === 0) session.id = null;
     this.retryAt.set(thread.id, this.now() + RETRY_AFTER_FAILURE_MS);
     await this.o.threads.save(thread);
     this.log(thread, `!! run failed: ${error}`);

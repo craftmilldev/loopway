@@ -163,6 +163,21 @@ describe("delivery", () => {
     expect(s.agent.runs).toEqual([]);
   });
 
+  it("tells a thread again about its new subject after a failed first run", async () => {
+    const s = await setup();
+    const thread = s.add(aThread("t1", "dev", ["o/r#12"]));
+    s.agent.behave = async () => ({ code: 1, finished: false });
+    s.sessions.kick();
+    await s.sessions.idle();
+    expect(thread.session).toMatchObject({ id: null, status: "failed" });
+    s.clock.t += RETRY_AFTER_FAILURE_MS;
+    s.agent.behave = async () => ok;
+    s.sessions.kick();
+    await s.sessions.idle();
+    expect(s.agent.runs.map((r) => r.resume)).toEqual([false, false]);
+    expect(thread.session).toMatchObject({ id: "session-1", status: "idle" });
+  });
+
   it("gives a thread that has never run its first run even with nothing queued, since a new subject is the news", async () => {
     const s = await setup();
     s.add(aThread("t1", "dev", ["o/r#12"]));
