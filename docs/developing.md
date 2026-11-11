@@ -1,6 +1,6 @@
 # Developing loopway
 
-- **Stack:** TypeScript on Node 22, [vitest](https://vitest.dev), one runtime dependency ([`yaml`](https://eemeli.org/yaml/), for the front matter of bot files).
+- **Stack:** TypeScript on Node 22, [vitest](https://vitest.dev), and three runtime dependencies: [`yaml`](https://eemeli.org/yaml/) for the front matter of bot files, [Ink](https://github.com/vadimdemedes/ink) and React for the TUI.
 - **Packages:** npm workspaces: [`packages/cli`](../packages/cli) (the `loopway` command) and [`packages/web`](../packages/web) (one static marketing page, deployed to Vercel).
 - **No server, no database.** State is JSON under `~/.loopway/` (`LOOPWAY_HOME` moves it).
 
@@ -13,6 +13,7 @@ mkdir -p scratch/.loopway && cd scratch      # scratch/ is git-ignored
 printf -- '---\nrepos: [owner/name]\non: issue\n---\nprompt\n' > .loopway/dev.md
 printf -- '---\nrepos: [owner/name]\non: pull_request\n---\nprompt\n' > .loopway/review.md
 npm run cli                                  # bare `loopway`, reading ./.loopway
+npm run cli -- --no-tui                      # the plain log
 npm run cli -- --json                        # NDJSON
 npm run cli -- threads                       # the open threads, from another terminal
 ```
@@ -42,6 +43,7 @@ CI runs `npm run build` and these four.
 | `rules.ts` | `decide(event, threads, bots) -> actions`: the thread rules, a pure function |
 | `thread.ts`, `threads.ts` | The `Thread` type; the store that applies the rules' actions and keeps `threads/<id>.json` |
 | `config.ts`, `state.ts` | `~/.loopway/config.json`'s `github` block, and `state.json` |
+| `tui.tsx`, `tui-main.tsx`, `tui-thread.tsx`, `tui-text.ts` | The [Ink](https://github.com/vadimdemedes/ink) TUI: the main view, the thread view, and the subject filter. Reads threads from the in-process store and the session log from disk |
 | `format.ts` | The printed line, and `--json` |
 
 Tests fake the source (`test/fake.ts`) for the poller, and fake `fetch` for `GitHubSource`.

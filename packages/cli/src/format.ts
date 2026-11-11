@@ -19,7 +19,7 @@ export function stamp(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-const subjectKeys = (t: Thread) => t.subjects.map((s) => s.key).join(",");
+export const subjectKeys = (t: Thread) => t.subjects.map((s) => s.key).join(",");
 
 export function formatLine(event: LoopwayEvent): string {
   switch (event.type) {

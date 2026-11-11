@@ -39,7 +39,7 @@ EOF
 npm run cli          # runs `loopway` here
 ```
 
-To run it from a directory outside the checkout, `npm link -w @loopway/cli` puts `loopway` on your PATH. Output is one line per event:
+To run it from a directory outside the checkout, `npm link -w @loopway/cli` puts `loopway` on your PATH. The plain log (see [The TUI](#the-tui)) is one line per event:
 
 ```
 2026-11-10 14:02 new    owner/repo#12 issue "Fix the login bug" by mcwhittemore
@@ -104,6 +104,15 @@ on: pull_request
 You are the review bot. Read the pull request and its diff, check it against the issue it closes, and leave a
 review. Be specific, and say what you ran.
 ```
+
+## The TUI
+
+In a terminal, a bare `loopway` opens a full-screen TUI on the same poller. `loopway --no-tui`, `--json`, or output that isn't a terminal (`loopway | cat`) keeps the plain log below.
+
+- **Main view:** the open threads, then those closed in the last 3 days (by their latest message), closed ones dimmed. A row is the bot, thread status, session status (`no session yet` until one has run), pending count, the time of the latest message and the subjects. The poller's latest line shows at the bottom. `↑`/`↓` moves, `Enter` or `→` opens a thread.
+- **Thread view:** the subjects it tracks, the session status, the pending updates (when, kind, subject, who), the messages it sent, and the session log (`~/.loopway/threads/<id>.log`), which follows new output until you scroll up with `PgUp`/`PgDn`/`Home`; `End` follows again. `←` or `Esc` goes back.
+- **Subject filter:** in the thread view, `↑`/`↓` selects a subject and `Enter` returns to the main view filtered to the threads holding it, with the filter in the header. `Esc` clears it.
+- `q` or `Ctrl-C` quits and stops the poller.
 
 ## Credentials and state
 
