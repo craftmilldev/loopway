@@ -27,7 +27,7 @@ beforeEach(async () => {
 });
 
 describe("init-scratch", () => {
-  it("creates both bots on the sandbox repo, and says what to run next, with relative paths", async () => {
+  it("creates both bots on the sandbox repo, with relative paths", async () => {
     const out = init();
     const dev = await readFile(join(dir, ".loopway/dev.md"), "utf8");
     expect(dev).toContain("repos: [craftmilldev/loopway-sandbox]");
@@ -37,7 +37,6 @@ describe("init-scratch", () => {
     expect(await readFile(join(dir, ".loopway/review.md"), "utf8")).toContain("on: pull_request");
     expect(existsSync(join(dir, "sandbox"))).toBe(false);
     expect(out).toContain("created    scratch/.loopway/dev.md\n");
-    expect(out).toContain("\nNext: cd scratch && loopway\n");
     expect(out).not.toContain(root);
   });
 

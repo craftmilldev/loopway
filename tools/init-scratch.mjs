@@ -33,7 +33,6 @@ async function main() {
     console.log(await writeBot(join(project, ".loopway", file), text, values.force, shown));
   }
   if (values.reset) console.log(await resetState(project));
-  console.log(`\nNext: ${project === here ? "" : `cd ${shown(project)} && `}loopway`);
 }
 
 /** Writes a bot file, unless it exists with edits in it and `force` isn't set. Says which. */
