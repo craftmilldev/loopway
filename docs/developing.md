@@ -2,7 +2,7 @@
 
 - **Stack:** TypeScript on Node 22, [vitest](https://vitest.dev), and three runtime dependencies: [`yaml`](https://eemeli.org/yaml/) for the front matter of bot files, [Ink](https://github.com/vadimdemedes/ink) and React for the TUI.
 - **Packages:** npm workspaces: [`packages/cli`](../packages/cli) (the `loopway` command) and [`packages/web`](../packages/web) (one static marketing page, deployed to Vercel).
-- **No server, no database.** State is JSON under `~/.loopway/` (`LOOPWAY_HOME` moves it).
+- **No server, no database.** Credentials are in `~/.loopway/config.json` (`LOOPWAY_HOME` moves it); state is JSON per project, in `.loopway/state/` (`LOOPWAY_STATE` moves it).
 
 ## Run it
 
@@ -42,7 +42,7 @@ CI runs `npm run build` and these four.
 | `bots.ts` | Reads `.loopway/<bot>.md` |
 | `rules.ts` | `decide(event, threads, bots) -> actions`: the thread rules, a pure function |
 | `thread.ts`, `threads.ts` | The `Thread` type; the store that applies the rules' actions and keeps `threads/<id>.json` |
-| `config.ts`, `state.ts` | `~/.loopway/config.json`'s `github` block, and `state.json` |
+| `config.ts`, `state.ts` | `~/.loopway/config.json`'s `github` block, and `stateDir`, where `state.json` and the threads live |
 | `tui.tsx`, `tui-main.tsx`, `tui-thread.tsx`, `tui-text.ts` | The [Ink](https://github.com/vadimdemedes/ink) TUI: the main view, the thread view, and the subject filter. Reads threads from the in-process store and the session log from disk |
 | `format.ts` | The printed line, and `--json` |
 

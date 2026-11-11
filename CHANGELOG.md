@@ -6,7 +6,7 @@ loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and i
 
 ### Added
 
-- Bare `loopway`, with `--json`. Bots are `.loopway/<bot>.md` files; state is JSON under `~/.loopway/`.
+- Bare `loopway`, with `--json`. Bots are `.loopway/<bot>.md` files; state is JSON per project, in `.loopway/state/`.
 
 ### Removed
 

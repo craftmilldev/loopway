@@ -6,7 +6,7 @@ import { loadGitHubConfig, loopwayHome } from "./config.js";
 import { formatJson, formatLine, formatThread, formatThreadJson, type LoopwayEvent } from "./format.js";
 import { ghToken, GitHubSource } from "./github.js";
 import { Poller } from "./poller.js";
-import { loadState, saveState } from "./state.js";
+import { loadState, saveState, stateDir } from "./state.js";
 import { loadThreads, readThreadLog, Threads, visibleThreads } from "./threads.js";
 import { showTui } from "./tui.js";
 
@@ -25,7 +25,8 @@ and those closed in the last 3 days.
 
 Run it from a directory with a .loopway/ folder: one <bot>.md per bot, with front matter like
   repos: [owner/name]
-Credentials come from gh (gh auth login). State lives in ~/.loopway (or $LOOPWAY_HOME).
+Credentials come from gh (gh auth login), and the bot's from ~/.loopway/config.json (or $LOOPWAY_HOME).
+State is per project, in .loopway/state/ (or $LOOPWAY_STATE), and ignores itself in git.
 
   --no-tui     print the plain log even in a terminal
   --json       print one JSON object per line (implies --no-tui)
@@ -52,11 +53,11 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  if (positionals[0] === "threads") return listThreads(loopwayHome(), values.json);
+  const project = projectDir();
+  if (positionals[0] === "threads") return listThreads(stateDir(project), values.json);
   if (positionals.length > 0) throw new Error(`Unknown command "${positionals[0]}". Try loopway --help.`);
 
-  // `npm run cli` runs in the package directory; INIT_CWD is where it was typed.
-  const bots = await loadBots(process.env.INIT_CWD || process.cwd());
+  const bots = await loadBots(project);
   const repos = reposOf(bots);
   if (repos.length === 0) {
     console.error(
@@ -65,13 +66,13 @@ async function main(): Promise<number> {
     return 1;
   }
 
-  const home = loopwayHome();
-  const bot = (await loadGitHubConfig(home)).name;
+  const dir = stateDir(project);
+  const bot = (await loadGitHubConfig(loopwayHome())).name;
   const source = new GitHubSource({ token: ghToken() });
   const me = await source.whoami();
   const authors = bot ? [me, bot] : [me];
-  const state = await loadState(home);
-  const threads = await Threads.load({ home, bots });
+  const state = await loadState(dir);
+  const threads = await Threads.load({ dir, bots });
 
   // In the TUI nothing prints: the bottom of the screen shows the latest line.
   const tui = !values.json && !values["no-tui"] && !!process.stdout.isTTY && !!process.stdin.isTTY;
@@ -88,7 +89,7 @@ async function main(): Promise<number> {
   const poller = new Poller({
     source,
     state,
-    save: (s) => saveState(home, s),
+    save: (s) => saveState(dir, s),
     repos,
     authors,
     emit,
@@ -101,7 +102,7 @@ async function main(): Promise<number> {
   if (tui) {
     const props = {
       threads: () => threads.all,
-      readLog: (id: string) => readThreadLog(home, id),
+      readLog: (id: string) => readThreadLog(dir, id),
       latest: () => latest,
     };
     await showTui(props).finally(() => stop.abort());
@@ -110,8 +111,11 @@ async function main(): Promise<number> {
   return 0;
 }
 
-async function listThreads(home: string, json: boolean | undefined): Promise<number> {
-  for (const thread of visibleThreads(await loadThreads(home), Date.now())) {
+/** `npm run cli` runs in the package directory; INIT_CWD is where it was typed. */
+const projectDir = () => process.env.INIT_CWD || process.cwd();
+
+async function listThreads(dir: string, json: boolean | undefined): Promise<number> {
+  for (const thread of visibleThreads(await loadThreads(dir), Date.now())) {
     console.log(json ? formatThreadJson(thread) : formatThread(thread));
   }
   return 0;
