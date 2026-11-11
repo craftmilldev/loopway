@@ -12,10 +12,10 @@ npm run build
 mkdir -p scratch/.loopway && cd scratch      # scratch/ is git-ignored
 printf -- '---\nrepos: [owner/name]\non: issue\n---\nprompt\n' > .loopway/dev.md
 printf -- '---\nrepos: [owner/name]\non: pull_request\n---\nprompt\n' > .loopway/review.md
-npm run cli                                  # bare `loopway`, reading ./.loopway
-npm run cli -- --no-tui                      # the plain log
-npm run cli -- --json                        # NDJSON
-npm run cli -- threads                       # the open threads, from another terminal
+node ../packages/cli/dist/index.js                                   # bare `loopway`, reading ./.loopway
+node ../packages/cli/dist/index.js --no-tui                      # the plain log
+node ../packages/cli/dist/index.js --json                        # NDJSON
+node ../packages/cli/dist/index.js threads                       # the open threads, from another terminal
 ```
 
 It needs `gh auth login`. Use a repo you can write to if you want to see events, and read the README for what it prints.

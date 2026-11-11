@@ -36,7 +36,7 @@ on: pull_request
 
 You are the review bot. You read a pull request and review it.
 EOF
-npm run cli          # runs `loopway` here
+node ../packages/cli/dist/index.js   # runs `loopway` here (`npm run build` first)
 ```
 
 To run it from a directory outside the checkout, `npm link -w @loopway/cli` puts `loopway` on your PATH. The plain log (see [The TUI](#the-tui)) is one line per event:
@@ -101,7 +101,7 @@ model: sonnet
 
 Answer the issue in a comment.
 EOF
-npm run cli                      # leave this running
+node ../packages/cli/dist/index.js   # leave this running
 
 # in a second terminal
 gh issue create -R craftmilldev/loopway-sandbox --title "What's 2+2?" --body "Reply in one comment."

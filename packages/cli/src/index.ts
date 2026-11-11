@@ -134,7 +134,7 @@ async function main(): Promise<number> {
   return 0;
 }
 
-/** `npm run cli` runs in the package directory; INIT_CWD is where it was typed. */
+/** Where `loopway` was typed. Under `npm run`, INIT_CWD is the checkout root, not where you were: run the built file directly (`node ../packages/cli/dist/index.js`). */
 const projectDir = () => process.env.INIT_CWD || process.cwd();
 
 interface SessionsSetup {
