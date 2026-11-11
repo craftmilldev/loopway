@@ -30,7 +30,12 @@ export interface Ask {
 export const openAsks = (thread: Thread): Ask[] => (thread.asks ?? []).filter((a) => !a.answeredAt);
 
 /** The same call: the same tool with the same input. */
-export const callKey = (tool: string, input: unknown) => `${tool} ${JSON.stringify(input)}`;
+export function callKey(tool: string, input: unknown): string {
+  // Claude words a Bash call's `description` differently each time it retries; the rest of the input is the call.
+  const fields =
+    input && typeof input === "object" ? Object.entries(input).filter(([k]) => k !== "description") : input;
+  return `${tool} ${JSON.stringify(Array.isArray(fields) ? Object.fromEntries(fields) : fields)}`;
+}
 
 /** Whether `thread`'s session was already allowed to make this call. */
 export const wasApproved = (thread: Thread, tool: string, input: unknown) =>

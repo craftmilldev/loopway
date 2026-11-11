@@ -143,6 +143,20 @@ describe("a permission nobody has decided", () => {
     );
   });
 
+  it("stays blocked, with its session, when the run is cut off after it asked", async () => {
+    const s = await setup({
+      agent: async (run) => {
+        run.onStarted();
+        await s.sessions.permission("t1", "Bash", CURL);
+        return { code: 1, finished: false };
+      },
+    });
+    s.sessions.kick();
+    await s.sessions.idle();
+    expect(s.thread.session).toMatchObject({ id: "session-1", status: "blocked", lastError: expect.any(String) });
+    expect(openAsks(s.thread)).toHaveLength(1);
+  });
+
   it("asks once even when the same call comes twice at the same moment", async () => {
     const s = await setup();
     await Promise.all([s.sessions.permission("t1", "Bash", CURL), s.sessions.permission("t1", "Bash", CURL)]);
@@ -202,6 +216,10 @@ describe("answers by reaction", () => {
     // The same call passes now, with no new comment.
     expect(await s.sessions.permission("t1", "Bash", CURL)).toEqual({ behavior: "allow", updatedInput: CURL });
     expect(s.posted).toHaveLength(1);
+    // Claude rewording the call's description is still the same call.
+    expect(await s.sessions.permission("t1", "Bash", { ...CURL, description: "Fetch the page" })).toMatchObject({
+      behavior: "allow",
+    });
     // A different call still asks.
     await s.sessions.permission("t1", "Bash", { command: "curl -s https://example.org" });
     expect(s.posted).toHaveLength(2);
