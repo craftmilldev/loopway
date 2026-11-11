@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-/** `~/.loopway`, or `$LOOPWAY_HOME`. Holds config.json, the bot credentials. State is per project: see `stateDir`. */
+/** `~/.loopway`, or `$LOOPWAY_HOME`. Holds config.json, the bot credentials, and each project's state (see `stateDir`). */
 export const loopwayHome = (env: NodeJS.ProcessEnv = process.env) => env.LOOPWAY_HOME || join(homedir(), ".loopway");
 
 /** The `github` block of `~/.loopway/config.json`: the bot user's credentials. Everything else in the file is ignored. */

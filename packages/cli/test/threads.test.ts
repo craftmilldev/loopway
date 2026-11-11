@@ -1,10 +1,10 @@
-import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { formatLine, type LoopwayEvent } from "../src/format.js";
 import { CLOSED_SHOWN_MS, loadThreads, Threads, threadsDir, visibleThreads } from "../src/threads.js";
-import { emptyState, loadState, saveState, stateDir, type State } from "../src/state.js";
+import { emptyState, loadState, stateDir, type State } from "../src/state.js";
 import { harness } from "./fake.js";
 import { aThread, dev, review } from "./make.js";
 
@@ -155,43 +155,32 @@ it("handles only new subjects and updates", async () => {
 });
 
 describe("per-project state", () => {
-  const opens = async (project: string, key: string) => {
-    const h = await running({ dir: stateDir(project, {}) });
-    await h.poller.discover();
-    h.source.add(key, "me", "2026-11-10T12:01:00Z");
-    await h.poller.discover();
-    return h;
-  };
-  const subjectsIn = async (project: string) =>
-    (await loadThreads(stateDir(project, {}))).map((t) => t.subjects[0]?.key);
+  const home = "/home/me/.loopway";
+
+  it("is ~/.loopway/state/<slug of the project's .loopway folder>", () => {
+    expect(stateDir(home, "/work/my app")).toBe("/home/me/.loopway/state/-work-my-app--loopway");
+    expect(stateDir(home, "/work/a")).not.toBe(stateDir(home, "/work/b"));
+  });
 
   it("keeps each project's threads and cursors to itself", async () => {
-    const a = await mkdtemp(join(tmpdir(), "loopway-a-"));
-    const b = await mkdtemp(join(tmpdir(), "loopway-b-"));
-    await opens(a, "o/r#1");
+    const loopwayHome = await mkdtemp(join(tmpdir(), "loopway-home-"));
+    const opens = async (project: string, key: string) => {
+      const h = await running({ dir: stateDir(loopwayHome, project) });
+      await h.poller.discover();
+      h.source.add(key, "me", "2026-11-10T12:01:00Z");
+      await h.poller.discover();
+    };
+    const subjectsIn = async (project: string) =>
+      (await loadThreads(stateDir(loopwayHome, project))).map((t) => t.subjects[0]?.key);
 
-    expect(await subjectsIn(a)).toEqual(["o/r#1"]);
-    expect(await subjectsIn(b)).toEqual([]);
-    expect(await loadState(stateDir(b, {}))).toEqual(emptyState());
+    await opens("/work/a", "o/r#1");
+    expect(await subjectsIn("/work/a")).toEqual(["o/r#1"]);
+    expect(await subjectsIn("/work/b")).toEqual([]);
+    expect(await loadState(stateDir(loopwayHome, "/work/b"))).toEqual(emptyState());
 
-    await opens(b, "o/r#2");
-    expect(await subjectsIn(a)).toEqual(["o/r#1"]);
-    expect(await subjectsIn(b)).toEqual(["o/r#2"]);
-  });
-
-  it("lives in .loopway/state, which ignores everything in it", async () => {
-    const a = await mkdtemp(join(tmpdir(), "loopway-a-"));
-    await opens(a, "o/r#1");
-    expect(stateDir(a, {})).toBe(join(a, ".loopway", "state"));
-    expect(await readFile(join(a, ".loopway", "state", ".gitignore"), "utf8")).toBe("*\n");
-    expect((await readdir(join(a, ".loopway", "state"))).sort()).toEqual([".gitignore", "threads"]);
-  });
-
-  it("leaves an edited .gitignore alone, and $LOOPWAY_STATE overrides the place", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "loopway-s-"));
-    await writeFile(join(dir, ".gitignore"), "mine\n");
-    await saveState(dir, emptyState());
-    expect(await readFile(join(dir, ".gitignore"), "utf8")).toBe("mine\n");
-    expect(stateDir("/project", { LOOPWAY_STATE: dir })).toBe(dir);
+    await opens("/work/b", "o/r#2");
+    expect(await subjectsIn("/work/a")).toEqual(["o/r#1"]);
+    expect(await subjectsIn("/work/b")).toEqual(["o/r#2"]);
+    expect(await readdir(join(loopwayHome, "state"))).toHaveLength(2);
   });
 });

@@ -26,7 +26,7 @@ and those closed in the last 3 days.
 Run it from a directory with a .loopway/ folder: one <bot>.md per bot, with front matter like
   repos: [owner/name]
 Credentials come from gh (gh auth login), and the bot's from ~/.loopway/config.json (or $LOOPWAY_HOME).
-State is per project, in .loopway/state/ (or $LOOPWAY_STATE), and ignores itself in git.
+State is per project, in ~/.loopway/state/<the project's path>.
 
   --no-tui     print the plain log even in a terminal
   --json       print one JSON object per line (implies --no-tui)
@@ -54,7 +54,7 @@ async function main(): Promise<number> {
   }
 
   const project = projectDir();
-  if (positionals[0] === "threads") return listThreads(stateDir(project), values.json);
+  if (positionals[0] === "threads") return listThreads(stateDir(loopwayHome(), project), values.json);
   if (positionals.length > 0) throw new Error(`Unknown command "${positionals[0]}". Try loopway --help.`);
 
   const bots = await loadBots(project);
@@ -66,7 +66,7 @@ async function main(): Promise<number> {
     return 1;
   }
 
-  const dir = stateDir(project);
+  const dir = stateDir(loopwayHome(), project);
   const bot = (await loadGitHubConfig(loopwayHome())).name;
   const source = new GitHubSource({ token: ghToken() });
   const me = await source.whoami();

@@ -6,7 +6,7 @@ import type { Bot } from "./bots.js";
 import type { LoopwayEvent, ThreadEvent } from "./format.js";
 import { decide, type Action } from "./rules.js";
 import type { Update } from "./source.js";
-import { writeState } from "./state.js";
+import { writeJson } from "./state.js";
 import { holds, type Thread } from "./thread.js";
 
 /** Closed threads stay in `loopway threads` this long after their latest message. */
@@ -84,7 +84,7 @@ export class Threads {
       const thread = this.apply(action, events);
       touched.add(thread);
     }
-    for (const thread of touched) await writeState(this.o.dir, `threads/${thread.id}.json`, thread);
+    for (const thread of touched) await writeJson(join(threadsDir(this.o.dir), `${thread.id}.json`), thread);
     return events;
   }
 
