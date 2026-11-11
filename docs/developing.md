@@ -9,16 +9,15 @@
 ```bash
 npm install
 npm run build
-mkdir -p scratch/.loopway && cd scratch      # scratch/ is git-ignored
-printf -- '---\nrepos: [owner/name]\non: issue\n---\nprompt\n' > .loopway/dev.md
-printf -- '---\nrepos: [owner/name]\non: pull_request\n---\nprompt\n' > .loopway/review.md
+npm run init-scratch                      # scratch/ (git-ignored): dev and review bots on the sandbox, and a clone of it
+cd scratch
 node ../packages/cli/dist/index.js                                   # bare `loopway`, reading ./.loopway
 node ../packages/cli/dist/index.js --no-tui                      # the plain log
 node ../packages/cli/dist/index.js --json                        # NDJSON
 node ../packages/cli/dist/index.js threads                       # the open threads, from another terminal
 ```
 
-It needs `gh auth login`. Use a repo you can write to if you want to see events, and read the README for what it prints.
+It needs `gh auth login`. `npm run init-scratch` points both bots at `craftmilldev/loopway-sandbox`; run it again any time (it keeps bot files you edited and says so; `--force` puts the defaults back). `-- --reset` also clears the project's state in `~/.loopway/state/`, so you start with no threads, and `-- --dir <path>` makes the project somewhere else. Read the README for what loopway prints.
 
 ## Checks
 
@@ -48,6 +47,8 @@ CI runs `npm run build` and these four.
 | `config.ts`, `state.ts` | `~/.loopway/config.json`'s `github` block, and `stateDir`, where `state.json` and the threads live |
 | `tui.tsx`, `tui-main.tsx`, `tui-thread.tsx`, `tui-text.ts` | The [Ink](https://github.com/vadimdemedes/ink) TUI: the main view, the thread view, and the subject filter. Reads threads from the in-process store and the session log from disk |
 | `format.ts` | The printed line, and `--json` |
+
+`tools/init-scratch.mjs` (`npm run init-scratch`) is a plain Node script, outside the packages; `test/init-scratch.test.ts` runs it against a local bare repo.
 
 Tests fake the source (`test/fake.ts`) for the poller, and fake `fetch` for `GitHubSource`. `test/fake-claude.mjs` stands in for `claude`: it emits stream-json and, in `comment` mode, calls the MCP tool.
 

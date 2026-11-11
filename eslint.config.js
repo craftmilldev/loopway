@@ -23,7 +23,7 @@ export default defineConfig(
   },
   // Plain .mjs so Vercel can run it before `npm install`; it has no tsconfig, so no type-aware rules.
   {
-    files: ["packages/web/scripts/should-build.mjs", "packages/cli/test/fake-claude.mjs"],
+    files: ["packages/web/scripts/should-build.mjs", "packages/cli/test/fake-claude.mjs", "tools/*.mjs"],
     extends: [tseslint.configs.disableTypeChecked],
   },
   // Tests read JSON as `any`; checking those types would mean a cast per assertion.
