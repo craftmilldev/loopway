@@ -1,6 +1,21 @@
 import { randomUUID } from "node:crypto";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import {
+  allow,
+  askLabel,
+  callKey,
+  deny,
+  describeInput,
+  openAsks,
+  permissionComment,
+  questionComment,
+  ruleDecision,
+  waitingMessage,
+  wasApproved,
+  type Ask,
+  type PermissionResult,
+} from "./asks.js";
 import type { Bot } from "./bots.js";
 import type { RunAgent, RunOutcome } from "./claude.js";
 import type { SessionEvent } from "./format.js";
@@ -19,7 +34,9 @@ const GROUND_RULES =
   "You are loopway-bot, working a thread on GitHub. Talk only through loopway's tools: mcp__loopway__comment(subject, " +
   "body) posts a comment on an issue or pull request, and everything you want people to hear goes through it. Never " +
   "comment with gh or the API. Post at least one message on every turn, even if it is only to say there is nothing to " +
-  "do. Use gh and git for the rest; they act as loopway-bot.";
+  "do. Use gh and git for the rest; they act as loopway-bot. " +
+  "When you need someone to decide, or you are stuck, call mcp__loopway__ask(subject, question) and end your turn: " +
+  "you are resumed with the answer. If a tool call is refused because loopway asked about it, end your turn too.";
 const REMINDER = "Reminder: talk only through mcp__loopway__comment, and post at least one message on this turn.";
 
 export interface SessionsOptions {
@@ -41,6 +58,7 @@ export interface SessionsOptions {
   emit: (event: SessionEvent) => void;
   now?: () => number;
   newSessionId?: () => string;
+  newAskId?: () => string;
 }
 
 /**
@@ -51,15 +69,18 @@ export interface SessionsOptions {
 export class Sessions {
   private readonly running = new Map<string, Promise<void>>();
   private readonly retryAt = new Map<string, number>();
+  private readonly asking = new Map<string, Promise<unknown>>();
   private heldUntil = 0;
   /** Aborts when loopway stops, which stops the runs in flight. */
   private stopped?: AbortSignal;
   private readonly now: () => number;
   private readonly newSessionId: () => string;
+  private readonly newAskId: () => string;
 
   constructor(private readonly o: SessionsOptions) {
     this.now = o.now ?? Date.now;
     this.newSessionId = o.newSessionId ?? randomUUID;
+    this.newAskId = o.newAskId ?? (() => randomUUID().slice(0, 8));
   }
 
   /** Until `signal` aborts: a run that was cut off by a restart is idle again, then the queues are checked often. */
@@ -89,21 +110,93 @@ export class Sessions {
 
   /** What the `comment` tool does for a thread: posts it, records it as sent, and says so. */
   async comment(threadId: string, subject: string, body: string): Promise<string> {
-    const thread = this.o.threads.all.find((t) => t.id === threadId);
-    if (!thread) throw new Error(`there is no thread ${threadId}`);
-    if (!SUBJECT.test(subject)) throw new Error(`"${subject}" is not a subject; write it as owner/repo#N`);
+    return this.send(this.thread(threadId), subject, body, "comment");
+  }
+
+  /** What the `ask` tool does: posts the question and blocks the thread until the owner answers on the subject. */
+  async ask(threadId: string, subject: string, question: string): Promise<string> {
+    const thread = this.thread(threadId);
+    return this.serially(thread, async () => {
+      const url = await this.send(thread, subject, questionComment(question), "question");
+      await this.block(thread, "question", subject, url, "ask", question);
+      return url;
+    });
+  }
+
+  /**
+   * What the `permission` tool does: a call Claude Code would still prompt for. The call the owner approved before
+   * passes, then the bot's `deny` and `allow` rules decide. If they don't, the owner is asked on the thread's main
+   * subject, and the call is refused for now: the thread is blocked until a reaction answers.
+   */
+  async permission(threadId: string, tool: string, input: unknown): Promise<PermissionResult> {
+    const thread = this.thread(threadId);
+    const bot = this.botOf(thread);
+    const rule = wasApproved(thread, tool, input) ? "allow" : ruleDecision(bot, tool, input);
+    if (rule) this.log(thread, `${rule === "allow" ? "allowed" : "denied"} ${tool} ${describeInput(input)}`);
+    if (rule === "allow") return allow(input);
+    if (rule === "deny") return deny(`${tool} is denied by the rules of ${bot.name}`);
+    return this.serially(thread, () => this.askPermission(thread, tool, input));
+  }
+
+  /** Asks once: a call already waiting on an answer is refused again without another comment. */
+  private async askPermission(thread: Thread, tool: string, input: unknown): Promise<PermissionResult> {
+    const waiting = openAsks(thread).find(
+      (a) => a.kind === "permission" && callKey(a.tool, a.input) === callKey(tool, input),
+    );
+    if (waiting) return deny(waitingMessage(waiting));
+    const subject = thread.subjects[0]!.key;
+    const url = await this.send(thread, subject, permissionComment(tool, input), "permission");
+    return deny(waitingMessage(await this.block(thread, "permission", subject, url, tool, input)));
+  }
+
+  /** Records an open ask on the thread and blocks its session. */
+  private async block(thread: Thread, kind: Ask["kind"], subject: string, url: string, tool: string, input: unknown) {
+    const at = new Date(this.now()).toISOString();
+    const ask: Ask = { id: this.newAskId(), kind, commentUrl: url, subject, tool, input, at };
+    (thread.asks ??= []).push(ask);
+    (thread.session ??= { id: null, status: "idle", lastRunAt: null }).status = "blocked";
+    await this.o.threads.save(thread);
+    this.log(thread, `?? asked on ${subject}: ${askLabel(ask)} ${url}`);
+    this.o.emit({ type: "asked", at, thread: thread.id, what: askLabel(ask), url });
+    return ask;
+  }
+
+  /** Runs `step` after the thread's earlier asks, so two calls for the same thing never both post. */
+  private serially<T>(thread: Thread, step: () => Promise<T>): Promise<T> {
+    const done = (this.asking.get(thread.id) ?? Promise.resolve()).then(step);
+    this.asking.set(
+      thread.id,
+      done.catch(() => {}),
+    );
+    return done;
+  }
+
+  private thread(id: string): Thread {
+    const thread = this.o.threads.all.find((t) => t.id === id);
+    if (!thread) throw new Error(`there is no thread ${id}`);
+    return thread;
+  }
+
+  private botOf(thread: Thread): Bot {
     const bot = this.o.bots.find((b) => b.name === thread.bot);
-    if (!bot?.repos.includes(repoOf({ key: subject })))
+    if (!bot) throw new Error(`there is no bot ${thread.bot} in .loopway/`);
+    return bot;
+  }
+
+  /** Posts as the bot with the thread's marker, records it as sent, logs it, and says so. */
+  private async send(thread: Thread, subject: string, body: string, kind: string): Promise<string> {
+    if (!SUBJECT.test(subject)) throw new Error(`"${subject}" is not a subject; write it as owner/repo#N`);
+    if (!this.botOf(thread).repos.includes(repoOf({ key: subject })))
       throw new Error(`${thread.bot} does not read ${repoOf({ key: subject })}`);
     const url = await this.o.commenter.comment(subject, `${body}\n\n${markerOf(thread.id)}`).catch((err: Error) => {
       // The session hears about it, but so should whoever reads the log.
-      this.log(thread, `!! comment on ${subject} failed: ${err.message}`);
+      this.log(thread, `!! ${kind} on ${subject} failed: ${err.message}`);
       throw err;
     });
     const at = new Date(this.now()).toISOString();
-    (thread.sent ??= []).push({ at, subject, kind: "comment", url });
+    (thread.sent ??= []).push({ at, subject, kind, url });
     await this.o.threads.save(thread);
-    this.log(thread, `<- comment on ${subject}`);
+    this.log(thread, `<- ${kind} on ${subject}`);
     this.o.emit({ type: "sent", at, thread: thread.id, subject, url });
     return url;
   }
@@ -111,7 +204,7 @@ export class Sessions {
   private async recover(): Promise<void> {
     for (const thread of this.o.threads.all) {
       if (thread.session?.status !== "running") continue;
-      thread.session.status = "idle";
+      thread.session.status = openAsks(thread).length > 0 ? "blocked" : "idle";
       thread.session.lastError = "loopway stopped during the run";
       await this.o.threads.save(thread);
     }
@@ -120,6 +213,7 @@ export class Sessions {
   private ready(thread: Thread): boolean {
     return (
       thread.status === "open" &&
+      thread.session?.status !== "blocked" &&
       (thread.queue.length > 0 || !thread.session?.id) &&
       !this.running.has(thread.id) &&
       this.now() >= (this.retryAt.get(thread.id) ?? 0)
@@ -203,7 +297,7 @@ export class Sessions {
 
   private async finish(thread: Thread, session: Session, sentAMessage: boolean): Promise<void> {
     const at = new Date(this.now()).toISOString();
-    session.status = "idle";
+    session.status = openAsks(thread).length > 0 ? "blocked" : "idle";
     await this.o.threads.save(thread);
     this.o.emit({ type: "run_finished", at, thread: thread.id });
     if (sentAMessage) return;

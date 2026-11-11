@@ -11,13 +11,15 @@ export type SessionEvent =
   | { type: "run_finished"; at: string; thread: string }
   | { type: "sent"; at: string; thread: string; subject: string; url: string }
   | { type: "silent_turn"; at: string; thread: string }
+  | { type: "asked"; at: string; thread: string; what: string; url: string }
   | { type: "run_failed"; at: string; thread: string; error: string; requeued: number };
 
 /** What the threads did about an event. */
 export type ThreadEvent =
   | { type: "thread_opened"; thread: Thread }
   | { type: "queued"; subject: string; update: Update; thread: string }
-  | { type: "thread_closed"; thread: Thread };
+  | { type: "thread_closed"; thread: Thread }
+  | { type: "answered"; at: string; thread: string; what: string; how: "approved" | "denied" | "replied" };
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -59,6 +61,10 @@ export function formatLine(event: LoopwayEvent): string {
       return `${stamp(event.at)} sent ${event.thread} comment on ${event.subject} ${event.url}`;
     case "silent_turn":
       return `${stamp(event.at)} turn ended without a message ${event.thread}`;
+    case "asked":
+      return `${stamp(event.at)} asked ${event.thread} ${event.what} ${event.url}`;
+    case "answered":
+      return `${stamp(event.at)} answered ${event.thread} ${event.how}: ${event.what}`;
     case "run_failed":
       return `${stamp(event.at)} run failed ${event.thread}: ${event.error}; ${event.requeued} updates back in the queue`;
   }

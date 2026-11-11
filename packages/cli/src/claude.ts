@@ -37,7 +37,10 @@ export type RunAgent = (run: AgentRun) => Promise<RunOutcome>;
 export const LIMIT_FALLBACK_MS = 5 * 60_000;
 
 /** The one tool of loopway's MCP the session may use without asking. */
-export const ALLOWED_TOOLS = ["mcp__loopway__comment"];
+export const ALLOWED_TOOLS = ["mcp__loopway__comment", "mcp__loopway__ask"];
+
+/** Where Claude Code sends what it would still prompt for after auto mode has decided. */
+export const PERMISSION_TOOL = "mcp__loopway__permission";
 
 /** The arguments of `claude`. The message goes in on stdin. */
 export function claudeArgs(run: AgentRun): string[] {
@@ -46,6 +49,7 @@ export function claudeArgs(run: AgentRun): string[] {
   if (run.model) args.push("--model", run.model);
   // --mcp-config and --allowedTools take several values, so each is followed by another flag.
   args.push("--mcp-config", mcp, "--allowedTools", ...ALLOWED_TOOLS);
+  args.push("--permission-prompt-tool", PERMISSION_TOOL);
   args.push("--permission-mode", "auto", "--output-format", "stream-json", "--verbose");
   return args;
 }

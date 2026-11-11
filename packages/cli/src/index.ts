@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
+import { answerFromReactions } from "./asks.js";
 import { loadBots, reposOf, type Bot } from "./bots.js";
 import { claudeRunner } from "./claude.js";
 import { loadGitHubConfig, loopwayHome, type GitHubConfig } from "./config.js";
@@ -82,7 +83,7 @@ async function main(): Promise<number> {
   const me = await source.whoami();
   const authors = config.name ? [me, config.name] : [me];
   const state = await loadState(dir);
-  const threads = await Threads.load({ dir, bots });
+  const threads = await Threads.load({ dir, bots, owner: me });
 
   // In the TUI nothing prints: the bottom of the screen shows the latest line.
   const tui = !values.json && !values["no-tui"] && !!process.stdout.isTTY && !!process.stdin.isTTY;
@@ -116,6 +117,9 @@ async function main(): Promise<number> {
     repos,
     authors,
     emit,
+    answers: async () => {
+      await answerFromReactions({ threads, source, owner: me, emit: (event) => void emit(event), log });
+    },
     log,
   });
 
@@ -160,7 +164,11 @@ async function startSessions(s: SessionsSetup): Promise<{ kick: () => void; done
     return undefined;
   }
   const botEnv = { GH_TOKEN: token, ...gitIdentity(name, email) };
-  const mcp = await startMcp({ comment: (thread, subject, body) => sessions.comment(thread, subject, body) });
+  const mcp = await startMcp({
+    comment: (thread, subject, body) => sessions.comment(thread, subject, body),
+    ask: (thread, subject, question) => sessions.ask(thread, subject, question),
+    permission: (thread, tool, input) => sessions.permission(thread, tool, input),
+  });
   const sessions = new Sessions({
     dir: s.dir,
     threads: s.threads,

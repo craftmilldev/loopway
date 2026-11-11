@@ -82,7 +82,7 @@ The bare `loopway` adds thread lines to its output, after the line of the event 
 Each open thread with queued updates and no run in flight gets all of them, oldest first, in one run of Claude Code (`claude -p --permission-mode auto --output-format stream-json`) in the directory `loopway` runs in. A new session gets the bot's prompt plus the updates; later batches run with `--resume <session id>`. `--max N` (default 3) caps the runs in flight.
 
 - A delivered batch leaves the queue. A run that fails (an API error, a usage limit, a bad exit, a bad model name) leaves it, marks the session `failed`, and the thread tries again after 5 minutes. A usage limit holds every delivery until it resets.
-- The session acts as the bot user (see Credentials). It talks only through loopway's own MCP server, which loopway hosts and passes with `--mcp-config`. The one tool so far is `comment(subject, body)`. Every message goes through it, so loopway records it on the thread (`sent`). A comment a thread sent is not queued back to that thread, but is queued to every other thread holding the subject. The comment carries a hidden `<!-- loopway:thread=<id> -->` so the poller can tell.
+- The session acts as the bot user (see Credentials). It talks only through loopway's own MCP server, which loopway hosts and passes with `--mcp-config`. Its tools are `comment(subject, body)`, `ask(subject, question)` (see Asks) and `permission`, which Claude Code itself calls. Every message goes through it, so loopway records it on the thread (`sent`). A comment a thread sent is not queued back to that thread, but is queued to every other thread holding the subject. The comment carries a hidden `<!-- loopway:thread=<id> -->` so the poller can tell.
 - The prompt tells the session to post at least one message per turn. A turn that ends with none logs `turn ended without a message`.
 - A thread that has never run gets its first run even with nothing queued, because a new issue is itself the news. Closed threads get no more runs.
 
@@ -115,9 +115,27 @@ To see a failed run, set `model: nonesuch` in `.loopway/dev.md` and restart `loo
 
 Per thread, the JSON has `session: { id, status: idle | running | blocked | failed, lastRunAt, lastError? }` and `sent: [{ at, subject, kind, url }]`, and `~/.loopway/state/*/threads/<id>.log` is the session log: assistant text, one line per tool call, and loopway's own lines (`-> delivered 3 updates`, `<- comment on owner/repo#12`).
 
+## Asks: blocked sessions ask on the subject
+
+Sessions run with `--permission-mode auto`, so Claude Code's auto mode classifier decides first. Whatever it would still prompt for goes to loopway's `permission` tool (`--permission-prompt-tool`), and loopway decides in this order, with no model involved:
+
+1. A call you already approved for this session passes.
+2. The bot's front matter rules: `deny:` then `allow:`, lists of tool patterns in Claude Code's syntax, like `allow: ["Bash(npm test:*)", "Read"]`. `Bash(curl:*)` is every command that starts with `curl`, `Bash(git status)` that command exactly, `Read(src/*)` a glob over the path.
+3. Otherwise loopway **asks**: one comment on the thread's main subject (the first one it tracks), by the bot and carrying the thread marker, with the tool and its input and a request for a 👍 to allow or a 👎 to deny. The call is refused for now with a message telling the session it has asked and will be resumed. The session is marked `blocked`, and the ask is recorded on the thread as `asks: [{ id, kind, commentUrl, subject, tool, input, at, answeredAt? }]`. The same call is not asked again while its ask is open.
+
+A session can also ask a question itself: `ask(subject, question)` posts it (marked) and blocks the session until it is answered. The prompt tells the session to use it when it needs someone to decide, or is stuck.
+
+How an ask is answered:
+
+- **A reaction.** After every pass over the known subjects (every 30 s) loopway reads the reactions on its open permission asks. A 👍 or 👎 from your `gh` user, and nobody else, answers. A 👍 resumes the session with `approved: <tool> <input>` and "Retry it.", and the approval is remembered (`session.approved`), so the same call passes next time. A 👎 resumes it with `denied`. If you left both, the 👎 wins. It costs one conditional request per open ask, and a 304 is free.
+- **A reply.** A comment from your `gh` user on the question's subject, after the question, answers it. It is queued like any update, and the ask is marked answered.
+- Either way the session leaves `blocked` and its next run gets the answer. A blocked session is not run for other updates meanwhile: they wait in the queue.
+
+Open asks live in the thread's JSON, so a restart keeps waiting on them. The log (`loopway`, `--json`) has `asked` and `answered` lines, and the TUI's thread view lists what the thread is waiting on, with links; `blocked` shows as the session status on the main view.
+
 ## Bots: `.loopway/`
 
-`loopway` reads the `.loopway/` folder in the directory it runs from. Each bot is one file, `.loopway/<bot>.md`: Markdown with YAML front matter. The front matter is the bot's rules; the Markdown is its prompt, which starts each thread's session. The keys: `repos`; `on: issue`, `on: pull_request` or a list of both, which says which new subjects start a thread for the bot; `model` (like `sonnet`, passed to Claude Code); `harness` (only `claude`, the default). Keys loopway does not know are ignored. It polls the union of every bot's repos.
+`loopway` reads the `.loopway/` folder in the directory it runs from. Each bot is one file, `.loopway/<bot>.md`: Markdown with YAML front matter. The front matter is the bot's rules; the Markdown is its prompt, which starts each thread's session. The keys: `repos`; `on: issue`, `on: pull_request` or a list of both, which says which new subjects start a thread for the bot; `model` (like `sonnet`, passed to Claude Code); `harness` (only `claude`, the default); `allow` and `deny`, lists of tool patterns that decide permission asks (see Asks). Keys loopway does not know are ignored. It polls the union of every bot's repos.
 
 `.loopway/dev.md`:
 

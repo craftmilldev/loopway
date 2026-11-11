@@ -1,3 +1,4 @@
+import type { Ask } from "./asks.js";
 import type { Subject, Update } from "./source.js";
 
 /** One bot plus the subjects it tracks. Stored as `<state dir>/threads/<id>.json`. */
@@ -16,6 +17,8 @@ export interface Thread {
   session?: Session;
   /** Messages the thread sent out, as recorded by loopway's own tools. */
   sent?: Sent[];
+  /** What the thread asked people, answered or not. Open asks survive a restart. */
+  asks?: Ask[];
 }
 
 export interface Session {
@@ -24,6 +27,8 @@ export interface Session {
   /** ISO time. */
   lastRunAt: string | null;
   lastError?: string;
+  /** Calls people approved, as `callKey`s: the same call passes without asking again. */
+  approved?: string[];
 }
 
 /** A message a thread posted: when, on which subject, what kind of message, and where to read it. */

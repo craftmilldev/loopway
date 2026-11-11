@@ -1,6 +1,13 @@
 import type { LoopwayEvent } from "../src/format.js";
 import { Poller } from "../src/poller.js";
-import { RateLimitError, type Updates, type Subject, type SubjectSource, type Update } from "../src/source.js";
+import {
+  RateLimitError,
+  type Reaction,
+  type Updates,
+  type Subject,
+  type SubjectSource,
+  type Update,
+} from "../src/source.js";
 import { emptyState, type State } from "../src/state.js";
 
 /** GitHub, in memory. Tests add subjects and updates, and can make the next calls fail. */
@@ -9,6 +16,8 @@ export class FakeSource implements SubjectSource {
   /** Set to give the poller a batched probe. */
   changed?: (subjects: Subject[]) => Promise<Set<string>>;
   said = new Map<string, Update[]>();
+  /** Reactions by comment URL. */
+  reacted = new Map<string, Reaction[]>();
   failWith: Error | undefined;
   calls: string[] = [];
 
@@ -28,6 +37,16 @@ export class FakeSource implements SubjectSource {
     this.calls.push(`updates ${subject.key}`);
     this.maybeFail();
     return { updates: this.said.get(subject.key) ?? [] };
+  }
+
+  async reactions(commentUrl: string) {
+    this.calls.push(`reactions ${commentUrl}`);
+    this.maybeFail();
+    return this.reacted.get(commentUrl) ?? [];
+  }
+
+  react(commentUrl: string, user: string, content: string) {
+    this.reacted.set(commentUrl, [...(this.reacted.get(commentUrl) ?? []), { user, content }]);
   }
 
   add(key: string, author: string, createdAt: string, kind: Subject["kind"] = "issue") {
@@ -53,6 +72,8 @@ export function harness(
     authors?: string[];
     repos?: string[];
     start?: string;
+    /** Runs at the end of each pass over the known subjects. */
+    answers?: () => Promise<void>;
     /** Runs after each event is recorded, like the threads do in the real command. */
     react?: (event: LoopwayEvent, push: (e: LoopwayEvent) => void) => Promise<void>;
   } = {},
@@ -73,6 +94,7 @@ export function harness(
       events.push(e);
       await opts.react?.(e, (x) => events.push(x));
     },
+    answers: opts.answers,
     log: (m) => logs.push(m),
     now: () => clock.t,
   });

@@ -161,6 +161,14 @@ describe("rate limits", () => {
     expect(sleeps[1]).toBe(UPDATE_EVERY_MS);
   });
 
+  it("reads answers to open asks at the end of each pass over the known subjects", async () => {
+    let reads = 0;
+    const h = harness({ answers: async () => void reads++ });
+    await h.poller.updates();
+    await h.poller.updates();
+    expect(reads).toBe(2);
+  });
+
   it("makes no requests while paused", async () => {
     const h = harness();
     h.source.failWith = rateLimited(h.clock.t + 5 * 60_000);

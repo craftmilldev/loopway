@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { askLabel, callKey, openAsks, type Ask } from "./asks.js";
 import type { Bot } from "./bots.js";
 import type { LoopwayEvent, ThreadEvent } from "./format.js";
 import { decide, type Action } from "./rules.js";
@@ -54,6 +55,8 @@ export interface ThreadsOptions {
   /** The project's state directory. */
   dir: string;
   bots: Bot[];
+  /** Your `gh` login: only your comment answers a question, and only your reaction a permission ask. */
+  owner?: string;
   now?: () => number;
   newId?: () => string;
 }
@@ -104,6 +107,7 @@ export class Threads {
     if (action.type === "open") return this.open(action, events);
     const thread = this.all.find((t) => t.id === action.thread)!;
     if (action.type === "queue") this.queue(thread, action.subject, action.update, events);
+    if (action.type === "queue") this.answerQuestions(thread, action.subject, action.update, events);
     if (action.type === "mark") thread.subjects.find((s) => s.key === action.subject)!.status = action.status;
     if (action.type === "close") this.close(thread, events);
     return thread;
@@ -130,6 +134,42 @@ export class Threads {
     thread.queue.push({ ...update, subject });
     if (update.at > thread.latestAt) thread.latestAt = update.at;
     events.push({ type: "queued", subject, update, thread: thread.id });
+  }
+
+  /** The owner's comment on a subject after a question was asked there answers it. It is queued like any update. */
+  private answerQuestions(thread: Thread, subject: string, update: Update, events: ThreadEvent[]) {
+    if (update.kind !== "comment" || update.actor.toLowerCase() !== this.o.owner?.toLowerCase()) return;
+    for (const ask of openAsks(thread)) {
+      if (ask.kind !== "question" || ask.subject !== subject || ask.at >= update.at) continue;
+      ask.answeredAt = update.at;
+      events.push({ type: "answered", at: update.at, thread: thread.id, what: askLabel(ask), how: "replied" });
+    }
+    this.unblock(thread);
+  }
+
+  /**
+   * The owner's 👍 or 👎 on a permission ask. A 👍 is remembered, so the same call passes next time. Either way the
+   * session is told on its queue and is no longer blocked.
+   */
+  async answerPermission(thread: Thread, ask: Ask, approved: boolean, actor: string): Promise<ThreadEvent> {
+    const at = new Date(this.now()).toISOString();
+    ask.answeredAt = at;
+    if (approved)
+      ((thread.session ??= { id: null, status: "idle", lastRunAt: null }).approved ??= []).push(
+        callKey(ask.tool, ask.input),
+      );
+    const what = askLabel(ask);
+    const verdict = approved ? "approved" : "denied";
+    const body = approved ? "Retry it." : "Do not do it. Carry on without it, or say what you need instead.";
+    this.queue(thread, ask.subject, { id: `ask:${ask.id}`, kind: verdict, detail: what, body, actor, at }, []);
+    this.unblock(thread);
+    await this.save(thread);
+    return { type: "answered", at, thread: thread.id, what, how: verdict };
+  }
+
+  /** A session with nothing left to wait on is idle again. */
+  private unblock(thread: Thread) {
+    if (thread.session?.status === "blocked" && openAsks(thread).length === 0) thread.session.status = "idle";
   }
 
   private close(thread: Thread, events: ThreadEvent[]) {

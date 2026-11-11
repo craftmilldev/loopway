@@ -14,6 +14,10 @@ export interface Bot {
   harness: "claude";
   /** Passed to the harness as its model, like `sonnet`. Left out, the harness picks. */
   model?: string;
+  /** Tool patterns in Claude Code's permission syntax (`Bash(npm test:*)`) that pass without asking. */
+  allow: string[];
+  /** Tool patterns that are refused without asking. They win over `allow`. */
+  deny: string[];
   /** The front matter as written. Keys this version doesn't know are kept and ignored. */
   rules: Record<string, unknown>;
   /** Used from a later slice on, when a bot runs a session. */
@@ -66,9 +70,18 @@ export function parseBot(name: string, text: string, where = `${name}.md`): Bot 
     on: parseOn(rules.on, where),
     harness: parseHarness(rules.harness, where),
     model: typeof rules.model === "string" ? rules.model : undefined,
+    allow: parsePatterns(rules.allow, "allow", where),
+    deny: parsePatterns(rules.deny, "deny", where),
     rules,
     prompt: (match ? (match[2] ?? "") : text).trim(),
   };
+}
+
+function parsePatterns(raw: unknown, key: string, where: string): string[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw) || raw.some((p) => typeof p !== "string"))
+    throw new Error(`${where}: "${key}" is a list of tool patterns, like ["Bash(npm test:*)"]`);
+  return raw as string[];
 }
 
 function parseHarness(raw: unknown, where: string): Bot["harness"] {
