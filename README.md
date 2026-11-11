@@ -105,15 +105,15 @@ npm run cli                      # leave this running
 
 # in a second terminal
 gh issue create -R craftmilldev/loopway-sandbox --title "What's 2+2?" --body "Reply in one comment."
-tail -f ~/.loopway/threads/*.log   # the session, as it runs
+tail -f ~/.loopway/state/*/threads/*.log   # the session, as it runs
 # when loopway-bot has answered, reply as yourself (use the issue number from above):
 gh issue comment <number> -R craftmilldev/loopway-sandbox --body "Now times 3."
-grep -A4 '"session"' ~/.loopway/threads/*.json   # the same session id, resumed
+grep -A4 '"session"' ~/.loopway/state/*/threads/*.json   # the same session id, resumed
 ```
 
 To see a failed run, set `model: nonesuch` in `.loopway/dev.md` and restart `loopway`.
 
-Per thread, the JSON has `session: { id, status: idle | running | blocked | failed, lastRunAt, lastError? }` and `sent: [{ at, subject, kind, url }]`, and `~/.loopway/threads/<id>.log` is the session log: assistant text, one line per tool call, and loopway's own lines (`-> delivered 3 updates`, `<- comment on owner/repo#12`).
+Per thread, the JSON has `session: { id, status: idle | running | blocked | failed, lastRunAt, lastError? }` and `sent: [{ at, subject, kind, url }]`, and `~/.loopway/state/*/threads/<id>.log` is the session log: assistant text, one line per tool call, and loopway's own lines (`-> delivered 3 updates`, `<- comment on owner/repo#12`).
 
 ## Bots: `.loopway/`
 
