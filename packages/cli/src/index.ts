@@ -12,6 +12,7 @@ import { Sessions } from "./sessions.js";
 import { loadState, saveState, stateDir } from "./state.js";
 import { loadThreads, readThreadLog, Threads, visibleThreads } from "./threads.js";
 import { showTui } from "./tui.js";
+import { formatPollStatus } from "./tui-text.js";
 
 const HELP = `loopway: watches GitHub and prints every new issue and pull request by you or your bot,
 and every update to the ones it knows.
@@ -126,6 +127,8 @@ async function main(): Promise<number> {
       threads: () => threads.all,
       readLog: (id: string) => readThreadLog(dir, id),
       latest: () => latest,
+      status: (now: number) => formatPollStatus(repos, poller.status(), now),
+      onRefresh: () => void poller.refresh(),
     };
     await showTui(props).finally(() => stop.abort());
   }

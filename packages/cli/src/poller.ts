@@ -5,6 +5,17 @@ import type { State } from "./state.js";
 export const DISCOVER_EVERY_MS = 2 * 60_000;
 export const UPDATE_EVERY_MS = 30_000;
 
+/** What the poller is up to, for a status line. */
+export interface PollStatus {
+  /** When the last poll finished (epoch ms), if one has. */
+  lastCheckedAt: number | undefined;
+  /** When the next poll is due (epoch ms). */
+  nextAt: number;
+  pausedUntil: number;
+  /** A poll someone asked for is running. */
+  refreshing: boolean;
+}
+
 export interface PollerOptions {
   source: SubjectSource;
   state: State;
@@ -28,6 +39,11 @@ export class Poller {
   private readonly now: () => number;
   /** No requests before this time (epoch ms): GitHub asked us to wait. */
   pausedUntil = 0;
+  private nextDiscover = 0;
+  private nextUpdate = 0;
+  private inflight: Promise<void> | undefined;
+  private forced = false;
+  private lastCheckedAt: number | undefined;
 
   constructor(private readonly o: PollerOptions) {
     this.authors = new Set(o.authors.map((a) => a.toLowerCase()));
@@ -96,36 +112,70 @@ export class Poller {
 
   /** Runs until `signal` aborts: discovery every 2 minutes, known subjects every 30 seconds, backing off on rate limits. */
   async run(signal: AbortSignal, sleep: (ms: number, signal: AbortSignal) => Promise<void> = abortableSleep) {
-    let nextDiscover = 0;
-    let nextUpdate = 0;
     while (!signal.aborted) {
-      const t = this.now();
-      if (t >= this.pausedUntil) {
-        try {
-          if (t >= nextDiscover) {
-            await this.discover();
-            nextDiscover = this.now() + DISCOVER_EVERY_MS;
-          }
-          if (t >= nextUpdate) {
-            await this.updates();
-            nextUpdate = this.now() + UPDATE_EVERY_MS;
-          }
-        } catch (err) {
-          if (!(err instanceof RateLimitError)) {
-            // Something broke that isn't ours to retry fast: say so and try again at the normal pace.
-            this.o.log?.((err as Error).message);
-            nextDiscover = Math.max(nextDiscover, this.now() + DISCOVER_EVERY_MS);
-            nextUpdate = Math.max(nextUpdate, this.now() + UPDATE_EVERY_MS);
-          } else {
-            this.pausedUntil = err.resumeAt;
-            this.o.log?.(`rate limited: waiting ${Math.ceil((err.resumeAt - this.now()) / 1000)}s`);
-          }
-        }
-      }
-      const wake = Math.max(Math.min(nextDiscover, nextUpdate), this.pausedUntil);
+      await this.poll(false);
+      const wake = Math.max(Math.min(this.nextDiscover, this.nextUpdate), this.pausedUntil);
       await sleep(Math.max(wake - this.now(), 0), signal);
     }
   }
+
+  /**
+   * Polls now, whatever the timers say, and restarts them from here. Does nothing while a poll is running, and says
+   * so in the log instead of calling GitHub while it has asked us to wait.
+   */
+  async refresh(): Promise<void> {
+    if (this.inflight) return;
+    if (this.now() < this.pausedUntil) return this.o.log?.(this.waitingMessage());
+    await this.poll(true);
+  }
+
+  status(): PollStatus {
+    const nextAt = Math.max(Math.min(this.nextDiscover, this.nextUpdate), this.pausedUntil);
+    return {
+      lastCheckedAt: this.lastCheckedAt,
+      nextAt,
+      pausedUntil: this.pausedUntil,
+      refreshing: !!this.inflight && this.forced,
+    };
+  }
+
+  /** One poll, and the only one at a time: asking while one runs joins it. */
+  private poll(force: boolean): Promise<void> {
+    this.forced ||= force;
+    return (this.inflight ??= this.pollOnce(force).finally(() => {
+      this.inflight = undefined;
+      this.forced = false;
+    }));
+  }
+
+  /** Discovers and updates what is due (all of it if `force`), then sets the timers for next time. */
+  private async pollOnce(force: boolean): Promise<void> {
+    const t = this.now();
+    if (t < this.pausedUntil) return;
+    try {
+      if (force || t >= this.nextDiscover) {
+        await this.discover();
+        this.nextDiscover = this.now() + DISCOVER_EVERY_MS;
+      }
+      if (force || t >= this.nextUpdate) {
+        await this.updates();
+        this.nextUpdate = this.now() + UPDATE_EVERY_MS;
+      }
+    } catch (err) {
+      if (err instanceof RateLimitError) {
+        this.pausedUntil = err.resumeAt;
+        this.o.log?.(this.waitingMessage());
+      } else {
+        // Something broke that isn't ours to retry fast: say so and try again at the normal pace.
+        this.o.log?.((err as Error).message);
+        this.nextDiscover = Math.max(this.nextDiscover, this.now() + DISCOVER_EVERY_MS);
+        this.nextUpdate = Math.max(this.nextUpdate, this.now() + UPDATE_EVERY_MS);
+      }
+    }
+    this.lastCheckedAt = this.now();
+  }
+
+  private waitingMessage = () => `rate limited: waiting ${Math.ceil((this.pausedUntil - this.now()) / 1000)}s`;
 }
 
 export function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {

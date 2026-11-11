@@ -12,6 +12,10 @@ export interface TuiProps {
   readLog: (threadId: string) => string;
   /** The latest thing the poller said. */
   latest: () => string;
+  /** What the poller is doing, as a line: when it last checked and when it will next. */
+  status: (now: number) => string;
+  /** Polls GitHub now, instead of waiting for the poller's timers. */
+  onRefresh: () => void;
   now?: () => number;
   refreshMs?: number;
 }
@@ -23,7 +27,7 @@ export async function showTui(props: TuiProps): Promise<void> {
 }
 
 /** The main view of threads, and the view of one thread. q quits; Ctrl-C does too. */
-export function Tui({ threads, readLog, latest, now = Date.now, refreshMs = 1000 }: TuiProps) {
+export function Tui({ threads, readLog, latest, status, onRefresh, now = Date.now, refreshMs = 1000 }: TuiProps) {
   const { exit } = useApp();
   const [filter, setFilter] = useState<string>();
   const [selectedId, setSelectedId] = useState<string>();
@@ -56,10 +60,12 @@ export function Tui({ threads, readLog, latest, now = Date.now, refreshMs = 1000
         selectedId={selectedId}
         filter={filter}
         latest={latest()}
+        status={status(now())}
         now={now()}
         onSelect={setSelectedId}
         onOpen={setOpenId}
         onClearFilter={() => setFilter(undefined)}
+        onRefresh={onRefresh}
       />
     </Box>
   );
