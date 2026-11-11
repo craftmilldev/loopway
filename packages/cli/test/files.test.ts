@@ -31,6 +31,13 @@ describe("bots", () => {
     expect(() => parseBot("x", "---\non: project\n---\n", ".loopway/x.md")).toThrow(/\.loopway\/x\.md.*"on: project"/);
   });
 
+  it("reads the harness (claude by default) and the model, and rejects a harness loopway does not run", () => {
+    const plain = parseBot("x", "---\nrepos: [a/b]\n---\n");
+    expect([plain.harness, plain.model]).toEqual(["claude", undefined]);
+    expect(parseBot("x", "---\nmodel: sonnet\n---\n").model).toBe("sonnet");
+    expect(() => parseBot("x", "---\nharness: codex\n---\n", ".loopway/x.md")).toThrow(/use claude/);
+  });
+
   it("allows a file with no front matter", () => {
     const bot = parseBot("x", "Just a prompt.");
     expect(bot.repos).toEqual([]);

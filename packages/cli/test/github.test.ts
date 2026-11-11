@@ -43,6 +43,55 @@ const subject = (kind: Subject["kind"] = "issue"): Subject => ({
   createdAt: "2026-11-10T12:30:00Z",
 });
 
+describe("comment", () => {
+  it("posts to the issue's comments endpoint, as the token's user, and returns the comment's URL", async () => {
+    const { source, handlers } = fakeGitHub({});
+    const sent: { path: string; method?: string; auth: string; body: unknown }[] = [];
+    handlers.push((url, init) => {
+      const headers = init.headers as Record<string, string>;
+      sent.push({
+        path: url.pathname,
+        method: init.method,
+        auth: headers.authorization!,
+        body: JSON.parse(init.body as string),
+      });
+      return new Response(JSON.stringify({ html_url: "https://github.com/o/r/issues/7#issuecomment-5" }), {
+        status: 201,
+      });
+    });
+    expect(await source.comment("o/r#7", "hello")).toBe("https://github.com/o/r/issues/7#issuecomment-5");
+    expect(sent).toEqual([
+      { path: "/repos/o/r/issues/7/comments", method: "POST", auth: "Bearer t", body: { body: "hello" } },
+    ]);
+  });
+
+  it("fails with what GitHub said", async () => {
+    const { source, handlers } = fakeGitHub({});
+    handlers.push(() => new Response("Resource not accessible", { status: 403 }));
+    await expect(source.comment("o/r#7", "hello")).rejects.toThrow(/403.*Resource not accessible/);
+  });
+});
+
+describe("a comment's text", () => {
+  it("is on its update, and so is a review's", async () => {
+    const { source } = fakeGitHub({
+      "/repos/o/r/issues/7": issue(),
+      "/repos/o/r/issues/7/events": [],
+      "/repos/o/r/issues/7/comments": [
+        {
+          id: 1,
+          body: "What's 2+2?",
+          user: { login: "me" },
+          created_at: "2026-11-10T12:32:00Z",
+          updated_at: "2026-11-10T12:32:00Z",
+        },
+      ],
+    });
+    const { updates } = await source.updates(subject());
+    expect(updates.map((u) => [u.kind, u.body])).toEqual([["comment", "What's 2+2?"]]);
+  });
+});
+
 describe("discover", () => {
   it("returns subjects created since, telling issues from pull requests", async () => {
     const { source } = fakeGitHub({

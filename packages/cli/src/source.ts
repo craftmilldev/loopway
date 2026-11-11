@@ -14,6 +14,8 @@ export interface Update {
   /** "comment", "review", "closed", "labeled", "check_run" ... */
   kind: string;
   detail?: string;
+  /** The text of a comment or review, for whoever reads the update. */
+  body?: string;
   actor: string;
   /** ISO time it happened. */
   at: string;

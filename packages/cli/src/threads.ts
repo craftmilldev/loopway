@@ -62,6 +62,7 @@ export interface ThreadsOptions {
 export class Threads {
   private readonly now: () => number;
   private readonly newId: () => string;
+  private readonly writing = new Map<string, Promise<void>>();
 
   private constructor(
     private readonly o: ThreadsOptions,
@@ -84,8 +85,19 @@ export class Threads {
       const thread = this.apply(action, events);
       touched.add(thread);
     }
-    for (const thread of touched) await writeJson(join(threadsDir(this.o.dir), `${thread.id}.json`), thread);
+    for (const thread of touched) await this.save(thread);
     return events;
+  }
+
+  /** Writes the thread's file. Saves of one thread run in turn, so the poller and a session never collide. */
+  save(thread: Thread): Promise<void> {
+    const after = this.writing.get(thread.id) ?? Promise.resolve();
+    const written = after.then(() => writeJson(join(threadsDir(this.o.dir), `${thread.id}.json`), thread));
+    this.writing.set(
+      thread.id,
+      written.catch(() => {}),
+    );
+    return written;
   }
 
   private apply(action: Action, events: ThreadEvent[]): Thread {

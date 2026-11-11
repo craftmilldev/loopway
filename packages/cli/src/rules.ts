@@ -1,6 +1,6 @@
 import type { Bot } from "./bots.js";
 import type { Subject, Update } from "./source.js";
-import { holds, repoOf, type Thread } from "./thread.js";
+import { holds, markerOf, repoOf, type Thread } from "./thread.js";
 
 /** Something the poller saw: a subject it just found, or an update to one it knows. */
 export type RuleEvent = { type: "new"; subject: Subject } | { type: "update"; subject: Subject; update: Update };
@@ -16,7 +16,7 @@ export type Action =
  * The rules, as a pure function: what to do about this event, given the threads and bots there are.
  *
  * - A new subject starts a thread for each bot that wants its kind (`on:`) in its repo.
- * - An update goes on the queue of every open thread holding the subject. A subject closing or merging is marked on
+ * - An update goes on the queue of every open thread holding the subject, except a comment that thread sent itself. A subject closing or merging is marked on
  *   the thread, and the thread closes when none of its subjects is open. A subject reopening is marked open again.
  * - A bot with no open thread on the subject starts one when the subject reopens (its old thread closed), or when it
  *   never had one for a subject it already knew.
@@ -31,6 +31,7 @@ export function decide(event: RuleEvent, threads: Thread[], bots: Bot[]): Action
 
 /** An open thread takes the update, and notes the subject closing or reopening. */
 function follow(thread: Thread, key: string, update: Update): Action[] {
+  if (update.body?.includes(markerOf(thread.id))) return [];
   const queue: Action = { type: "queue", thread: thread.id, subject: key, update };
   if (update.kind === "reopened") return [queue, { type: "mark", thread: thread.id, subject: key, status: "open" }];
   if (!isClosing(update)) return [queue];

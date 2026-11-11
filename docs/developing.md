@@ -12,10 +12,10 @@ npm run build
 mkdir -p scratch/.loopway && cd scratch      # scratch/ is git-ignored
 printf -- '---\nrepos: [owner/name]\non: issue\n---\nprompt\n' > .loopway/dev.md
 printf -- '---\nrepos: [owner/name]\non: pull_request\n---\nprompt\n' > .loopway/review.md
-npm run cli                                  # bare `loopway`, reading ./.loopway
-npm run cli -- --no-tui                      # the plain log
-npm run cli -- --json                        # NDJSON
-npm run cli -- threads                       # the open threads, from another terminal
+node ../packages/cli/dist/index.js                                   # bare `loopway`, reading ./.loopway
+node ../packages/cli/dist/index.js --no-tui                      # the plain log
+node ../packages/cli/dist/index.js --json                        # NDJSON
+node ../packages/cli/dist/index.js threads                       # the open threads, from another terminal
 ```
 
 It needs `gh auth login`. Use a repo you can write to if you want to see events, and read the README for what it prints.
@@ -42,11 +42,14 @@ CI runs `npm run build` and these four.
 | `bots.ts` | Reads `.loopway/<bot>.md` |
 | `rules.ts` | `decide(event, threads, bots) -> actions`: the thread rules, a pure function |
 | `thread.ts`, `threads.ts` | The `Thread` type; the store that applies the rules' actions and keeps `threads/<id>.json` |
+| `sessions.ts` | Delivers each thread's queue to its session (`--max`, resume, requeue on failure, usage-limit hold), and records what it sends |
+| `claude.ts`, `transcript.ts` | The Claude Code harness: `claude -p` args, spawn, how a run ended, and the stream turned into log lines |
+| `mcp.ts` | loopway's MCP server (HTTP, one path per thread) with the `comment` tool |
 | `config.ts`, `state.ts` | `~/.loopway/config.json`'s `github` block, and `stateDir`, where `state.json` and the threads live |
 | `tui.tsx`, `tui-main.tsx`, `tui-thread.tsx`, `tui-text.ts` | The [Ink](https://github.com/vadimdemedes/ink) TUI: the main view, the thread view, and the subject filter. Reads threads from the in-process store and the session log from disk |
 | `format.ts` | The printed line, and `--json` |
 
-Tests fake the source (`test/fake.ts`) for the poller, and fake `fetch` for `GitHubSource`.
+Tests fake the source (`test/fake.ts`) for the poller, and fake `fetch` for `GitHubSource`. `test/fake-claude.mjs` stands in for `claude`: it emits stream-json and, in `comment` mode, calls the MCP tool.
 
 ## The marketing page
 

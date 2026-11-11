@@ -41,3 +41,6 @@ export const holds = (thread: Thread, key: string) => thread.subjects.some((s) =
 
 /** `owner/repo` of a subject key `owner/repo#N`. */
 export const repoOf = (subject: Pick<Subject, "key">) => subject.key.split("#")[0]!;
+
+/** Hidden in every comment a thread sends, so the poller can tell its echo from what other people say. */
+export const markerOf = (threadId: string) => `<!-- loopway:thread=${threadId} -->`;
