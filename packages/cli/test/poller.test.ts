@@ -188,6 +188,53 @@ describe("rate limits", () => {
   });
 });
 
+describe("status", () => {
+  it("tells when it last checked and when it will next, and when it is refreshing", async () => {
+    const h = harness();
+    expect(h.poller.status()).toMatchObject({ lastCheckedAt: undefined, refreshing: false });
+    const first = h.poller.refresh();
+    expect(h.poller.status().refreshing).toBe(true);
+    await first;
+    expect(h.poller.status()).toEqual({
+      lastCheckedAt: h.clock.t,
+      nextAt: h.clock.t + UPDATE_EVERY_MS,
+      pausedUntil: 0,
+      refreshing: false,
+    });
+  });
+});
+
+describe("refresh", () => {
+  it("polls now, and restarts the timers from that moment", async () => {
+    const h = harness();
+    h.state.subjects["o/r#1"] = {
+      subject: { key: "o/r#1", kind: "issue", title: "t", author: "me", createdAt: "2026-11-10T11:00:00Z" },
+      seen: [],
+    };
+    await h.poller.refresh();
+    expect(h.source.calls).toEqual(["discover o/r", "updates o/r#1"]);
+    const stop = new AbortController();
+    const sleeps: number[] = [];
+    await h.poller.run(stop.signal, async (ms) => {
+      sleeps.push(ms);
+      stop.abort();
+    });
+    // Nothing was due, so run polled nothing and waits the full update interval.
+    expect(h.source.calls.length).toBe(2);
+    expect(sleeps).toEqual([UPDATE_EVERY_MS]);
+  });
+
+  it("says so in the log and calls nothing while GitHub has asked us to wait", async () => {
+    const h = harness();
+    h.source.failWith = rateLimited(h.clock.t + 90_000);
+    await h.poller.refresh();
+    h.source.failWith = undefined;
+    await h.poller.refresh();
+    expect(h.logs).toEqual(["rate limited: waiting 90s", "rate limited: waiting 90s"]);
+    expect(h.source.calls).toEqual(["discover o/r"]);
+  });
+});
+
 it("a poller with no repos does nothing", async () => {
   const events: unknown[] = [];
   const poller = new Poller({

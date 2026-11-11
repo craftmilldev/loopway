@@ -150,6 +150,7 @@ In a terminal, a bare `loopway` opens a full-screen TUI on the same poller. `loo
 - **Main view:** the open threads, then those closed in the last 3 days (by their latest message), closed ones dimmed. A row is the bot, thread status, session status (`no session yet` until one has run), pending count, the time of the latest message and the subjects. The poller's latest line shows at the bottom. `↑`/`↓` moves, `Enter` or `→` opens a thread.
 - **Thread view:** the subjects it tracks, the session status, the pending updates (when, kind, subject, who), the messages it sent, and the session log (`~/.loopway/state/<slug>/threads/<id>.log`), which follows new output until you scroll up with `PgUp`/`PgDn`/`Home`; `End` follows again. `←` or `Esc` goes back.
 - **Subject filter:** in the thread view, `↑`/`↓` selects a subject and `Enter` returns to the main view filtered to the threads holding it, with the filter in the header. `Esc` clears it.
+- **Status line:** under the rows, what the poller is doing: `polling owner/repo · last checked 14:02 · next in 0:24`. `r` polls GitHub right now (discovery and updates), and the line says `refreshing…` until it is done; the timers restart from there. A second `r` while it runs does nothing, and while GitHub has asked loopway to wait, `r` says so and calls nothing.
 - `q` or `Ctrl-C` quits and stops the poller.
 
 ## Credentials and state

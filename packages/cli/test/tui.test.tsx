@@ -4,7 +4,9 @@ import { stripVTControlCharacters as plain } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Thread } from "../src/thread.js";
 import { CLOSED_SHOWN_MS } from "../src/threads.js";
+import { formatPollStatus } from "../src/tui-text.js";
 import { Tui, type TuiProps } from "../src/tui.js";
+import { harness } from "./fake.js";
 import { aThread, anUpdate } from "./make.js";
 
 const KEYS = { up: "\u001B[A", down: "\u001B[B", right: "\u001B[C", left: "\u001B[D", enter: "\r", esc: "\u001B" };
@@ -28,6 +30,8 @@ function show(threads: Thread[] | (() => Thread[]), more: Partial<TuiProps> = {}
       threads={typeof threads === "function" ? threads : () => threads}
       readLog={() => ""}
       latest={() => "14:03 update o/r#12 comment by me"}
+      status={() => "polling o/r · last checked 14:02 · next in 0:24"}
+      onRefresh={() => {}}
       now={() => NOW}
       refreshMs={10}
       {...more}
@@ -50,7 +54,13 @@ describe("main view", () => {
 
   it("shows the latest poller line at the bottom", () => {
     show([dev12()]);
-    expect(screen().trim().split("\n").at(-2)).toBe("14:03 update o/r#12 comment by me");
+    expect(screen().trim().split("\n").at(-3)).toBe("14:03 update o/r#12 comment by me");
+  });
+
+  it("shows the poller's status line, so a quiet repo does not look stuck", () => {
+    show([]);
+    expect(screen().trim().split("\n").at(-2)).toBe("polling o/r · last checked 14:02 · next in 0:24");
+    expect(screen()).not.toContain("waiting for the poller");
   });
 
   it("says so when there are no threads", () => {
@@ -79,6 +89,37 @@ describe("main view", () => {
     threads.push(review13());
     await sleep(30);
     expect(screen()).toContain("review");
+  });
+});
+
+describe("refresh", () => {
+  it("shows r refresh in the footer", () => {
+    show([dev12()]);
+    expect(screen()).toContain("r refresh");
+  });
+
+  it("r runs one discovery and one update pass, and a second r while it runs does nothing", async () => {
+    const h = harness();
+    h.state.subjects["o/r#12"] = {
+      subject: { key: "o/r#12", kind: "issue", title: "t", author: "me", createdAt: "2026-11-10T11:00:00Z" },
+      seen: [],
+    };
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const discover = h.source.discover.bind(h.source);
+    h.source.discover = async (repo, since) => (await gate, discover(repo, since));
+    show([dev12()], {
+      onRefresh: () => void h.poller.refresh(),
+      status: (now) => formatPollStatus(["o/r"], h.poller.status(), now),
+    });
+
+    await press("r");
+    await press("r");
+    expect(screen()).toContain("refreshing…");
+    release();
+    await sleep(20);
+    await press("r");
+    expect(h.source.calls).toEqual(["discover o/r", "updates o/r#12", "discover o/r", "updates o/r#12"]);
   });
 });
 

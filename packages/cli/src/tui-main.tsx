@@ -11,17 +11,21 @@ export interface MainViewProps {
   filter: string | undefined;
   /** The latest thing the poller said. */
   latest: string;
+  /** What the poller is doing: last checked, next check. */
+  status: string;
   now: number;
   onSelect: (id: string) => void;
   onOpen: (id: string) => void;
   onClearFilter: () => void;
+  onRefresh: () => void;
 }
 
-/** The threads, one row each. ↑/↓ moves, Enter or → opens one, Esc clears the subject filter. */
+/** The threads, one row each. ↑/↓ moves, Enter or → opens one, r polls GitHub now, Esc clears the subject filter. */
 export function MainView(props: MainViewProps) {
-  const { threads, filter, latest } = props;
+  const { threads, filter, latest, status } = props;
   const selected = threads.find((t) => t.id === props.selectedId) ?? threads[0];
-  useInput((_input, key) => {
+  useInput((input, key) => {
+    if (input === "r") props.onRefresh();
     if (key.escape) props.onClearFilter();
     if (!selected) return;
     const at = threads.indexOf(selected);
@@ -40,10 +44,15 @@ export function MainView(props: MainViewProps) {
       {threads.map((t) => (
         <Row key={t.id} thread={t} selected={t === selected} />
       ))}
+      {latest && (
+        <Text dimColor wrap="truncate-end">
+          {latest}
+        </Text>
+      )}
       <Text dimColor wrap="truncate-end">
-        {latest || "waiting for the poller"}
+        {status}
       </Text>
-      <Text dimColor>↑/↓ move · enter open · esc clear filter · q quit</Text>
+      <Text dimColor>↑/↓ move · enter open · r refresh · esc clear filter · q quit</Text>
     </Box>
   );
 }
