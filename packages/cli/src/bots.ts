@@ -10,6 +10,10 @@ export interface Bot {
   repos: string[];
   /** The kinds of subject that start a thread for this bot: `on: issue`, `on: pull_request`, or a list of both. */
   on: Subject["kind"][];
+  /** The harness that runs its sessions. Only `claude` (Claude Code) for now. */
+  harness: "claude";
+  /** Passed to the harness as its model, like `sonnet`. Left out, the harness picks. */
+  model?: string;
   /** The front matter as written. Keys this version doesn't know are kept and ignored. */
   rules: Record<string, unknown>;
   /** Used from a later slice on, when a bot runs a session. */
@@ -56,9 +60,21 @@ export function parseBot(name: string, text: string, where = `${name}.md`): Bot 
   for (const repo of repos) {
     if (!REPO.test(repo)) throw new Error(`${where}: "${repo}" is not a repo; write it as owner/name`);
   }
-  return { name, repos, on: parseOn(rules.on, where), rules, prompt: (match ? (match[2] ?? "") : text).trim() };
+  return {
+    name,
+    repos,
+    on: parseOn(rules.on, where),
+    harness: parseHarness(rules.harness, where),
+    model: typeof rules.model === "string" ? rules.model : undefined,
+    rules,
+    prompt: (match ? (match[2] ?? "") : text).trim(),
+  };
 }
 
+function parseHarness(raw: unknown, where: string): Bot["harness"] {
+  if (raw === undefined || raw === "claude") return "claude";
+  throw new Error(`${where}: "harness: ${JSON.stringify(raw)}" is not one loopway runs; use claude`);
+}
 function parseOn(raw: unknown, where: string): Bot["on"] {
   const list = Array.isArray(raw) ? raw : raw === undefined ? [] : [raw];
   for (const kind of list) {

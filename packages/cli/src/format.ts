@@ -3,7 +3,15 @@ import type { Thread } from "./thread.js";
 
 /** What the poller reports: a subject it just found, or something that happened to one it knows. */
 export type LoopwayEvent =
-  { type: "new"; subject: Subject } | { type: "update"; subject: Subject; update: Update } | ThreadEvent;
+  { type: "new"; subject: Subject } | { type: "update"; subject: Subject; update: Update } | ThreadEvent | SessionEvent;
+
+/** What the sessions did: runs starting and ending, messages sent, failures. `at` is an ISO time. */
+export type SessionEvent =
+  | { type: "run_started"; at: string; thread: string; bot: string; delivered: number; resumed: boolean }
+  | { type: "run_finished"; at: string; thread: string }
+  | { type: "sent"; at: string; thread: string; subject: string; url: string }
+  | { type: "silent_turn"; at: string; thread: string }
+  | { type: "run_failed"; at: string; thread: string; error: string; requeued: number };
 
 /** What the threads did about an event. */
 export type ThreadEvent =
@@ -41,6 +49,18 @@ export function formatLine(event: LoopwayEvent): string {
       return `${stamp(event.update.at)} queued ${event.subject} ${event.update.kind} -> ${event.thread}`;
     case "thread_closed":
       return `${stamp(event.thread.latestAt)} thread closed ${event.thread.id}`;
+    case "run_started": {
+      const how = event.resumed ? "resumed" : "new session";
+      return `${stamp(event.at)} run started ${event.thread} ${event.bot} (${how}), delivered ${event.delivered} updates`;
+    }
+    case "run_finished":
+      return `${stamp(event.at)} run finished ${event.thread}`;
+    case "sent":
+      return `${stamp(event.at)} sent ${event.thread} comment on ${event.subject} ${event.url}`;
+    case "silent_turn":
+      return `${stamp(event.at)} turn ended without a message ${event.thread}`;
+    case "run_failed":
+      return `${stamp(event.at)} run failed ${event.thread}: ${event.error}; ${event.requeued} updates back in the queue`;
   }
 }
 
@@ -79,6 +99,10 @@ export function formatJson(event: LoopwayEvent): string {
     }
     case "thread_closed":
       return JSON.stringify({ type: "thread_closed", time: event.thread.latestAt, thread: event.thread.id });
+    default: {
+      const { at, ...rest } = event;
+      return JSON.stringify({ time: at, ...rest });
+    }
   }
 }
 

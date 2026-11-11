@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decide } from "../src/rules.js";
+import { markerOf } from "../src/thread.js";
 import { aBot, aSubject, aThread, anUpdate, dev, review } from "./make.js";
 
 const bots = [dev, review];
@@ -49,6 +50,13 @@ describe("an update", () => {
       { type: "queue", thread: "t1", subject: "o/r#1", update: comment },
       { type: "queue", thread: "t2", subject: "o/r#1", update: comment },
     ]);
+  });
+
+  it("is not given back to the thread that sent it, but is to every other thread holding the subject", () => {
+    const threads = [aThread("t1", "dev", ["o/r#1"]), aThread("t2", "review", ["o/r#1"])];
+    const sent = { ...comment, actor: "loopway-bot", body: `Done.\n\n${markerOf("t1")}` };
+    const actions = decide({ type: "update", subject: aSubject(1), update: sent }, threads, bots);
+    expect(actions).toEqual([{ type: "queue", thread: "t2", subject: "o/r#1", update: sent }]);
   });
 
   it("is not given to a closed thread", () => {

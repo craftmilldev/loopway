@@ -8,6 +8,8 @@ loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and i
 
 - Bare `loopway`, with `--json`. Bots are `.loopway/<bot>.md` files; state is JSON per project, in `~/.loopway/state/<slug>`.
 
+- Sessions: each open thread's queued updates go to a Claude Code session that acts as the bot user and talks back through loopway's own MCP server (`comment`). `--max N` caps runs in flight. Bot files gain `model` and `harness`. Each thread has a `session`, the `sent` messages and a `<id>.log`.
+
 ### Removed
 
 Everything in 1.0, with no migration: the hosted server and inbox, webhooks and sources, the MCP server, API tokens and login, the `read`/`poll`/`push` commands, and the install script. `packages/web` is now one static page.

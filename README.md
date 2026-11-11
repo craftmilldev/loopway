@@ -56,7 +56,7 @@ The first run starts now: it does not replay history. After that it remembers wh
 A **thread** is one bot plus the subjects it tracks. The rules are in each bot's front matter (see below), and they are deterministic:
 
 - A new issue starts a thread for every bot with `on: issue` (the dev bot). A new pull request starts one for every bot with `on: pull_request` (the review bot). A bot only counts for the repos it lists.
-- Every update to a subject goes on the **queue** of every open thread holding it. The queue is what a later slice hands to a session; for now it only fills.
+- Every update to a subject goes on the **queue** of every open thread holding it. The queue is what the thread's session is handed (see Sessions). The exception is a comment the thread sent itself, which is not queued back to it.
 - A thread closes when every subject on it is closed or merged. A subject that reopens while its thread is open stays on it. A subject that reopens after its thread closed starts a **new** thread for that bot. A closed thread never reopens and gets no more updates.
 - A pull request loopway already knew, with no thread for a `pull_request` bot, gets one when its next update arrives.
 
@@ -77,9 +77,47 @@ The bare `loopway` adds thread lines to its output, after the line of the event 
 8c01d7b4  review   closed owner/repo#13  1 pending
 ```
 
+## Sessions
+
+Each open thread with queued updates and no run in flight gets all of them, oldest first, in one run of Claude Code (`claude -p --permission-mode auto --output-format stream-json`) in the directory `loopway` runs in. A new session gets the bot's prompt plus the updates; later batches run with `--resume <session id>`. `--max N` (default 3) caps the runs in flight.
+
+- A delivered batch leaves the queue. A run that fails (an API error, a usage limit, a bad exit, a bad model name) leaves it, marks the session `failed`, and the thread tries again after 5 minutes. A usage limit holds every delivery until it resets.
+- The session acts as the bot user (see Credentials). It talks only through loopway's own MCP server, which loopway hosts and passes with `--mcp-config`. The one tool so far is `comment(subject, body)`. Every message goes through it, so loopway records it on the thread (`sent`). A comment a thread sent is not queued back to that thread, but is queued to every other thread holding the subject. The comment carries a hidden `<!-- loopway:thread=<id> -->` so the poller can tell.
+- The prompt tells the session to post at least one message per turn. A turn that ends with none logs `turn ended without a message`.
+- Closed threads get no more runs.
+
+To try it against the sandbox repo (needs `gh auth login` and the bot's token in `~/.loopway/config.json`, see Credentials):
+
+```bash
+# in a checkout of loopway
+npm install && npm run build
+mkdir -p scratch/.loopway && cd scratch
+cat > .loopway/dev.md <<'EOF'
+---
+repos: [craftmilldev/loopway-sandbox]
+on: issue
+model: sonnet
+---
+
+Answer the issue in a comment.
+EOF
+npm run cli                      # leave this running
+
+# in a second terminal
+gh issue create -R craftmilldev/loopway-sandbox --title "What's 2+2?" --body "Reply in one comment."
+tail -f ~/.loopway/threads/*.log   # the session, as it runs
+# when loopway-bot has answered, reply as yourself (use the issue number from above):
+gh issue comment <number> -R craftmilldev/loopway-sandbox --body "Now times 3."
+grep -A4 '"session"' ~/.loopway/threads/*.json   # the same session id, resumed
+```
+
+To see a failed run, set `model: nonesuch` in `.loopway/dev.md` and restart `loopway`.
+
+Per thread, the JSON has `session: { id, status: idle | running | blocked | failed, lastRunAt, lastError? }` and `sent: [{ at, subject, kind, url }]`, and `~/.loopway/threads/<id>.log` is the session log: assistant text, one line per tool call, and loopway's own lines (`-> delivered 3 updates`, `<- comment on owner/repo#12`).
+
 ## Bots: `.loopway/`
 
-`loopway` reads the `.loopway/` folder in the directory it runs from. Each bot is one file, `.loopway/<bot>.md`: Markdown with YAML front matter. The front matter is the bot's rules; the Markdown is its prompt, which later slices hand to a session. Two keys matter so far: `repos`, and `on: issue`, `on: pull_request` or a list of both, which says which new subjects start a thread for the bot. Keys loopway does not know are ignored. It polls the union of every bot's repos.
+`loopway` reads the `.loopway/` folder in the directory it runs from. Each bot is one file, `.loopway/<bot>.md`: Markdown with YAML front matter. The front matter is the bot's rules; the Markdown is its prompt, which starts each thread's session. The keys: `repos`; `on: issue`, `on: pull_request` or a list of both, which says which new subjects start a thread for the bot; `model` (like `sonnet`, passed to Claude Code); `harness` (only `claude`, the default). Keys loopway does not know are ignored. It polls the union of every bot's repos.
 
 `.loopway/dev.md`:
 
@@ -121,7 +159,7 @@ In a terminal, a bare `loopway` opens a full-screen TUI on the same poller. `loo
   ```json
   { "github": { "token": "ghp_...", "name": "loopway-bot", "email": "bot@example.com" } }
   ```
-  Only `name` is used so far; `token` and `email` are for later slices.
+  `name` makes its issues and pull requests subjects. Sessions run as this user: `GH_TOKEN` is the token, and the git author and committer are the name and email. Without a token, sessions are off and threads only queue.
 - **State:** per project, in `~/.loopway/state/<slug>`, where the slug is the full path of the `.loopway` folder loopway resolved with every character other than letters and digits turned into `-` (the way Claude Code names its project folders). Two projects never see each other's threads, so bot names can repeat. `state.json` is how far discovery has got per repo, and for each known subject the updates already printed. Threads are `threads/<id>.json`, one file each: bot, subjects, status, created and latest-message times, and the queue. Delete the folder to start over from now. Older versions kept state directly in `~/.loopway/threads` and `~/.loopway/state.json`: they are ignored, and you can delete them.
 
 ## Developing

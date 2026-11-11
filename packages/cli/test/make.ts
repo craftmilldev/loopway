@@ -2,7 +2,14 @@ import type { Bot } from "../src/bots.js";
 import type { Subject, Update } from "../src/source.js";
 import type { Thread } from "../src/thread.js";
 
-export const aBot = (name: string, on: Bot["on"], repos = ["o/r"]): Bot => ({ name, repos, on, rules: {}, prompt: "" });
+export const aBot = (name: string, on: Bot["on"], repos = ["o/r"]): Bot => ({
+  name,
+  repos,
+  on,
+  harness: "claude",
+  rules: {},
+  prompt: "",
+});
 
 export const dev = aBot("dev", ["issue"]);
 export const review = aBot("review", ["pull_request"]);

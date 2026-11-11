@@ -111,6 +111,25 @@ export class GitHubSource implements SubjectSource {
     return changed;
   }
 
+  /** Posts a comment on an issue or pull request (`owner/repo#N`) as whoever the token belongs to. Returns its URL. */
+  async comment(subject: string, body: string): Promise<string> {
+    const [repo, number] = subject.split("#") as [string, string];
+    const path = `/repos/${repo}/issues/${Number(number)}/comments`;
+    const res = await this.fetch(API + path, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${this.token}`,
+        accept: "application/vnd.github+json",
+        "x-github-api-version": "2022-11-28",
+        "content-type": "application/json",
+        "user-agent": "loopway",
+      },
+      body: JSON.stringify({ body }),
+    });
+    if (!res.ok) throw await this.failure(res, path);
+    return ((await res.json()) as { html_url: string }).html_url;
+  }
+
   /** Everything visible about a subject, as a series of steps. Each step looks at one kind of thing and knows when to skip. */
   async updates(subject: Subject, version?: string): Promise<Updates> {
     const look = await this.look(subject, version);
@@ -170,6 +189,7 @@ export class GitHubSource implements SubjectSource {
         id: `review:${r.id}`,
         kind: "review",
         detail: r.state.toLowerCase().replace("_", " "),
+        ...(r.body ? { body: r.body } : {}),
         actor: r.user?.login ?? "ghost",
         at: r.submitted_at ?? l.item.updated_at,
       }));
@@ -300,6 +320,7 @@ function commentUpdate(what: "comment" | "review comment", c: Comment): Update {
   return {
     id: `${what.replace(" ", "_")}:${c.id}:${c.updated_at}`,
     kind: c.updated_at !== c.created_at ? `${what} edited` : what,
+    ...(c.body ? { body: c.body } : {}),
     actor: c.user?.login ?? "ghost",
     at: c.updated_at,
   };
@@ -352,12 +373,14 @@ interface IssueEvent {
 }
 interface Comment {
   id: number;
+  body?: string;
   user: User | null;
   created_at: string;
   updated_at: string;
 }
 interface Review {
   id: number;
+  body?: string | null;
   user: User | null;
   state: string;
   submitted_at?: string;
