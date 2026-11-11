@@ -81,7 +81,7 @@ export class Threads {
 
   /** Acts on an event from the poller: the thread changes are on disk when this returns. */
   async handle(event: LoopwayEvent): Promise<ThreadEvent[]> {
-    if (event.type !== "new" && event.type !== "update") return [];
+    if (event.type !== "new" && event.type !== "update" && event.type !== "created") return [];
     const touched = new Set<Thread>();
     const events: ThreadEvent[] = [];
     for (const action of decide(event, this.all, this.o.bots)) {
@@ -106,6 +106,7 @@ export class Threads {
   private apply(action: Action, events: ThreadEvent[]): Thread {
     if (action.type === "open") return this.open(action, events);
     const thread = this.all.find((t) => t.id === action.thread)!;
+    if (action.type === "track") thread.subjects.push({ key: action.subject.key, status: "open", created: true });
     if (action.type === "queue") this.queue(thread, action.subject, action.update, events);
     if (action.type === "queue") this.answerQuestions(thread, action.subject, action.update, events);
     if (action.type === "mark") thread.subjects.find((s) => s.key === action.subject)!.status = action.status;

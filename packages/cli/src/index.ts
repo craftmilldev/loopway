@@ -10,6 +10,7 @@ import { ghToken, GitHubSource } from "./github.js";
 import { startMcp } from "./mcp.js";
 import { Poller } from "./poller.js";
 import { Sessions } from "./sessions.js";
+import type { Subject } from "./source.js";
 import { loadState, saveState, stateDir } from "./state.js";
 import { loadThreads, readThreadLog, Threads, visibleThreads } from "./threads.js";
 import { showTui } from "./tui.js";
@@ -104,6 +105,7 @@ async function main(): Promise<number> {
     print,
     log,
     stop: stop.signal,
+    created: (thread, subject) => created(thread, subject),
   });
   // A thread's lines follow the line of the event that caused them.
   const emit = async (event: LoopwayEvent) => {
@@ -123,6 +125,12 @@ async function main(): Promise<number> {
     },
     log,
   });
+
+  // A subject a thread opened: the poller knows it now, so discovery won't call it new, and the rules give it threads.
+  const created = async (thread: string, subject: Subject) => {
+    await poller.know(subject);
+    await emit({ type: "created", thread, subject });
+  };
 
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => stop.abort());
   const polling = poller.run(stop.signal);
@@ -154,6 +162,7 @@ interface SessionsSetup {
   print: (event: LoopwayEvent) => void;
   log: (message: string) => void;
   stop: AbortSignal;
+  created: (thread: string, subject: Subject) => Promise<void>;
 }
 
 /**
@@ -171,6 +180,8 @@ async function startSessions(s: SessionsSetup): Promise<{ kick: () => void; done
     comment: (thread, subject, body) => sessions.comment(thread, subject, body),
     ask: (thread, subject, question) => sessions.ask(thread, subject, question),
     permission: (thread, tool, input) => sessions.permission(thread, tool, input),
+    createIssue: (thread, repo, title, body) => sessions.createIssue(thread, repo, title, body),
+    createPr: (thread, repo, head, base, title, body) => sessions.createPr(thread, repo, head, base, title, body),
   });
   const sessions = new Sessions({
     dir: s.dir,
@@ -181,7 +192,8 @@ async function startSessions(s: SessionsSetup): Promise<{ kick: () => void; done
     runAgent: claudeRunner(),
     mcpUrl: (threadId) => mcp.urlFor(threadId),
     env: botEnv,
-    commenter: new GitHubSource({ token }),
+    github: new GitHubSource({ token }),
+    created: s.created,
     emit: s.print,
   });
   const done = sessions.run(s.stop).then(() => mcp.close());

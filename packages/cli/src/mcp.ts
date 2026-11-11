@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { askedMessage, deny, type PermissionResult } from "./asks.js";
+import type { Made } from "./source.js";
 
 /** What the session may ask loopway to do. Every message a session sends goes through one of these. */
 export interface Tools {
@@ -10,6 +11,10 @@ export interface Tools {
   ask(threadId: string, subject: string, question: string): Promise<string>;
   /** Decides a call Claude Code would prompt for: the rules, then a reaction from the owner. */
   permission(threadId: string, tool: string, input: unknown): Promise<PermissionResult>;
+  /** Opens an issue in `repo` (`owner/name`) for thread `threadId`, and has the thread track it. */
+  createIssue(threadId: string, repo: string, title: string, body: string): Promise<Made>;
+  /** Opens a pull request from branch `head` into `base` for thread `threadId`, and has the thread track it. */
+  createPr(threadId: string, repo: string, head: string, base: string, title: string, body: string): Promise<Made>;
 }
 
 export interface McpServer {
@@ -63,6 +68,40 @@ const PERMISSION_TOOL = {
   },
 };
 
+const CREATE_ISSUE_TOOL = {
+  name: "create_issue",
+  description:
+    "Open a GitHub issue as loopway-bot. This is the only way to open one: never use gh for it. The thread then tracks " +
+    "the new issue, and loopway starts a thread to work it.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      repo: { type: "string", description: "The repository, like owner/name." },
+      title: { type: "string", description: "The issue's title." },
+      body: { type: "string", description: "The issue's text, in Markdown." },
+    },
+    required: ["repo", "title", "body"],
+  },
+};
+
+const CREATE_PR_TOOL = {
+  name: "create_pr",
+  description:
+    "Open a GitHub pull request as loopway-bot. This is the only way to open one: never use gh for it. Push the branch " +
+    "yourself first, with git. The thread then tracks the pull request, and loopway starts a thread to review it.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      repo: { type: "string", description: "The repository, like owner/name." },
+      head: { type: "string", description: "The branch you pushed, with the changes." },
+      base: { type: "string", description: "The branch to merge into, like main." },
+      title: { type: "string", description: "The pull request's title." },
+      body: { type: "string", description: "The pull request's text, in Markdown." },
+    },
+    required: ["repo", "head", "base", "title", "body"],
+  },
+};
+
 interface Request {
   id?: number | string;
   method: string;
@@ -112,13 +151,21 @@ async function answer(tools: Tools, threadId: string, request: Request) {
   }
   if (method === "ping") return { jsonrpc: "2.0", id, result: {} };
   if (method === "tools/list")
-    return { jsonrpc: "2.0", id, result: { tools: [COMMENT_TOOL, ASK_TOOL, PERMISSION_TOOL] } };
+    return {
+      jsonrpc: "2.0",
+      id,
+      result: { tools: [COMMENT_TOOL, ASK_TOOL, CREATE_ISSUE_TOOL, CREATE_PR_TOOL, PERMISSION_TOOL] },
+    };
   if (method === "tools/call" && params?.name === "comment")
     return { jsonrpc: "2.0", id, result: await comment(tools, threadId, params.arguments) };
   if (method === "tools/call" && params?.name === "ask")
     return { jsonrpc: "2.0", id, result: await ask(tools, threadId, params.arguments) };
   if (method === "tools/call" && params?.name === "permission")
     return { jsonrpc: "2.0", id, result: await permission(tools, threadId, params.arguments) };
+  if (method === "tools/call" && params?.name === "create_issue")
+    return { jsonrpc: "2.0", id, result: await createIssue(tools, threadId, params.arguments) };
+  if (method === "tools/call" && params?.name === "create_pr")
+    return { jsonrpc: "2.0", id, result: await createPr(tools, threadId, params.arguments) };
   return rpcError(id, -32601, `no such method or tool: ${method}`);
 }
 
@@ -157,6 +204,32 @@ async function permission(tools: Tools, threadId: string, args: Record<string, u
     return text(JSON.stringify(deny(`loopway could not decide: ${(err as Error).message}`)));
   }
 }
+
+async function createIssue(tools: Tools, threadId: string, args: Record<string, unknown> | undefined) {
+  const { repo, title, body } = args ?? {};
+  if (!isText(repo) || !isText(title) || typeof body !== "string")
+    return text("create_issue needs a repo (owner/name), a title and a body", true);
+  try {
+    return text(created(await tools.createIssue(threadId, repo, title, body)));
+  } catch (err) {
+    return text(`could not create the issue: ${(err as Error).message}`, true);
+  }
+}
+
+async function createPr(tools: Tools, threadId: string, args: Record<string, unknown> | undefined) {
+  const { repo, head, base, title, body } = args ?? {};
+  if (!isText(repo) || !isText(head) || !isText(base) || !isText(title) || typeof body !== "string")
+    return text("create_pr needs a repo (owner/name), a head branch, a base branch, a title and a body", true);
+  try {
+    return text(created(await tools.createPr(threadId, repo, head, base, title, body)));
+  } catch (err) {
+    return text(`could not create the pull request: ${(err as Error).message}`, true);
+  }
+}
+
+const isText = (value: unknown): value is string => typeof value === "string" && value.trim() !== "";
+
+const created = ({ subject, url }: Made) => `created ${subject.key}: ${url}`;
 
 const text = (message: string, isError = false) => ({ content: [{ type: "text", text: message }], isError });
 

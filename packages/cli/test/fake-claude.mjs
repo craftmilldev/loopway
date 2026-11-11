@@ -4,6 +4,8 @@
 //   comment     call loopway's MCP `comment` tool on $FAKE_SUBJECT, then finish
 //   ask         call loopway's MCP `ask` tool on $FAKE_SUBJECT with a question, then finish
 //   permission  ask loopway's MCP `permission` tool whether Bash may run $FAKE_COMMAND, then finish
+//   open        in the thread whose first message names $FAKE_SUBJECT, call the MCP `create_issue` and then `create_pr`
+//               tools in its repo, then finish; any other thread just finishes
 //   api         end on an API error
 //   limit       end on the usage limit, resetting at $FAKE_RESETS (epoch seconds)
 //   die         exit 1 in the middle of the run
@@ -43,6 +45,12 @@ if (mode === "ask") await callTool("ask", { subject: process.env.FAKE_SUBJECT, q
 if (mode === "permission") {
   const input = { command: process.env.FAKE_COMMAND };
   await callTool("permission", { tool_name: "Bash", input, tool_use_id: "toolu_1" });
+}
+
+if (mode === "open" && message.includes(`tracks: ${process.env.FAKE_SUBJECT}`)) {
+  const repo = process.env.FAKE_SUBJECT.split("#")[0];
+  await callTool("create_issue", { repo, title: "Follow up", body: "Do the rest." });
+  await callTool("create_pr", { repo, head: "fix-it", base: "main", title: "Fix it", body: "The fix." });
 }
 
 if (mode === "limit") {

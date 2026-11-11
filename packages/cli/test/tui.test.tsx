@@ -212,6 +212,15 @@ describe("thread view", () => {
     expect(frame).not.toContain("Which?");
   });
 
+  it("says which subjects the thread created", async () => {
+    const made = full();
+    made.subjects[1]!.created = true;
+    show([made]);
+    await press(KEYS.enter);
+    expect(screen()).toContain("▸ o/r#12 open\n");
+    expect(screen()).toContain("o/r#13 open · created by this thread");
+  });
+
   it("opens with the right arrow, and goes back with the left arrow or escape", async () => {
     show([full()]);
     await press(KEYS.right);
@@ -269,6 +278,18 @@ describe("subject filter", () => {
     await press(KEYS.esc);
     expect(screen()).not.toContain("filter o/r#12");
     expect(screen()).toContain("o/r#14");
+  });
+
+  it("shows both the dev thread and the review thread for a pull request a thread created", async () => {
+    const dev = aThread("t1", "dev", ["o/r#12", "o/r#13"]);
+    dev.subjects[1]!.created = true;
+    show([dev, aThread("t2", "review", ["o/r#13"])]);
+    await press(KEYS.enter);
+    await press(KEYS.down);
+    await press(KEYS.enter); // filter by o/r#13
+    expect(screen()).toContain("filter o/r#13");
+    expect(screen()).toContain("dev ");
+    expect(screen()).toContain("review ");
   });
 
   it("still holds the filter when opening a thread from the filtered view", async () => {

@@ -20,6 +20,7 @@ import type { Bot } from "./bots.js";
 import type { RunAgent, RunOutcome } from "./claude.js";
 import type { SessionEvent } from "./format.js";
 import { abortableSleep } from "./poller.js";
+import type { Made, Subject } from "./source.js";
 import { markerOf, repoOf, type Pending, type Session, type Thread } from "./thread.js";
 import { threadLogPath, type Threads } from "./threads.js";
 
@@ -33,8 +34,10 @@ const SUBJECT = /^[\w.-]+\/[\w.-]+#\d+$/;
 const GROUND_RULES =
   "You are loopway-bot, working a thread on GitHub. Talk only through loopway's tools: mcp__loopway__comment(subject, " +
   "body) posts a comment on an issue or pull request, and everything you want people to hear goes through it. Never " +
-  "comment with gh or the API. Post at least one message on every turn, even if it is only to say there is nothing to " +
-  "do. Use gh and git for the rest; they act as loopway-bot. " +
+  "comment with gh or the API. Open issues and pull requests only through mcp__loopway__create_issue(repo, title, body) " +
+  "and mcp__loopway__create_pr(repo, head, base, title, body), never with gh: loopway tracks what you open and starts " +
+  "threads for it. Push a pull request's branch with git first. Post at least one message on every turn, even if it is " +
+  "only to say there is nothing to do. Use gh and git for the rest; they act as loopway-bot. " +
   "When you need someone to decide, or you are stuck, call mcp__loopway__ask(subject, question) and end your turn: " +
   "you are resumed with the answer. If a tool call is refused because loopway asked about it, end your turn too.";
 const REMINDER = "Reminder: talk only through mcp__loopway__comment, and post at least one message on this turn.";
@@ -53,8 +56,14 @@ export interface SessionsOptions {
   mcpUrl: (threadId: string) => string;
   /** The bot user as the session sees it: GH_TOKEN and the git author and committer. */
   env: NodeJS.ProcessEnv;
-  /** Posts as the bot user. */
-  commenter: { comment(subject: string, body: string): Promise<string> };
+  /** Posts and opens things as the bot user. */
+  github: {
+    comment(subject: string, body: string): Promise<string>;
+    createIssue(repo: string, title: string, body: string): Promise<Made>;
+    createPr(repo: string, head: string, base: string, title: string, body: string): Promise<Made>;
+  };
+  /** Told after a thread created a subject, once it is recorded as sent: the rest of loopway takes it in. */
+  created: (thread: string, subject: Subject) => Promise<void>;
   emit: (event: SessionEvent) => void;
   now?: () => number;
   newSessionId?: () => string;
@@ -188,17 +197,63 @@ export class Sessions {
     if (!SUBJECT.test(subject)) throw new Error(`"${subject}" is not a subject; write it as owner/repo#N`);
     if (!this.botOf(thread).repos.includes(repoOf({ key: subject })))
       throw new Error(`${thread.bot} does not read ${repoOf({ key: subject })}`);
-    const url = await this.o.commenter.comment(subject, `${body}\n\n${markerOf(thread.id)}`).catch((err: Error) => {
-      // The session hears about it, but so should whoever reads the log.
-      this.log(thread, `!! ${kind} on ${subject} failed: ${err.message}`);
-      throw err;
-    });
+    const post = this.o.github.comment(subject, `${body}\n\n${markerOf(thread.id)}`);
+    const url = await this.loggedIfRefused(thread, `${kind} on ${subject}`, post);
+    const at = await this.recordSent(thread, subject, kind, url, `${kind} on ${subject}`);
+    this.o.emit({ type: "sent", at, thread: thread.id, subject, url });
+    return url;
+  }
+
+  /** Every message a thread sends is recorded here: in `sent`, on disk, and in the log. Resolves to the time. */
+  private async recordSent(thread: Thread, subject: string, kind: string, url: string, what: string): Promise<string> {
     const at = new Date(this.now()).toISOString();
     (thread.sent ??= []).push({ at, subject, kind, url });
     await this.o.threads.save(thread);
-    this.log(thread, `<- ${kind} on ${subject}`);
-    this.o.emit({ type: "sent", at, thread: thread.id, subject, url });
-    return url;
+    this.log(thread, `<- ${what}`);
+    return at;
+  }
+
+  /** What the `create_issue` tool does for a thread: opens the issue with the thread's marker, then the thread tracks it. */
+  async createIssue(threadId: string, repo: string, title: string, body: string): Promise<Made> {
+    const thread = this.thread(threadId);
+    this.mayWriteTo(thread, repo);
+    const open = this.o.github.createIssue(repo, title, `${body}\n\n${markerOf(thread.id)}`);
+    return this.tracked(thread, await this.loggedIfRefused(thread, `create_issue in ${repo}`, open));
+  }
+
+  /** What the `create_pr` tool does for a thread: opens the pull request with the thread's marker, then the thread tracks it. */
+  async createPr(
+    threadId: string,
+    repo: string,
+    head: string,
+    base: string,
+    title: string,
+    body: string,
+  ): Promise<Made> {
+    const thread = this.thread(threadId);
+    this.mayWriteTo(thread, repo);
+    const open = this.o.github.createPr(repo, head, base, title, `${body}\n\n${markerOf(thread.id)}`);
+    return this.tracked(thread, await this.loggedIfRefused(thread, `create_pr in ${repo}`, open));
+  }
+
+  /** Records a subject the thread created as sent, and lets the rest of loopway take it in. */
+  private async tracked(thread: Thread, made: Made): Promise<Made> {
+    const { subject, url } = made;
+    await this.recordSent(thread, subject.key, subject.kind, url, `created ${subject.key}`);
+    await this.o.created(thread.id, subject);
+    return made;
+  }
+
+  private mayWriteTo(thread: Thread, repo: string): void {
+    if (!this.botOf(thread).repos.includes(repo)) throw new Error(`${thread.bot} does not read ${repo}`);
+  }
+
+  /** The session hears about a refusal, but so should whoever reads the log. */
+  private async loggedIfRefused<T>(thread: Thread, what: string, request: Promise<T>): Promise<T> {
+    return request.catch((err: Error) => {
+      this.log(thread, `!! ${what} failed: ${err.message}`);
+      throw err;
+    });
   }
 
   private async recover(): Promise<void> {

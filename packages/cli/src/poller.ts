@@ -1,5 +1,5 @@
 import type { LoopwayEvent } from "./format.js";
-import { RateLimitError, type SubjectSource } from "./source.js";
+import { RateLimitError, type Subject, type SubjectSource } from "./source.js";
 import type { State } from "./state.js";
 
 export const DISCOVER_EVERY_MS = 2 * 60_000;
@@ -67,7 +67,7 @@ export class Poller {
       for (const subject of found.reverse()) {
         if (Date.parse(subject.createdAt) > Date.parse(latest)) latest = subject.createdAt;
         if (state.subjects[subject.key] || !this.authors.has(subject.author.toLowerCase())) continue;
-        state.subjects[subject.key] = { subject, seen: [] };
+        state.subjects[subject.key] = { subject: withoutBody(subject), seen: [] };
         await this.o.emit({ type: "new", subject });
         await this.o.save(state);
       }
@@ -76,6 +76,13 @@ export class Poller {
         await this.o.save(state);
       }
     }
+  }
+
+  /** Takes in a subject a thread just created, so discovery never reports it as new. Already known is fine. */
+  async know(subject: Subject): Promise<void> {
+    if (this.o.state.subjects[subject.key]) return;
+    this.o.state.subjects[subject.key] = { subject: withoutBody(subject), seen: [] };
+    await this.o.save(this.o.state);
   }
 
   async updates(): Promise<void> {
@@ -179,6 +186,13 @@ export class Poller {
   }
 
   private waitingMessage = () => `rate limited: waiting ${Math.ceil((this.pausedUntil - this.now()) / 1000)}s`;
+}
+
+/** The poller keeps what a subject is, not its text. */
+function withoutBody(subject: Subject): Subject {
+  const kept = { ...subject };
+  delete kept.body;
+  return kept;
 }
 
 export function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {

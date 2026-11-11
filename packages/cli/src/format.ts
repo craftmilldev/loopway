@@ -3,7 +3,11 @@ import type { Thread } from "./thread.js";
 
 /** What the poller reports: a subject it just found, or something that happened to one it knows. */
 export type LoopwayEvent =
-  { type: "new"; subject: Subject } | { type: "update"; subject: Subject; update: Update } | ThreadEvent | SessionEvent;
+  | { type: "new"; subject: Subject }
+  | { type: "update"; subject: Subject; update: Update }
+  | { type: "created"; thread: string; subject: Subject }
+  | ThreadEvent
+  | SessionEvent;
 
 /** What the sessions did: runs starting and ending, messages sent, failures. `at` is an ISO time. */
 export type SessionEvent =
@@ -42,6 +46,11 @@ export function formatLine(event: LoopwayEvent): string {
       const u = event.update;
       const what = u.detail ? `${u.kind} ${u.detail}` : u.kind;
       return `${stamp(u.at)} update ${event.subject.key} ${what} by ${u.actor}`;
+    }
+    case "created": {
+      const s = event.subject;
+      const kind = s.kind === "issue" ? "issue" : "pr";
+      return `${stamp(s.createdAt)} created ${s.key} ${kind} ${JSON.stringify(s.title)} by thread ${event.thread}`;
     }
     case "thread_opened": {
       const t = event.thread;
@@ -87,6 +96,17 @@ export function formatJson(event: LoopwayEvent): string {
         kind: u.kind,
         ...(u.detail ? { detail: u.detail } : {}),
         actor: u.actor,
+      });
+    }
+    case "created": {
+      const { key, kind, title } = event.subject;
+      return JSON.stringify({
+        type: "created",
+        time: event.subject.createdAt,
+        thread: event.thread,
+        subject: key,
+        kind,
+        title,
       });
     }
     case "thread_opened": {

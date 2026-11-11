@@ -8,13 +8,22 @@ import { claudeArgs, claudeRunner, type AgentRun } from "../src/claude.js";
 import { startMcp, type McpServer } from "../src/mcp.js";
 import { Sessions } from "../src/sessions.js";
 import { Threads } from "../src/threads.js";
-import { harness } from "./fake.js";
+import { fakeOpening, harness } from "./fake.js";
 import { aBot } from "./make.js";
 
 /** The tools of the MCP that a test does not use. */
 const noAsks = { ask: async () => "", permission: async () => deny("no") };
 
 const fakeClaude = fileURLToPath(new URL("./fake-claude.mjs", import.meta.url));
+
+const noCreating = {
+  createIssue: async () => {
+    throw new Error("not here");
+  },
+  createPr: async () => {
+    throw new Error("not here");
+  },
+};
 
 const aRun = (over: Partial<AgentRun> = {}): AgentRun => ({
   sessionId: "sid",
@@ -104,6 +113,7 @@ describe("loopway's MCP server", () => {
     const calls: unknown[][] = [];
     mcp = await startMcp({
       ...noAsks,
+      ...noCreating,
       comment: async (...args) => {
         calls.push(args);
         return "https://github.com/o/r/issues/1#issuecomment-9";
@@ -119,7 +129,13 @@ describe("loopway's MCP server", () => {
     expect(init.body.result).toMatchObject({ protocolVersion: "2025-06-18", serverInfo: { name: "loopway" } });
     expect((await call(url, { jsonrpc: "2.0", method: "notifications/initialized" })).status).toBe(202);
     const list = await call(url, { jsonrpc: "2.0", id: 2, method: "tools/list" });
-    expect(list.body.result.tools.map((t: { name: string }) => t.name)).toEqual(["comment", "ask", "permission"]);
+    expect(list.body.result.tools.map((t: { name: string }) => t.name)).toEqual([
+      "comment",
+      "ask",
+      "create_issue",
+      "create_pr",
+      "permission",
+    ]);
     const made = await call(url, {
       jsonrpc: "2.0",
       id: 3,
@@ -133,9 +149,68 @@ describe("loopway's MCP server", () => {
     expect(calls).toEqual([["t1", "o/r#1", "hi"]]);
   });
 
+  it("runs create_issue and create_pr for the thread, and answers with the new subject", async () => {
+    const calls: unknown[][] = [];
+    const made = (key: string, url: string) => ({
+      url,
+      subject: { key, kind: "issue" as const, title: "t", author: "loopway-bot", createdAt: "2026-11-10T13:00:00Z" },
+    });
+    mcp = await startMcp({
+      ...noAsks,
+      ...noCreating,
+      comment: async () => "",
+      createIssue: async (...args) => (calls.push(args), made("o/r#7", "https://github.com/o/r/issues/7")),
+      createPr: async (...args) => (calls.push(args), made("o/r#8", "https://github.com/o/r/pull/8")),
+    });
+    const tool = (name: string, args: unknown) => ({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name, arguments: args },
+    });
+    const issue = await call(
+      mcp.urlFor("t1"),
+      tool("create_issue", { repo: "o/r", title: "Follow up", body: "Do it." }),
+    );
+    expect(issue.body.result).toEqual({
+      content: [{ type: "text", text: "created o/r#7: https://github.com/o/r/issues/7" }],
+      isError: false,
+    });
+    const pr = await call(
+      mcp.urlFor("t1"),
+      tool("create_pr", { repo: "o/r", head: "fix", base: "main", title: "Fix", body: "" }),
+    );
+    expect(pr.body.result.content[0].text).toBe("created o/r#8: https://github.com/o/r/pull/8");
+    expect(calls).toEqual([
+      ["t1", "o/r", "Follow up", "Do it."],
+      ["t1", "o/r", "fix", "main", "Fix", ""],
+    ]);
+  });
+
+  it("answers a failed or malformed create_issue or create_pr as a tool error the session can read", async () => {
+    mcp = await startMcp({ ...noAsks, ...noCreating, comment: async () => "" });
+    const tool = (name: string, args: unknown) =>
+      call(mcp!.urlFor("t1"), {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name, arguments: args },
+      });
+    const failed = await tool("create_issue", { repo: "o/r", title: "x", body: "y" });
+    expect(failed.body.result).toMatchObject({
+      isError: true,
+      content: [{ text: "could not create the issue: not here" }],
+    });
+    const failedPr = await tool("create_pr", { repo: "o/r", head: "a", base: "main", title: "x", body: "y" });
+    expect(failedPr.body.result.content[0].text).toBe("could not create the pull request: not here");
+    expect((await tool("create_issue", { repo: "o/r", body: "y" })).body.result.isError).toBe(true);
+    expect((await tool("create_pr", { repo: "o/r", head: "a", title: "x", body: "y" })).body.result.isError).toBe(true);
+  });
+
   it("answers a failed or malformed comment as a tool error the session can read", async () => {
     mcp = await startMcp({
       ...noAsks,
+      ...noCreating,
       comment: async () => {
         throw new Error("dev does not read x/y");
       },
@@ -157,7 +232,7 @@ describe("loopway's MCP server", () => {
   });
 
   it("refuses other methods and other paths", async () => {
-    mcp = await startMcp({ ...noAsks, comment: async () => "" });
+    mcp = await startMcp({ ...noAsks, ...noCreating, comment: async () => "" });
     const unknown = await call(mcp.urlFor("t1"), { jsonrpc: "2.0", id: 1, method: "resources/list" });
     expect(unknown.body.error.code).toBe(-32601);
     expect((await call(mcp.urlFor("t1").replace("/mcp/t1", "/other"), {})).status).toBe(404);
@@ -173,7 +248,11 @@ describe("the whole loop: poller, threads, sessions, MCP and a claude stand-in",
     const posted: string[] = [];
     // eslint-disable-next-line prefer-const
     let sessions: Sessions;
-    const mcp = await startMcp({ ...noAsks, comment: (id, subject, body) => sessions.comment(id, subject, body) });
+    const mcp = await startMcp({
+      ...noAsks,
+      ...noCreating,
+      comment: (id, subject, body) => sessions.comment(id, subject, body),
+    });
     const h = harness({
       start: "2026-11-10T12:00:00Z",
       react: async (event, push) => void (await threads.handle(event)).forEach(push),
@@ -187,12 +266,14 @@ describe("the whole loop: poller, threads, sessions, MCP and a claude stand-in",
       runAgent: claudeRunner(fakeClaude),
       mcpUrl: (id) => mcp.urlFor(id),
       env: { FAKE_CLAUDE: "comment", FAKE_SUBJECT: "o/r#12" },
-      commenter: {
+      github: {
+        ...fakeOpening(),
         comment: async (_subject, body) => {
           posted.push(body);
           return `https://github.com/o/r/issues/12#issuecomment-${posted.length}`;
         },
       },
+      created: async () => {},
       emit: () => {},
     });
     try {
@@ -219,6 +300,86 @@ describe("the whole loop: poller, threads, sessions, MCP and a claude stand-in",
       await h.poller.updates();
       expect(t1?.queue.map((q) => q.body)).toEqual([from("t2")]);
       expect(t2?.queue.map((q) => q.body)).toEqual([from("t1")]);
+    } finally {
+      await mcp.close();
+    }
+  });
+});
+
+describe("the whole loop for a thread that opens an issue and a pull request", () => {
+  it("tracks both, starts a dev and a review thread for them, and discovery does not start them again", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "loopway-open-"));
+    const record = join(dir, "record.jsonl");
+    const bots = [aBot("dev", ["issue"]), aBot("review", ["pull_request"])];
+    let n = 0;
+    const threads = await Threads.load({ dir, bots, newId: () => `t${++n}` });
+    // eslint-disable-next-line prefer-const
+    let sessions: Sessions;
+    const mcp = await startMcp({
+      ...noAsks,
+      comment: (id, subject, body) => sessions.comment(id, subject, body),
+      createIssue: (id, repo, title, body) => sessions.createIssue(id, repo, title, body),
+      createPr: (id, repo, head, base, title, body) => sessions.createPr(id, repo, head, base, title, body),
+    });
+    const h = harness({
+      start: "2026-11-10T12:00:00Z",
+      react: async (event, push) => void (await threads.handle(event)).forEach(push),
+    });
+    const github = fakeOpening();
+    sessions = new Sessions({
+      dir,
+      threads,
+      bots,
+      root: tmpdir(),
+      max: 3,
+      runAgent: claudeRunner(fakeClaude),
+      mcpUrl: (id) => mcp.urlFor(id),
+      env: { FAKE_CLAUDE: "open", FAKE_SUBJECT: "o/r#12", FAKE_RECORD: record },
+      github: { ...github, comment: async () => "" },
+      created: async (thread, subject) => {
+        await h.poller.know(subject);
+        for (const e of await threads.handle({ type: "created", thread, subject })) h.events.push(e);
+      },
+      emit: () => {},
+    });
+    try {
+      await h.poller.discover();
+      h.source.add("o/r#12", "me", "2026-11-10T12:01:00Z");
+      await h.poller.discover();
+      sessions.kick();
+      await sessions.idle();
+
+      const [t1, t2, t3] = threads.all;
+      expect(threads.all.map((t) => [t.id, t.bot, t.subjects.map((s) => s.key)])).toEqual([
+        ["t1", "dev", ["o/r#12", "o/r#101", "o/r#102"]],
+        ["t2", "dev", ["o/r#101"]],
+        ["t3", "review", ["o/r#102"]],
+      ]);
+      expect(t1?.sent?.map((m) => [m.kind, m.subject])).toEqual([
+        ["issue", "o/r#101"],
+        ["pull_request", "o/r#102"],
+      ]);
+      // Each new thread was started with the creation as its news, and the marker went out in what was opened.
+      const messages = (await readFile(record, "utf8"))
+        .trim()
+        .split("\n")
+        .map((l) => JSON.parse(l).message as string);
+      expect(messages).toHaveLength(3);
+      expect(messages.join("\n")).toContain(
+        "tracks: o/r#101. Read them with gh.\n\n1 updates since your last turn, oldest first:\n- 2026-11-10T15:00:00Z o/r#101 created by loopway-bot",
+      );
+      expect(messages.join("\n")).toContain("o/r#102 created by loopway-bot");
+      expect(github.opened.every((o) => o.endsWith(`<!-- loopway:thread=${t1?.id} -->`))).toBe(true);
+      expect([t2?.session?.status, t3?.session?.status]).toEqual(["idle", "idle"]);
+
+      // Discovery now finds both, by loopway-bot, and starts nothing.
+      for (const [key, kind] of [
+        ["o/r#101", "issue"],
+        ["o/r#102", "pull_request"],
+      ] as const)
+        h.source.add(key, "loopway-bot", "2026-11-10T15:00:00Z", kind, `x\n\n<!-- loopway:thread=${t1?.id} -->`);
+      await h.poller.discover();
+      expect(threads.all).toHaveLength(3);
     } finally {
       await mcp.close();
     }

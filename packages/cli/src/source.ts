@@ -6,6 +6,14 @@ export interface Subject {
   author: string;
   /** ISO time the subject was created. */
   createdAt: string;
+  /** Its text, only when it was just read from the source: the poller doesn't keep it. */
+  body?: string;
+}
+
+/** A subject loopway just created for a thread, and where to read it. */
+export interface Made {
+  subject: Subject;
+  url: string;
 }
 
 /** One thing that happened to a subject. `id` is stable, so seeing it twice is how a repeat is spotted. */

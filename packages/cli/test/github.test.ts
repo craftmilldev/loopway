@@ -91,6 +91,63 @@ describe("reactions", () => {
   });
 });
 
+describe("opening an issue or a pull request", () => {
+  const sentTo = (answer: object) => {
+    const { source, handlers } = fakeGitHub({});
+    const sent: { path: string; method?: string; body: unknown }[] = [];
+    handlers.push((url, init) => {
+      sent.push({ path: url.pathname, method: init.method, body: JSON.parse(init.body as string) });
+      return new Response(JSON.stringify(answer), { status: 201 });
+    });
+    return { source, sent };
+  };
+  const made = (over: object = {}) => ({
+    number: 9,
+    title: "Follow up",
+    body: "Do it.",
+    user: { login: "loopway-bot" },
+    created_at: "2026-11-10T13:00:00Z",
+    updated_at: "2026-11-10T13:00:00Z",
+    html_url: "https://github.com/o/r/issues/9",
+    ...over,
+  });
+
+  it("posts an issue to the repo's issues endpoint and returns the subject GitHub made, with its URL", async () => {
+    const { source, sent } = sentTo(made());
+    expect(await source.createIssue("o/r", "Follow up", "Do it.")).toEqual({
+      url: "https://github.com/o/r/issues/9",
+      subject: {
+        key: "o/r#9",
+        kind: "issue",
+        title: "Follow up",
+        author: "loopway-bot",
+        createdAt: "2026-11-10T13:00:00Z",
+        body: "Do it.",
+      },
+    });
+    expect(sent).toEqual([{ path: "/repos/o/r/issues", method: "POST", body: { title: "Follow up", body: "Do it." } }]);
+  });
+
+  it("posts a pull request from its branch to the repo's pulls endpoint", async () => {
+    const { source, sent } = sentTo(made({ html_url: "https://github.com/o/r/pull/9" }));
+    const pr = await source.createPr("o/r", "fix-it", "main", "Fix it", "The fix.");
+    expect(pr).toMatchObject({ url: "https://github.com/o/r/pull/9", subject: { key: "o/r#9", kind: "pull_request" } });
+    expect(sent).toEqual([
+      {
+        path: "/repos/o/r/pulls",
+        method: "POST",
+        body: { head: "fix-it", base: "main", title: "Fix it", body: "The fix." },
+      },
+    ]);
+  });
+
+  it("fails with what GitHub said", async () => {
+    const { source, handlers } = fakeGitHub({});
+    handlers.push(() => new Response("Validation Failed", { status: 422 }));
+    await expect(source.createPr("o/r", "fix-it", "main", "Fix it", "")).rejects.toThrow(/422.*Validation Failed/);
+  });
+});
+
 describe("a comment's text", () => {
   it("is on its update, and so is a review's", async () => {
     const { source } = fakeGitHub({

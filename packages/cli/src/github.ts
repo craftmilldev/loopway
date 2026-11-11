@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
   RateLimitError,
+  type Made,
   type Reaction,
   type Updates,
   type Subject,
@@ -82,6 +83,7 @@ export class GitHubSource implements SubjectSource {
           title: issue.title,
           author: issue.user?.login ?? "ghost",
           createdAt: issue.created_at,
+          ...(issue.body ? { body: issue.body } : {}),
         });
       }
       path = next;
@@ -121,7 +123,21 @@ export class GitHubSource implements SubjectSource {
   /** Posts a comment on an issue or pull request (`owner/repo#N`) as whoever the token belongs to. Returns its URL. */
   async comment(subject: string, body: string): Promise<string> {
     const [repo, number] = subject.split("#") as [string, string];
-    const path = `/repos/${repo}/issues/${Number(number)}/comments`;
+    const created = await this.post<{ html_url: string }>(`/repos/${repo}/issues/${Number(number)}/comments`, { body });
+    return created.html_url;
+  }
+
+  /** Opens an issue as whoever the token belongs to. */
+  async createIssue(repo: string, title: string, body: string): Promise<Made> {
+    return madeOf(repo, "issue", await this.post<Created>(`/repos/${repo}/issues`, { title, body }));
+  }
+
+  /** Opens a pull request from the branch `head` into `base`, as whoever the token belongs to. */
+  async createPr(repo: string, head: string, base: string, title: string, body: string): Promise<Made> {
+    return madeOf(repo, "pull_request", await this.post<Created>(`/repos/${repo}/pulls`, { head, base, title, body }));
+  }
+
+  private async post<T>(path: string, payload: unknown): Promise<T> {
     const res = await this.fetch(API + path, {
       method: "POST",
       headers: {
@@ -131,10 +147,10 @@ export class GitHubSource implements SubjectSource {
         "content-type": "application/json",
         "user-agent": "loopway",
       },
-      body: JSON.stringify({ body }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) throw await this.failure(res, path);
-    return ((await res.json()) as { html_url: string }).html_url;
+    return (await res.json()) as T;
   }
 
   /** The reactions on a comment, from the URL it was posted at (`.../issues/N#issuecomment-ID`). */
@@ -331,6 +347,25 @@ interface Look {
   before: { updatedAt?: string; bodyHash?: string };
   /** Whether it has changed since the last poll (CI aside). */
   moved: boolean;
+}
+
+/** What GitHub answers to opening an issue or a pull request. */
+interface Created extends Item {
+  number: number;
+  created_at: string;
+  html_url: string;
+}
+
+function madeOf(repo: string, kind: Subject["kind"], c: Created): Made {
+  const subject: Subject = {
+    key: `${repo}#${c.number}`,
+    kind,
+    title: c.title,
+    author: c.user?.login ?? "ghost",
+    createdAt: c.created_at,
+    ...(c.body ? { body: c.body } : {}),
+  };
+  return { subject, url: c.html_url };
 }
 
 function commentUpdate(what: "comment" | "review comment", c: Comment): Update {

@@ -6,6 +6,7 @@ import { formatLine, type LoopwayEvent } from "../src/format.js";
 import { CLOSED_SHOWN_MS, loadThreads, Threads, threadsDir, visibleThreads } from "../src/threads.js";
 import { emptyState, loadState, stateDir, type State } from "../src/state.js";
 import { harness } from "./fake.js";
+import { markerOf } from "../src/thread.js";
 import { aThread, dev, review } from "./make.js";
 
 /** The poller over a fake GitHub with threads acting on its events, as `loopway` wires them. */
@@ -182,5 +183,99 @@ describe("per-project state", () => {
     expect(await subjectsIn("/work/a")).toEqual(["o/r#1"]);
     expect(await subjectsIn("/work/b")).toEqual(["o/r#2"]);
     expect(await readdir(join(loopwayHome, "state"))).toHaveLength(2);
+  });
+});
+
+describe("subjects a thread created", () => {
+  const sub = (key: string, kind: "issue" | "pull_request") => ({
+    key,
+    kind,
+    title: `title of ${key}`,
+    author: "loopway-bot",
+    createdAt: "2026-11-10T12:05:00Z",
+  });
+
+  it("are tracked by their thread, and each gets its own dev or review thread, starting with its creation", async () => {
+    const h = await running();
+    await h.poller.discover();
+    h.source.add("o/r#12", "me", "2026-11-10T12:01:00Z");
+    await h.poller.discover();
+    h.events.length = 0;
+    for (const e of await h.threads.handle({ type: "created", thread: "t1", subject: sub("o/r#13", "issue") }))
+      h.events.push(e);
+    for (const e of await h.threads.handle({ type: "created", thread: "t1", subject: sub("o/r#14", "pull_request") }))
+      h.events.push(e);
+
+    const [t1, t2, t3] = h.threads.all;
+    expect(t1?.subjects).toEqual([
+      { key: "o/r#12", status: "open" },
+      { key: "o/r#13", status: "open", created: true },
+      { key: "o/r#14", status: "open", created: true },
+    ]);
+    expect([t2?.bot, t2?.subjects, t3?.bot, t3?.subjects]).toEqual([
+      "dev",
+      [{ key: "o/r#13", status: "open" }],
+      "review",
+      [{ key: "o/r#14", status: "open" }],
+    ]);
+    expect(t2?.queue).toMatchObject([
+      { id: "created:o/r#13", kind: "created", subject: "o/r#13", actor: "loopway-bot" },
+    ]);
+    expect(h.lines()).toEqual([
+      "thread opened t2 dev o/r#13",
+      "queued o/r#13 created -> t2",
+      "thread opened t3 review o/r#14",
+      "queued o/r#14 created -> t3",
+    ]);
+    // On disk too.
+    expect((await loadThreads(h.dir)).map((t) => t.subjects.length)).toEqual([3, 1, 1]);
+  });
+
+  it("that discovery finds with the thread's marker, because loopway stopped before it heard, are matched to it", async () => {
+    const h = await running();
+    await h.poller.discover();
+    h.source.add("o/r#12", "me", "2026-11-10T12:01:00Z");
+    await h.poller.discover();
+    h.source.add("o/r#13", "loopway-bot", "2026-11-10T12:05:00Z", "issue", `Do it.\n\n${markerOf("t1")}`);
+    await h.poller.discover();
+    expect(h.threads.all.map((t) => [t.id, t.bot, t.subjects.map((s) => s.key)])).toEqual([
+      ["t1", "dev", ["o/r#12", "o/r#13"]],
+      ["t2", "dev", ["o/r#13"]],
+    ]);
+    expect(h.threads.all[0]?.subjects[1]?.created).toBe(true);
+    // The poller keeps the subject, not its text.
+    expect(h.state.subjects["o/r#13"]?.subject).not.toHaveProperty("body");
+  });
+
+  it("that the poller was told about are not found again by discovery: no second thread", async () => {
+    const h = await running();
+    await h.poller.discover();
+    h.source.add("o/r#12", "me", "2026-11-10T12:01:00Z");
+    await h.poller.discover();
+    const made = sub("o/r#13", "issue");
+    await h.poller.know({ ...made, body: markerOf("t1") });
+    await h.threads.handle({ type: "created", thread: "t1", subject: made });
+    h.source.add("o/r#13", "loopway-bot", made.createdAt, "issue", markerOf("t1"));
+    await h.poller.discover();
+    expect(h.threads.all.map((t) => t.id)).toEqual(["t1", "t2"]);
+    expect(h.lines().filter((l) => l.startsWith("new"))).toEqual(['new    o/r#12 issue "title of o/r#12" by me']);
+  });
+
+  it("keep their thread open until they close too", async () => {
+    const h = await running();
+    await h.poller.discover();
+    h.source.add("o/r#12", "me", "2026-11-10T12:01:00Z");
+    await h.poller.discover();
+    await h.threads.handle({ type: "created", thread: "t1", subject: sub("o/r#13", "issue") });
+    const close = (key: string, id: string) =>
+      h.threads.handle({
+        type: "update",
+        subject: sub(key, "issue"),
+        update: { id, kind: "closed", actor: "me", at: "2026-11-10T13:00:00Z" },
+      });
+    await close("o/r#12", "e1");
+    expect(h.threads.all.map((t) => t.status)).toEqual(["open", "open"]);
+    await close("o/r#13", "e2");
+    expect(h.threads.all.map((t) => t.status)).toEqual(["closed", "closed"]);
   });
 });
