@@ -84,7 +84,7 @@ Each open thread with queued updates and no run in flight gets all of them, olde
 - A delivered batch leaves the queue. A run that fails (an API error, a usage limit, a bad exit, a bad model name) leaves it, marks the session `failed`, and the thread tries again after 5 minutes. A usage limit holds every delivery until it resets.
 - The session acts as the bot user (see Credentials). It talks only through loopway's own MCP server, which loopway hosts and passes with `--mcp-config`. The one tool so far is `comment(subject, body)`. Every message goes through it, so loopway records it on the thread (`sent`). A comment a thread sent is not queued back to that thread, but is queued to every other thread holding the subject. The comment carries a hidden `<!-- loopway:thread=<id> -->` so the poller can tell.
 - The prompt tells the session to post at least one message per turn. A turn that ends with none logs `turn ended without a message`.
-- Closed threads get no more runs.
+- A thread that has never run gets its first run even with nothing queued, because a new issue is itself the news. Closed threads get no more runs.
 
 To try it against the sandbox repo (needs `gh auth login` and the bot's token in `~/.loopway/config.json`, see Credentials):
 
