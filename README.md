@@ -40,7 +40,7 @@ EOF
 loopway   # re-run `npm run build` in the checkout after changing the code
 ```
 
-`loopway` finds its project the way git finds a repo: it walks up from where you are to the nearest directory with a `.loopway/` folder, and `--project <dir>` names one instead. Its first line (and the TUI header) says which `.loopway` it found; with none above you, it exits and says where it looked. The plain log (see [The TUI](#the-tui)) is one line per event:
+`loopway` finds its project the way git finds a repo: it walks up from where you are to the nearest directory with a `.loopway/` folder (no `.git` needed; `~/.loopway` itself is config and state, so it is skipped), and `--project <dir>` names one instead. Its first line (and the TUI header) says which `.loopway` it found; with none above you, it exits and says where it looked. The plain log (see [The TUI](#the-tui)) is one line per event:
 
 ```
 2026-11-10 14:02 new    owner/repo#12 issue "Fix the login bug" by mcwhittemore

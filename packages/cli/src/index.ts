@@ -69,7 +69,7 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  const project = findProject(process.cwd(), values.project);
+  const project = findProject(process.cwd(), loopwayHome(), values.project);
   if (positionals[0] === "threads") return listThreads(stateDir(loopwayHome(), project), values.json);
   if (positionals.length > 0) throw new Error(`Unknown command "${positionals[0]}". Try loopway --help.`);
 
