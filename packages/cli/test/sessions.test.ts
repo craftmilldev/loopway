@@ -157,10 +157,23 @@ describe("delivery", () => {
   it("does not deliver to a closed thread, or one with nothing queued", async () => {
     const s = await setup();
     s.add(queued(aThread("t1", "dev", ["o/r#1"], "closed"), ["c:1", "2026-11-10T14:05:00Z"]));
-    s.add(aThread("t2", "dev", ["o/r#2"]));
+    s.add({ ...aThread("t2", "dev", ["o/r#2"]), session: { id: "s2", status: "idle", lastRunAt: null } });
     s.sessions.kick();
     await s.sessions.idle();
     expect(s.agent.runs).toEqual([]);
+  });
+
+  it("gives a thread that has never run its first run even with nothing queued, since a new subject is the news", async () => {
+    const s = await setup();
+    s.add(aThread("t1", "dev", ["o/r#12"]));
+    s.sessions.kick();
+    await s.sessions.idle();
+    expect(s.agent.runs).toHaveLength(1);
+    expect(s.agent.runs[0]?.message).toMatch(/just opened/);
+    expect(s.agent.runs[0]?.message).toMatch(/This thread tracks: o\/r#12/);
+    s.sessions.kick();
+    await s.sessions.idle();
+    expect(s.agent.runs).toHaveLength(1);
   });
 
   it("logs the run, the delivery and what the session said in the thread's log file", async () => {

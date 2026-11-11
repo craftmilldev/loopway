@@ -120,7 +120,7 @@ export class Sessions {
   private ready(thread: Thread): boolean {
     return (
       thread.status === "open" &&
-      thread.queue.length > 0 &&
+      (thread.queue.length > 0 || !thread.session?.id) &&
       !this.running.has(thread.id) &&
       this.now() >= (this.retryAt.get(thread.id) ?? 0)
     );
@@ -238,6 +238,9 @@ function firstMessage(bot: Bot, thread: Thread, batch: Pending[]): string {
 
 /** The queued updates, oldest first. */
 function updatesText(batch: Pending[]): string {
+  // A thread's first run has nothing queued when its subject is brand new: the subject itself is the news.
+  if (batch.length === 0)
+    return "The thread has just opened and nothing has happened on its subjects yet. Start there.";
   const oldestFirst = [...batch].sort((a, b) => a.at.localeCompare(b.at));
   const lines = oldestFirst.map((u) => {
     const what = u.detail ? `${u.kind} ${u.detail}` : u.kind;
