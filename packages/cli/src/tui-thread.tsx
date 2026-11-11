@@ -57,6 +57,7 @@ export function ThreadView({ thread, log, onBack, onFilter }: ThreadViewProps) {
           <Text key={s.key} inverse={i === subject} dimColor={s.status === "closed"}>
             {i === subject ? "▸ " : "  "}
             {s.key} {s.status}
+            {s.created && " · created by this thread"}
           </Text>
         ))}
       </Section>

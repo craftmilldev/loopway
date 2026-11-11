@@ -36,8 +36,13 @@ export type RunAgent = (run: AgentRun) => Promise<RunOutcome>;
 /** How long to wait when a run hit the usage limit but didn't say when it resets. */
 export const LIMIT_FALLBACK_MS = 5 * 60_000;
 
-/** The one tool of loopway's MCP the session may use without asking. */
-export const ALLOWED_TOOLS = ["mcp__loopway__comment", "mcp__loopway__ask"];
+/** The tools of loopway's MCP the session may use without asking. */
+export const ALLOWED_TOOLS = [
+  "mcp__loopway__comment",
+  "mcp__loopway__ask",
+  "mcp__loopway__create_issue",
+  "mcp__loopway__create_pr",
+];
 
 /** Where Claude Code sends what it would still prompt for after auto mode has decided. */
 export const PERMISSION_TOOL = "mcp__loopway__permission";

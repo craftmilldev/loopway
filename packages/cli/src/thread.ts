@@ -5,7 +5,8 @@ import type { Subject, Update } from "./source.js";
 export interface Thread {
   id: string;
   bot: string;
-  subjects: { key: string; status: "open" | "closed" }[];
+  /** `created` is set on a subject this thread made. */
+  subjects: { key: string; status: "open" | "closed"; created?: true }[];
   status: "open" | "closed";
   /** ISO time. */
   createdAt: string;
@@ -31,7 +32,10 @@ export interface Session {
   approved?: string[];
 }
 
-/** A message a thread posted: when, on which subject, what kind of message, and where to read it. */
+/**
+ * A message a thread posted: when, on which subject, what kind of message ("comment", or "issue" or "pull_request" for
+ * one it created, whose subject is the new one), and where to read it.
+ */
 export interface Sent {
   at: string;
   subject: string;

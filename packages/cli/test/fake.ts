@@ -2,6 +2,7 @@ import type { LoopwayEvent } from "../src/format.js";
 import { Poller } from "../src/poller.js";
 import {
   RateLimitError,
+  type Made,
   type Reaction,
   type Updates,
   type Subject,
@@ -49,8 +50,8 @@ export class FakeSource implements SubjectSource {
     this.reacted.set(commentUrl, [...(this.reacted.get(commentUrl) ?? []), { user, content }]);
   }
 
-  add(key: string, author: string, createdAt: string, kind: Subject["kind"] = "issue") {
-    this.subjects.push({ key, kind, title: `title of ${key}`, author, createdAt });
+  add(key: string, author: string, createdAt: string, kind: Subject["kind"] = "issue", body?: string) {
+    this.subjects.push({ key, kind, title: `title of ${key}`, author, createdAt, ...(body ? { body } : {}) });
   }
 
   say(key: string, update: Partial<Update> & { id: string }) {
@@ -61,6 +62,39 @@ export class FakeSource implements SubjectSource {
   private maybeFail() {
     if (this.failWith) throw this.failWith;
   }
+}
+
+/**
+ * Opening issues and pull requests as loopway-bot, in memory: numbered from 101, each one noted in `opened`. Set
+ * `refuses` to make GitHub turn them down with that message.
+ */
+export function fakeOpening() {
+  let number = 100;
+  const opened: string[] = [];
+  const open = (kind: Subject["kind"], repo: string, title: string, body: string, note: string): Made => {
+    if (opening.refuses) throw new Error(opening.refuses);
+    number++;
+    opened.push(`${note}: ${body}`);
+    const path = kind === "issue" ? "issues" : "pull";
+    const subject = {
+      key: `${repo}#${number}`,
+      kind,
+      title,
+      author: "loopway-bot",
+      createdAt: "2026-11-10T15:00:00Z",
+      body,
+    };
+    return { subject, url: `https://github.com/${repo}/${path}/${number}` };
+  };
+  const opening = {
+    refuses: "",
+    opened,
+    createIssue: async (repo: string, title: string, body: string) =>
+      open("issue", repo, title, body, `issue ${repo} ${title}`),
+    createPr: async (repo: string, head: string, base: string, title: string, body: string) =>
+      open("pull_request", repo, title, body, `pr ${repo} ${head}->${base} ${title}`),
+  };
+  return opening;
 }
 
 export const rateLimited = (resumeAt: number) => new RateLimitError(resumeAt);

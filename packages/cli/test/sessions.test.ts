@@ -8,6 +8,7 @@ import { formatLine, type SessionEvent } from "../src/format.js";
 import { Sessions, RETRY_AFTER_FAILURE_MS } from "../src/sessions.js";
 import { loadThreads, Threads, threadLogPath } from "../src/threads.js";
 import { markerOf, type Thread } from "../src/thread.js";
+import { fakeOpening } from "./fake.js";
 import { aBot, aThread, anUpdate } from "./make.js";
 
 const ok: RunOutcome = { code: 0, finished: true };
@@ -42,8 +43,9 @@ async function setup(opts: { max?: number; bots?: Bot[] } = {}) {
   const agent = fakeAgent();
   const events: SessionEvent[] = [];
   const posted: string[] = [];
-  /** Set `refuses` to make GitHub turn comments down with that message. */
-  const github = { refuses: "" };
+  /** Set `refuses` to make GitHub turn comments, issues and pull requests down with that message. */
+  const github = fakeOpening();
+  const created: [string, string][] = [];
   const clock = { t: Date.parse("2026-11-10T15:00:00Z") };
   const sessions = new Sessions({
     dir,
@@ -54,13 +56,15 @@ async function setup(opts: { max?: number; bots?: Bot[] } = {}) {
     runAgent: agent.run,
     mcpUrl: (id) => `http://mcp/${id}`,
     env: { GH_TOKEN: "bot-token", GIT_AUTHOR_NAME: "loopway-bot" },
-    commenter: {
+    github: {
+      ...github,
       comment: async (subject, body) => {
         if (github.refuses) throw new Error(github.refuses);
         posted.push(`${subject}: ${body}`);
         return `https://github.com/${subject}#issuecomment-1`;
       },
     },
+    created: async (thread, subject) => void created.push([thread, subject.key]),
     emit: (e) => events.push(e),
     now: () => clock.t,
     newSessionId: () => "session-1",
@@ -68,7 +72,7 @@ async function setup(opts: { max?: number; bots?: Bot[] } = {}) {
   const add = (thread: Thread) => (threads.all.push(thread), thread);
   const files = () => loadThreads(dir);
   const log = (id: string) => readFile(threadLogPath(dir, id), "utf8");
-  return { dir, threads, agent, events, posted, github, clock, sessions, add, files, log };
+  return { dir, threads, agent, events, posted, github, created, clock, sessions, add, files, log };
 }
 
 describe("delivery", () => {
@@ -356,5 +360,72 @@ describe("messages a session sends", () => {
     await expect(s.sessions.comment("t1", "o/r", "x")).rejects.toThrow('"o/r" is not a subject');
     await expect(s.sessions.comment("nope", "o/r#1", "x")).rejects.toThrow("there is no thread nope");
     expect(s.posted).toEqual([]);
+  });
+});
+
+describe("issues and pull requests a session opens", () => {
+  it("are opened with the thread's marker, recorded as sent, logged, and told to the rest of loopway", async () => {
+    const s = await setup();
+    const thread = s.add(aThread("t1", "dev", ["o/r#12"]));
+    const issue = await s.sessions.createIssue("t1", "o/r", "Follow up", "Details.");
+    const pr = await s.sessions.createPr("t1", "o/r", "fix-it", "main", "Fix it", "Closes #12.");
+    expect(issue).toMatchObject({
+      url: "https://github.com/o/r/issues/101",
+      subject: { key: "o/r#101", kind: "issue" },
+    });
+    expect(pr.subject).toMatchObject({ key: "o/r#102", kind: "pull_request" });
+    expect(s.github.opened).toEqual([
+      `issue o/r Follow up: Details.\n\n${markerOf("t1")}`,
+      `pr o/r fix-it->main Fix it: Closes #12.\n\n${markerOf("t1")}`,
+    ]);
+    expect(thread.sent).toEqual([
+      { at: "2026-11-10T15:00:00.000Z", subject: "o/r#101", kind: "issue", url: "https://github.com/o/r/issues/101" },
+      {
+        at: "2026-11-10T15:00:00.000Z",
+        subject: "o/r#102",
+        kind: "pull_request",
+        url: "https://github.com/o/r/pull/102",
+      },
+    ]);
+    expect((await s.files())[0]?.sent).toHaveLength(2);
+    expect(await s.log("t1")).toBe("<- created o/r#101\n<- created o/r#102\n");
+    expect(s.created).toEqual([
+      ["t1", "o/r#101"],
+      ["t1", "o/r#102"],
+    ]);
+  });
+
+  it("count as the turn's message, so the turn is not silent", async () => {
+    const s = await setup();
+    s.add(queued(aThread("t1", "dev", ["o/r#12"]), ["c:1", "2026-11-10T14:05:00Z"]));
+    s.agent.behave = async () => {
+      await s.sessions.createIssue("t1", "o/r", "Follow up", "Details.");
+      return ok;
+    };
+    s.sessions.kick();
+    await s.sessions.idle();
+    expect(await s.log("t1")).not.toContain("without a message");
+  });
+
+  it("that GitHub refuses are logged on the thread, not recorded as sent, and not told to loopway", async () => {
+    const s = await setup();
+    const thread = s.add(aThread("t1", "dev", ["o/r#12"]));
+    s.github.refuses = "GitHub 422 Validation Failed";
+    await expect(s.sessions.createIssue("t1", "o/r", "x", "y")).rejects.toThrow("422");
+    await expect(s.sessions.createPr("t1", "o/r", "a", "main", "x", "y")).rejects.toThrow("422");
+    expect(thread.sent).toBeUndefined();
+    expect(s.created).toEqual([]);
+    expect(await s.log("t1")).toBe(
+      "!! create_issue in o/r failed: GitHub 422 Validation Failed\n!! create_pr in o/r failed: GitHub 422 Validation Failed\n",
+    );
+  });
+
+  it("only go in a repo the bot reads, for a thread that exists", async () => {
+    const s = await setup();
+    s.add(aThread("t1", "dev", ["o/r#12"]));
+    await expect(s.sessions.createIssue("t1", "other/repo", "x", "y")).rejects.toThrow("dev does not read other/repo");
+    await expect(s.sessions.createPr("t1", "other/repo", "a", "main", "x", "y")).rejects.toThrow("dev does not read");
+    await expect(s.sessions.createIssue("nope", "o/r", "x", "y")).rejects.toThrow("there is no thread nope");
+    expect(s.github.opened).toEqual([]);
   });
 });

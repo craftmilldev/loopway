@@ -12,7 +12,7 @@ import { Sessions } from "../src/sessions.js";
 import { Threads } from "../src/threads.js";
 import { threadLogPath } from "../src/threads.js";
 import { aBot, aThread } from "./make.js";
-import { FakeSource } from "./fake.js";
+import { FakeSource, fakeOpening } from "./fake.js";
 
 const fakeClaude = fileURLToPath(new URL("./fake-claude.mjs", import.meta.url));
 const SUBJECT = "o/r#12";
@@ -46,12 +46,14 @@ async function setup(opts: { bot?: Bot; dir?: string; agent?: RunAgent } = {}) {
       }),
     mcpUrl: (id) => `http://mcp/${id}`,
     env: {},
-    commenter: {
+    github: {
+      ...fakeOpening(),
       comment: async (subject, body) => {
         posted.push(body);
         return `https://github.com/${subject.replace("#", "/issues/")}#issuecomment-${posted.length}`;
       },
     },
+    created: async () => {},
     emit: (e) => events.push(e),
     now: () => clock.t,
     newSessionId: () => "session-1",
@@ -357,6 +359,8 @@ describe("over MCP, with a claude stand-in", () => {
     const mcp = await startMcp({
       comment: (id, subject, body) => s.sessions.comment(id, subject, body),
       ask: (id, subject, q) => s.sessions.ask(id, subject, q),
+      createIssue: (id, repo, title, body) => s.sessions.createIssue(id, repo, title, body),
+      createPr: (id, repo, head, base, title, body) => s.sessions.createPr(id, repo, head, base, title, body),
       permission: (id, tool, input) => s.sessions.permission(id, tool, input),
     });
     try {
@@ -388,6 +392,8 @@ describe("over MCP, with a claude stand-in", () => {
     const mcp = await startMcp({
       comment: (id, subject, body) => s.sessions.comment(id, subject, body),
       ask: (id, subject, q) => s.sessions.ask(id, subject, q),
+      createIssue: (id, repo, title, body) => s.sessions.createIssue(id, repo, title, body),
+      createPr: (id, repo, head, base, title, body) => s.sessions.createPr(id, repo, head, base, title, body),
       permission: (id, tool, input) => s.sessions.permission(id, tool, input),
     });
     // The stand-in is given the thread's MCP URL, which only exists once the server is up.

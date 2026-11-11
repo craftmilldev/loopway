@@ -134,3 +134,79 @@ describe("an update", () => {
     expect(decide({ type: "update", subject: pr, update: anUpdate("e", "closed") }, [], bots)).toEqual([]);
   });
 });
+
+describe("a subject a thread created", () => {
+  const issue = { ...aSubject(5), author: "loopway-bot" };
+  const pr = { ...aSubject(6, "pull_request"), author: "loopway-bot" };
+  const creation = (subject: typeof issue) => ({
+    id: `created:${subject.key}`,
+    kind: "created",
+    actor: "loopway-bot",
+    at: subject.createdAt,
+  });
+
+  it("joins the thread that made it, and starts a dev thread for an issue, even for the dev bot that made it", () => {
+    const threads = [aThread("t1", "dev", ["o/r#1"])];
+    expect(decide({ type: "created", thread: "t1", subject: issue }, threads, bots)).toEqual([
+      { type: "track", thread: "t1", subject: issue },
+      { type: "open", bot: "dev", subject: issue, pending: [creation(issue)] },
+    ]);
+  });
+
+  it("joins the thread that made it, and starts a review thread for a pull request", () => {
+    const threads = [aThread("t1", "dev", ["o/r#1"])];
+    expect(decide({ type: "created", thread: "t1", subject: pr }, threads, bots)).toEqual([
+      { type: "track", thread: "t1", subject: pr },
+      { type: "open", bot: "review", subject: pr, pending: [creation(pr)] },
+    ]);
+  });
+
+  it("changes nothing when the thread already tracks it, or there is no such thread", () => {
+    const threads = [aThread("t1", "dev", ["o/r#1", "o/r#5"])];
+    expect(decide({ type: "created", thread: "t1", subject: issue }, threads, bots)).toEqual([]);
+    expect(decide({ type: "created", thread: "gone", subject: issue }, threads, bots)).toEqual([]);
+  });
+
+  it("starts its threads but is not tracked by a thread that has since closed", () => {
+    const threads = [aThread("t1", "dev", ["o/r#1"], "closed")];
+    expect(decide({ type: "created", thread: "t1", subject: issue }, threads, bots)).toEqual([
+      { type: "open", bot: "dev", subject: issue, pending: [creation(issue)] },
+    ]);
+  });
+
+  it("is matched to its thread by the marker when discovery finds it as new", () => {
+    const threads = [aThread("t1", "dev", ["o/r#1"]), aThread("t2", "dev", ["o/r#2"])];
+    const found = { ...issue, body: `Do it.\n\n${markerOf("t2")}` };
+    expect(decide({ type: "new", subject: found }, threads, bots)).toEqual([
+      { type: "track", thread: "t2", subject: found },
+      { type: "open", bot: "dev", subject: found, pending: [creation(found)] },
+    ]);
+  });
+
+  it("is an ordinary new subject when the marker is not a thread's, or its thread has closed", () => {
+    const stranger = { ...issue, body: markerOf("zzz") };
+    expect(decide({ type: "new", subject: stranger }, [aThread("t1", "dev", ["o/r#1"])], bots)).toEqual([
+      { type: "open", bot: "dev", subject: stranger, pending: [] },
+    ]);
+    const orphan = { ...issue, body: markerOf("t1") };
+    expect(decide({ type: "new", subject: orphan }, [aThread("t1", "dev", ["o/r#1"], "closed")], bots)).toEqual([
+      { type: "open", bot: "dev", subject: orphan, pending: [] },
+    ]);
+  });
+
+  it("keeps the thread that made it open until it closes too", () => {
+    const threads = [aThread("t1", "dev", ["o/r#1", "o/r#5"])];
+    threads[0]!.subjects[0]!.status = "closed";
+    const closing = anUpdate("e", "closed");
+    expect(decide({ type: "update", subject: issue, update: closing }, threads, bots).map((a) => a.type)).toEqual([
+      "queue",
+      "mark",
+      "close",
+    ]);
+    threads[0]!.subjects[0]!.status = "open";
+    expect(decide({ type: "update", subject: issue, update: closing }, threads, bots).map((a) => a.type)).toEqual([
+      "queue",
+      "mark",
+    ]);
+  });
+});
