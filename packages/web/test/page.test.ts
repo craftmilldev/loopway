@@ -17,6 +17,21 @@ describe("the marketing page", () => {
     expect(html).toContain("autocapture: false");
   });
 
+  it("shows the billboard, with a way to see it full screen that works without scripts", () => {
+    expect(html).toContain('<iframe\n        src="billboard/"');
+    expect(html).toContain('<a class="full" href="billboard/" aria-label="Full screen" title="Full screen">');
+    expect(html).toContain("requestFullscreen()");
+    const billboard = readFileSync(new URL("../public/billboard/index.html", import.meta.url), "utf8");
+    expect(billboard).toContain("<title>Loopway billboard</title>");
+    expect(billboard).not.toMatch(/<script\b[^>]*\bsrc=/);
+  });
+
+  it("gives the install commands a copy button", () => {
+    expect(html).toContain("git clone https://github.com/craftmilldev/loopway.git");
+    expect(html).toContain('<button type="button">Copy</button>');
+    expect(html).toContain("navigator.clipboard.writeText(text)");
+  });
+
   it("is what vercel.json serves, with no build step", () => {
     const config = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8")) as Record<
       string,

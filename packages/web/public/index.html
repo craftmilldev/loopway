@@ -69,6 +69,119 @@
       a {
         color: var(--ink);
       }
+      /* The billboard: a living picture across the top of the page, in its own frame. */
+      /* The same column as the text below it. */
+      .billboard {
+        position: relative;
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 48px 24px 0;
+      }
+      .billboard + main {
+        padding-top: 40px;
+      }
+      .billboard iframe {
+        display: block;
+        width: 100%;
+        aspect-ratio: 16 / 10;
+        border: 1px solid var(--rule);
+        background: var(--ink);
+      }
+      /* Opened out: it fills the window, over the page, whether or not the browser also goes full screen. */
+      .billboard.open {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        max-width: none;
+        margin: 0;
+        padding: 0;
+        background: var(--ink);
+      }
+      .billboard.open iframe {
+        height: 100%;
+        aspect-ratio: auto;
+        border: 0;
+      }
+      .billboard-open {
+        overflow: hidden;
+      }
+      .billboard .full,
+      .copy button {
+        padding: 6px 10px;
+        border: 1px solid var(--rule);
+        background: var(--paper);
+        color: var(--ink);
+        font:
+          12px "Courier Prime",
+          Courier,
+          ui-monospace,
+          monospace;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .billboard .full {
+        position: absolute;
+        right: 36px;
+        bottom: 12px;
+        padding: 7px;
+      }
+      /* Arrows pointing out to the corners; pointing in once it is open. */
+      .billboard .full svg {
+        display: block;
+        width: 16px;
+        height: 16px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.6;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .billboard .full .shrink,
+      .billboard.open .full .expand {
+        display: none;
+      }
+      .billboard.open .full .shrink {
+        display: block;
+      }
+      .billboard.open .full {
+        right: 16px;
+        bottom: 16px;
+      }
+      .billboard .full:hover,
+      .copy button:hover {
+        border-color: var(--ink);
+      }
+      @media (max-width: 600px) {
+        .billboard .full {
+          right: 30px;
+          bottom: 6px;
+          padding: 5px;
+        }
+        .billboard .full svg {
+          width: 13px;
+          height: 13px;
+        }
+      }
+      h2 {
+        margin: 40px 0 8px;
+        color: var(--ink);
+        font-size: 24px;
+        font-weight: 400;
+      }
+      /* A block of commands with a button that copies them. */
+      .copy {
+        position: relative;
+      }
+      .copy pre {
+        padding-right: 84px;
+      }
+      .copy button {
+        position: absolute;
+        top: 9px;
+        right: 9px;
+      }
       footer {
         margin-top: 48px;
         padding-top: 16px;
@@ -98,9 +211,82 @@
         const link = event.target.closest && event.target.closest('a[href^="https://github.com/"]');
         if (link) posthog.capture("github_clicked", { href: link.href }, { transport: "sendBeacon" });
       });
+      // Neither of the two below sends anything anywhere.
+      document.addEventListener("click", (event) => {
+        if (!event.target.closest) return;
+        // Full screen for the billboard. The picture is opened out to fill the window first, which
+        // works everywhere; then the browser is asked for true full screen on top of that, which
+        // some browsers and embedded views refuse or ignore. Without scripts the link opens the
+        // billboard on its own page.
+        const full = event.target.closest(".billboard .full");
+        if (full) {
+          event.preventDefault();
+          const figure = full.closest(".billboard");
+          if (figure.classList.contains("open")) closeBillboard();
+          else {
+            figure.classList.add("open");
+            document.documentElement.classList.add("billboard-open");
+            full.setAttribute("aria-label", "Exit full screen");
+            full.title = "Exit full screen";
+            if (figure.requestFullscreen) figure.requestFullscreen().catch(() => {});
+          }
+        }
+        // Copy a block of commands.
+        const button = event.target.closest(".copy button");
+        if (button) {
+          const text = button.parentElement.querySelector("pre").textContent.trim();
+          const done = () => {
+            button.textContent = "Copied";
+            setTimeout(() => (button.textContent = "Copy"), 2000);
+          };
+          if (navigator.clipboard) navigator.clipboard.writeText(text).then(done);
+          else {
+            // Older browsers: select the commands, so they can be copied by hand.
+            const range = document.createRange();
+            range.selectNodeContents(button.parentElement.querySelector("pre"));
+            getSelection().removeAllRanges();
+            getSelection().addRange(range);
+          }
+        }
+      });
+      function closeBillboard() {
+        const figure = document.querySelector(".billboard");
+        figure.classList.remove("open");
+        document.documentElement.classList.remove("billboard-open");
+        figure.querySelector(".full").setAttribute("aria-label", "Full screen");
+        figure.querySelector(".full").title = "Full screen";
+        if (document.fullscreenElement) document.exitFullscreen();
+      }
+      // Leaving true full screen (Esc, or the browser's own control) closes the picture as well.
+      let wasFullscreen = false;
+      document.addEventListener("fullscreenchange", () => {
+        if (document.fullscreenElement) wasFullscreen = true;
+        else if (wasFullscreen) {
+          wasFullscreen = false;
+          closeBillboard();
+        }
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && document.querySelector(".billboard.open")) closeBillboard();
+      });
     </script>
   </head>
   <body>
+    <figure class="billboard">
+      <iframe
+        src="billboard/"
+        title="A Loopway billboard in the Maine woods by a slow river, through one day and night. Click the bramble, the big rock or the spruce by the tent."
+        allow="fullscreen"
+      ></iframe>
+      <a class="full" href="billboard/" aria-label="Full screen" title="Full screen">
+        <svg class="expand" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M9.5 2H14v4.5M14 2 9 7M6.5 14H2V9.5M2 14l5-5" />
+        </svg>
+        <svg class="shrink" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M14 6.5H9.5V2M9.5 6.5 14 2M2 9.5h4.5V14M6.5 9.5 2 14" />
+        </svg>
+      </a>
+    </figure>
     <main>
       <div class="mark">A Craftmill project</div>
       <h1>Watch the work your agents do.</h1>
@@ -113,6 +299,24 @@ $ loopway
 2026-11-10 14:02 new    owner/repo#12 issue "Fix the login bug" by mcwhittemore
 2026-11-10 14:03 update owner/repo#12 comment by loopway-bot</pre>
       <p>This is version 2.0, an alpha. It grows from a poller into a place to run agents on the work it finds.</p>
+      <h2>Install</h2>
+      <p>
+        It is not on npm yet, so it is built from a checkout. You need Node 22 or later and the
+        <a href="https://cli.github.com/">GitHub CLI</a>: loopway acts as whoever <code>gh</code> is logged in as.
+      </p>
+      <div class="copy">
+        <pre>
+git clone https://github.com/craftmilldev/loopway.git
+cd loopway
+npm install && npm run build
+npm link -w @loopway/cli
+gh auth login</pre>
+        <button type="button">Copy</button>
+      </div>
+      <p>
+        Then run <code>loopway</code> in a directory with a <code>.loopway/</code> folder holding one file per bot. The
+        <a href="https://github.com/craftmilldev/loopway#getting-started">README</a> has the rest.
+      </p>
       <footer>
         <a href="https://github.com/craftmilldev/loopway">github.com/craftmilldev/loopway</a> · MIT licensed
       </footer>
