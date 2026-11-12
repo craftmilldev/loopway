@@ -1,7 +1,7 @@
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Bot } from "../src/bots.js";
 import type { AgentRun, RunAgent, RunOutcome } from "../src/claude.js";
 import { formatLine, type SessionEvent } from "../src/format.js";
@@ -147,11 +147,15 @@ describe("delivery", () => {
     const release: (() => void)[] = [];
     s.agent.behave = () => new Promise((resolve) => release.push(() => resolve(ok)));
     s.sessions.kick();
+    // Wait for what should happen, however long the machine takes, not for a fixed 20 ms: on a slow
+    // CI runner the third run had not started 20 ms after the first was released.
+    await vi.waitFor(() => expect(s.agent.runs).toHaveLength(2));
+    // Give a third run the chance to start when it should not. A slow machine can only make this
+    // check miss a bug, never fail without one.
     await new Promise((r) => setTimeout(r, 20));
     expect(s.agent.runs.map((r) => r.mcpUrl).sort()).toEqual(["http://mcp/t1", "http://mcp/t2"]);
     release[0]!();
-    await new Promise((r) => setTimeout(r, 20));
-    expect(s.agent.runs).toHaveLength(3);
+    await vi.waitFor(() => expect(s.agent.runs).toHaveLength(3));
     release[1]!();
     release[2]!();
     await s.sessions.idle();
@@ -291,7 +295,7 @@ describe("failures", () => {
     thread.session = { id: null, status: "running", lastRunAt: "2026-11-10T14:59:00Z" };
     const stop = new AbortController();
     const running = s.sessions.run(stop.signal, () => new Promise((resolve) => setTimeout(resolve, 5)));
-    await new Promise((r) => setTimeout(r, 20));
+    await vi.waitFor(() => expect(s.agent.runs).toHaveLength(1));
     stop.abort();
     await running;
     expect(s.agent.runs).toHaveLength(1);
