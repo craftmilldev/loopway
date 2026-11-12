@@ -65,6 +65,15 @@ describe("bots", () => {
   });
 });
 
+describe("max_bot_turns", () => {
+  it("is 3 unless the front matter says otherwise, and must be a whole number of 1 or more", () => {
+    expect(parseBot("dev", "---\nrepos: [o/r]\n---\nP").maxBotTurns).toBe(3);
+    expect(parseBot("dev", "---\nrepos: [o/r]\nmax_bot_turns: 5\n---\nP").maxBotTurns).toBe(5);
+    for (const bad of ["0", "2.5", "many"])
+      expect(() => parseBot("dev", `---\nrepos: [o/r]\nmax_bot_turns: ${bad}\n---\nP`)).toThrow(/max_bot_turns/);
+  });
+});
+
 describe("config", () => {
   it("reads only the github block", async () => {
     const home = await tmp();

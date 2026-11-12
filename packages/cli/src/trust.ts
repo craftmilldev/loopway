@@ -32,6 +32,7 @@ export async function resolveTrust(
   );
   return {
     owner,
+    botUser: botUser && botUser.toLowerCase() !== owner.toLowerCase() ? botUser : undefined,
     trusts: (bot, login) => byBot.get(bot)?.has(login.toLowerCase()) ?? false,
     everyone: [...new Set([...byBot.values()].flatMap((s) => [...s]))],
   };

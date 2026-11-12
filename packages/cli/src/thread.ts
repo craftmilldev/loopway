@@ -14,6 +14,12 @@ export interface Thread {
   latestAt: string;
   /** Updates waiting to be delivered to a session. Slice 3 empties it; for now it only fills. */
   queue: Pending[];
+  /**
+   * The loop guard: the bot user's comments queued since the last comment from a person. At the bot's
+   * `max_bot_turns`, the next ones are recorded but start no run, and `guarded` says so until a person comments.
+   */
+  botTurns?: number;
+  guarded?: true;
   /** The Claude Code session working the thread. Missing until one has run. */
   session?: Session;
   /** Messages the thread sent out, as recorded by loopway's own tools. */

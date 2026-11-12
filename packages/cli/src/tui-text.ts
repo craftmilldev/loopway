@@ -1,13 +1,15 @@
 import type { PollStatus } from "./poller.js";
 import type { Thread } from "./thread.js";
 
-/** What the session is doing, or that there isn't one. */
-export const sessionText = (thread: Thread) => thread.session?.status ?? "no session yet";
+/** What the session is doing, or that there isn't one. A thread the loop guard holds says so, unless it is running. */
+export const sessionText = (thread: Thread) =>
+  thread.guarded && thread.session?.status !== "running" ? "loop guard" : (thread.session?.status ?? "no session yet");
 
 const SESSION_COLORS = { running: "green", blocked: "yellow", failed: "red" } as const;
 
 export const sessionColor = (thread: Thread) => {
   const status = thread.session?.status;
+  if (thread.guarded && status !== "running") return "yellow";
   return status && status !== "idle" ? SESSION_COLORS[status] : undefined;
 };
 

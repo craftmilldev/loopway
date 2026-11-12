@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { formatPollStatus } from "../src/tui-text.js";
+import { formatPollStatus, sessionText } from "../src/tui-text.js";
+import { aThread } from "./make.js";
 
 const NOW = new Date(2026, 10, 10, 14, 2, 30).getTime();
 const poll = { lastCheckedAt: NOW - 6000, nextAt: NOW + 24_000, pausedUntil: 0, refreshing: false };
@@ -25,5 +26,13 @@ describe("formatPollStatus", () => {
     expect(formatPollStatus(["o/r"], { ...poll, pausedUntil: NOW + 90_000 }, NOW)).toBe(
       "rate limited · resumes in 1:30",
     );
+  });
+});
+
+describe("a guarded thread", () => {
+  it("says loop guard in place of its idle session, and keeps saying running while it runs", () => {
+    const t = { ...aThread("t1", "dev", ["o/r#1"]), guarded: true as const };
+    expect(sessionText(t)).toBe("loop guard");
+    expect(sessionText({ ...t, session: { id: "s", status: "running", lastRunAt: null } })).toBe("running");
   });
 });

@@ -23,6 +23,7 @@ export type ThreadEvent =
   | { type: "thread_opened"; thread: Thread }
   | { type: "queued"; subject: string; update: Update; thread: string }
   | { type: "ignored"; subject: string; update: Update; thread: string }
+  | { type: "guarded"; subject: string; update: Update; thread: string; limit: number }
   | { type: "thread_closed"; thread: Thread }
   | { type: "answered"; at: string; thread: string; what: string; how: "approved" | "denied" | "replied" };
 
@@ -61,6 +62,8 @@ export function formatLine(event: LoopwayEvent): string {
       return `${stamp(event.update.at)} queued ${event.subject} ${event.update.kind} -> ${event.thread}`;
     case "ignored":
       return `${stamp(event.update.at)} ignored ${event.update.kind} on ${event.subject} by ${event.update.actor}, who ${event.thread}'s bot does not trust`;
+    case "guarded":
+      return `${stamp(event.update.at)} loop guard ${event.thread}: ${event.update.kind} on ${event.subject} by ${event.update.actor} recorded, not run (${event.limit} bot turns since a person last wrote)`;
     case "thread_closed":
       return `${stamp(event.thread.latestAt)} thread closed ${event.thread.id}`;
     case "run_started": {
@@ -136,6 +139,19 @@ export function formatJson(event: LoopwayEvent): string {
         kind: update.kind,
         actor: update.actor,
         thread,
+      });
+    }
+    case "guarded": {
+      const { subject, thread, update, limit } = event;
+      return JSON.stringify({
+        type: "guarded",
+        time: update.at,
+        subject,
+        id: update.id,
+        kind: update.kind,
+        actor: update.actor,
+        thread,
+        limit,
       });
     }
     case "thread_closed":

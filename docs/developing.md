@@ -39,7 +39,7 @@ CI runs `npm run build` and these four.
 | `github.ts` | `GitHubSource`: REST with ETags, rate-limit detection |
 | `poller.ts` | Discovery (2 min), updates (30 s), dedupe, backoff |
 | `bots.ts` | Reads `.loopway/<bot>.md` |
-| `rules.ts` | `decide(event, threads, bots) -> actions`: the thread rules, a pure function |
+| `rules.ts` | `decide(event, threads, bots) -> actions`: the thread rules, a pure function, including the loop guard (`max_bot_turns`) |
 | `thread.ts`, `threads.ts` | The `Thread` type; the store that applies the rules' actions and keeps `threads/<id>.json` |
 | `sessions.ts` | Delivers each thread's queue to its session (`--max`, resume, requeue on failure, usage-limit hold), and records what it sends. Also the TUI's chat blocks: messages from the owner go to the session in order, the queue waits, and the end of the block tells the session to report |
 | `claude.ts`, `transcript.ts` | The Claude Code harness: `claude -p` args, spawn, how a run ended, and the stream turned into log lines |

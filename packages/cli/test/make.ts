@@ -8,6 +8,7 @@ export const aBot = (name: string, on: Bot["on"], repos = ["o/r"]): Bot => ({
   on,
   harness: "claude",
   trusted: [],
+  maxBotTurns: 3,
   allow: [],
   deny: [],
   rules: {},

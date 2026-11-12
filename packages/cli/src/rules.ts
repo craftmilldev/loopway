@@ -1,4 +1,4 @@
-import type { Bot } from "./bots.js";
+import { DEFAULT_MAX_BOT_TURNS, type Bot } from "./bots.js";
 import type { Subject, Update } from "./source.js";
 import { holds, markerOf, repoOf, type Thread } from "./thread.js";
 
@@ -16,7 +16,9 @@ export type Action =
   | { type: "mark"; thread: string; subject: string; status: "open" | "closed" }
   | { type: "close"; thread: string }
   /** A comment or review from someone the bot does not trust: it is not queued, only noted. */
-  | { type: "ignore"; thread: string; subject: string; update: Update };
+  | { type: "ignore"; thread: string; subject: string; update: Update }
+  /** The loop guard: a comment from the bot user past the thread's limit. It is recorded, not queued. */
+  | { type: "guard"; thread: string; subject: string; update: Update };
 
 /** Who a bot listens to, and whose work it starts. Without one, every bot trusts everyone and no assignment is needed. */
 export interface Trust {
@@ -24,6 +26,8 @@ export interface Trust {
   owner: string;
   /** Whether `bot` listens to `login`: its `trusted` list with teams resolved, plus you and the bot user. */
   trusts(bot: string, login: string): boolean;
+  /** The bot user's login, when it differs from yours. Its comments count toward the loop guard. */
+  botUser?: string;
 }
 
 /**
@@ -33,6 +37,8 @@ export interface Trust {
  *   assigned to you. A subject that is not assigned yet is known, and gets its threads when it is assigned to you.
  *   With a `trust`, that is the rule; without one, every subject starts them.
  * - A comment or review from a login the bot does not trust is not queued for it.
+ * - The loop guard: once a thread has taken `max_bot_turns` comments from the bot user with none from a person in
+ *   between, the next ones are recorded (`guard`) but not queued. A person's comment starts the count again.
  * - An update goes on the queue of every open thread holding the subject, except a comment that thread sent itself. A subject closing or merging is marked on
  *   the thread, and the thread closes when none of its subjects is open. A subject reopening is marked open again.
  * - A subject a thread created (told by the tool, or found by the marker in its text) joins that thread, and starts a
@@ -57,7 +63,8 @@ export function decide(event: RuleEvent, threads: Thread[], bots: Bot[], trust?:
   }
   const { subject, update } = event;
   const open = threads.filter((t) => t.status === "open" && holds(t, subject.key));
-  const following = open.flatMap((t) => follow(t, subject.key, update, trust));
+  const limit = (t: Thread) => bots.find((b) => b.name === t.bot)?.maxBotTurns ?? DEFAULT_MAX_BOT_TURNS;
+  const following = open.flatMap((t) => follow(t, subject.key, update, limit(t), trust));
   return [...following, ...startThreadsForUpdate(subject, update, threads, bots, trust)];
 }
 
@@ -77,11 +84,14 @@ function created(threadId: string, subject: Subject, threads: Thread[], bots: Bo
 }
 
 /** An open thread takes the update, and notes the subject closing or reopening. */
-function follow(thread: Thread, key: string, update: Update, trust?: Trust): Action[] {
+function follow(thread: Thread, key: string, update: Update, maxTurns: number, trust?: Trust): Action[] {
   if (update.body?.includes(markerOf(thread.id))) return [];
   // Only words and verdicts can steer a session, so only they are held back: a close, a label or a CI result still goes through.
   if ((update.body || update.kind === "review") && trust && !trust.trusts(thread.bot, update.actor))
     return [{ type: "ignore", thread: thread.id, subject: key, update }];
+  const fromBot = isBotWords(update, trust);
+  if (fromBot && (thread.botTurns ?? 0) >= maxTurns)
+    return [{ type: "guard", thread: thread.id, subject: key, update }];
   const queue: Action = { type: "queue", thread: thread.id, subject: key, update };
   if (update.kind === "reopened") return [queue, { type: "mark", thread: thread.id, subject: key, status: "open" }];
   if (!isClosing(update)) return [queue];
@@ -109,6 +119,10 @@ function startThreadsForUpdate(
   const candidates = reported ? withoutWorker(subject, threads, bots) : never(subject, threads, bots);
   return startThreads(subject, candidates, [], trust, assigned);
 }
+
+/** Words (a comment, or a review) from the bot user. Only these count toward the loop guard. */
+export const isBotWords = (update: Update, trust?: Trust) =>
+  (!!update.body || update.kind === "review") && sameLogin(update.actor, trust?.botUser);
 
 const sameLogin = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 

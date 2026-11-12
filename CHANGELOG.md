@@ -6,6 +6,8 @@ loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and i
 
 ### Added
 
+- **Loop guard.** A thread takes at most `max_bot_turns` (default 3, in the bot's front matter) comments from the bot user in a row; the rest are recorded and logged as `loop guard`, and start no run, until a person comments. Stops two bots, or two loopways, answering each other forever.
+
 - Bare `loopway`, with `--json`. Bots are `.loopway/<bot>.md` files; state is JSON per project, in `~/.loopway/state/<slug>`.
 
 - Sessions: each open thread's queued updates go to a Claude Code session that acts as the bot user and talks back through loopway's own MCP server (`comment`). `--max N` caps runs in flight. Bot files gain `model` and `harness`. Each thread has a `session`, the `sent` messages and a `<id>.log`.

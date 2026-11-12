@@ -136,7 +136,7 @@ Open asks live in the thread's JSON, so a restart keeps waiting on them. The log
 
 ## Bots: `.loopway/`
 
-`loopway` reads the `.loopway/` folder in the directory it runs from. Each bot is one file, `.loopway/<bot>.md`: Markdown with YAML front matter. The front matter is the bot's rules; the Markdown is its prompt, which starts each thread's session. The keys: `repos`; `on: issue`, `on: pull_request` or a list of both, which says which new subjects start a thread for the bot; `model` (like `sonnet`, passed to Claude Code); `harness` (only `claude`, the default); `allow` and `deny`, lists of tool patterns that decide permission asks (see Asks); and `trusted` (see Who a bot listens to). Keys loopway does not know are ignored. It polls the union of every bot's repos.
+`loopway` reads the `.loopway/` folder in the directory it runs from. Each bot is one file, `.loopway/<bot>.md`: Markdown with YAML front matter. The front matter is the bot's rules; the Markdown is its prompt, which starts each thread's session. The keys: `repos`; `on: issue`, `on: pull_request` or a list of both, which says which new subjects start a thread for the bot; `model` (like `sonnet`, passed to Claude Code); `harness` (only `claude`, the default); `allow` and `deny`, lists of tool patterns that decide permission asks (see Asks); `trusted` (see Who a bot listens to); and `max_bot_turns` (see The loop guard). Keys loopway does not know are ignored. It polls the union of every bot's repos.
 
 `.loopway/dev.md`:
 
@@ -170,6 +170,10 @@ review. Be specific, and say what you ran.
 - **Who can start work:** a new issue or pull request starts a thread for a bot only when its author is trusted by that bot **and** it is assigned to you. Until then it is known and watched: assigning it to you later (an `assigned` update) starts the thread. Nobody else's machine, and nobody you haven't listed, can start work on yours.
 - **Whose words reach the session:** a comment, or a review (with or without text, since an approval steers a session too), from a login the bot doesn't trust is not queued for it. The log says `ignored comment on owner/repo#N by someone, who tN's bot does not trust` (`--json`: an `ignored` line). Closes, labels and CI results carry no text from the person, so they still pass.
 - **Subjects a thread creates:** a pull request needs no assignment, since the thread that opened it is already watching, so the review bot's thread starts at once. An issue is only filed unless `create_issue` is called with `assign: true`, which assigns it to you and starts the dev thread. The session decides which one it means.
+### The loop guard
+
+Bots answer each other: a review bot's comment should reach the dev bot, but two threads on one pull request (or two loopways on one repo) can trade comments forever. So a thread counts the bot user's comments and reviews it has been given since a person last wrote. At `max_bot_turns` (a whole number in the bot's front matter, 3 if left out), the next ones are recorded but start no run: the log says `loop guard tN: comment on owner/repo#N by loopway-bot recorded, not run (3 bot turns since a person last wrote)` (`--json`: a `guarded` line), and the TUI shows `loop guard` as the thread's session. A comment or review from a person the bot trusts, on any subject of the thread, starts the count again and the thread runs on it as usual. Closes, labels, CI results and the bot's own comments to itself are not counted. When you and the bot user are the same login there is nothing to tell apart, and the guard is off.
+
 ## The TUI
 
 In a terminal, a bare `loopway` opens a full-screen TUI on the same poller. `loopway --no-tui`, `--json`, or output that isn't a terminal (`loopway | cat`) keeps the plain log below.

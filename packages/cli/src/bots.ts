@@ -19,6 +19,11 @@ export interface Bot {
    * the bot user's, who are always trusted. Work still starts only on what is assigned to you.
    */
   trusted: string[];
+  /**
+   * The loop guard: how many of the bot user's comments a thread takes in a row, with no comment from a person
+   * between, before the rest stop starting runs. `max_bot_turns` in the front matter; 3 by default.
+   */
+  maxBotTurns: number;
   /** Tool patterns in Claude Code's permission syntax (`Bash(npm test:*)`) that pass without asking. */
   allow: string[];
   /** Tool patterns that are refused without asking. They win over `allow`. */
@@ -76,6 +81,7 @@ export function parseBot(name: string, text: string, where = `${name}.md`): Bot 
     harness: parseHarness(rules.harness, where),
     model: typeof rules.model === "string" ? rules.model : undefined,
     trusted: parseTrusted(rules.trusted, where),
+    maxBotTurns: parseMaxBotTurns(rules.max_bot_turns, where),
     allow: parsePatterns(rules.allow, "allow", where),
     deny: parsePatterns(rules.deny, "deny", where),
     rules,
@@ -100,6 +106,15 @@ function parseTrusted(raw: unknown, where: string): string[] {
       throw new Error(`${where}: "trusted" is a list of GitHub logins and org/team slugs, like ["alice", "acme/devs"]`);
   }
   return list as string[];
+}
+
+export const DEFAULT_MAX_BOT_TURNS = 3;
+
+function parseMaxBotTurns(raw: unknown, where: string): number {
+  if (raw === undefined) return DEFAULT_MAX_BOT_TURNS;
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 1)
+    throw new Error(`${where}: "max_bot_turns" is a whole number of 1 or more, like 3`);
+  return raw;
 }
 
 function parseHarness(raw: unknown, where: string): Bot["harness"] {

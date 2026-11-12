@@ -139,6 +139,11 @@
           decide what the bot may do without asking you: <code>deny</code> is checked first, then <code>allow</code>,
           and anything else is asked on the thread for a 👍 or 👎.
         </dd>
+        <dt><code>max_bot_turns</code></dt>
+        <dd>
+          The loop guard: how many comments from the bot user a thread takes in a row, with none from a person between.
+          After that they are recorded but start no run, until a person comments. A whole number, 3 if left out.
+        </dd>
       </dl>
       <p>Keys loopway does not know are ignored.</p>
 

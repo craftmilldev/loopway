@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { askLabel, callKey, openAsks, type Ask } from "./asks.js";
-import type { Bot } from "./bots.js";
+import { DEFAULT_MAX_BOT_TURNS, type Bot } from "./bots.js";
 import type { LoopwayEvent, ThreadEvent } from "./format.js";
-import { decide, type Action, type Trust } from "./rules.js";
+import { decide, isBotWords, type Action, type Trust } from "./rules.js";
 import type { Update } from "./source.js";
 import { writeJson } from "./state.js";
 import { holds, type Thread } from "./thread.js";
@@ -113,6 +113,7 @@ export class Threads {
     if (action.type === "queue") this.answerQuestions(thread, action.subject, action.update, events);
     if (action.type === "ignore")
       events.push({ type: "ignored", subject: action.subject, update: action.update, thread: thread.id });
+    if (action.type === "guard") this.guard(thread, action.subject, action.update, events);
     if (action.type === "mark") thread.subjects.find((s) => s.key === action.subject)!.status = action.status;
     if (action.type === "close") this.close(thread, events);
     return thread;
@@ -136,9 +137,23 @@ export class Threads {
   }
 
   private queue(thread: Thread, subject: string, update: Update, events: ThreadEvent[]) {
+    // The loop guard's count: the bot user's words add one, a person's words start it again.
+    if (isBotWords(update, this.o.trust)) thread.botTurns = (thread.botTurns ?? 0) + 1;
+    else if (update.body || update.kind === "review") {
+      delete thread.botTurns;
+      delete thread.guarded;
+    }
     thread.queue.push({ ...update, subject });
     if (update.at > thread.latestAt) thread.latestAt = update.at;
     events.push({ type: "queued", subject, update, thread: thread.id });
+  }
+
+  /** A bot comment past the limit: shown and remembered, never queued, so it starts no run. */
+  private guard(thread: Thread, subject: string, update: Update, events: ThreadEvent[]) {
+    thread.guarded = true;
+    if (update.at > thread.latestAt) thread.latestAt = update.at;
+    const limit = this.o.bots.find((b) => b.name === thread.bot)?.maxBotTurns ?? DEFAULT_MAX_BOT_TURNS;
+    events.push({ type: "guarded", subject, update, thread: thread.id, limit });
   }
 
   /** The owner's comment on a subject after a question was asked there answers it. It is queued like any update. */

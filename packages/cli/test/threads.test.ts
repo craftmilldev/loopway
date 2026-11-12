@@ -304,3 +304,54 @@ describe("threads with a trust", () => {
     expect(lines).toContain("ignored comment on o/r#1 by mallory, who t1's bot does not trust");
   });
 });
+
+describe("the loop guard", () => {
+  async function guarded(maxBotTurns = 3) {
+    const dir = await mkdtemp(join(tmpdir(), "loopway-threads-"));
+    const trust = { owner: "me", botUser: "loopway-bot", trusts: () => true };
+    const threads = await Threads.load({ dir, bots: [{ ...dev, maxBotTurns }], trust, newId: () => "t1" });
+    const h = harness({
+      react: async (event, push) => {
+        for (const e of await threads.handle(event)) push(e);
+      },
+    });
+    await h.poller.discover();
+    h.source.add("o/r#1", "me", "2026-11-10T12:01:00Z", "issue", undefined, ["me"]);
+    await h.poller.discover();
+    let clock = 0;
+    const say = async (id: string, actor: string) => {
+      h.source.say("o/r#1", { id, actor, body: id, at: `2026-11-10T14:${String(++clock).padStart(2, "0")}:00Z` });
+      await h.poller.updates();
+    };
+    const lines = () => h.events.map((e) => formatLine(e).slice(17));
+    return { dir, say, lines, thread: () => threads.all[0]! };
+  }
+
+  it("records bot comments past the limit without queueing them, then a person's comment starts over", async () => {
+    const g = await guarded();
+    // The first three are queued, the last two are guarded.
+    for (const id of ["bot:a", "bot:b", "bot:c", "bot:d", "bot:e"]) await g.say(id, "loopway-bot");
+    expect(g.thread().queue.map((q) => q.id)).toEqual(["bot:a", "bot:b", "bot:c"]);
+    expect(g.thread().guarded).toBe(true);
+    expect(g.lines().filter((l) => l.startsWith("loop guard"))).toEqual([
+      "loop guard t1: comment on o/r#1 by loopway-bot recorded, not run (3 bot turns since a person last wrote)",
+      "loop guard t1: comment on o/r#1 by loopway-bot recorded, not run (3 bot turns since a person last wrote)",
+    ]);
+    await g.say("human1", "me");
+    expect(g.thread().guarded).toBeUndefined();
+    expect(g.thread().botTurns).toBeUndefined();
+    expect(g.thread().queue.map((q) => q.id)).toEqual(["bot:a", "bot:b", "bot:c", "human1"]);
+    await g.say("bot:f", "loopway-bot");
+    expect(g.thread().queue.at(-1)?.id).toBe("bot:f");
+    expect(g.thread().botTurns).toBe(1);
+  });
+
+  it("is saved with the thread, so a restart keeps the count", async () => {
+    const g = await guarded(1);
+    await g.say("bot:a", "loopway-bot");
+    await g.say("bot:b", "loopway-bot");
+    const saved = (await loadThreads(g.dir))[0];
+    expect(saved?.botTurns).toBe(1);
+    expect(saved?.guarded).toBe(true);
+  });
+});

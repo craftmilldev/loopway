@@ -292,3 +292,45 @@ describe("who the bots listen to, and what starts work", () => {
     );
   });
 });
+
+describe("the loop guard", () => {
+  const trust = { owner: "me", botUser: "loopway-bot", trusts: () => true };
+  const bot = (id: string, actor = "loopway-bot") => ({ ...anUpdate(id), actor, body: id });
+  const decideFor = (thread: ReturnType<typeof aThread>, update: ReturnType<typeof bot>, list = [dev]) =>
+    decide({ type: "update", subject: aSubject(1), update }, [thread], list, trust).map((a) => a.type);
+
+  it("queues the bot user's comments until the thread has taken max_bot_turns of them", () => {
+    const thread = aThread("t1", "dev", ["o/r#1"]);
+    thread.botTurns = 2;
+    expect(decideFor(thread, bot("c1"))).toEqual(["queue"]);
+    thread.botTurns = 3;
+    expect(decideFor(thread, bot("c2"))).toEqual(["guard"]);
+  });
+
+  it("counts a review from the bot user, but not a label or a check", () => {
+    const thread = aThread("t1", "dev", ["o/r#1"]);
+    thread.botTurns = 3;
+    expect(decideFor(thread, { ...bot("r1"), kind: "review", body: "" })).toEqual(["guard"]);
+    expect(decideFor(thread, { ...bot("l1"), kind: "labeled", body: "" })).toEqual(["queue"]);
+  });
+
+  it("never holds back a person, however many bot comments came first", () => {
+    const thread = aThread("t1", "dev", ["o/r#1"]);
+    thread.botTurns = 9;
+    expect(decideFor(thread, bot("c3", "me"))).toEqual(["queue"]);
+  });
+
+  it("uses the limit in the thread's bot file", () => {
+    const thread = aThread("t1", "dev", ["o/r#1"]);
+    thread.botTurns = 1;
+    expect(decideFor(thread, bot("c4"), [{ ...dev, maxBotTurns: 1 }])).toEqual(["guard"]);
+  });
+
+  it("does nothing without a bot user to tell comments apart", () => {
+    const thread = aThread("t1", "dev", ["o/r#1"]);
+    thread.botTurns = 9;
+    expect(
+      decide({ type: "update", subject: aSubject(1), update: bot("c5") }, [thread], [dev]).map((a) => a.type),
+    ).toEqual(["queue"]);
+  });
+});
