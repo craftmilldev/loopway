@@ -56,3 +56,7 @@ Tests fake the source (`test/fake.ts`) for the poller, and fake `fetch` for `Git
 ## The marketing page
 
 `packages/web/public/index.html` is the whole site. `packages/web/vercel.json` serves `public/` with no install or build, and `scripts/should-build.mjs` (the `ignoreCommand`) skips deploys when nothing in `packages/web` changed. Verifications for each PR live in `verifications/`.
+
+The page is the billboard (`public/billboard/`, in a full-window iframe) with five frames that scrolling steps through: the sign itself (wordmark and tagline), then cards for the description, install, getting started and the GitHub link. Wheel, swipe, arrow, PageUp/PageDown and space keys step one frame; the billboard passes them up with `postMessage` because the iframe gets them first. The install host is the one `loopway.craftmill.dev` in `index.html`; change it there if the site moves.
+
+The billboard keeps what has been found in `localStorage` (`loopway.found`: `snake`, `bird`, `loops`) and tells the page; the tracker on the last card reads it. PostHog gets `frame_viewed` (`frame`, `name`, `from`), `snake_found` and `bird_found` (the first time only), `install_copied` and `github_clicked`, plus the page view, for a funnel. `?u=` and `?speed=` on `/billboard/` still freeze and speed up the day.

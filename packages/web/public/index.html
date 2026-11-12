@@ -6,7 +6,7 @@
     <title>loopway</title>
     <meta
       name="description"
-      content="loopway polls the collaboration tools your agents work in, from your own machine, and tells you what changed."
+      content="Loopway turns GitHub issues and PRs into an agent communication platform. Keep your agents and team in same loop."
     />
     <link rel="icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -17,13 +17,18 @@
         --ink-soft: #4b4534;
         --madder: #9e2b1c;
         --rule: rgba(22, 19, 14, 0.32);
+        --mono: "Courier Prime", Courier, ui-monospace, monospace;
       }
       * {
         box-sizing: border-box;
       }
+      html,
       body {
         margin: 0;
-        background: var(--paper);
+        height: 100%;
+        background: var(--ink);
+      }
+      body {
         color: var(--ink-soft);
         font:
           17px/1.5 "Sorts Mill Goudy",
@@ -31,295 +36,379 @@
           "Times New Roman",
           serif;
       }
-      main {
-        max-width: 640px;
-        margin: 0 auto;
-        padding: 72px 24px;
+      a {
+        color: var(--ink);
       }
-      .mark {
-        font:
-          14px "Courier Prime",
-          Courier,
-          ui-monospace,
-          monospace;
+      /* The billboard is the site: it fills the window, all the time, and the cards go over it. */
+      .billboard {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: var(--ink);
+      }
+      /* Without scripts the cards are a column over the picture. With them, each is a frame. */
+      .cards {
+        position: relative;
+        padding: 24px 16px;
+      }
+      .card {
+        margin: 0 auto 24px;
+        max-width: 640px;
+      }
+      .panel {
+        padding: 28px 32px;
+        border: 1px solid var(--rule);
+        background: rgba(228, 221, 201, 0.95);
+      }
+      .panel > :first-child {
+        margin-top: 0;
+      }
+      .panel > :last-child {
+        margin-bottom: 0;
+      }
+      h2 {
+        margin: 0 0 12px;
+        color: var(--ink);
+        font-size: 28px;
+        font-weight: 400;
+        line-height: 1.15;
+      }
+      h2 .n,
+      .small {
+        font: 13px var(--mono);
         letter-spacing: 0.08em;
         text-transform: uppercase;
         color: var(--madder);
       }
-      h1 {
-        margin: 12px 0 16px;
-        color: var(--ink);
-        font-size: 40px;
-        font-weight: 400;
-        line-height: 1.1;
-        letter-spacing: -0.02em;
+      h2 .n {
+        display: block;
+        margin-bottom: 6px;
       }
       pre {
-        margin: 24px 0;
-        padding: 16px;
+        margin: 16px 0;
+        padding: 14px;
         overflow-x: auto;
         border: 1px solid var(--rule);
         color: var(--ink);
-        font:
-          14px/1.5 "Courier Prime",
-          Courier,
-          ui-monospace,
-          monospace;
+        font: 14px/1.5 var(--mono);
       }
-      a {
+      code {
+        font-family: var(--mono);
         color: var(--ink);
       }
-      /* The billboard: a living picture across the top of the page, in its own frame. */
-      /* The same column as the text below it. */
-      .billboard {
-        position: relative;
-        max-width: 640px;
-        margin: 0 auto;
-        padding: 48px 24px 0;
-      }
-      .billboard + main {
-        padding-top: 40px;
-      }
-      .billboard iframe {
-        display: block;
-        width: 100%;
-        aspect-ratio: 16 / 10;
-        border: 1px solid var(--rule);
-        background: var(--ink);
-      }
-      /* Opened out: it fills the window, over the page, whether or not the browser also goes full screen. */
-      .billboard.open {
-        position: fixed;
-        inset: 0;
-        z-index: 10;
-        max-width: none;
-        margin: 0;
-        padding: 0;
-        background: var(--ink);
-      }
-      .billboard.open iframe {
-        height: 100%;
-        aspect-ratio: auto;
-        border: 0;
-      }
-      .billboard-open {
-        overflow: hidden;
-      }
-      .billboard .full,
-      .copy button {
-        padding: 6px 10px;
-        border: 1px solid var(--rule);
-        background: var(--paper);
-        color: var(--ink);
-        font:
-          12px "Courier Prime",
-          Courier,
-          ui-monospace,
-          monospace;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        text-decoration: none;
-        cursor: pointer;
-      }
-      .billboard .full {
-        position: absolute;
-        right: 36px;
-        bottom: 12px;
-        padding: 7px;
-      }
-      /* Arrows pointing out to the corners; pointing in once it is open. */
-      .billboard .full svg {
-        display: block;
-        width: 16px;
-        height: 16px;
-        fill: none;
-        stroke: currentColor;
-        stroke-width: 1.6;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-      }
-      .billboard .full .shrink,
-      .billboard.open .full .expand {
-        display: none;
-      }
-      .billboard.open .full .shrink {
-        display: block;
-      }
-      .billboard.open .full {
-        right: 16px;
-        bottom: 16px;
-      }
-      .billboard .full:hover,
-      .copy button:hover {
-        border-color: var(--ink);
-      }
-      @media (max-width: 600px) {
-        .billboard .full {
-          right: 30px;
-          bottom: 6px;
-          padding: 5px;
-        }
-        .billboard .full svg {
-          width: 13px;
-          height: 13px;
-        }
-      }
-      h2 {
-        margin: 40px 0 8px;
-        color: var(--ink);
-        font-size: 24px;
-        font-weight: 400;
-      }
-      /* A block of commands with a button that copies them. */
       .copy {
         position: relative;
       }
       .copy pre {
         padding-right: 84px;
       }
+      button {
+        padding: 6px 10px;
+        border: 1px solid var(--rule);
+        background: var(--paper);
+        color: var(--ink);
+        font: 12px var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--ink);
+      }
       .copy button {
         position: absolute;
         top: 9px;
         right: 9px;
       }
-      footer {
-        margin-top: 48px;
-        padding-top: 16px;
+      .head img {
+        display: block;
+        height: 34px;
+        /* The wordmark's own pale ground drops out against the paper. */
+        mix-blend-mode: multiply;
+      }
+      .repo {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        font: 22px var(--mono);
+        text-decoration: none;
+      }
+      .repo svg {
+        width: 36px;
+        height: 36px;
+        fill: currentColor;
+      }
+      .tracker {
+        margin: 24px 0 0;
+        padding: 12px 0 0;
         border-top: 1px solid var(--rule);
-        font-size: 15px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 20px;
+        font: 12px var(--mono);
+        color: var(--ink-soft);
+      }
+      /* The first frame is the sign itself, which already has the wordmark and the tagline. */
+      .scroll {
+        position: fixed;
+        left: 50%;
+        bottom: 14px;
+        transform: translateX(-50%);
+        border: 0;
+        background: none;
+        color: var(--paper);
+        text-shadow: 0 1px 4px var(--ink);
+        font-size: 14px;
+      }
+      html.js body {
+        overflow: hidden;
+      }
+      html.js .cards {
+        position: fixed;
+        inset: 0;
+        padding: 0;
+        /* Clicks go through to the picture; only the panels take them. */
+        pointer-events: none;
+      }
+      html.js .card {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: calc(100% - 32px);
+        margin: 0;
+        opacity: 0;
+        visibility: hidden;
+        transform: translate(-50%, calc(-50% + 24px));
+        transition:
+          opacity 0.45s,
+          transform 0.45s,
+          visibility 0.45s;
+      }
+      html.js .card.on {
+        opacity: 1;
+        visibility: visible;
+        transform: translate(-50%, -50%);
+      }
+      html.js .card .panel {
+        pointer-events: auto;
+      }
+      html.js .head {
+        position: absolute;
+        top: 16px;
+        left: 20px;
+        opacity: 0;
+        transition: opacity 0.45s;
+      }
+      html.js .head.on {
+        opacity: 1;
+      }
+      html:not(.js) .scroll,
+      html:not(.js) .head {
+        display: none;
+      }
+      html.js .head .panel,
+      .head .panel {
+        padding: 8px 12px;
+      }
+      @media (max-width: 600px) {
+        .panel {
+          padding: 20px 18px;
+        }
+        h2 {
+          font-size: 23px;
+        }
+        pre {
+          font-size: 12px;
+        }
+        .repo {
+          font-size: 16px;
+        }
       }
     </style>
-    <!-- Craftmill's PostHog, through the shared proxy: a page load and clicks on GitHub links, nothing else. -->
+    <!-- Craftmill's PostHog, through the shared proxy. It sees a page load and the frame, copy, GitHub and
+         animation events below, nothing else. -->
     <script src="https://a.craftmill.dev/api/ingest/static/array.js"></script>
     <script>
-      posthog.init("phc_BPP9dYnbUgCbhLiRynBT4sEpWJaYAFWMVApuMZUshQMy", {
-        api_host: "https://a.craftmill.dev/api/ingest",
-        ui_host: "https://us.posthog.com",
-        defaults: "2026-05-30",
-        autocapture: false,
-        capture_pageleave: false,
-        capture_exceptions: false,
-        disable_session_recording: true,
-        disable_surveys: true,
-        advanced_disable_flags: true,
-        capture_dead_clicks: false,
-        capture_performance: false,
-        persistence: "localStorage",
-        loaded: (ph) => ph.register({ product: "loopway", app: "marketing" }),
-      });
-      document.addEventListener("click", (event) => {
-        const link = event.target.closest && event.target.closest('a[href^="https://github.com/"]');
-        if (link) posthog.capture("github_clicked", { href: link.href }, { transport: "sendBeacon" });
-      });
-      // Neither of the two below sends anything anywhere.
-      document.addEventListener("click", (event) => {
-        if (!event.target.closest) return;
-        // Full screen for the billboard. The picture is opened out to fill the window first, which
-        // works everywhere; then the browser is asked for true full screen on top of that, which
-        // some browsers and embedded views refuse or ignore. Without scripts the link opens the
-        // billboard on its own page.
-        const full = event.target.closest(".billboard .full");
-        if (full) {
-          event.preventDefault();
-          const figure = full.closest(".billboard");
-          if (figure.classList.contains("open")) closeBillboard();
-          else {
-            figure.classList.add("open");
-            document.documentElement.classList.add("billboard-open");
-            full.setAttribute("aria-label", "Exit full screen");
-            full.title = "Exit full screen";
-            if (figure.requestFullscreen) figure.requestFullscreen().catch(() => {});
-          }
+      document.documentElement.classList.add("js");
+      if (window.posthog)
+        posthog.init("phc_BPP9dYnbUgCbhLiRynBT4sEpWJaYAFWMVApuMZUshQMy", {
+          api_host: "https://a.craftmill.dev/api/ingest",
+          ui_host: "https://us.posthog.com",
+          defaults: "2026-05-30",
+          autocapture: false,
+          capture_pageleave: false,
+          capture_exceptions: false,
+          disable_session_recording: true,
+          disable_surveys: true,
+          advanced_disable_flags: true,
+          capture_dead_clicks: false,
+          capture_performance: false,
+          persistence: "localStorage",
+          loaded: (ph) => ph.register({ product: "loopway", app: "marketing" }),
+        });
+      // The one way anything is sent, so a blocked script never breaks the page.
+      const track = (name, props) => window.posthog && posthog.capture(name, props, { transport: "sendBeacon" });
+
+      addEventListener("DOMContentLoaded", () => {
+        // ---- The frames: scrolling steps through the cards, one at a time ----
+        const names = ["tagline", "description", "install", "get-started", "github"];
+        const cards = [...document.querySelectorAll(".card[data-frame]")];
+        const head = document.querySelector(".head");
+        const hint = document.querySelector(".scroll");
+        let frame = 0;
+        let lockedUntil = 0;
+        function show(to) {
+          // Frame 1 is the sign on the billboard itself, so it has no card.
+          cards.forEach((card, i) => card.classList.toggle("on", i === to - 1));
+          head.classList.toggle("on", to > 0);
+          hint.hidden = to !== 0;
         }
-        // Copy a block of commands.
-        const button = event.target.closest(".copy button");
-        if (button) {
-          const text = button.parentElement.querySelector("pre").textContent.trim();
-          const done = () => {
-            button.textContent = "Copied";
-            setTimeout(() => (button.textContent = "Copy"), 2000);
-          };
-          if (navigator.clipboard) navigator.clipboard.writeText(text).then(done);
-          else {
+        function step(direction) {
+          const to = Math.max(0, Math.min(names.length - 1, frame + direction));
+          // One wheel flick is many events, so a frame is held for a moment before the next.
+          if (to === frame || Date.now() < lockedUntil) return;
+          track("frame_viewed", { frame: to + 1, name: names[to], from: frame + 1 });
+          frame = to;
+          lockedUntil = Date.now() + 700;
+          show(to);
+        }
+        show(0);
+        hint.addEventListener("click", () => step(1));
+        addEventListener("wheel", (event) => Math.abs(event.deltaY) > 4 && step(Math.sign(event.deltaY)), {
+          passive: true,
+        });
+        let swipeFrom = null;
+        addEventListener("touchstart", (event) => (swipeFrom = event.touches[0].clientY), { passive: true });
+        addEventListener("touchend", (event) => {
+          if (swipeFrom === null) return;
+          const moved = swipeFrom - event.changedTouches[0].clientY;
+          swipeFrom = null;
+          if (Math.abs(moved) > 40) step(Math.sign(moved));
+        });
+        addEventListener("keydown", (event) => {
+          if (["ArrowDown", "PageDown", " "].includes(event.key)) step(1);
+          if (["ArrowUp", "PageUp"].includes(event.key)) step(-1);
+        });
+
+        // ---- The billboard: wheel, swipe and key presses over the picture come from inside it ----
+        const tracker = document.querySelector(".tracker");
+        function showFound(found) {
+          tracker.querySelector("[data-snake]").textContent = found.snake ? "yes" : "not yet";
+          tracker.querySelector("[data-bird]").textContent = found.bird ? "yes" : "not yet";
+          tracker.querySelector("[data-loops]").textContent = found.loops;
+        }
+        // What has been found is in localStorage, kept by the billboard; the page reads it, so the
+        // numbers are right before the picture has said anything.
+        try {
+          showFound({ snake: false, bird: false, loops: 0, ...JSON.parse(localStorage.getItem("loopway.found")) });
+        } catch {
+          showFound({ snake: false, bird: false, loops: 0 });
+        }
+        addEventListener("message", (event) => {
+          if (event.origin !== location.origin || !event.data || event.data.loopway !== "billboard") return;
+          const { step: direction, found, first } = event.data;
+          if (direction) step(direction);
+          if (found) showFound(found);
+          // The first time only: the billboard says so, because it is what remembers.
+          if (first) track(`${first}_found`);
+        });
+
+        // ---- Clicks ----
+        document.addEventListener("click", (event) => {
+          if (!event.target.closest) return;
+          const link = event.target.closest('a[href^="https://github.com/"]');
+          if (link) track("github_clicked", { href: link.href });
+          const button = event.target.closest(".copy button");
+          if (!button) return;
+          const pre = button.parentElement.querySelector("pre");
+          track("install_copied", { frame: frame + 1 });
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(pre.textContent.trim()).then(() => {
+              button.textContent = "Copied";
+              setTimeout(() => (button.textContent = "Copy"), 2000);
+            });
+          } else {
             // Older browsers: select the commands, so they can be copied by hand.
             const range = document.createRange();
-            range.selectNodeContents(button.parentElement.querySelector("pre"));
+            range.selectNodeContents(pre);
             getSelection().removeAllRanges();
             getSelection().addRange(range);
           }
-        }
-      });
-      function closeBillboard() {
-        const figure = document.querySelector(".billboard");
-        figure.classList.remove("open");
-        document.documentElement.classList.remove("billboard-open");
-        figure.querySelector(".full").setAttribute("aria-label", "Full screen");
-        figure.querySelector(".full").title = "Full screen";
-        if (document.fullscreenElement) document.exitFullscreen();
-      }
-      // Leaving true full screen (Esc, or the browser's own control) closes the picture as well.
-      let wasFullscreen = false;
-      document.addEventListener("fullscreenchange", () => {
-        if (document.fullscreenElement) wasFullscreen = true;
-        else if (wasFullscreen) {
-          wasFullscreen = false;
-          closeBillboard();
-        }
-      });
-      document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && document.querySelector(".billboard.open")) closeBillboard();
+        });
       });
     </script>
   </head>
   <body>
-    <figure class="billboard">
-      <iframe
-        src="billboard/"
-        title="A Loopway billboard in the Maine woods by a slow river, through one day and night. Click the bramble, the big rock or the spruce by the tent."
-        allow="fullscreen"
-      ></iframe>
-      <a class="full" href="billboard/" aria-label="Full screen" title="Full screen">
-        <svg class="expand" viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M9.5 2H14v4.5M14 2 9 7M6.5 14H2V9.5M2 14l5-5" />
-        </svg>
-        <svg class="shrink" viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M14 6.5H9.5V2M9.5 6.5 14 2M2 9.5h4.5V14M6.5 9.5 2 14" />
-        </svg>
-      </a>
-    </figure>
-    <main>
-      <div class="mark">A Craftmill project</div>
-      <h1>Watch the work your agents do.</h1>
-      <p>
-        loopway runs on your machine and polls GitHub. It prints every new issue and pull request by you or your bot,
-        and every comment, review, label, state change and CI result on the ones it knows. No webhooks, no server.
-      </p>
-      <pre>
-$ loopway
-2026-11-10 14:02 new    owner/repo#12 issue "Fix the login bug" by mcwhittemore
-2026-11-10 14:03 update owner/repo#12 comment by loopway-bot</pre>
-      <p>This is version 2.0, an alpha. It grows from a poller into a place to run agents on the work it finds.</p>
-      <h2>Install</h2>
-      <p>
-        It is not on npm yet, so it is built from a checkout. You need Node 22 or later and the
-        <a href="https://cli.github.com/">GitHub CLI</a>: loopway acts as whoever <code>gh</code> is logged in as.
-      </p>
-      <div class="copy">
-        <pre>
-git clone https://github.com/craftmilldev/loopway.git
-cd loopway
-npm install && npm run build
-npm link -w @loopway/cli
-gh auth login</pre>
-        <button type="button">Copy</button>
+    <iframe
+      class="billboard"
+      src="billboard/"
+      title="A Loopway billboard in the Maine woods by a slow river, through one day and night. Click the bramble, the big rock or the spruce by the tent."
+    ></iframe>
+    <div class="cards">
+      <div class="head">
+        <div class="panel"><img src="billboard/wordmark.svg" alt="Loopway" /></div>
       </div>
-      <p>
-        Then run <code>loopway</code> in a directory with a <code>.loopway/</code> folder holding one file per bot. The
-        <a href="https://github.com/craftmilldev/loopway#getting-started">README</a> has the rest.
-      </p>
-      <footer>
-        <a href="https://github.com/craftmilldev/loopway">github.com/craftmilldev/loopway</a> · MIT licensed
-      </footer>
-    </main>
+
+      <section class="card" data-frame="description">
+        <div class="panel">
+          <h2><span class="n">Loopway</span>Keep your agents and team in same loop</h2>
+          <p>
+            Loopway turns GitHub issues and PRs into an agent communication platform, allowing you to track sessions the
+            same way you track work and allowing your agents and teammates to collaborate with each other. Powered by
+            <code>gh</code> and <code>claude code</code>, Loopway can be set up in minutes.
+          </p>
+        </div>
+      </section>
+
+      <section class="card" data-frame="install">
+        <div class="panel">
+          <h2><span class="n">1 · Install and set up</span>Two commands</h2>
+          <div class="copy">
+            <pre>
+curl -fsSL https://<span id="install-host">loopway.craftmill.dev</span>/install.sh | sh
+loopway setup</pre>
+            <button type="button">Copy</button>
+          </div>
+          <p>
+            <code>loopway setup</code> checks <code>gh</code>, asks about a loopway bot, and offers to add
+            <code>.loopway/dev.md</code> and <code>.loopway/review.md</code> for the bots.
+          </p>
+        </div>
+      </section>
+
+      <section class="card" data-frame="get-started">
+        <div class="panel">
+          <h2><span class="n">2 · Get started</span>Run it, then open an issue</h2>
+          <pre>
+1. loopway
+2. create an issue on GitHub</pre>
+          <p>
+            What goes in each bot's file is explained in
+            <a href="/bots">the <code>.loopway/&lt;bot&gt;.md</code> docs</a>.
+          </p>
+        </div>
+      </section>
+
+      <section class="card" data-frame="github">
+        <div class="panel">
+          <a class="repo" href="https://github.com/craftmilldev/loopway" target="_blank" rel="noopener">
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+              />
+            </svg>
+            craftmilldev/loopway
+          </a>
+          <p class="tracker" aria-label="What you have found on the billboard">
+            <span>found the snake: <b data-snake>not yet</b></span>
+            <span>found the bird: <b data-bird>not yet</b></span>
+            <span>loops completed: <b data-loops>0</b></span>
+          </p>
+        </div>
+      </section>
+    </div>
+    <button type="button" class="scroll" hidden>scroll &darr;</button>
   </body>
 </html>

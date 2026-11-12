@@ -1509,7 +1509,7 @@
         const tagline = (size) => `italic ${size}px Baskerville, "Hoefler Text", "Sorts Mill Goudy", Georgia, serif`;
         // The face is cut to fit: the wordmark runs border to border, and the tagline is one line
         // set to exactly the wordmark's width.
-        const line = "Your agents and team in the same loop";
+        const line = "Keep your agents and team in same loop";
         const markWidth = w - 92;
         const markHeight = (markWidth * 508) / 1896;
         ctx.font = tagline(64);
@@ -3537,6 +3537,7 @@
       }
 
       function frame(now) {
+        countLoops(now);
         const u = freeze ?? mod(((now / 1000) * speed) / T, 1);
         const light = daylight(u);
 
@@ -3610,11 +3611,67 @@
         };
         requestAnimationFrame(tick);
       }
+      // ---- What the page is told ----
+      // What has been found is kept in localStorage, so the first time is only ever the first time.
+      // When this picture is the page's billboard, the page is told as things happen: a message for
+      // each first find, and one whenever the count changes. On its own (/billboard/) nobody listens.
+      const KEPT = "loopway.found";
+      const kept = () => {
+        try {
+          return { snake: false, bird: false, loops: 0, ...JSON.parse(localStorage.getItem(KEPT) || "{}") };
+        } catch {
+          return { snake: false, bird: false, loops: 0 };
+        }
+      };
+      const tell = (message) =>
+        parent !== window && parent.postMessage({ loopway: "billboard", ...message }, location.origin);
+      function keep(change, first) {
+        const now = { ...kept(), ...change };
+        try {
+          localStorage.setItem(KEPT, JSON.stringify(now));
+        } catch {
+          // Storage is off (private mode): the count is kept for this visit only, and every find is a first.
+        }
+        tell({ found: now, first });
+      }
+      function found(what) {
+        if (!kept()[what]) keep({ [what]: true }, what);
+      }
+      // A loop is done when the day comes round to the start again. A tab that was in the background
+      // counts one, not every one it missed.
+      let loopsSeen = 0;
+      function countLoops(now) {
+        if (freeze !== null) return;
+        const done = Math.floor(((now / 1000) * speed) / T);
+        if (done > loopsSeen && !document.hidden) keep({ loops: kept().loops + 1 });
+        loopsSeen = done;
+      }
+      // The page steps through its cards on scroll, and a wheel or a swipe over the picture goes to the
+      // picture, not the page, so it is passed on.
+      let swipeFrom = null;
+      addEventListener("wheel", (event) => tell({ step: Math.sign(event.deltaY) }), { passive: true });
+      addEventListener("touchstart", (event) => (swipeFrom = event.touches[0].clientY), { passive: true });
+      addEventListener("touchend", (event) => {
+        if (swipeFrom === null) return;
+        const moved = swipeFrom - event.changedTouches[0].clientY;
+        swipeFrom = null;
+        if (Math.abs(moved) > 40) tell({ step: Math.sign(moved) });
+      });
+      addEventListener("keydown", (event) => {
+        const down = ["ArrowDown", "PageDown", " "];
+        if (down.includes(event.key) || ["ArrowUp", "PageUp"].includes(event.key)) {
+          event.preventDefault();
+          tell({ step: down.includes(event.key) ? 1 : -1 });
+        }
+      });
       canvas.addEventListener("pointerdown", (event) => {
         const what = clickable(...toScene(event));
         if (what === "snake") SNAKE.start = clockNow();
         if (what === "bird") BIRD.start = clockNow();
-        if (what) wake();
+        if (what) {
+          found(what);
+          wake();
+        }
       });
       canvas.addEventListener("pointermove", (event) => {
         canvas.style.cursor = clickable(...toScene(event)) ? "pointer" : "default";
@@ -3622,6 +3679,7 @@
       addEventListener("resize", resize);
       wordmark.addEventListener("load", () => freeze !== null && frame(0));
       resize();
+      tell({ found: kept() });
       if (freeze === null) requestAnimationFrame(frame);
     </script>
   </body>
