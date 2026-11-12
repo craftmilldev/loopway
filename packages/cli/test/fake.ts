@@ -60,6 +60,12 @@ export class FakeSource implements SubjectSource {
     if (s) s.updatedAt = at;
   }
 
+  /** Closes a subject, or reopens it. */
+  setOpen(key: string, open: boolean) {
+    const s = this.subjects.find((x) => x.key === key);
+    if (s) s.open = open;
+  }
+
   say(key: string, update: Partial<Update> & { id: string }) {
     const full: Update = { kind: "comment", actor: "me", at: "2026-11-10T14:00:00Z", ...update };
     this.said.set(key, [...(this.said.get(key) ?? []), full]);

@@ -61,6 +61,43 @@ describe("discovery", () => {
     expect(h.events.map((e) => e.type === "new" && e.subject.key)).toEqual(["o/r#2"]);
   });
 
+  it("does not adopt an old closed subject when it is touched, but does once it is reopened", async () => {
+    const h = harness();
+    h.source.add("o/r#1", "me", "2026-11-09T09:00:00Z");
+    h.source.setOpen("o/r#1", false);
+    await h.poller.discover();
+    h.source.touch("o/r#1", "2026-11-10T13:00:00Z"); // someone says "thanks"
+    await h.poller.discover();
+    expect(h.events).toEqual([]);
+    h.source.say("o/r#1", { id: "reopened", kind: "reopened", at: "2026-11-10T14:00:00Z" });
+    h.source.setOpen("o/r#1", true);
+    h.source.touch("o/r#1", "2026-11-10T14:00:00Z");
+    await h.poller.discover();
+    await h.poller.updates();
+    expect(
+      h.events.map((e) => (e.type === "new" ? `new ${e.subject.key}` : e.type === "update" ? e.update.id : e.type)),
+    ).toEqual(["new o/r#1", "reopened"]);
+  });
+
+  it("logs a subject it could not read the history of, and tries it again next time", async () => {
+    const h = harness();
+    h.source.add("o/r#1", "me", "2026-11-09T09:00:00Z");
+    await h.poller.discover();
+    h.source.touch("o/r#1", "2026-11-10T13:00:00Z");
+    let broken = true;
+    const updates = h.source.updates.bind(h.source);
+    h.source.updates = async (s) => {
+      if (broken) throw new Error("boom");
+      return updates(s);
+    };
+    await h.poller.discover();
+    expect(h.events).toEqual([]);
+    expect(h.logs).toEqual(["o/r#1: boom"]);
+    broken = false;
+    await h.poller.discover();
+    expect(h.events.map((e) => e.type)).toEqual(["new"]);
+  });
+
   it("does not replay history on the first run", async () => {
     const h = harness();
     h.source.add("o/r#1", "me", "2026-11-09T09:00:00Z"); // before loopway started

@@ -20,7 +20,7 @@ loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and i
 
 ### Fixed
 
-- An issue or pull request older than loopway never started a thread, however you opened, closed, assigned or commented on it: discovery only looked at what was created after it first ran. It now also picks up an old one by you or the bot when something happens to it.
+- An issue or pull request older than loopway never started a thread, however you opened, closed, assigned or commented on it: discovery only looked at what was created after it first ran. It now also picks up an old one by you or the bot when something happens to it while it is open; a closed one waits until it is reopened.
 
 ### Removed
 

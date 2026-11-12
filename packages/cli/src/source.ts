@@ -8,6 +8,8 @@ export interface Subject {
   createdAt: string;
   /** ISO time of its last activity (a comment, an assignment, a close or reopen), when the source says. */
   updatedAt?: string;
+  /** Whether it is open or closed (a merged pull request is closed), when the source says. */
+  open?: boolean;
   /** Its text, only when it was just read from the source: the poller doesn't keep it. */
   body?: string;
 }

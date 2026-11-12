@@ -86,6 +86,7 @@ export class GitHubSource implements SubjectSource {
           author: issue.user?.login ?? "ghost",
           createdAt: issue.created_at,
           updatedAt: issue.updated_at,
+          open: issue.state === "open",
           ...(issue.body ? { body: issue.body } : {}),
         });
       }
@@ -410,6 +411,7 @@ interface Item {
 }
 interface Issue extends Item {
   number: number;
+  state: string;
   created_at: string;
   pull_request?: unknown;
 }
