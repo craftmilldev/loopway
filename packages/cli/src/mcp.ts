@@ -1,13 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { askedMessage, deny, type PermissionResult } from "./asks.js";
-import type { Made } from "./source.js";
-
-/** `subscribe` is required: the thread must say whether it tracks the issue. `assign` starts work on it. */
-export interface IssueOptions {
-  subscribe: boolean;
-  assign?: boolean;
-}
+import type { IssueOptions, Made } from "./source.js";
 
 /** What the session may ask loopway to do. Every message a session sends goes through one of these. */
 export interface Tools {

@@ -83,3 +83,9 @@ export class RateLimitError extends Error {
     super(message);
   }
 }
+
+/** What a thread says when it creates an issue: `subscribe` is required, so it must say whether it tracks it. `assign` starts work on it. */
+export interface IssueOptions {
+  subscribe: boolean;
+  assign?: boolean;
+}

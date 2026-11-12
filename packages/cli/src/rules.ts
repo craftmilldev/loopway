@@ -6,7 +6,7 @@ import { holds, markerOf, repoOf, type Thread } from "./thread.js";
 export type RuleEvent =
   | { type: "new"; subject: Subject }
   | { type: "update"; subject: Subject; update: Update }
-  | { type: "created"; thread: string; subject: Subject; subscribe?: boolean };
+  | { type: "created"; thread: string; subject: Subject; subscribe: boolean };
 
 /** What the rules decide. Applying them is `Threads`' job. */
 export type Action =
@@ -44,8 +44,7 @@ export interface Trust {
  *   never had one for a subject it already knew.
  */
 export function decide(event: RuleEvent, threads: Thread[], bots: Bot[], trust?: Trust): Action[] {
-  if (event.type === "created")
-    return created(event.thread, event.subject, threads, bots, trust, event.subscribe !== false);
+  if (event.type === "created") return created(event.thread, event.subject, threads, bots, trust, event.subscribe);
   if (event.type === "new") {
     const maker = threads.find((t) => t.status === "open" && event.subject.body?.includes(markerOf(t.id)));
     if (maker) return created(maker.id, event.subject, threads, bots, trust);

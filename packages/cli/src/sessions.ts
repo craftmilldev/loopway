@@ -16,12 +16,11 @@ import {
   type Ask,
   type PermissionResult,
 } from "./asks.js";
-import type { IssueOptions } from "./mcp.js";
 import type { Bot } from "./bots.js";
 import type { RunAgent, RunOutcome } from "./claude.js";
 import type { SessionEvent } from "./format.js";
 import { abortableSleep } from "./poller.js";
-import type { Made, Subject } from "./source.js";
+import type { IssueOptions, Made, Subject } from "./source.js";
 import { markerOf, repoOf, type Pending, type Session, type Thread } from "./thread.js";
 import { threadLogPath, type Threads } from "./threads.js";
 
