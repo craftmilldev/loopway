@@ -141,6 +141,7 @@ async function main(): Promise<number> {
       latest: () => latest,
       status: (now: number) => formatPollStatus(repos, poller.status(), now),
       onRefresh: () => void poller.refresh(),
+      chat: sessions && { send: sessions.chat, end: sessions.endChat },
     };
     await showTui(props).finally(() => stop.abort());
   }
@@ -165,11 +166,19 @@ interface SessionsSetup {
   created: (thread: string, subject: Subject) => Promise<void>;
 }
 
+interface StartedSessions {
+  kick: () => void;
+  done: Promise<void>;
+  /** A chat message from the owner, and the end of the chat block. */
+  chat: (threadId: string, text: string) => void;
+  endChat: (threadId: string) => void;
+}
+
 /**
  * Starts the sessions: loopway's MCP server, and the loop that delivers queued updates. They act as the bot user, so
  * without its token in config.json there are none, and threads only queue.
  */
-async function startSessions(s: SessionsSetup): Promise<{ kick: () => void; done: Promise<void> } | undefined> {
+async function startSessions(s: SessionsSetup): Promise<StartedSessions | undefined> {
   const { token, name, email } = s.config;
   if (!token) {
     s.log("No github.token in ~/.loopway/config.json: sessions are off, and threads only queue.");
@@ -197,7 +206,12 @@ async function startSessions(s: SessionsSetup): Promise<{ kick: () => void; done
     emit: s.print,
   });
   const done = sessions.run(s.stop).then(() => mcp.close());
-  return { kick: () => sessions.kick(), done };
+  return {
+    kick: () => sessions.kick(),
+    done,
+    chat: (id, text) => sessions.chat(id, text),
+    endChat: (id) => sessions.endChat(id),
+  };
 }
 
 /** The git author and committer for the bot's commits. */

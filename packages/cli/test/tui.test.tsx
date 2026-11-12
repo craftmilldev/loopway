@@ -302,6 +302,64 @@ describe("subject filter", () => {
   });
 });
 
+describe("chat", () => {
+  const typed = async (text: string) => {
+    for (const ch of text) await press(ch);
+  };
+  function chatting() {
+    const calls: string[] = [];
+    show([dev12()], {
+      chat: { send: (id, text) => calls.push(`send ${id} ${text}`), end: (id) => calls.push(`end ${id}`) },
+    });
+    return calls;
+  }
+
+  it("offers c in a thread's hint, and only when there are sessions", async () => {
+    chatting();
+    await press(KEYS.enter);
+    expect(screen()).toContain("c chat");
+    mounted!.unmount();
+    show([dev12()]);
+    await press(KEYS.enter);
+    expect(screen()).not.toContain("c chat");
+  });
+
+  it("c opens an input line, Enter sends what was typed (q included), and Esc ends the chat", async () => {
+    const calls = chatting();
+    await press(KEYS.enter);
+    await press("c");
+    expect(screen()).toContain("chat ›");
+    await typed("quick q");
+    expect(screen()).toContain("chat › quick q");
+    await press(KEYS.enter);
+    await press(KEYS.esc);
+    expect(calls).toEqual(["send t1 quick q", "end t1"]);
+    expect(screen()).not.toContain("chat ›");
+    expect(screen()).toContain("dev t1"); // still in the thread view, not quit or back
+  });
+
+  it("backspace edits the line, and an empty line sends nothing", async () => {
+    const calls = chatting();
+    await press(KEYS.enter);
+    await press("c");
+    await press(KEYS.enter);
+    await typed("abc");
+    await press("\u007F");
+    await press(KEYS.enter);
+    await press(KEYS.esc);
+    expect(calls).toEqual(["send t1 ab", "end t1"]);
+  });
+
+  it("does not start a chat on a closed thread", async () => {
+    chatting();
+    mounted!.unmount();
+    show([aThread("t1", "dev", ["o/r#12"], "closed")], { chat: { send: () => {}, end: () => {} } });
+    await press(KEYS.enter);
+    await press("c");
+    expect(screen()).not.toContain("chat ›");
+  });
+});
+
 const lines = (n: number) =>
   Array.from({ length: n }, (_, i) => `line ${i + 1}`)
     .join("\n")

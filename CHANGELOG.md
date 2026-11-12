@@ -16,6 +16,8 @@ loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and i
 
 - The home page is the billboard, full screen, and the billboard is the site: five frames that scrolling steps through, painted on the sign itself (the sign, what loopway is, install and setup with a copy button, how to get started, and the GitHub link with a small tracker of the snake, the bird and the loops you have seen). The separate `/billboard/` page is gone; `?u=` and `?speed=` work on `/`.
 
+- Chat in the TUI: `c` in a thread view talks to its session live. The session knows it is in a chat block, and when `Esc` ends it, comments on the ticket with an overview if it acted on the conversation or the ticket was unclear.
+
 - A `/bots` page on the site: what goes in a `.loopway/<bot>.md` file. The get-started frame links to it.
 
 ### Removed
