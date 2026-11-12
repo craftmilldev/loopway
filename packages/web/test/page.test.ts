@@ -43,7 +43,10 @@ describe("the marketing page", () => {
     expect(html.match(/loopway\.craftmill\.dev/g)).toHaveLength(1);
     expect(html).toContain("/install.sh | sh");
     expect(html).toContain('hit("copy"');
-    expect(html).toContain("navigator.clipboard.writeText(INSTALL)");
+    expect(html).toContain("navigator.clipboard.writeText(text)");
+    // Only a copy that happened is counted, and the links and Copy answer to the click, not the press.
+    expect(html).toContain("else if (await copy(INSTALL))");
+    expect(html).toContain('canvas.addEventListener("click"');
   });
 
   it("has real elements for Copy and both links, for the keyboard and screen readers", () => {
@@ -69,7 +72,10 @@ describe("the marketing page", () => {
   });
 
   it("steps one frame per flick, and ignores only Space on a button or link", () => {
-    expect(html).toContain("Date.now() - lastWheel > 200");
+    expect(html).toContain("now - lastWheel > 200");
+    expect(html).toContain("Math.abs(wheelSum) >= 30");
+    // The camera does not move: all of the animation stays in view.
+    expect(html).not.toContain("cameraTo");
     expect(html).toContain('event.key === " " && event.target.closest && event.target.closest("button, a")');
   });
 

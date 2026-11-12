@@ -150,15 +150,9 @@ loopway setup</pre>
       const boardCanvas = document.createElement("canvas");
       const groundCanvas = document.createElement("canvas");
       let scale = 1;
-      let fit = 1;
-      let close = 1;
-      // Where the camera is, in screen pixels per unit of the picture and where the picture's origin is;
-      // it moves to `aim` over CAMERA seconds when the frame changes.
+      // Where the picture sits in the window, in screen pixels per unit of the picture and where its
+      // origin is. All of it is always in view.
       let view = { s: 1, x: 0, y: 0 };
-      let aim = { s: 1, x: 0, y: 0 };
-      let from = view;
-      let cameraStart = -10;
-      const CAMERA = 0.7;
 
       const wordmark = new Image();
       fetch("wordmark.svg")
@@ -3768,8 +3762,6 @@ loopway setup</pre>
         main.fillStyle = INK;
         main.fillRect(0, 0, canvas.width, canvas.height);
         main.save();
-        const move = smooth(0, 1, (clockNow() - cameraStart) / CAMERA);
-        view = { s: lerp(from.s, aim.s, move), x: lerp(from.x, aim.x, move), y: lerp(from.y, aim.y, move) };
         main.setTransform(view.s, 0, 0, view.s, view.x, view.y);
         main.beginPath();
         main.rect(0, 0, W, H);
@@ -3789,13 +3781,8 @@ loopway setup</pre>
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         canvas.width = Math.round(innerWidth * dpr);
         canvas.height = Math.round(innerHeight * dpr);
-        // The picture is drawn at the larger of the two scales, so the camera can move between them
-        // without drawing it again: `fit` shows all of it; `close` fills the window with the sign's face
-        // (it is only larger than `fit` on a narrow window, and is held to a size the canvases can be).
-        fit = Math.min(canvas.width / W, canvas.height / H);
-        close = clamp((canvas.width * 0.97) / (BOARD.w - 96), fit, Math.max(fit, 1.62));
-        scale = Math.max(fit, close);
-        cameraTo(shown, true);
+        scale = Math.min(canvas.width / W, canvas.height / H);
+        view = { s: scale, x: (canvas.width - W * scale) / 2, y: (canvas.height - H * scale) / 2 };
         for (const c of [landCanvas, darkCanvas]) {
           c.width = Math.ceil(W * scale);
           c.height = Math.ceil(H * scale);
@@ -3814,9 +3801,8 @@ loopway setup</pre>
         ];
       };
       // With the loop frozen (?u=) nothing redraws by itself, so a click keeps frames coming for
-      // as long as the snake or the bird is out, or the camera or the face is changing.
-      const changing = () =>
-        SNAKE.start !== null || BIRD.start !== null || clockNow() - cameraStart < CAMERA || faceFade() < 1;
+      // as long as the snake or the bird is out, or the face is changing.
+      const changing = () => SNAKE.start !== null || BIRD.start !== null || faceFade() < 1;
       let awake = false;
       function wake() {
         if (freeze === null || awake) return;
@@ -3869,30 +3855,13 @@ loopway setup</pre>
       }
 
       // ---- The frames: scrolling steps through them, one at a time ----
-      // The face is painted again for the new frame and fades in over the old; the camera moves to the
-      // sign's face on a narrow window, where it would otherwise be too small to read.
+      // The face is painted again for the new frame and fades in over the old.
       const faceFrom = document.createElement("canvas");
       let faceStart = -10;
       const faceFade = () => smooth(0, 1, (clockNow() - faceStart) / 0.5);
       function redrawFace() {
         drawBoardFace();
         if (freeze !== null) wake();
-      }
-      function cameraTo(frame, instant) {
-        const full = { s: fit, x: (canvas.width - W * fit) / 2, y: (canvas.height - H * fit) / 2 };
-        const centre = [BOARD.x + BOARD.w / 2, BOARD.y + BOARD.h / 2];
-        // Centred on the face, but never showing past the edge of the picture when it is big enough to fill the window.
-        const keep = (at, size, room) => (size >= room ? clamp(at, room - size, 0) : (room - size) / 2);
-        const zoom = {
-          s: close,
-          x: keep(canvas.width / 2 - centre[0] * close, W * close, canvas.width),
-          y: keep(canvas.height / 2 - centre[1] * close, H * close, canvas.height),
-        };
-        const to = frame === 0 || close === fit ? full : zoom;
-        from = instant ? to : view;
-        aim = to;
-        cameraStart = instant ? -10 : clockNow();
-        if (instant) view = to;
       }
       const hint = document.getElementById("scroll");
       let lockedUntil = 0;
@@ -3910,20 +3879,30 @@ loopway setup</pre>
         HITS = [];
         hint.hidden = to !== 0;
         drawBoardFace();
-        cameraTo(to, false);
         wake();
       }
       hint.hidden = false;
       hint.addEventListener("click", () => step(1));
-      // A trackpad keeps sending wheel events for a second after a flick, so a wheel steps only when
-      // it comes after a pause: one flick is one frame.
+      // A trackpad keeps sending wheel events for a second or more after a flick, and its first few are
+      // tiny. So the wheel adds up, steps once when it has gone far enough, and is ready again only after
+      // a pause with no wheel events: one flick is one frame, however long it coasts.
+      let wheelSum = 0;
+      let wheelReady = true;
       let lastWheel = 0;
       addEventListener(
         "wheel",
         (event) => {
-          const pause = Date.now() - lastWheel > 200;
-          lastWheel = Date.now();
-          if (pause && Math.abs(event.deltaY) > 4) step(Math.sign(event.deltaY));
+          const now = Date.now();
+          if (now - lastWheel > 200) {
+            wheelSum = 0;
+            wheelReady = true;
+          }
+          lastWheel = now;
+          wheelSum += event.deltaY;
+          if (wheelReady && Math.abs(wheelSum) >= 30) {
+            wheelReady = false;
+            step(Math.sign(wheelSum));
+          }
         },
         { passive: true },
       );
@@ -3960,14 +3939,30 @@ loopway setup</pre>
       // ---- Clicks on the sign: Copy and the two links ----
       const hitAt = (x, y) =>
         shown > 0 && faceFade() > 0.6 ? HITS.find((h) => x > h.x0 && x < h.x1 && y > h.y0 && y < h.y1) : undefined;
-      function press(hit) {
+      // Copy to the clipboard, and say whether it worked.
+      async function copy(text) {
+        try {
+          await navigator.clipboard.writeText(text);
+          return true;
+        } catch {
+          // Older browsers, or no permission: the old way, through a selection.
+          const box = document.createElement("textarea");
+          box.value = text;
+          document.body.append(box);
+          box.select();
+          const ok = document.execCommand("copy");
+          box.remove();
+          return ok;
+        }
+      }
+      async function press(hit) {
         if (hit.kind === "github") {
           track("github_clicked", { href: `https://github.com/${REPO}` });
           window.open(`https://github.com/${REPO}`, "_blank", "noopener");
         } else if (hit.kind === "bots") location.href = "/bots";
-        else {
+        else if (await copy(INSTALL)) {
+          // Only a copy that happened counts, and only then does the button say so.
           track("install_copied", { frame: shown + 1 });
-          if (navigator.clipboard) navigator.clipboard.writeText(INSTALL).catch(() => {});
           copied = true;
           redrawFace();
           setTimeout(() => {
@@ -3976,10 +3971,15 @@ loopway setup</pre>
           }, 2000);
         }
       }
+      // The snake and the bird answer to the press itself. Copy and the links answer to the click, which
+      // is what a phone counts as a tap (and lets a popup open), and which a swipe never makes.
+      canvas.addEventListener("click", (event) => {
+        const hit = hitAt(...toScene(event));
+        if (hit) press(hit);
+      });
       canvas.addEventListener("pointerdown", (event) => {
         const at = toScene(event);
-        const hit = hitAt(...at);
-        if (hit) return press(hit);
+        if (hitAt(...at)) return;
         const what = clickable(...at);
         if (what === "snake") SNAKE.start = clockNow();
         if (what === "bird") BIRD.start = clockNow();
