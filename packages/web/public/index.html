@@ -11,236 +11,53 @@
     <link rel="icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <style>
-      :root {
-        --paper: #e4ddc9;
-        --ink: #16130e;
-        --ink-soft: #4b4534;
-        --madder: #9e2b1c;
-        --rule: rgba(22, 19, 14, 0.32);
-        --mono: "Courier Prime", Courier, ui-monospace, monospace;
-      }
-      * {
-        box-sizing: border-box;
-      }
       html,
       body {
         margin: 0;
         height: 100%;
-        background: var(--ink);
+        background: #16130e;
+        overflow: hidden;
       }
-      body {
-        color: var(--ink-soft);
-        font:
-          17px/1.5 "Sorts Mill Goudy",
-          Georgia,
-          "Times New Roman",
-          serif;
-      }
-      a {
-        color: var(--ink);
-      }
-      /* The billboard is the site: it fills the window, all the time, and the cards go over it. */
-      .billboard {
+      canvas {
         position: fixed;
         inset: 0;
         width: 100%;
         height: 100%;
-        border: 0;
-        background: var(--ink);
-      }
-      /* Without scripts the cards are a column over the picture. With them, each is a frame. */
-      .cards {
-        position: relative;
-        padding: 24px 16px;
-      }
-      .card {
-        margin: 0 auto 24px;
-        max-width: 640px;
-      }
-      .panel {
-        padding: 28px 32px;
-        border: 1px solid var(--rule);
-        background: rgba(228, 221, 201, 0.95);
-      }
-      .panel > :first-child {
-        margin-top: 0;
-      }
-      .panel > :last-child {
-        margin-bottom: 0;
-      }
-      h2 {
-        margin: 0 0 12px;
-        color: var(--ink);
-        font-size: 28px;
-        font-weight: 400;
-        line-height: 1.15;
-      }
-      h2 .n,
-      .small {
-        font: 13px var(--mono);
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--madder);
-      }
-      h2 .n {
         display: block;
-        margin-bottom: 6px;
       }
-      pre {
-        margin: 16px 0;
-        padding: 14px;
-        overflow-x: auto;
-        border: 1px solid var(--rule);
-        color: var(--ink);
-        font: 14px/1.5 var(--mono);
-      }
-      code {
-        font-family: var(--mono);
-        color: var(--ink);
-      }
-      .copy {
-        position: relative;
-      }
-      .copy pre {
-        padding-right: 84px;
-      }
-      button {
-        padding: 6px 10px;
-        border: 1px solid var(--rule);
-        background: var(--paper);
-        color: var(--ink);
-        font: 12px var(--mono);
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        cursor: pointer;
-      }
-      button:hover {
-        border-color: var(--ink);
-      }
-      .copy button {
+      /* The same words as the sign, for screen readers and for anyone who can't see the canvas. */
+      .sr {
         position: absolute;
-        top: 9px;
-        right: 9px;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
       }
-      .head img {
-        display: block;
-        height: 34px;
-        /* The wordmark's own pale ground drops out against the paper. */
-        mix-blend-mode: multiply;
-      }
-      .repo {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        font: 22px var(--mono);
-        text-decoration: none;
-      }
-      .repo svg {
-        width: 36px;
-        height: 36px;
-        fill: currentColor;
-      }
-      .tracker {
-        margin: 24px 0 0;
-        padding: 12px 0 0;
-        border-top: 1px solid var(--rule);
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px 20px;
-        font: 12px var(--mono);
-        color: var(--ink-soft);
-      }
-      /* The first frame is the sign itself, which already has the wordmark and the tagline. */
       .scroll {
         position: fixed;
         left: 50%;
         bottom: 14px;
         transform: translateX(-50%);
+        padding: 6px 10px;
         border: 0;
         background: none;
-        color: var(--paper);
-        text-shadow: 0 1px 4px var(--ink);
-        font-size: 14px;
-      }
-      html.js body {
-        overflow: hidden;
-      }
-      html.js .cards {
-        position: fixed;
-        inset: 0;
-        padding: 0;
-        /* Clicks go through to the picture; only the panels take them. */
-        pointer-events: none;
-      }
-      html.js .card {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: calc(100% - 32px);
-        margin: 0;
-        opacity: 0;
-        visibility: hidden;
-        transform: translate(-50%, calc(-50% + 24px));
-        transition:
-          opacity 0.45s,
-          transform 0.45s,
-          visibility 0.45s;
-      }
-      html.js .card.on {
-        opacity: 1;
-        visibility: visible;
-        transform: translate(-50%, -50%);
-      }
-      html.js .card .panel {
-        pointer-events: auto;
-      }
-      html.js .head {
-        position: absolute;
-        top: 16px;
-        left: 20px;
-        opacity: 0;
-        transition: opacity 0.45s;
-      }
-      html.js .head.on {
-        opacity: 1;
-      }
-      html:not(.js) .scroll,
-      html:not(.js) .head {
-        display: none;
-      }
-      html.js .head .panel,
-      .head .panel {
-        padding: 8px 12px;
-      }
-      @media (max-width: 600px) {
-        .panel {
-          padding: 20px 18px;
-        }
-        h2 {
-          font-size: 23px;
-        }
-        pre {
-          font-size: 12px;
-        }
-        /* On a phone the button goes under the commands, so it does not cover them. */
-        .copy pre {
-          padding-right: 14px;
-          padding-bottom: 46px;
-        }
-        .copy button {
-          top: auto;
-          bottom: 9px;
-        }
-        .repo {
-          font-size: 16px;
-        }
+        color: #e4ddc9;
+        text-shadow: 0 1px 4px #16130e;
+        font:
+          14px "Courier Prime",
+          Courier,
+          ui-monospace,
+          monospace;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        cursor: pointer;
       }
     </style>
     <!-- Craftmill's PostHog, through the shared proxy. It sees a page load and the frame, copy, GitHub and
          animation events below, nothing else. -->
     <script src="https://a.craftmill.dev/api/ingest/static/array.js"></script>
     <script>
-      document.documentElement.classList.add("js");
       if (window.posthog)
         posthog.init("phc_BPP9dYnbUgCbhLiRynBT4sEpWJaYAFWMVApuMZUshQMy", {
           api_host: "https://a.craftmill.dev/api/ingest",
@@ -257,177 +74,3928 @@
           persistence: "localStorage",
           loaded: (ph) => ph.register({ product: "loopway", app: "marketing" }),
         });
-      // The one way anything is sent, so a blocked script never breaks the page.
-      const track = (name, props) => window.posthog && posthog.capture(name, props, { transport: "sendBeacon" });
-
-      addEventListener("DOMContentLoaded", () => {
-        // ---- The frames: scrolling steps through the cards, one at a time ----
-        const names = ["tagline", "description", "install", "get-started", "github"];
-        const cards = [...document.querySelectorAll(".card[data-frame]")];
-        const head = document.querySelector(".head");
-        const hint = document.querySelector(".scroll");
-        let frame = 0;
-        let lockedUntil = 0;
-        function show(to) {
-          // Frame 1 is the sign on the billboard itself, so it has no card.
-          cards.forEach((card, i) => card.classList.toggle("on", i === to - 1));
-          head.classList.toggle("on", to > 0);
-          hint.hidden = to !== 0;
-        }
-        function step(direction) {
-          const to = Math.max(0, Math.min(names.length - 1, frame + direction));
-          // A frame is held for a moment before the next. (A wheel flick's own repeats are handled in wheel().)
-          if (to === frame || Date.now() < lockedUntil) return;
-          track("frame_viewed", { frame: to + 1, name: names[to], from: frame + 1 });
-          frame = to;
-          lockedUntil = Date.now() + 350;
-          show(to);
-        }
-        show(0);
-        hint.addEventListener("click", () => step(1));
-        // A trackpad keeps sending wheel events for a second after a flick, so a wheel steps only when
-        // it comes after a pause: one flick is one frame.
-        let lastWheel = 0;
-        function wheel(direction) {
-          const pause = Date.now() - lastWheel > 200;
-          lastWheel = Date.now();
-          if (pause) step(direction);
-        }
-        addEventListener("wheel", (event) => Math.abs(event.deltaY) > 4 && wheel(Math.sign(event.deltaY)), {
-          passive: true,
-        });
-        let swipeFrom = null;
-        addEventListener("touchstart", (event) => (swipeFrom = event.touches[0].clientY), { passive: true });
-        addEventListener("touchend", (event) => {
-          if (swipeFrom === null) return;
-          const moved = swipeFrom - event.changedTouches[0].clientY;
-          swipeFrom = null;
-          if (Math.abs(moved) > 40) step(Math.sign(moved));
-        });
-        addEventListener("keydown", (event) => {
-          // Space on the copy button or a link is theirs, not a step.
-          if (event.key === " " && event.target.closest && event.target.closest("button, a")) return;
-          if (["ArrowDown", "PageDown", " "].includes(event.key)) step(1);
-          if (["ArrowUp", "PageUp"].includes(event.key)) step(-1);
-        });
-
-        // ---- The billboard: wheel, swipe and key presses over the picture come from inside it ----
-        const tracker = document.querySelector(".tracker");
-        function showFound(found) {
-          tracker.querySelector("[data-snake]").textContent = found.snake ? "yes" : "not yet";
-          tracker.querySelector("[data-bird]").textContent = found.bird ? "yes" : "not yet";
-          tracker.querySelector("[data-loops]").textContent = found.loops;
-        }
-        // What has been found is in localStorage, kept by the billboard; the page reads it, so the
-        // numbers are right before the picture has said anything.
-        try {
-          showFound({ snake: false, bird: false, loops: 0, ...JSON.parse(localStorage.getItem("loopway.found")) });
-        } catch {
-          showFound({ snake: false, bird: false, loops: 0 });
-        }
-        addEventListener("message", (event) => {
-          if (event.origin !== location.origin || !event.data || event.data.loopway !== "billboard") return;
-          const { step: direction, wheel: fromWheel, found, first } = event.data;
-          if (direction) fromWheel ? wheel(direction) : step(direction);
-          if (found) showFound(found);
-          // The first time only: the billboard says so, because it is what remembers.
-          if (first) track(`${first}_found`);
-        });
-
-        // ---- Clicks ----
-        document.addEventListener("click", (event) => {
-          if (!event.target.closest) return;
-          const link = event.target.closest('a[href^="https://github.com/"]');
-          if (link) track("github_clicked", { href: link.href });
-          const button = event.target.closest(".copy button");
-          if (!button) return;
-          const pre = button.parentElement.querySelector("pre");
-          track("install_copied", { frame: frame + 1 });
-          if (navigator.clipboard) {
-            navigator.clipboard.writeText(pre.textContent.trim()).then(() => {
-              button.textContent = "Copied";
-              setTimeout(() => (button.textContent = "Copy"), 2000);
-            });
-          } else {
-            // Older browsers: select the commands, so they can be copied by hand.
-            const range = document.createRange();
-            range.selectNodeContents(pre);
-            getSelection().removeAllRanges();
-            getSelection().addRange(range);
-          }
-        });
-      });
     </script>
   </head>
   <body>
-    <iframe
-      class="billboard"
-      src="billboard/"
-      title="A Loopway billboard in the Maine woods by a slow river, through one day and night. Click the bramble, the big rock or the spruce by the tent."
-    ></iframe>
-    <div class="cards">
-      <div class="head">
-        <div class="panel"><img src="billboard/wordmark.svg" alt="Loopway" /></div>
-      </div>
-
-      <section class="card" data-frame="description">
-        <div class="panel">
-          <h2><span class="n">Loopway</span>Keep your agents and team in same loop</h2>
-          <p>
-            Loopway turns GitHub issues and PRs into an agent communication platform, allowing you to track sessions the
-            same way you track work and allowing your agents and teammates to collaborate with each other. Powered by
-            <code>gh</code> and <code>claude code</code>, Loopway can be set up in minutes.
-          </p>
-        </div>
-      </section>
-
-      <section class="card" data-frame="install">
-        <div class="panel">
-          <h2><span class="n">1 · Install and set up</span>Two commands</h2>
-          <div class="copy">
-            <pre>
-curl -fsSL https://<span id="install-host">loopway.craftmill.dev</span>/install.sh | sh
+    <canvas id="scene" role="img" aria-label="A Loopway billboard by a slow river, through one day and night"></canvas>
+    <div class="sr" id="words">
+      <h1>Loopway</h1>
+      <p>Keep your agents and team in same loop</p>
+      <p>
+        Loopway turns GitHub issues and PRs into an agent communication platform, allowing you to track sessions the
+        same way you track work and allowing your agents and teammates to collaborate with each other. Powered by gh and
+        claude code, Loopway can be set up in minutes.
+      </p>
+      <h2>Install and set up</h2>
+      <pre>curl -fsSL https://<span data-host></span>/install.sh | sh
 loopway setup</pre>
-            <button type="button">Copy</button>
-          </div>
-          <p>
-            <code>loopway setup</code> checks <code>gh</code>, asks about a loopway bot, and offers to add
-            <code>.loopway/dev.md</code> and <code>.loopway/review.md</code> for the bots.
-          </p>
-        </div>
-      </section>
-
-      <section class="card" data-frame="get-started">
-        <div class="panel">
-          <h2><span class="n">2 · Get started</span>Run it, then open an issue</h2>
-          <pre>
-1. loopway
-2. create an issue on GitHub</pre>
-          <p>
-            What goes in each bot's file is explained in
-            <a href="/bots">the <code>.loopway/&lt;bot&gt;.md</code> docs</a>.
-          </p>
-        </div>
-      </section>
-
-      <section class="card" data-frame="github">
-        <div class="panel">
-          <a class="repo" href="https://github.com/craftmilldev/loopway" target="_blank" rel="noopener">
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path
-                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
-              />
-            </svg>
-            craftmilldev/loopway
-          </a>
-          <p class="tracker" aria-label="What you have found on the billboard">
-            <span>found the snake: <b data-snake>not yet</b></span>
-            <span>found the bird: <b data-bird>not yet</b></span>
-            <span>loops completed: <b data-loops>0</b></span>
-          </p>
-        </div>
-      </section>
+      <p>
+        loopway setup checks gh, asks about a loopway bot, and offers to add .loopway/dev.md and .loopway/review.md for
+        the bots.
+      </p>
+      <h2>Get started</h2>
+      <p>Run loopway, then create an issue on GitHub.</p>
+      <p><a href="/bots">What goes in each bot's file: the .loopway/&lt;bot&gt; .md docs</a></p>
+      <p><a href="https://github.com/craftmilldev/loopway" target="_blank" rel="noopener">craftmilldev/loopway</a></p>
     </div>
-    <button type="button" class="scroll" hidden>scroll &darr;</button>
+    <button type="button" class="scroll" id="scroll" hidden>scroll &darr;</button>
+    <script>
+      // One day and night in T seconds, and every motion repeats exactly on that period.
+      // ?u=0.3 freezes the loop at that fraction of the day; ?speed=4 runs it faster.
+      const W = 1600;
+      const H = 1000;
+      const T = 60;
+      const query = new URLSearchParams(location.search);
+      const still = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0.3 : null;
+      const freeze = query.has("u") ? parseFloat(query.get("u")) : still;
+      const speed = parseFloat(query.get("speed") || "1");
+
+      const TAU = Math.PI * 2;
+      const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+      const lerp = (a, b, t) => a + (b - a) * t;
+      const smooth = (a, b, x) => {
+        const t = clamp((x - a) / (b - a));
+        return t * t * (3 - 2 * t);
+      };
+      const seg = (u, a, b) => clamp((u - a) / (b - a));
+      const mod = (a, n) => ((a % n) + n) % n;
+      const rng = (seed) => () => {
+        seed = (seed + 0x6d2b79f5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+      const hex = (h) =>
+        h[0] === "#" ? [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) : h.match(/\d+/g).map(Number);
+      const mix = (a, b, t) => {
+        const A = hex(a);
+        const B = hex(b);
+        return `rgb(${A.map((v, i) => Math.round(lerp(v, B[i], t))).join(",")})`;
+      };
+
+      const INK = "#16130e";
+      const CREAM = "#f3ecd9";
+      const MADDER = "#9e2b1c";
+      const LAND = "#b9b58a";
+      const SERIF = '"Sorts Mill Goudy", Georgia, "Times New Roman", serif';
+      const MONO = '"Courier Prime", Courier, ui-monospace, monospace';
+
+      const canvas = document.getElementById("scene");
+      const main = canvas.getContext("2d");
+      const landCanvas = document.createElement("canvas");
+      const L = landCanvas.getContext("2d");
+      const darkCanvas = document.createElement("canvas");
+      const D = darkCanvas.getContext("2d");
+      const boardCanvas = document.createElement("canvas");
+      const groundCanvas = document.createElement("canvas");
+      let scale = 1;
+      let fit = 1;
+      let close = 1;
+      // Where the camera is, in screen pixels per unit of the picture and where the picture's origin is;
+      // it moves to `aim` over CAMERA seconds when the frame changes.
+      let view = { s: 1, x: 0, y: 0 };
+      let aim = { s: 1, x: 0, y: 0 };
+      let from = view;
+      let cameraStart = -10;
+      const CAMERA = 0.7;
+
+      const wordmark = new Image();
+      fetch("wordmark.svg")
+        .then((res) => res.text())
+        .then((svg) => {
+          const painted = svg.replaceAll("#f6e8e5", "none");
+          wordmark.src = URL.createObjectURL(new Blob([painted], { type: "image/svg+xml" }));
+        })
+        .catch(() => {
+          wordmark.src = "wordmark.svg";
+        });
+
+      // ---- Where things are ----
+      const BOARD = { x: 190, y: 130, w: 865, h: 338 };
+      const POSTS = { left: 370, right: 875, w: 28, bottom: 780 };
+      // The desk is drawn at its old size and scaled up about the stool's foot.
+      const DESK_SCALE = 1.3;
+      const SCREEN_AT_DESK = { x: 124, y: 761, w: 96, h: 60 };
+      const CAMP_SCALE = 1.45;
+      const TENT_DOOR = [1468, 718];
+      const FIRE = { x: 1284, y: 750 };
+      const SEAT1 = [1200, 746];
+      const SEAT2 = [1284, 728];
+      const SEAT3 = [1368, 746];
+      const DESK_SEAT = [172, 886];
+      const bank = (x) => 940 - 0.125 * x + 8 * Math.sin(x * 0.011) + 4 * Math.sin(x * 0.031 + 1);
+      const nearBank = (x) => 1000 - (x - 880) * 0.17 + 6 * Math.sin(x * 0.013);
+      const landTop = (x) => 585 + 14 * Math.sin(x * 0.004 + 1) - 0.02 * x;
+
+      function blobPoints(cx, cy, rx, ry, seed, n = 16) {
+        const r = rng(seed);
+        const pts = [];
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * TAU;
+          const k = 0.86 + r() * 0.24;
+          pts.push([cx + Math.cos(a) * rx * k, cy + Math.sin(a) * ry * k]);
+        }
+        return pts;
+      }
+      function blobPath(ctx, pts) {
+        const n = pts.length;
+        const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        const start = mid(pts[n - 1], pts[0]);
+        ctx.beginPath();
+        ctx.moveTo(start[0], start[1]);
+        for (let i = 0; i < n; i++) {
+          const m = mid(pts[i], pts[(i + 1) % n]);
+          ctx.quadraticCurveTo(pts[i][0], pts[i][1], m[0], m[1]);
+        }
+        ctx.closePath();
+      }
+
+      // Maine woods: spruce and fir spires, paper birch, granite, moss and fern.
+      function spruce(x, top, bottom, half, tiers, seed, fill) {
+        const r = rng(seed);
+        const side = () =>
+          Array.from({ length: tiers }, () => ({
+            w: 0.78 + r() * 0.44,
+            dy: (r() - 0.5) * 0.5,
+            notch: 0.36 + r() * 0.3,
+            rise: 0.08 + r() * 0.3,
+            sag: 0.08 + r() * 0.26,
+          }));
+        return { x, top, bottom, half, tiers, fill, lean: (r() - 0.5) * 0.07, left: side(), right: side() };
+      }
+      function sprucePath(ctx, s) {
+        const step = (s.bottom - s.top) / s.tiers;
+        const width = (i) => s.half * Math.pow(i / s.tiers, 0.85);
+        const mid = (y) => s.x + (y - s.bottom) * s.lean;
+        // The tip of bough i on one side, and the notch where the bough above it tucks back in.
+        const tip = (side, sign, i) => {
+          const y = s.top + step * (i + side[i - 1].dy * (i < s.tiers ? 1 : 0.25));
+          return [mid(y) + sign * width(i) * side[i - 1].w, y];
+        };
+        const notch = (side, sign, i) => {
+          const y = s.top + step * (i - side[i - 1].rise);
+          return [mid(y) + sign * width(i) * side[i - 1].notch, y];
+        };
+        const apex = [mid(s.top), s.top];
+        ctx.beginPath();
+        ctx.moveTo(apex[0], apex[1]);
+        let from = apex;
+        for (let i = 1; i <= s.tiers; i++) {
+          const p = tip(s.right, 1, i);
+          ctx.quadraticCurveTo((from[0] + p[0]) / 2, (from[1] + p[1]) / 2 + step * s.right[i - 1].sag, p[0], p[1]);
+          from = p;
+          if (i < s.tiers) {
+            const q = notch(s.right, 1, i);
+            ctx.quadraticCurveTo((p[0] + q[0]) / 2, p[1] + step * 0.06, q[0], q[1]);
+            from = q;
+          }
+        }
+        const skirt = tip(s.left, -1, s.tiers);
+        ctx.quadraticCurveTo(mid(s.bottom), s.bottom + step * 0.1, skirt[0], skirt[1]);
+        for (let i = s.tiers; i >= 1; i--) {
+          const p = tip(s.left, -1, i);
+          const to = i > 1 ? notch(s.left, -1, i - 1) : apex;
+          if (i < s.tiers) ctx.quadraticCurveTo((from[0] + p[0]) / 2, p[1] + step * 0.06, p[0], p[1]);
+          ctx.quadraticCurveTo((p[0] + to[0]) / 2, (p[1] + to[1]) / 2 + step * s.left[i - 1].sag, to[0], to[1]);
+          from = to;
+        }
+        ctx.closePath();
+      }
+      const TREES = [
+        { kind: "spruce", x: 253, w: 30, base: 712, top: 500, crown: spruce(253, 156, 575, 215, 7, 11, "#3f6449") },
+        { kind: "spruce", x: 1180, w: 30, base: 730, top: 440, crown: spruce(1180, 40, 580, 215, 8, 23, "#456b4e") },
+        { kind: "birch", x: 1538, w: 18, base: 705, top: 300, crownAt: [1545, 360, 125, 170] },
+        { kind: "birch", x: 30, w: 16, base: 742, top: 400, crownAt: [42, 478, 104, 172] },
+        { kind: "birch", x: 655, w: 15, base: 688, top: 480 },
+        { kind: "birch", x: 722, w: 17, base: 706, top: 480 },
+      ];
+      const leafRng = rng(303);
+      // A birch crown: branches fan out from the trunk, thin twigs hang from them, and the leaves
+      // are small and separate, so the sky shows through.
+      for (const tree of TREES) {
+        if (!tree.crownAt) continue;
+        const [cx, cy, rx, ry] = tree.crownAt;
+        tree.branches = [];
+        tree.limbMarks = [];
+        tree.twigs = [];
+        tree.haze = [];
+        tree.leaves = [];
+        const leaf = (x, y, rot) =>
+          tree.leaves.push({ x, y, rot, tone: Math.floor(leafRng() * 3), size: 5 + leafRng() * 2.5 });
+        for (let i = 0; i < 11; i++) {
+          const a = lerp(-Math.PI - 0.35, 0.35, (i + 0.5) / 11) + (leafRng() - 0.5) * 0.2;
+          const end = [cx + Math.cos(a) * rx * 0.9, cy + Math.sin(a) * ry * 0.9];
+          // Low limbs leave the trunk low and reach sideways; the top ones leave it near the top.
+          const origin = [tree.x, cy + ry * 0.55 - (1 - Math.abs(Math.cos(a))) * ry * 0.7];
+          const ctrl = [lerp(origin[0], end[0], 0.5), Math.min(origin[1], end[1]) - 30];
+          // The limb is a run of short crooked lengths, thick at the trunk and thin at the tip.
+          const limb = [0, 0.2, 0.4, 0.55, 0.7, 0.85, 1].map((t) => {
+            const q = 1 - t;
+            const kink = t ? (leafRng() - 0.5) * 16 : 0;
+            return [
+              q * q * origin[0] + 2 * q * t * ctrl[0] + t * t * end[0] + kink,
+              q * q * origin[1] + 2 * q * t * ctrl[1] + t * t * end[1] + kink * 0.6,
+            ];
+          });
+          tree.branches.push(limb);
+          // The same dark dashes the trunk has, across the thicker lengths of the limb.
+          for (let k = 1; k < 5; k++) {
+            const [x0, y0] = limb[k - 1];
+            const [x1, y1] = limb[k];
+            const len = Math.hypot(x1 - x0, y1 - y0) || 1;
+            const nx = -(y1 - y0) / len;
+            const ny = (x1 - x0) / len;
+            const w = lerp(7, 2.5, (k - 1) / 5);
+            for (let m = 0; m < 2; m++) {
+              const f = 0.2 + leafRng() * 0.6;
+              const side = leafRng() < 0.5 ? -1 : 1;
+              const px = lerp(x0, x1, f);
+              const py = lerp(y0, y1, f);
+              tree.limbMarks.push([
+                px + (nx * side * w) / 2,
+                py + (ny * side * w) / 2,
+                px - nx * side * w * 0.15,
+                py - ny * side * w * 0.15,
+              ]);
+            }
+          }
+          for (const [x, y] of limb.slice(2)) {
+            for (let n = 0; n < 3; n++) {
+              const drift = (x - tree.x) * 0.12 + (leafRng() - 0.5) * 34;
+              const drop = 30 + leafRng() * 46;
+              const twig = { x, y, mx: x + drift * 0.3, my: y + drop * 0.5, ex: x + drift, ey: y + drop };
+              tree.twigs.push(twig);
+              tree.haze.push({ x: x + drift * 0.5, y: y + drop * 0.45, r: 20 + leafRng() * 10 });
+              for (let k = 0; k <= 14; k++) {
+                const f = k / 14;
+                const side = k % 2 ? 1 : -1;
+                const lx = lerp(twig.x, twig.ex, f) + side * (4 + leafRng() * 7);
+                const ly = lerp(twig.y, twig.ey, f) + (leafRng() - 0.5) * 6;
+                leaf(lx, ly, Math.PI / 2 + side * (0.5 + leafRng() * 0.5));
+              }
+            }
+            // Leaves above the branch as well, so the top of the crown is full.
+            for (let k = 0; k < 10; k++) leaf(x + (leafRng() - 0.5) * 40, y - 2 - leafRng() * 24, leafRng() * TAU);
+          }
+        }
+      }
+      // Fill the middle of each crown, so the trunk is behind leaves from where the leaves start.
+      for (const tree of TREES) {
+        if (!tree.crownAt) continue;
+        const [cx, cy, rx, ry] = tree.crownAt;
+        for (let k = 0; k < 900; k++) {
+          const a = leafRng() * TAU;
+          const d = Math.sqrt(leafRng());
+          // Two in three go across the middle of the crown; the rest crowd the trunk itself.
+          const near = k % 3 === 0;
+          const x = tree.x + Math.cos(a) * d * rx * (near ? 0.16 : 0.62);
+          const y = cy - ry * 0.12 + Math.sin(a) * d * ry * (near ? 0.86 : 0.8);
+          tree.leaves.push({ x, y, rot: leafRng() * TAU, tone: Math.floor(leafRng() * 3), size: 5 + leafRng() * 2.5 });
+        }
+      }
+      // An uneven closed outline round a middle, for moss, shade and anything else with a ragged edge.
+      function raggedWith(r, cx, cy, rx, ry) {
+        const n = 9 + Math.floor(r() * 4);
+        const pts = [];
+        for (let i = 0; i < n; i++) {
+          const a = ((i + (r() - 0.5) * 0.6) / n) * TAU;
+          const k = 0.7 + r() * 0.48;
+          pts.push([cx + Math.cos(a) * rx * k, cy + Math.sin(a) * ry * k]);
+        }
+        return pts;
+      }
+      // The bush is a wild raspberry bramble, the kind of thicket a skunk dens under: canes that
+      // come up out of the ground one by one, arch over and droop at the tip, with leaves in threes
+      // along them and a dark tangle underneath. Each cane is rooted at its own spot in the grass.
+      const BRAMBLE = { canes: [], tangle: [] };
+      {
+        const r = rng(515);
+        for (let i = 0; i < 22; i++) {
+          const bx = 446 + r() * 152;
+          const by = 740 + r() * 10;
+          const out = ((bx - 522) / 76) * 0.9 + (r() - 0.5) * 0.6;
+          const len = 66 + r() * 50;
+          const mx = bx + out * len * 0.35;
+          const my = by - len * 0.85;
+          const tx = bx + out * len * 0.95 + (r() - 0.5) * 12;
+          const ty = by - len * (0.58 - Math.abs(out) * 0.28);
+          const leaves = [];
+          for (let t = 0.2; t <= 1.001; t += 0.1 + r() * 0.035) {
+            const q = 1 - t;
+            leaves.push({
+              x: q * q * bx + 2 * q * t * mx + t * t * tx,
+              y: q * q * by + 2 * q * t * my + t * t * ty,
+              along: Math.atan2(2 * q * (my - by) + 2 * t * (ty - my), 2 * q * (mx - bx) + 2 * t * (tx - mx)),
+              side: leaves.length % 2 ? 1 : -1,
+              size: 7 + r() * 3.5,
+              tone: Math.floor(r() * 3),
+            });
+          }
+          BRAMBLE.canes.push({ bx, by, mx, my, tx, ty, leaves });
+        }
+        for (let i = 0; i < 10; i++)
+          BRAMBLE.tangle.push(raggedWith(r, 468 + r() * 106, 708 + r() * 26, 38 + r() * 24, 20 + r() * 13));
+      }
+      function drawBush(ctx) {
+        ctx.fillStyle = "rgba(22, 19, 14, 0.16)";
+        ctx.beginPath();
+        ctx.ellipse(522, 748, 112, 10, 0, 0, TAU);
+        ctx.fill();
+        // The shaded tangle inside, with no outline, cut off along the ground.
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(380, 560);
+        ctx.lineTo(670, 560);
+        for (let x = 670; x >= 380; x -= 10) ctx.lineTo(x, 746 + 3 * Math.sin(x * 0.09));
+        ctx.closePath();
+        ctx.clip();
+        ctx.fillStyle = "#3d573b";
+        for (const shade of BRAMBLE.tangle) {
+          blobPath(ctx, shade);
+          ctx.fill();
+        }
+        ctx.restore();
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "#6e4a3a";
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        for (const c of BRAMBLE.canes) {
+          ctx.moveTo(c.bx, c.by + 4);
+          ctx.lineTo(c.bx, c.by);
+          ctx.quadraticCurveTo(c.mx, c.my, c.tx, c.ty);
+        }
+        ctx.stroke();
+        // Leaves in threes: one along the stalk and one to each side of it.
+        ctx.strokeStyle = "rgba(22, 19, 14, 0.55)";
+        ctx.lineWidth = 0.9;
+        ["#5f7f58", "#7c9a69", "#4f6f4c"].forEach((color, tone) => {
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          for (const c of BRAMBLE.canes) {
+            for (const l of c.leaves) {
+              if (l.tone !== tone) continue;
+              const stalk = l.along + l.side * 1.15;
+              const sx = l.x + Math.cos(stalk) * 4;
+              const sy = l.y + Math.sin(stalk) * 4;
+              for (const fan of [-0.75, 0, 0.75]) {
+                const a = stalk + fan;
+                const cx = sx + Math.cos(a) * l.size * 0.55;
+                const cy = sy + Math.sin(a) * l.size * 0.55;
+                ctx.moveTo(cx + Math.cos(a) * l.size * 0.55, cy + Math.sin(a) * l.size * 0.55);
+                ctx.ellipse(cx, cy, l.size * 0.55, l.size * 0.26, a, 0, TAU);
+              }
+            }
+          }
+          ctx.fill();
+          ctx.stroke();
+        });
+        tufts(ctx, 430, 614, 748, 5);
+      }
+      const lineRng = rng(101);
+      const TREELINE = [];
+      for (const [near, fill] of [
+        [0, "#86a394"],
+        [1, "#5d8064"],
+      ]) {
+        for (let x = -30; x < W + 40; x += 30 + lineRng() * 34) {
+          const h = (near ? 80 : 120) + lineRng() * (near ? 70 : 90);
+          const bottom = landTop(x) + (near ? 30 : 14);
+          TREELINE.push(spruce(x, bottom - h, bottom, h * 0.21, 5, Math.floor(lineRng() * 1e6), fill));
+        }
+      }
+      // A rock is the part of a boulder that shows: an uneven hump on a flat line where the ground
+      // or the water covers the rest. x is its middle and y is that line.
+      function rock(x, y, w, h, seed) {
+        const r = rng(seed);
+        const n = 5 + Math.floor(r() * 3);
+        const top = [];
+        for (let i = 1; i < n; i++) {
+          const t = (i + (r() - 0.5) * 0.5) / n;
+          top.push([
+            x - Math.cos(Math.PI * t) * (w / 2) * (0.82 + r() * 0.3),
+            y - Math.sin(Math.PI * t) * h * (0.7 + r() * 0.5),
+          ]);
+        }
+        const ridge = top[Math.floor(top.length / 2)];
+        return {
+          x,
+          y,
+          w,
+          h,
+          top,
+          ridge,
+          crack: [x + (r() - 0.5) * w * 0.4, y - h * (0.1 + r() * 0.2)],
+          tufts: Array.from({ length: 5 + Math.floor(w / 20) }, () => ({
+            x: x + (r() - 0.5) * w * 1.05,
+            h: 5 + r() * 7,
+            lean: r() * 2 - 1,
+          })),
+          moss: r() < 0.7 ? [x - w * (0.1 + r() * 0.15), w * (0.18 + r() * 0.12)] : null,
+        };
+      }
+      function rockPath(ctx, k, sink = 0) {
+        ctx.beginPath();
+        ctx.moveTo(k.x - k.w / 2, k.y + sink);
+        let from = [k.x - k.w / 2, k.y - k.h * 0.25];
+        ctx.lineTo(from[0], from[1]);
+        for (const p of k.top) {
+          ctx.quadraticCurveTo(from[0], from[1], (from[0] + p[0]) / 2, (from[1] + p[1]) / 2);
+          from = p;
+        }
+        const end = [k.x + k.w / 2, k.y - k.h * 0.2];
+        ctx.quadraticCurveTo(from[0], from[1], end[0], end[1]);
+        ctx.lineTo(k.x + k.w / 2, k.y + sink);
+      }
+      function drawRock(ctx, k, inWater) {
+        if (!inWater) {
+          ctx.fillStyle = "rgba(22, 19, 14, 0.18)";
+          ctx.beginPath();
+          ctx.ellipse(k.x + k.w * 0.06, k.y + 1, k.w * 0.6, 6, 0, 0, TAU);
+          ctx.fill();
+        }
+        rockPath(ctx, k, 3);
+        ctx.fillStyle = "#b9b5aa";
+        ctx.fill();
+        // The side away from the light, below the ridge.
+        ctx.save();
+        ctx.clip();
+        ctx.fillStyle = "rgba(22, 19, 14, 0.13)";
+        ctx.beginPath();
+        ctx.moveTo(k.ridge[0], k.ridge[1]);
+        ctx.lineTo(k.crack[0], k.crack[1]);
+        ctx.lineTo(k.x + k.w * 0.1, k.y + 6);
+        ctx.lineTo(k.x + k.w, k.y + 6);
+        ctx.lineTo(k.x + k.w, k.y - k.h * 2);
+        ctx.closePath();
+        ctx.fill();
+        if (k.moss && !inWater) {
+          ctx.fillStyle = "rgba(118, 142, 84, 0.8)";
+          ctx.beginPath();
+          ctx.ellipse(k.moss[0], k.y - k.h * 0.95, k.moss[1], k.h * 0.3, -0.15, 0, TAU);
+          ctx.fill();
+        }
+        ctx.restore();
+        rockPath(ctx, k);
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = inWater ? 2 : 2.5;
+        ctx.lineJoin = "round";
+        ctx.stroke();
+        ctx.lineWidth = 1.4;
+        ctx.globalAlpha = 0.55;
+        ctx.beginPath();
+        ctx.moveTo(k.ridge[0], k.ridge[1] + 2);
+        ctx.lineTo(k.crack[0], k.crack[1]);
+        ctx.lineTo(k.crack[0] - k.w * 0.06, k.y - 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        if (inWater) return;
+        // Grass grown up round its foot.
+        ctx.strokeStyle = "#55753f";
+        ctx.lineWidth = 2;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        for (const t of k.tufts) {
+          ctx.moveTo(t.x, k.y + 4);
+          ctx.quadraticCurveTo(t.x + t.lean, k.y - t.h * 0.5, t.x + t.lean * 4, k.y - t.h);
+          ctx.moveTo(t.x + 3, k.y + 4);
+          ctx.quadraticCurveTo(t.x + 3, k.y - t.h * 0.4, t.x + 3 - t.lean * 3, k.y - t.h * 0.8);
+        }
+        ctx.stroke();
+      }
+      const BOULDERS = [rock(935, 752, 124, 54, 9), rock(1085, 738, 82, 40, 19), rock(690, 760, 70, 34, 29)];
+      const ROCKS = [rock(232, 992, 70, 24, 41), rock(640, 940, 62, 21, 43), rock(1160, 874, 50, 17, 47)];
+      const seeded = rng(7);
+      const LEAF_MARKS = TREES.flatMap((tree, t) => {
+        if (!tree.canopy) return [];
+        const xs = tree.canopy.map((p) => p[0]);
+        const ys = tree.canopy.map((p) => p[1]);
+        const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+        const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+        const rx = (Math.max(...xs) - Math.min(...xs)) / 2;
+        const ry = (Math.max(...ys) - Math.min(...ys)) / 2;
+        return Array.from({ length: 26 }, () => {
+          const a = seeded() * TAU;
+          const k = Math.sqrt(seeded()) * 0.75;
+          return {
+            x: cx + Math.cos(a) * rx * k,
+            y: cy + Math.sin(a) * ry * k,
+            r: 5 + seeded() * 6,
+            a: seeded() * TAU,
+            t,
+          };
+        });
+      });
+      const BIRCH_MARKS = TREES.flatMap((tree, t) => {
+        if (tree.kind !== "birch") return [];
+        const marks = [];
+        for (let y = tree.top + 10; y < tree.base - 8; y += 12 + seeded() * 20) {
+          marks.push({ t, y, side: seeded() < 0.5 ? -1 : 1, len: 0.3 + seeded() * 0.5 });
+        }
+        return marks;
+      });
+      const onLand = (x) => lerp(landTop(x) + 45, bank(x) - 16, seeded());
+      const TUFTS = Array.from({ length: 34 }, () => {
+        const x = seeded() * W;
+        return { x, y: onLand(x), h: 5 + seeded() * 6 };
+      });
+      const FERNS = Array.from({ length: 34 }, () => {
+        const x = seeded() * W;
+        return { x, y: onLand(x), h: 13 + seeded() * 10 };
+      });
+      const MOSS = Array.from({ length: 18 }, () => {
+        const x = seeded() * W;
+        return { x, y: onLand(x), rx: 50 + seeded() * 90, ry: 9 + seeded() * 12 };
+      });
+      const DUFF = [
+        { x: 253, y: 716, rx: 150, ry: 24 },
+        { x: 1180, y: 734, rx: 140, ry: 22 },
+        { x: 700, y: 706, rx: 90, ry: 14 },
+      ];
+      const STONES = Array.from({ length: 36 }, () => {
+        const x = seeded() * W;
+        return { x, y: bank(x) - 3 + seeded() * 7, rx: 5 + seeded() * 9, ry: 3 + seeded() * 4 };
+      });
+      const REEDS = Array.from({ length: 26 }, () => {
+        const x = 900 + seeded() * 700;
+        return { x, y: nearBank(x) + 4 + seeded() * 60, h: 16 + seeded() * 26, lean: seeded() * 2 - 1 };
+      });
+      const STARS = Array.from({ length: 90 }, () => ({
+        x: seeded() * W,
+        y: seeded() * 560,
+        r: 0.7 + seeded() * 1.3,
+        k: 3 + Math.floor(seeded() * 9),
+        p: seeded() * TAU,
+      }));
+      // Wisps of high cloud. Each is three thin strands, long and tapered to nothing at both ends.
+      // They cross the whole sky and go off the left-hand edge, one sky's width (and a margin each
+      // side to be out of sight in) every loop, so each comes round again exactly as the loop does.
+      const wispRng = rng(88);
+      const WISP_SPAN = W + 600;
+      const WISPS = [140, 760, 1330, 1870].map((x) => ({
+        x,
+        y: 56 + wispRng() * 96,
+        strands: Array.from({ length: 3 }, (_, i) => ({
+          dx: (wispRng() - 0.5) * 130,
+          dy: (i - 1) * (8 + wispRng() * 8),
+          len: 210 + wispRng() * 250,
+          thick: 4.5 + wispRng() * 6.5,
+          tilt: (wispRng() - 0.5) * 0.07,
+          bow: (wispRng() - 0.5) * 14,
+          p: wispRng() * TAU,
+        })),
+      }));
+      // The sun's edge and the moon's, as the hand draws them: not quite round.
+      const skyRng = rng(77);
+      // Each is sampled finely, with its radius drifting slowly as it goes round, so the edge is
+      // smooth but not exact.
+      const SUN_EDGE = Array.from({ length: 48 }, (_, i) => {
+        const a = (i / 48) * TAU;
+        const k = 44 * (1 + 0.018 * Math.sin(2 * a + 0.7) + 0.01 * Math.sin(3 * a + 2));
+        return [Math.cos(a) * k, Math.sin(a) * k];
+      });
+      // Rounds the corners of a closed outline: each pass cuts every corner off a little.
+      const rounded = (pts, passes) => {
+        for (let pass = 0; pass < passes; pass++) {
+          pts = pts.flatMap((a, i) => {
+            const b = pts[(i + 1) % pts.length];
+            return [
+              [a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25],
+              [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75],
+            ];
+          });
+        }
+        return pts;
+      };
+      const MOON_HORNS = [
+        // Down the outer curve from the top horn to the bottom one, then back up the inner curve.
+        ...Array.from({ length: 41 }, (_, i) => {
+          const a = -Math.PI / 2 - (i / 40) * Math.PI;
+          const k = 46 * (1 + 0.02 * Math.sin(2 * a + 1) + 0.012 * Math.sin(5 * a));
+          return [Math.cos(a) * k, Math.sin(a) * k];
+        }),
+        ...Array.from({ length: 39 }, (_, i) => {
+          const a = Math.PI / 2 + ((i + 1) / 40) * Math.PI;
+          const k = 40 * (1 + 0.025 * Math.sin(3 * a + 0.5));
+          return [16 + Math.cos(a) * k, Math.sin(a) * k * 1.14];
+        }),
+      ];
+      // The horns end in a small round, not a point: the last few pixels of each are taken off and
+      // the corners left behind are rounded over.
+      const MOON_EDGE = rounded(
+        MOON_HORNS.filter(([x, y]) => Math.hypot(x, Math.abs(y) - 46) > 9),
+        3,
+      );
+      const FLOW = Array.from({ length: 22 }, (_, i) => ({
+        x: seeded() * 2300,
+        v: 16 + seeded() * 290,
+        len: 110 + seeded() * 190,
+        light: i % 3 !== 0,
+        p: seeded() * TAU,
+      }));
+
+      // ---- The day ----
+      function daylight(u) {
+        const sunU = mod(u - 0.02, 1);
+        const elevation = Math.sin(TAU * sunU);
+        return {
+          sunU,
+          day: smooth(-0.3, 0.2, elevation),
+          twilight: smooth(0, 1, 1 - Math.min(1, Math.abs(elevation) / 0.4)),
+        };
+      }
+      const arc = (p) => ({ x: 1480 - 1360 * p, y: 640 - 560 * Math.sin(Math.PI * p) });
+
+      function drawSky(ctx, u, light) {
+        const { sunU, day, twilight } = light;
+        const top = mix("#121831", "#b9d2d6", day);
+        const low = mix(mix("#2b3454", "#ebe4ce", day), "#e79a72", twilight * 0.85);
+        const sky = ctx.createLinearGradient(0, 0, 0, 640);
+        sky.addColorStop(0, top);
+        sky.addColorStop(1, low);
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, W, H);
+
+        const night = 1 - day;
+        if (night > 0.02) {
+          ctx.fillStyle = "#f6f0dc";
+          for (const s of STARS) {
+            ctx.globalAlpha = night * night * (0.55 + 0.45 * Math.sin(TAU * u * s.k + s.p));
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, s.r, 0, TAU);
+            ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+        }
+
+        if (sunU < 0.5) {
+          const p = sunU / 0.5;
+          const { x, y } = arc(p);
+          const height = Math.sin(Math.PI * p);
+          const glow = ctx.createRadialGradient(x, y, 10, x, y, 190);
+          glow.addColorStop(0, "rgba(250, 214, 130, 0.5)");
+          glow.addColorStop(1, "rgba(250, 214, 130, 0)");
+          ctx.fillStyle = glow;
+          ctx.fillRect(x - 200, y - 200, 400, 400);
+          // A disc of one colour that is not quite round, with a single soft pencil line round it.
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.fillStyle = mix("#e6693a", "#f3c95a", smooth(0, 0.6, height));
+          blobPath(ctx, SUN_EDGE);
+          ctx.fill();
+          sketch(ctx, SUN_EDGE, mix("#8a3a1e", "#9a6a20", smooth(0, 0.6, height)), false, 1);
+          ctx.restore();
+        } else {
+          const { x, y } = arc((sunU - 0.5) / 0.5);
+          const glow = ctx.createRadialGradient(x, y, 10, x, y, 150);
+          glow.addColorStop(0, "rgba(226, 232, 245, 0.3)");
+          glow.addColorStop(1, "rgba(226, 232, 245, 0)");
+          ctx.fillStyle = glow;
+          ctx.fillRect(x - 160, y - 160, 320, 320);
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.rotate(-0.5);
+          ctx.fillStyle = "#f4efdd";
+          ctx.beginPath();
+          MOON_EDGE.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = "rgba(160, 165, 185, 0.3)";
+          ctx.beginPath();
+          ctx.ellipse(-30, 6, 6, 9, 0.3, 0, TAU);
+          ctx.ellipse(-24, -22, 4, 5, 0, 0, TAU);
+          ctx.fill();
+          sketch(ctx, MOON_EDGE, "#6f7690", false, 1);
+          ctx.restore();
+        }
+
+        // Top and bottom of a strand move the same gentle way: the whole strand ripples along its
+        // length and swells and thins a little. Nothing rises into a peak.
+        const theta = TAU * u;
+        ctx.fillStyle = mix("#39425f", "#f7f2e4", day);
+        for (const wisp of WISPS) {
+          ctx.save();
+          ctx.translate(mod(wisp.x - WISP_SPAN * u, WISP_SPAN) - 300, wisp.y);
+          wisp.strands.forEach((a) => {
+            const at = (key) => a[key];
+            const len = at("len");
+            const top = [];
+            const under = [];
+            for (let n = 0; n <= 28; n++) {
+              const t = n / 28;
+              const x = at("dx") + (t - 0.5) * len;
+              const middle =
+                at("dy") +
+                at("tilt") * (t - 0.5) * len +
+                at("bow") * Math.sin(Math.PI * t) +
+                2 * Math.sin(t * 7 + theta * 5 + a.p);
+              const half =
+                at("thick") * Math.sin(Math.PI * t) ** 0.6 * (1 + 0.2 * Math.sin(t * 9 - theta * 6 + a.p * 2));
+              top.push([x, middle - half]);
+              under.push([x, middle + half]);
+            }
+            // A soft edge: the strand once wider and faint, then itself.
+            for (const [grow, alpha] of [
+              [1.9, 0.3],
+              [1, 0.85],
+            ]) {
+              ctx.globalAlpha = alpha;
+              ctx.beginPath();
+              top.forEach(([x, y], n) => {
+                const y2 = (y + under[n][1]) / 2 + ((y - under[n][1]) / 2) * grow;
+                if (n) ctx.lineTo(x, y2);
+                else ctx.moveTo(x, y2);
+              });
+              for (let n = under.length - 1; n >= 0; n--) {
+                const [x, y] = under[n];
+                ctx.lineTo(x, (y + top[n][1]) / 2 + ((y - top[n][1]) / 2) * grow);
+              }
+              ctx.closePath();
+              ctx.fill();
+            }
+          });
+          ctx.restore();
+        }
+        ctx.globalAlpha = 1;
+      }
+      // A pencil line round a shape, with gaps: the outline of something drawn by hand, not
+      // stamped. The sun and moon get it once.
+      function sketch(ctx, pts, color, closed = true, passes = 2) {
+        ctx.strokeStyle = color;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        // With one pass it is a single line with only a couple of breaks in it.
+        (passes === 1
+          ? [[1.6, 0.6, 0, [150, 7]]]
+          : [
+              [1.6, 0.55, 0.8, [46, 9]],
+              [1.1, 0.4, -1.1, [30, 13]],
+            ]
+        ).forEach(([width, alpha, shift, dash]) => {
+          ctx.lineWidth = width;
+          ctx.globalAlpha = alpha;
+          ctx.setLineDash(dash);
+          ctx.save();
+          ctx.translate(shift, -shift * 0.6);
+          if (closed) blobPath(ctx, pts);
+          else {
+            ctx.beginPath();
+            pts.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+            ctx.closePath();
+          }
+          ctx.stroke();
+          ctx.restore();
+        });
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+      }
+
+      // ---- The ground, the river, the trees ----
+      function edgePath(ctx, fn, from, to) {
+        ctx.moveTo(from, fn(from));
+        for (let x = from + 20; x <= to; x += 20) ctx.lineTo(x, fn(x));
+      }
+
+      const flowLine = (x, f) => bank(x) + f.v + f.v * 0.05 * ((x - 800) / 800);
+      // The water has one course round each rock, and it divides there: of the lines that would
+      // meet the rock, the upper ones go over the top and the lower ones underneath, so that about
+      // as many pass on each side. Each line is carried round in a long easy curve that begins well
+      // upstream and ends well downstream, and a line sent to the far side of where it lay crosses
+      // over out in open water.
+      const berthOf = (k) => k.h * 0.6 + 9;
+      const middleOf = (k) => k.y - k.h * 0.4;
+      FLOW.forEach((f) => (f.sides = []));
+      ROCKS.forEach((k, r) => {
+        const lie = FLOW.map((f) => flowLine(k.x, f) - middleOf(k));
+        FLOW.forEach((f, i) => (f.sides[r] = lie[i] < 0 ? -1 : 1));
+        const near = FLOW.map((f, i) => i).filter((i) => Math.abs(lie[i]) < 48);
+        const want = Math.floor(near.length / 2);
+        const over = near.filter((i) => lie[i] < 0).length;
+        // Lines in the rock's way, nearest its middle first, are sent to whichever side is short.
+        const inWay = near
+          .filter((i) => Math.abs(lie[i]) < berthOf(k))
+          .sort((a, b) => Math.abs(lie[a]) - Math.abs(lie[b]));
+        let move = want - over;
+        for (const i of inWay) {
+          if (move > 0 && lie[i] >= 0) {
+            FLOW[i].sides[r] = -1;
+            move--;
+          } else if (move < 0 && lie[i] < 0) {
+            FLOW[i].sides[r] = 1;
+            move++;
+          }
+        }
+      });
+      function aroundRocks(x, y, f) {
+        ROCKS.forEach((k, r) => {
+          const reach = k.w / 2 + 16;
+          const nearness = Math.exp(-(((x - k.x) / reach) ** 2) * 0.22);
+          const side = f.sides[r];
+          // Underneath, a line keeps clear of the rock. Over the top it runs close behind the
+          // stone, which is drawn after it, so it is lost behind the rock for a moment and comes
+          // out the other side.
+          const berth = (side < 0 ? k.h * 0.3 : berthOf(k)) * nearness;
+          const off = y - middleOf(k);
+          // Crossing to the other side, if this line was sent there, long before the rock.
+          const crossed = lerp(off, side * Math.abs(off), smooth(0.03, 0.7, nearness));
+          y = middleOf(k) + crossed + side * (Math.hypot(off, berth) - Math.abs(off));
+        });
+        return y;
+      }
+
+      function drawGround(ctx, u) {
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.5;
+        for (const tree of TREELINE) {
+          sprucePath(ctx, tree);
+          ctx.fillStyle = tree.fill;
+          ctx.fill();
+          ctx.stroke();
+        }
+        // The forest floor does not move, so it is drawn once and kept.
+        ctx.drawImage(groundCanvas, 0, 0, groundCanvas.width / scale, groundCanvas.height / scale);
+
+        // The river: long strokes that drift once round the loop, and nothing faster.
+        ctx.save();
+        ctx.beginPath();
+        edgePath(ctx, bank, 0, W);
+        ctx.lineTo(W, H);
+        ctx.lineTo(0, H);
+        ctx.closePath();
+        ctx.fillStyle = "#6f95a0";
+        ctx.fill();
+        ctx.clip();
+        const theta = TAU * u;
+        const span = 2300;
+        ctx.lineCap = "round";
+        for (const f of FLOW) {
+          const cx = mod(f.x - span * u, span) - 350;
+          ctx.strokeStyle = f.light ? "#d6e6e3" : "#6b949f";
+          ctx.globalAlpha = f.light ? 0.75 : 0.55;
+          ctx.lineWidth = f.light ? 2.2 : 1.8;
+          // Points every few pixels, joined by curves through their midpoints, so no bend has a corner.
+          const pts = [];
+          for (let x = cx - f.len / 2; x <= cx + f.len / 2; x += 8) {
+            pts.push([x, aroundRocks(x, flowLine(x, f) + 2.2 * Math.sin(x * 0.045 + theta * 2 + f.p), f)]);
+          }
+          ctx.beginPath();
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let i = 1; i < pts.length - 1; i++) {
+            ctx.quadraticCurveTo(
+              pts[i][0],
+              pts[i][1],
+              (pts[i][0] + pts[i + 1][0]) / 2,
+              (pts[i][1] + pts[i + 1][1]) / 2,
+            );
+          }
+          ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        // The water's own marks at each rock: a wake trailing downstream and a line where it laps
+        // the stone. Both are ripples that travel along their length, so they are never still.
+        const ripple = (x0, y0, x1, y1, sag, amp, phase) => {
+          ctx.beginPath();
+          for (let i = 0; i <= 14; i++) {
+            const t = i / 14;
+            const taper = Math.sin(Math.PI * t);
+            const x = lerp(x0, x1, t);
+            const y = lerp(y0, y1, t) + sag * taper + amp * taper * Math.sin(t * 9 - theta * 8 + phase);
+            if (i) ctx.lineTo(x, y);
+            else ctx.moveTo(x, y);
+          }
+          ctx.stroke();
+        };
+        for (const rock of ROCKS) {
+          const swell = Math.sin(theta * 3 + rock.x) * 3;
+          ctx.strokeStyle = "#d6e6e3";
+          ctx.lineWidth = 1.8;
+          for (const k of [1, 1.7]) {
+            ctx.globalAlpha = 0.8 / k;
+            ripple(rock.x + 30, rock.y + 5 * k, rock.x - 60 * k - swell, rock.y + 12 * k, 5 * k, 1.6, rock.x + k);
+          }
+          ctx.globalAlpha = 1;
+          drawRock(ctx, rock, true);
+          ctx.strokeStyle = "#d6e6e3";
+          ctx.lineWidth = 2;
+          ripple(rock.x - rock.w * 0.58, rock.y + 1, rock.x + rock.w * 0.58, rock.y + 1, 2.5, 1.1, rock.x * 2);
+        }
+        ctx.restore();
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        edgePath(ctx, bank, 0, W);
+        ctx.stroke();
+
+        // Each stone at the water's edge is outlined only over its top; the water covers its foot.
+        for (const st of STONES) {
+          ctx.fillStyle = "#b9b5aa";
+          ctx.beginPath();
+          ctx.ellipse(st.x, st.y, st.rx, st.ry, 0, 0, TAU);
+          ctx.fill();
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 1.3;
+          ctx.beginPath();
+          ctx.ellipse(st.x, st.y, st.rx, st.ry, 0, Math.PI * 0.97, Math.PI * 2.03);
+          ctx.stroke();
+          ctx.fillStyle = "#6f95a0";
+          ctx.beginPath();
+          ctx.ellipse(st.x, st.y + st.ry * 0.95, st.rx * 1.3, st.ry * 0.62, 0, 0, TAU);
+          ctx.fill();
+          ctx.strokeStyle = "#d6e6e3";
+          ctx.globalAlpha = 0.7;
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.ellipse(st.x, st.y + st.ry * 0.95, st.rx * 1.05, st.ry * 0.55, 0, Math.PI * 1.1, Math.PI * 1.9);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 2.5;
+
+        ctx.fillStyle = "#a9a67f";
+        ctx.beginPath();
+        edgePath(ctx, nearBank, 880, W);
+        ctx.lineTo(W, H);
+        ctx.lineTo(880, H);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        edgePath(ctx, nearBank, 880, W);
+        ctx.stroke();
+      }
+
+      // ---- The forest floor ----
+      // Nothing here is bare. The ground is moss in overlapping ragged patches, needle litter
+      // under the spruces, ferns, clumps of long grass and low shrubs, smaller and closer together
+      // toward the trees, drawn from the back forward so that each stands in front of what is behind.
+      function drawFern(ctx, r, x, y, size) {
+        const fronds = 5 + Math.floor(r() * 3);
+        for (let i = 0; i < fronds; i++) {
+          const lean = lerp(-1, 1, (i + r() * 0.6) / fronds);
+          const len = size * (0.75 + r() * 0.5);
+          const mx = x + lean * len * 0.35;
+          const my = y - len * 0.75;
+          const tx = x + lean * len * 0.95;
+          const ty = y - len * (0.72 - Math.abs(lean) * 0.42);
+          ctx.strokeStyle = "#4e6b3c";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.quadraticCurveTo(mx, my, tx, ty);
+          ctx.stroke();
+          // The leaflets: longest a third of the way up, shortening to the tip.
+          ctx.strokeStyle = r() < 0.5 ? "#6a8c4c" : "#5c7f46";
+          ctx.lineWidth = 1.3;
+          ctx.beginPath();
+          for (let t = 0.14; t < 0.98; t += 0.075) {
+            const q = 1 - t;
+            const px = q * q * x + 2 * q * t * mx + t * t * tx;
+            const py = q * q * y + 2 * q * t * my + t * t * ty;
+            const dx = 2 * q * (mx - x) + 2 * t * (tx - mx);
+            const dy = 2 * q * (my - y) + 2 * t * (ty - my);
+            const d = Math.hypot(dx, dy) || 1;
+            const reach = len * 0.2 * Math.sin(Math.PI * Math.min(1, t * 1.25 + 0.1)) ** 0.7;
+            for (const side of [-1, 1]) {
+              ctx.moveTo(px, py);
+              ctx.lineTo(
+                px + ((-dy * side) / d) * reach + (dx / d) * reach * 0.35,
+                py + ((dx * side) / d) * reach + (dy / d) * reach * 0.35,
+              );
+            }
+          }
+          ctx.stroke();
+        }
+      }
+      function drawGrass(ctx, r, x, y, size) {
+        const blades = 7 + Math.floor(r() * 8);
+        ctx.lineWidth = 1.7;
+        for (let i = 0; i < blades; i++) {
+          const lean = (r() - 0.5) * 2;
+          const h = size * (0.5 + r() * 0.7);
+          const bx = x + (r() - 0.5) * size * 0.5;
+          ctx.strokeStyle = r() < 0.12 ? "#9a9a5c" : r() < 0.5 ? "#6b8a4a" : "#5c7a44";
+          ctx.beginPath();
+          ctx.moveTo(bx, y);
+          ctx.quadraticCurveTo(bx + lean * h * 0.15, y - h * 0.65, bx + lean * h * 0.55, y - h);
+          ctx.stroke();
+        }
+      }
+      function drawLowShrub(ctx, r, x, y, size) {
+        const stems = 6 + Math.floor(r() * 4);
+        for (let i = 0; i < stems; i++) {
+          const lean = lerp(-1, 1, (i + r() * 0.5) / stems);
+          const len = size * (0.7 + r() * 0.5);
+          const tx = x + lean * len * 0.8;
+          const ty = y - len * (0.9 - Math.abs(lean) * 0.4);
+          ctx.strokeStyle = "#6e4a3a";
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.moveTo(x + lean * 3, y);
+          ctx.quadraticCurveTo(x + lean * len * 0.3, y - len * 0.6, tx, ty);
+          ctx.stroke();
+          ctx.strokeStyle = "rgba(22, 19, 14, 0.5)";
+          ctx.lineWidth = 0.8;
+          ctx.fillStyle = r() < 0.5 ? "#56744a" : "#6a8a55";
+          ctx.beginPath();
+          for (let t = 0.35; t <= 1; t += 0.16) {
+            const lx = lerp(x + lean * 3, tx, t) + (r() - 0.5) * 3;
+            const ly = lerp(y, ty, t) - Math.sin(Math.PI * t) * len * 0.12;
+            const a = r() * TAU;
+            ctx.moveTo(lx + Math.cos(a) * 5, ly + Math.sin(a) * 5);
+            ctx.ellipse(lx, ly, 5, 2.4, a, 0, TAU);
+          }
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+      // The floor is composed, not scattered. Moss lies over all of it in a few large quiet patches.
+      // Ferns grow in colonies in the shade: at the foot of the trees, beside the boulders and the
+      // bramble, and along the edge of the wood. Grass grows as a fringe along the water and in a
+      // few groups of tussocks. Low shrubs keep to the edge of the wood. The open ground between
+      // is left to the moss.
+      //
+      // Nothing is planted where it would be in the way. Everything on the floor is drawn before
+      // the people and animals, so a plant standing just in front of where one of them walks would
+      // be walked through. Each route therefore keeps a strip clear: a little behind it and as far
+      // in front of it as the tallest plant is high. The same goes for the ground under the desk,
+      // the camp, the posts and the bramble.
+      function buildGround() {
+        groundCanvas.width = Math.ceil(W * scale);
+        groundCanvas.height = Math.ceil(H * scale);
+        const ctx = groundCanvas.getContext("2d");
+        ctx.setTransform(scale, 0, 0, scale, 0, 0);
+        const r = rng(909);
+        ctx.fillStyle = LAND;
+        ctx.beginPath();
+        edgePath(ctx, landTop, 0, W);
+        ctx.lineTo(W, H);
+        ctx.lineTo(0, H);
+        ctx.fill();
+        ctx.save();
+        ctx.clip();
+        const near = (y) => 0.55 + clamp((y - 600) / 300) * 0.75;
+        for (let i = 0; i < 30; i++) {
+          const x = r() * W;
+          const y = lerp(landTop(x) + 10, bank(x), r());
+          const k = near(y);
+          ctx.fillStyle = ["#869a5c", "#7f975a", "#8fa163"][Math.floor(r() * 3)];
+          ctx.globalAlpha = 0.5;
+          blobPath(ctx, raggedWith(r, x, y, (110 + r() * 130) * k, (12 + r() * 14) * k));
+          ctx.fill();
+        }
+        for (const d of DUFF) {
+          for (let i = 0; i < 4; i++) {
+            ctx.fillStyle = i % 2 ? "#a07f58" : "#93744f";
+            ctx.globalAlpha = 0.4;
+            blobPath(
+              ctx,
+              raggedWith(
+                r,
+                d.x + (r() - 0.5) * d.rx,
+                d.y + (r() - 0.5) * d.ry,
+                d.rx * (0.5 + r() * 0.4),
+                d.ry * (0.6 + r() * 0.5),
+              ),
+            );
+            ctx.fill();
+          }
+          ctx.globalAlpha = 0.6;
+          ctx.strokeStyle = "#7a5a3c";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          for (let i = 0; i < 70; i++) {
+            const nx = d.x + (r() - 0.5) * d.rx * 2.2;
+            const ny = d.y + (r() - 0.5) * d.ry * 2;
+            const a = r() * Math.PI;
+            ctx.moveTo(nx, ny);
+            ctx.lineTo(nx + Math.cos(a) * 5, ny + Math.sin(a) * 2.2);
+          }
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        ctx.restore();
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        edgePath(ctx, landTop, 0, W);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.lineCap = "round";
+
+        // Where people and animals go, and what stands on the ground.
+        const routes = [
+          WALK_IN,
+          WALK_TO_CAMP,
+          WALK_TO_RIVER,
+          WALK_FROM_RIVER,
+          WALK_BEHIND_TENT,
+          WALK_LOG_TO_FIRE,
+          WALK_TO_BLUE,
+          WALK_TO_TENT,
+          SKUNK.path,
+          ...SQUIRREL.filter((step) => step.mode === "hop" && step.from[1] > 600).map((step) => [step.from, step.to]),
+        ];
+        const TALLEST = 40;
+        const footprints = [
+          [50, 800, 300, 905],
+          [1140, 690, 1600, 800],
+          [262, 756, 478, 818],
+          [768, 756, 982, 818],
+          [424, 690, 624, 762],
+        ];
+        const inTheWay = (x, y) => {
+          if (footprints.some(([x0, y0, x1, y1]) => x > x0 && x < x1 && y > y0 && y < y1 + TALLEST * 0.5)) return true;
+          return routes.some((route) =>
+            route.some((from, i) => {
+              const to = route[i + 1];
+              if (!to) return false;
+              const lo = Math.min(from[0], to[0]) - 24;
+              const hi = Math.max(from[0], to[0]) + 24;
+              if (x < lo || x > hi) return false;
+              const t = to[0] === from[0] ? 0.5 : clamp((x - from[0]) / (to[0] - from[0]));
+              const routeY = lerp(from[1], to[1], t);
+              return y > routeY - 10 && y < routeY + TALLEST;
+            }),
+          );
+        };
+        const plants = [];
+        const plant = (kind, x, y) => {
+          if (x < -20 || x > W + 20 || y < landTop(x) + 8 || y > bank(x) - 3 || inTheWay(x, y)) return;
+          plants.push([kind, x, y]);
+        };
+        const colony = (kind, cx, cy, count, spreadX, spreadY) => {
+          for (let i = 0; i < count; i++) plant(kind, cx + (r() - 0.5) * 2 * spreadX, cy + (r() - 0.5) * 2 * spreadY);
+        };
+        // Ferns, in the shade.
+        for (const t of TREES) colony("fern", t.x, t.base + 4, 5, 70, 12);
+        for (const b of BOULDERS) colony("fern", b.x, b.y + 6, 4, b.w * 0.75, 8);
+        colony("fern", 414, 744, 4, 26, 8);
+        colony("fern", 640, 748, 4, 26, 8);
+        for (let i = 0; i < 7; i++) {
+          const x = r() * W;
+          colony("fern", x, landTop(x) + 30 + r() * 20, 5, 80, 10);
+        }
+        // Grass: a fringe along the water, and tussocks in a few places.
+        for (let x = 6; x < W; x += 16 + r() * 16) {
+          if (r() < 0.22) continue;
+          plant("grass", x, bank(x) - 5 - r() * 9);
+        }
+        for (let i = 0; i < 9; i++) {
+          const x = r() * W;
+          colony("grass", x, lerp(landTop(x) + 30, bank(x) - 30, r()), 4 + Math.floor(r() * 3), 60, 9);
+        }
+        for (const t of TREES) colony("grass", t.x, t.base + 2, 2, 40, 5);
+        // Low shrubs, at the edge of the wood.
+        for (let i = 0; i < 8; i++) {
+          const x = r() * W;
+          plant("shrub", x, landTop(x) + 20 + r() * 34);
+        }
+        plants.sort((a, b) => a[2] - b[2]);
+        for (const [kind, x, y] of plants) {
+          const k = near(y);
+          if (kind === "fern") drawFern(ctx, r, x, y, Math.min(TALLEST - 6, (20 + r() * 10) * k));
+          else if (kind === "grass") drawGrass(ctx, r, x, y, Math.min(TALLEST - 8, (17 + r() * 11) * k));
+          else drawLowShrub(ctx, r, x, y, (22 + r() * 10) * k);
+        }
+      }
+
+      // ---- The near bank ----
+      // The strip of shore on our side of the river is wet ground: moss, sedge and cattails in
+      // clumps at the water's edge, which lean a little in the air.
+      const MARSH = { moss: [], clumps: [] };
+      {
+        const r = rng(717);
+        for (let i = 0; i < 16; i++) {
+          const x = 900 + r() * 700;
+          MARSH.moss.push({
+            pts: raggedWith(r, x, nearBank(x) + 24 + r() * 80, 60 + r() * 70, 12 + r() * 12),
+            tone: Math.floor(r() * 3),
+          });
+        }
+        for (let i = 0; i < 20; i++) {
+          const x = 905 + (i / 20) * 690 + (r() - 0.5) * 22;
+          const row = i % 3 === 2 ? 34 + r() * 50 : 2 + r() * 12;
+          const clump = { x, y: nearBank(x) + row, phase: r() * TAU, blades: [], tails: [] };
+          for (let b = 0; b < 8 + Math.floor(r() * 6); b++) {
+            clump.blades.push({
+              dx: (r() - 0.5) * 22,
+              h: 26 + r() * 40,
+              lean: (r() - 0.5) * 2,
+              tone: Math.floor(r() * 3),
+            });
+          }
+          if (row < 16) {
+            for (let t = 0; t < 1 + Math.floor(r() * 3); t++)
+              clump.tails.push({ dx: (r() - 0.5) * 16, h: 58 + r() * 30, lean: (r() - 0.5) * 0.8 });
+          }
+          MARSH.clumps.push(clump);
+        }
+        MARSH.clumps.sort((a, b) => a.y - b.y);
+      }
+      // A red-winged blackbird comes in low over the river from the left around dusk, lands on a
+      // cattail, sits there while the trout jumps, and goes off to the right. The times are parts
+      // of the loop: flying in, and flying off.
+      const BLACKBIRD = { in: [0.46, 0.495], off: [0.54, 0.566] };
+      const PERCH = MARSH.clumps
+        .filter((c) => c.tails.length)
+        .sort((a, b) => Math.abs(a.x - 1010) - Math.abs(b.x - 1010))[0];
+      PERCH.tails[0].perch = true;
+      // How far the bird bends its cattail: 0 not at all, 1 settled under its weight. The stalk dips
+      // past that when the bird lands and bounces to rest; when the bird leaves it springs back the
+      // other way and shivers still.
+      function perchWeight(u) {
+        const landed = (u - BLACKBIRD.in[1]) * T;
+        const left = (u - BLACKBIRD.off[0]) * T;
+        // The bird hits the stalk moving, so the stalk is already swinging at the instant of the
+        // landing, not easing into it afterwards; and it is kicked back the same way at the take-off.
+        const swing = (t) => Math.exp(-t * 2.4) * (Math.cos(t * 8) - 1.1 * Math.sin(t * 8));
+        if (landed < 0) return 0;
+        if (left < 0) return 1 - swing(landed);
+        return swing(left);
+      }
+      // One cattail: where its foot is, where its stalk bends, and where its tip is right now.
+      function cattail(c, t, u) {
+        const air = Math.sin(TAU * u * 2 + c.phase);
+        const weight = t.perch ? perchWeight(u) : 0;
+        const foot = [c.x + t.dx, c.y];
+        return {
+          foot,
+          bend: [foot[0] + t.lean * 3 + weight * 4, c.y - t.h * 0.6],
+          tip: [foot[0] + t.lean * 10 + air * t.h * 0.045 + weight * 11, c.y - t.h + weight * 7],
+        };
+      }
+      function drawMarsh(ctx, u) {
+        const theta = TAU * u;
+        ctx.save();
+        ctx.beginPath();
+        edgePath(ctx, nearBank, 880, W);
+        ctx.lineTo(W, H);
+        ctx.lineTo(880, H);
+        ctx.closePath();
+        ctx.clip();
+        ctx.globalAlpha = 0.6;
+        for (const m of MARSH.moss) {
+          ctx.fillStyle = ["#7f9a5c", "#8ea35f", "#6f8f58"][m.tone];
+          blobPath(ctx, m.pts);
+          ctx.fill();
+        }
+        ctx.restore();
+        ctx.globalAlpha = 1;
+        ctx.lineCap = "round";
+        for (const c of MARSH.clumps) {
+          const air = Math.sin(theta * 2 + c.phase);
+          ctx.lineWidth = 2;
+          for (const b of c.blades) {
+            const tipX = c.x + b.dx + b.lean * b.h * 0.4 + air * b.h * 0.05;
+            ctx.strokeStyle = ["#5c7a44", "#6f8c4c", "#869a55"][b.tone];
+            ctx.beginPath();
+            ctx.moveTo(c.x + b.dx, c.y);
+            ctx.quadraticCurveTo(c.x + b.dx + b.lean * b.h * 0.1, c.y - b.h * 0.65, tipX, c.y - b.h);
+            ctx.stroke();
+          }
+          for (const t of c.tails) {
+            const { foot, bend, tip } = cattail(c, t, u);
+            ctx.strokeStyle = "#5c7a44";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(foot[0], foot[1]);
+            ctx.quadraticCurveTo(bend[0], bend[1], tip[0], tip[1]);
+            ctx.stroke();
+            // The brown head, a little below the tip.
+            ctx.strokeStyle = INK;
+            ctx.lineWidth = 6.5;
+            ctx.beginPath();
+            ctx.moveTo(lerp(foot[0], tip[0], 0.74), lerp(foot[1], tip[1], 0.7));
+            ctx.lineTo(lerp(foot[0], tip[0], 0.92), lerp(foot[1], tip[1], 0.9));
+            ctx.stroke();
+            ctx.strokeStyle = "#6b4a2e";
+            ctx.lineWidth = 4.5;
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Grass grown up along the foot of something, so it stands in the ground and not on a line.
+      function tufts(ctx, x0, x1, y, every = 7) {
+        ctx.strokeStyle = "#55753f";
+        ctx.lineWidth = 2;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        for (let x = x0; x <= x1; x += every) {
+          const v = Math.sin(x * 12.9898) * 43758.5453;
+          const r = v - Math.floor(v);
+          const at = x + r * 3;
+          const lean = (r - 0.5) * 7;
+          const h = 5 + r * 7;
+          ctx.moveTo(at, y + 3);
+          ctx.quadraticCurveTo(at + lean * 0.3, y - h * 0.5, at + lean, y - h);
+        }
+        ctx.stroke();
+      }
+      function drawTrunks(ctx) {
+        TREES.forEach((t, i) => {
+          const birch = t.kind === "birch";
+          const flare = birch ? 2 : 6;
+          ctx.fillStyle = birch ? "#f1ede0" : "#5b4636";
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = birch ? 2 : 2.5;
+          ctx.beginPath();
+          ctx.moveTo(t.x - t.w / 2 - flare, t.base);
+          ctx.quadraticCurveTo(t.x - t.w / 2, t.base - 40, t.x - t.w / 2, t.top);
+          ctx.lineTo(t.x + t.w / 2, t.top);
+          ctx.quadraticCurveTo(t.x + t.w / 2, t.base - 40, t.x + t.w / 2 + flare, t.base);
+          // The outline runs up one side, over the top and down the other; there is no line across
+          // the foot, only grass.
+          ctx.fill();
+          ctx.stroke();
+          tufts(ctx, t.x - t.w / 2 - flare - 5, t.x + t.w / 2 + flare + 5, t.base, 6);
+          ctx.strokeStyle = INK;
+          if (!birch) return;
+          ctx.lineWidth = 2.2;
+          ctx.beginPath();
+          for (const m of BIRCH_MARKS) {
+            if (m.t !== i) continue;
+            const edge = t.x + (m.side * t.w) / 2;
+            ctx.moveTo(edge, m.y);
+            ctx.lineTo(edge - m.side * t.w * m.len, m.y + 1.5);
+          }
+          ctx.stroke();
+        });
+      }
+      function drawCanopies(ctx) {
+        TREES.forEach((t, i) => {
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 2.5;
+          if (t.crown) {
+            sprucePath(ctx, t.crown);
+            ctx.fillStyle = t.crown.fill;
+            ctx.fill();
+            ctx.stroke();
+            // A few drooping strokes inside, one to a bough, none matching its neighbour.
+            const c = t.crown;
+            const step = (c.bottom - c.top) / c.tiers;
+            ctx.lineWidth = 1.5;
+            ctx.globalAlpha = 0.45;
+            ctx.beginPath();
+            for (let k = 2; k <= c.tiers; k++) {
+              const w = c.half * Math.pow(k / c.tiers, 0.85);
+              for (const [side, sign] of [
+                [c.left, -1],
+                [c.right, 1],
+              ]) {
+                const b = side[k - 1];
+                const x0 = c.x + sign * w * (0.1 + b.rise * 0.5);
+                const y0 = c.top + step * (k - 0.72 + b.dy * 0.4);
+                const x1 = c.x + sign * w * (0.42 + b.sag);
+                const y1 = c.top + step * (k - 0.3 + b.dy * 0.5);
+                ctx.moveTo(x0, y0);
+                ctx.quadraticCurveTo((x0 + x1) / 2, y0 + step * (0.05 + b.sag * 0.5), x1, y1);
+              }
+            }
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+            return;
+          }
+          if (!t.leaves) return;
+          ctx.lineCap = "round";
+          for (const [color, extra] of [
+            [INK, 2.4],
+            ["#f1ede0", 0],
+          ]) {
+            ctx.strokeStyle = color;
+            for (const limb of t.branches) {
+              for (let k = 1; k < limb.length; k++) {
+                ctx.lineWidth = lerp(7, 2.5, (k - 1) / (limb.length - 2)) + extra;
+                ctx.beginPath();
+                ctx.moveTo(limb[k - 1][0], limb[k - 1][1]);
+                ctx.lineTo(limb[k][0], limb[k][1]);
+                ctx.stroke();
+              }
+            }
+          }
+          // The trunk's white goes back over the limb roots, so each limb grows out of the trunk.
+          ctx.fillStyle = "#f1ede0";
+          ctx.fillRect(t.x - t.w / 2 + 1, t.top + 1, t.w - 2, t.base - t.top - 30);
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 2.2;
+          ctx.beginPath();
+          for (const m of BIRCH_MARKS) {
+            if (m.t !== i) continue;
+            const edge = t.x + (m.side * t.w) / 2;
+            ctx.moveTo(edge, m.y);
+            ctx.lineTo(edge - m.side * t.w * m.len, m.y + 1.5);
+          }
+          ctx.stroke();
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          for (const [x0, y0, x1, y1] of t.limbMarks) {
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x1, y1);
+          }
+          ctx.stroke();
+          ctx.strokeStyle = "#4a3b2c";
+          ctx.lineWidth = 1.3;
+          ctx.beginPath();
+          for (const w of t.twigs) {
+            ctx.moveTo(w.x, w.y);
+            ctx.quadraticCurveTo(w.mx, w.my, w.ex, w.ey);
+          }
+          ctx.stroke();
+          ctx.fillStyle = "rgba(159, 178, 98, 0.22)";
+          for (const h of t.haze) {
+            ctx.beginPath();
+            ctx.arc(h.x, h.y, h.r, 0, TAU);
+            ctx.fill();
+          }
+          ctx.strokeStyle = "rgba(22, 19, 14, 0.45)";
+          ctx.lineWidth = 0.8;
+          ["#9fb262", "#bccb7e", "#86a04f"].forEach((color, tone) => {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            for (const l of t.leaves) {
+              if (l.tone !== tone) continue;
+              ctx.moveTo(l.x + Math.cos(l.rot) * l.size, l.y + Math.sin(l.rot) * l.size);
+              ctx.ellipse(l.x, l.y, l.size, l.size * 0.55, l.rot, 0, TAU);
+            }
+            ctx.fill();
+            ctx.stroke();
+          });
+        });
+      }
+
+      // ---- What the sign says ----
+      // Frame 0 is the sign as it was painted: the large wordmark and the tagline. The other four
+      // replace its face: the small wordmark as a header, then what the frame says. The words are
+      // painted like the wordmark (multiplied onto the boards), so the night and the lamps light them.
+      // Copy and the links are painted too, so each leaves a HITS rectangle in the picture's own
+      // coordinates for a click to find.
+      const INSTALL_HOST = "loopway.craftmill.dev";
+      const REPO = "craftmilldev/loopway";
+      const INSTALL = `curl -fsSL https://${INSTALL_HOST}/install.sh | sh\nloopway setup`;
+      const FRAMES = ["tagline", "description", "install", "get-started", "github"];
+      const GITHUB_MARK =
+        "M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z";
+      const DESCRIPTION =
+        "Loopway turns GitHub issues and PRs into an agent communication platform, allowing you to track sessions the same way you track work and allowing your agents and teammates to collaborate with each other. Powered by gh and claude code, Loopway can be set up in minutes.";
+      const SETUP_NOTE =
+        "loopway setup checks gh, asks about a loopway bot, and offers to add .loopway/dev.md and .loopway/review.md for the bots.";
+      let shown = 0;
+      let copied = false;
+      let HITS = [];
+      const BODY = `25px "Sorts Mill Goudy", Georgia, "Times New Roman", serif`;
+      const SMALL = `22px "Sorts Mill Goudy", Georgia, "Times New Roman", serif`;
+      const CODE = `21px "Courier Prime", Courier, ui-monospace, monospace`;
+      function wrapText(ctx, text, width) {
+        const lines = [];
+        let line = "";
+        for (const word of text.split(" ")) {
+          const next = line ? `${line} ${word}` : word;
+          if (line && ctx.measureText(next).width > width) {
+            lines.push(line);
+            line = word;
+          } else line = next;
+        }
+        return lines.concat(line);
+      }
+      function drawFaceContent(ctx, w, h) {
+        const left = 48;
+        const right = w - 48;
+        const INKY = "#2a211a";
+        HITS = [];
+        const hit = (kind, x0, y0, x1, y1) =>
+          HITS.push({ kind, x0: BOARD.x + x0, y0: BOARD.y + y0, x1: BOARD.x + x1, y1: BOARD.y + y1 });
+        ctx.globalCompositeOperation = "multiply";
+        // The small wordmark, as a header.
+        if (wordmark.complete && wordmark.naturalWidth) ctx.drawImage(wordmark, left, 34, (38 * 1896) / 508, 38);
+        ctx.textBaseline = "alphabetic";
+        ctx.fillStyle = INKY;
+        const label = (text) => {
+          ctx.font = `14px "Courier Prime", Courier, ui-monospace, monospace`;
+          ctx.fillStyle = MADDER;
+          ctx.fillText(text.toUpperCase(), left, 104);
+          ctx.fillStyle = INKY;
+        };
+        const box = (y0, y1) => {
+          ctx.strokeStyle = "rgba(22, 19, 14, 0.55)";
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(left, y0, right - left, y1 - y0);
+        };
+        const paragraph = (text, font, x, y, lead) => {
+          ctx.font = font;
+          for (const line of wrapText(ctx, text, right - x)) {
+            ctx.fillText(line, x, y);
+            y += lead;
+          }
+          return y;
+        };
+        if (shown === 1) {
+          paragraph(DESCRIPTION, BODY, left, 122, 34);
+        } else if (shown === 2) {
+          label("1 · Install and set up");
+          box(118, 214);
+          ctx.font = CODE;
+          const [fetchLine, setupLine] = INSTALL.split("\n");
+          ctx.fillText(fetchLine, left + 16, 152);
+          ctx.fillText(setupLine, left + 16, 192);
+          // The Copy button sits at the right end of the short line.
+          const bx = right - 112;
+          ctx.strokeRect(bx, 164, 96, 34);
+          ctx.font = `14px "Courier Prime", Courier, ui-monospace, monospace`;
+          ctx.textAlign = "center";
+          ctx.fillText(copied ? "COPIED" : "COPY", bx + 48, 186);
+          ctx.textAlign = "left";
+          hit("copy", bx, 164, bx + 96, 198);
+          paragraph(SETUP_NOTE, SMALL, left, 246, 28);
+        } else if (shown === 3) {
+          label("2 · Get started");
+          box(118, 196);
+          ctx.font = CODE;
+          ctx.fillText("1. loopway", left + 16, 150);
+          ctx.fillText("2. create an issue on GitHub", left + 16, 181);
+          ctx.font = SMALL;
+          const text = "What goes in each bot's file: the .loopway/<bot>.md docs";
+          ctx.fillText(text, left, 246);
+          const width = ctx.measureText(text).width;
+          const docs = ctx.measureText(".loopway/<bot>.md docs").width;
+          ctx.fillRect(left + width - docs, 251, docs, 1.5);
+          hit("bots", left + width - docs, 226, left + width, 258);
+        } else {
+          ctx.save();
+          ctx.translate(left, 106);
+          ctx.scale(4.5, 4.5);
+          ctx.fill(new Path2D(GITHUB_MARK));
+          ctx.restore();
+          ctx.font = `36px "Courier Prime", Courier, ui-monospace, monospace`;
+          ctx.fillText(REPO, left + 90, 160);
+          hit("github", left, 100, left + 90 + ctx.measureText(REPO).width, 182);
+          // Small print under the main content: what has been found on the billboard.
+          const found = kept();
+          ctx.fillStyle = "rgba(22, 19, 14, 0.4)";
+          ctx.fillRect(left, 226, right - left, 1.2);
+          ctx.fillStyle = INKY;
+          ctx.font = `15px "Courier Prime", Courier, ui-monospace, monospace`;
+          ctx.fillText(
+            `found the snake: ${found.snake ? "yes" : "not yet"}   found the bird: ${found.bird ? "yes" : "not yet"}   loops completed: ${found.loops}`,
+            left,
+            256,
+          );
+        }
+        ctx.globalCompositeOperation = "source-over";
+      }
+
+      // ---- The billboard ----
+      // The face is paint on boards: brush streaks, plank seams and a hand-lined border.
+      function drawBoardFace() {
+        const { w, h } = BOARD;
+        boardCanvas.width = Math.ceil(w * scale);
+        boardCanvas.height = Math.ceil(h * scale);
+        const ctx = boardCanvas.getContext("2d");
+        ctx.setTransform(scale, 0, 0, scale, 0, 0);
+        ctx.fillStyle = CREAM;
+        ctx.fillRect(0, 0, w, h);
+        const r = rng(77);
+        ctx.lineCap = "round";
+        for (let i = 0; i < 170; i++) {
+          const y = r() * h;
+          const x = r() * w;
+          const len = 60 + r() * 240;
+          ctx.strokeStyle = r() < 0.5 ? "rgba(255, 255, 255, 0.3)" : "rgba(125, 100, 55, 0.07)";
+          ctx.lineWidth = 3 + r() * 7;
+          ctx.beginPath();
+          ctx.moveTo(x - len / 2, y);
+          ctx.quadraticCurveTo(x, y + (r() - 0.5) * 5, x + len / 2, y + (r() - 0.5) * 3);
+          ctx.stroke();
+        }
+        ctx.strokeStyle = "rgba(22, 19, 14, 0.13)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let i = 1; i < 8; i++) {
+          ctx.moveTo((w * i) / 8, 0);
+          ctx.lineTo((w * i) / 8, h);
+        }
+        ctx.stroke();
+        // The border lines are painted on: one steady stroke a side, with only a hand's slight waver.
+        const lined = (inset, color, width) => {
+          const corners = [
+            [inset, inset],
+            [w - inset, inset],
+            [w - inset, h - inset],
+            [inset, h - inset],
+          ];
+          ctx.strokeStyle = color;
+          ctx.lineWidth = width;
+          ctx.lineCap = "round";
+          corners.forEach(([x0, y0], i) => {
+            const [x1, y1] = corners[(i + 1) % 4];
+            const len = Math.hypot(x1 - x0, y1 - y0);
+            const ux = (x1 - x0) / len;
+            const uy = (y1 - y0) / len;
+            const phase = r() * TAU;
+            const sway = 0.5 + r() * 0.4;
+            ctx.beginPath();
+            for (let d = -1.5; d <= len + 1.5; d += 12) {
+              const off = Math.sin(d * 0.013 + phase) * sway + Math.sin(d * 0.041 + phase * 2) * 0.3;
+              const px = x0 + ux * d - uy * off;
+              const py = y0 + uy * d + ux * off;
+              if (d < 0) ctx.moveTo(px, py);
+              else ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+          });
+        };
+        lined(13, MADDER, 6);
+        lined(24, "#4a7991", 2.4);
+        if (shown === 0) {
+          // The wordmark is as wide as the face allows; the tagline is smaller and starts at its left edge.
+          // Both are multiplied onto the boards, so the brushwork shows through the lettering.
+          const tagline = (size) => `italic ${size}px Baskerville, "Hoefler Text", "Sorts Mill Goudy", Georgia, serif`;
+          // The face is cut to fit: the wordmark runs border to border, and the tagline is one line
+          // set to exactly the wordmark's width.
+          const line = "Keep your agents and team in same loop";
+          const markWidth = w - 92;
+          const markHeight = (markWidth * 508) / 1896;
+          ctx.font = tagline(64);
+          const size = (64 * markWidth) / ctx.measureText(line).width;
+          const block = markHeight + size * 1.1;
+          const top = (h - block) / 2 - 2;
+          const left = (w - markWidth) / 2;
+          ctx.globalCompositeOperation = "multiply";
+          if (wordmark.complete && wordmark.naturalWidth) ctx.drawImage(wordmark, left, top, markWidth, markHeight);
+          ctx.fillStyle = "#2a211a";
+          ctx.textBaseline = "alphabetic";
+          ctx.font = tagline(size);
+          ctx.fillText(line, left, top + markHeight + size * 0.88);
+          ctx.globalCompositeOperation = "source-over";
+        } else drawFaceContent(ctx, w, h);
+        // The seams between the boards run through the paint.
+        ctx.strokeStyle = "rgba(22, 19, 14, 0.16)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let i = 1; i < 8; i++) {
+          ctx.moveTo((w * i) / 8, 0);
+          ctx.lineTo((w * i) / 8, h);
+        }
+        ctx.stroke();
+        // Light falls from above: the foot of the face is a little duller than the top.
+        const shade = ctx.createLinearGradient(0, 0, 0, h);
+        shade.addColorStop(0, "rgba(22, 19, 14, 0)");
+        shade.addColorStop(1, "rgba(22, 19, 14, 0.1)");
+        ctx.fillStyle = shade;
+        ctx.fillRect(0, 0, w, h);
+      }
+
+      function drawBoard(ctx) {
+        const { x, y, w, h } = BOARD;
+        ctx.strokeStyle = INK;
+        ctx.lineCap = "round";
+        const foot = POSTS.bottom;
+        const bottom = y + h;
+        // Its shadow on the ground, and darker patches where the timbers meet the earth.
+        ctx.fillStyle = "rgba(22, 19, 14, 0.14)";
+        ctx.beginPath();
+        ctx.ellipse(x + w / 2 + 30, foot + 4, w * 0.5, 15, 0, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = "rgba(22, 19, 14, 0.22)";
+        for (const fx of [POSTS.left, POSTS.right, POSTS.left - 78, POSTS.right + 78]) {
+          ctx.beginPath();
+          ctx.ellipse(fx + 6, fx === POSTS.left || fx === POSTS.right ? foot : foot - 14, 26, 6, 0, 0, TAU);
+          ctx.fill();
+        }
+        // Braces lean back from each post to the ground behind it.
+        ctx.lineWidth = 2.5;
+        ctx.fillStyle = "#6b5440";
+        for (const [px, dir] of [
+          [POSTS.left, -1],
+          [POSTS.right, 1],
+        ]) {
+          ctx.beginPath();
+          ctx.moveTo(px, bottom + 70);
+          ctx.lineTo(px + dir * 84, foot - 14);
+          ctx.lineTo(px + dir * 70, foot - 14);
+          ctx.lineTo(px, bottom + 92);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+        // Two matching timbers, the same distance in from each end, in shade just under the face.
+        for (const px of [POSTS.left, POSTS.right]) {
+          ctx.fillStyle = "#8a7257";
+          ctx.beginPath();
+          ctx.rect(px - POSTS.w / 2, bottom, POSTS.w, foot - bottom);
+          ctx.fill();
+          const under = ctx.createLinearGradient(0, bottom, 0, bottom + 70);
+          under.addColorStop(0, "rgba(22, 19, 14, 0.5)");
+          under.addColorStop(1, "rgba(22, 19, 14, 0)");
+          ctx.fillStyle = under;
+          ctx.fill();
+          ctx.fillStyle = "rgba(22, 19, 14, 0.18)";
+          ctx.fillRect(px + POSTS.w / 2 - 8, bottom, 8, foot - bottom);
+          ctx.stroke();
+        }
+        // A ledge under the face, wider than the face, on brackets.
+        ctx.fillStyle = "#6b5440";
+        ctx.beginPath();
+        ctx.rect(x - 16, bottom + 4, w + 32, 11);
+        ctx.fill();
+        ctx.stroke();
+        const fade = faceFade();
+        if (fade < 1) ctx.drawImage(faceFrom, x, y, w, h);
+        ctx.globalAlpha = fade;
+        ctx.drawImage(boardCanvas, x, y, w, h);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = "#6b5440";
+        ctx.lineWidth = 10;
+        ctx.strokeRect(x, y, w, h);
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x - 5, y - 5, w + 10, h + 10);
+        ctx.strokeRect(x + 5, y + 5, w - 10, h - 10);
+        ctx.lineWidth = 2.5;
+        ctx.fillStyle = INK;
+        for (const lx of [x + 150, x + w / 2, x + w - 150]) {
+          ctx.beginPath();
+          ctx.moveTo(lx, y);
+          ctx.quadraticCurveTo(lx, y - 24, lx + 16, y - 22);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(lx + 12, y - 27);
+          ctx.lineTo(lx + 26, y - 21);
+          ctx.lineTo(lx + 19, y - 11);
+          ctx.lineTo(lx + 9, y - 16);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+
+      // ---- The flowers ----
+      function drawVine(ctx, pts) {
+        ctx.strokeStyle = "#4f6b46";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+        ctx.stroke();
+        ctx.fillStyle = "#6f8f5e";
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1;
+        for (let i = 3; i < pts.length - 1; i += 5) {
+          const [x, y] = pts[i];
+          const dx = pts[i + 1][0] - x;
+          const dy = pts[i + 1][1] - y;
+          const side = i % 2 ? 1 : -1;
+          const len = Math.hypot(dx, dy) || 1;
+          ctx.beginPath();
+          ctx.ellipse(x + (-dy / len) * side * 9, y + (dx / len) * side * 9 - 2, 9, 4.5, side * -0.5, 0, TAU);
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+      function stem(ctx, fromX, fromY, toX, toY) {
+        ctx.strokeStyle = "#4f6b46";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(fromX, fromY);
+        ctx.quadraticCurveTo((fromX + toX) / 2, fromY, toX, toY);
+        ctx.stroke();
+      }
+      // Morning glories and moonflowers are the same trumpet: a flat five-lobed face when open and a
+      // furled spindle when shut.
+      function moonflowerPath(ctx, r, open) {
+        const squeeze = lerp(0.28, 1, open);
+        ctx.beginPath();
+        for (let i = 0; i <= 40; i++) {
+          const a = (i / 40) * TAU - Math.PI / 2;
+          const k = r * (0.9 + 0.1 * open * Math.cos(5 * a));
+          const px = Math.cos(a) * k * squeeze;
+          const py = Math.sin(a) * k;
+          if (i) ctx.lineTo(px, py);
+          else ctx.moveTo(px, py);
+        }
+        ctx.closePath();
+      }
+      const TRUMPETS = {
+        glory: { face: "#6f86d6", crease: "#cfd8f5", throat: "#f6f2e4", centre: "#e6cf6e" },
+        moon: { face: "#f6f2e4", crease: "#a8a283", throat: "#f6f2e4", centre: "#cfd09a" },
+      };
+      function drawTrumpet(ctx, f, open, c) {
+        ctx.save();
+        ctx.translate(f.x, f.fy);
+        ctx.rotate(f.rot * (1 - open * 0.6));
+        moonflowerPath(ctx, f.r, open);
+        ctx.fillStyle = c.face;
+        ctx.fill();
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+        ctx.globalAlpha = open;
+        ctx.fillStyle = c.throat;
+        ctx.beginPath();
+        ctx.arc(0, 0, f.r * 0.4, 0, TAU);
+        ctx.fill();
+        ctx.strokeStyle = c.crease;
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+          const a = -Math.PI / 2 + ((i + 0.5) * TAU) / 5;
+          ctx.moveTo(0, 0);
+          ctx.lineTo(Math.cos(a) * f.r * 0.8, Math.sin(a) * f.r * 0.8);
+        }
+        ctx.stroke();
+        ctx.fillStyle = c.centre;
+        ctx.beginPath();
+        ctx.arc(0, 0, f.r * 0.16, 0, TAU);
+        ctx.fill();
+        ctx.globalAlpha = 1 - open;
+        ctx.beginPath();
+        ctx.moveTo(-f.r * 0.12, -f.r * 0.6);
+        ctx.quadraticCurveTo(f.r * 0.22, 0, -f.r * 0.12, f.r * 0.6);
+        ctx.stroke();
+        ctx.restore();
+      }
+      // Each post carries one tangled vine that spills out at the foot: morning glories on the left,
+      // moonflowers on the right. Nothing is evenly spaced.
+      const RAIL = BOARD.y + BOARD.h + 9;
+      function postVine(cx, swing, pitch, phase = 0) {
+        const pts = [];
+        for (let y = POSTS.bottom - 2; y >= RAIL; y -= 6) pts.push([cx + swing * Math.sin(y * pitch + phase), y]);
+        return pts;
+      }
+      function scatter(count, gap, make) {
+        const out = [];
+        for (let tries = 0; out.length < count && tries < count * 40; tries++) {
+          const f = make();
+          if (out.every((o) => Math.hypot(o.x - f.x, o.fy - f.fy) > gap)) out.push(f);
+        }
+        return out;
+      }
+      const bloom = (size) => ({ r: size + seeded() * 6, delay: seeded() * 0.012, rot: (seeded() - 0.5) * 0.9 });
+      function climber(post, pitch, size) {
+        const onPost = () => {
+          const vy = lerp(RAIL + 14, POSTS.bottom - 30, seeded());
+          const side = seeded() < 0.5 ? -1 : 1;
+          return {
+            vx: post + 16 * Math.sin(vy * pitch),
+            vy,
+            x: post + side * (20 + seeded() * 40),
+            fy: vy - 6 - seeded() * 22,
+            ...bloom(size),
+          };
+        };
+        const atFoot = () => {
+          const x = post - 85 + seeded() * 170;
+          return {
+            vx: post + (x - post) * 0.5,
+            vy: POSTS.bottom + 8,
+            x,
+            fy: POSTS.bottom - 16 + seeded() * 26,
+            ...bloom(size),
+          };
+        };
+        return {
+          vines: [postVine(post, 16, pitch), postVine(post, 13, pitch * 0.7, 2)],
+          flowers: [...scatter(9, 32, onPost), ...scatter(6, 34, atFoot)],
+          mound: Array.from({ length: 46 }, () => {
+            const a = seeded() * TAU;
+            const k = Math.sqrt(seeded());
+            return { x: post + Math.cos(a) * k * 100, y: POSTS.bottom + 6 + Math.sin(a) * k * 20, rot: seeded() * TAU };
+          }),
+        };
+      }
+      const GLORY = climber(POSTS.left, 0.08, 13);
+      const MOON = climber(POSTS.right, 0.1, 13);
+      const MOONFLOWERS = MOON.flowers;
+      // Each flower opens and closes well clear of dawn and dusk: the morning glories inside the day,
+      // shut again by afternoon, and the moonflowers inside the night. Each one runs a moment behind
+      // its neighbours.
+      const gloryOpen = (u) => smooth(0.1, 0.16, u) * (1 - smooth(0.38, 0.44, u));
+      const moonflowerOpen = (u) => smooth(0.585, 0.635, u) * (1 - smooth(0.885, 0.935, u));
+
+      function drawFlowers(ctx, u) {
+        for (const [plant, opens, colours] of [
+          [GLORY, gloryOpen, TRUMPETS.glory],
+          [MOON, moonflowerOpen, TRUMPETS.moon],
+        ]) {
+          for (const pts of plant.vines) drawVine(ctx, pts);
+          ctx.fillStyle = "#6f8f5e";
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 1;
+          for (const leaf of plant.mound) {
+            ctx.beginPath();
+            ctx.ellipse(leaf.x, leaf.y, 10, 5.5, leaf.rot, 0, TAU);
+            ctx.fill();
+            ctx.stroke();
+          }
+          for (const f of plant.flowers) {
+            stem(ctx, f.vx, f.vy, f.x, f.fy);
+            drawTrumpet(ctx, f, opens(u - f.delay), colours);
+          }
+        }
+      }
+
+      // ---- The terminal ----
+      const RAMP = " ..:-~=+*x%#@";
+      function drawDesk(ctx, u) {
+        const { x, y, w, h } = SCREEN_AT_DESK;
+        ctx.save();
+        ctx.translate(172, 886);
+        ctx.scale(DESK_SCALE, DESK_SCALE);
+        ctx.translate(-172, -886);
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 3;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(102, 834);
+        ctx.lineTo(99, 884);
+        ctx.moveTo(242, 834);
+        ctx.lineTo(245, 884);
+        ctx.moveTo(x + w / 2, y + h);
+        ctx.lineTo(x + w / 2, 828);
+        ctx.moveTo(x + w / 2 - 14, 828);
+        ctx.lineTo(x + w / 2 + 14, 828);
+        ctx.stroke();
+        ctx.fillStyle = "#8a7257";
+        ctx.beginPath();
+        ctx.rect(92, 828, 160, 8);
+        ctx.fill();
+        ctx.stroke();
+
+        // On once they have sat down, off as they get up. Off is a dead grey, a little lighter than the bezel.
+        const power = smooth(0.062, 0.072, u) * (1 - smooth(0.26, 0.268, u));
+        ctx.fillStyle = mix("#2b2a26", "#11150f", power);
+        ctx.beginPath();
+        ctx.rect(x, y, w, h);
+        ctx.fill();
+        // A field of characters: each cell takes its glyph from waves that pass through the grid.
+        const theta = TAU * u;
+        const cell = 4.7;
+        const row = 6.4;
+        ctx.font = `6.5px ${MONO}`;
+        ctx.textBaseline = "top";
+        for (let r = 0; r < 8 && power > 0.01; r++) {
+          for (let c = 0; c < 19; c++) {
+            const v =
+              Math.sin(c * 0.38 + r * 0.21 - theta * 9) +
+              Math.sin(r * 0.6 + Math.sin(c * 0.25 + theta * 5) * 1.8) +
+              0.6 * Math.sin((c - r) * 0.3 + theta * 14);
+            const k = clamp((v + 2.6) / 5.2);
+            const ch = RAMP[Math.floor(k * (RAMP.length - 0.01))];
+            if (ch === " ") continue;
+            ctx.fillStyle = k > 0.78 ? "#f0a35e" : "#f6e8e5";
+            ctx.globalAlpha = (0.35 + 0.65 * k) * power;
+            ctx.fillText(ch, x + 4 + c * cell, y + 4 + r * row);
+          }
+        }
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x, y, w, h);
+        ctx.restore();
+      }
+      // The stool. The sitter's legs are drawn before it and their body after it, so they sit on it
+      // with their legs on its far side.
+      function drawStool(ctx) {
+        ctx.save();
+        ctx.translate(172, 886);
+        ctx.scale(DESK_SCALE, DESK_SCALE);
+        // It stands a little nearer to us than the sitter's feet, so its own feet are lower in the
+        // picture. Its seat is a plain board like the desk top, level with the sitter's hips.
+        ctx.translate(-172, -880);
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 3;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(163, 847);
+        ctx.lineTo(158, 885);
+        ctx.moveTo(181, 847);
+        ctx.lineTo(186, 885);
+        ctx.moveTo(160.5, 868);
+        ctx.lineTo(183.5, 868);
+        ctx.stroke();
+        ctx.fillStyle = "#8a7257";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.rect(156, 843.5, 32, 5);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // ---- The camp ----
+      // The opening in the front of the tent, in the tent's own coordinates.
+      function tentDoorway(ctx) {
+        ctx.beginPath();
+        ctx.moveTo(1470, 617);
+        ctx.quadraticCurveTo(1461, 664, 1447, 704);
+        ctx.quadraticCurveTo(1470, 706, 1493, 704);
+        ctx.quadraticCurveTo(1484, 660, 1470, 617);
+        ctx.closePath();
+      }
+      // An open-fronted canvas ridge tent, pitched back from the water. The cloth sags between its supports, so
+      // none of its edges is quite straight, and it is held by guy lines to pegs.
+      function drawTent(ctx) {
+        // Its shadow on the ground.
+        ctx.fillStyle = "rgba(22, 19, 14, 0.16)";
+        ctx.beginPath();
+        ctx.ellipse(TENT_DOOR[0] + 70, TENT_DOOR[1] - 2, 190, 12, -0.07, 0, TAU);
+        ctx.fill();
+        ctx.save();
+        ctx.translate(TENT_DOOR[0], TENT_DOOR[1]);
+        ctx.scale(CAMP_SCALE, CAMP_SCALE);
+        ctx.translate(-1470, -702);
+        ctx.strokeStyle = INK;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        // Guy lines and pegs, behind the cloth.
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        for (const [fx, fy, px, py] of [
+          [1470, 598, 1392, 708],
+          [1572, 613, 1606, 694],
+        ]) {
+          ctx.moveTo(fx, fy);
+          ctx.quadraticCurveTo((fx + px) / 2, (fy + py) / 2 + 3, px, py);
+          ctx.moveTo(px - 3, py - 5);
+          ctx.lineTo(px + 2, py + 3);
+        }
+        ctx.stroke();
+        ctx.lineWidth = 2.2;
+        // The long side, in shade.
+        ctx.fillStyle = "#c2b188";
+        ctx.beginPath();
+        ctx.moveTo(1470, 597);
+        ctx.quadraticCurveTo(1522, 611, 1572, 612);
+        ctx.quadraticCurveTo(1590, 652, 1595, 692);
+        ctx.quadraticCurveTo(1560, 701, 1526, 703);
+        ctx.quadraticCurveTo(1503, 648, 1470, 597);
+        ctx.fill();
+        // The cloth is outlined along the ridge and down its edges, not along the ground.
+        ctx.beginPath();
+        ctx.moveTo(1470, 597);
+        ctx.quadraticCurveTo(1522, 611, 1572, 612);
+        ctx.quadraticCurveTo(1590, 652, 1595, 692);
+        ctx.stroke();
+        // The front.
+        ctx.fillStyle = "#dccca6";
+        ctx.beginPath();
+        ctx.moveTo(1470, 597);
+        ctx.quadraticCurveTo(1446, 655, 1412, 703);
+        ctx.quadraticCurveTo(1470, 707, 1526, 703);
+        ctx.quadraticCurveTo(1503, 648, 1470, 597);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(1412, 703);
+        ctx.quadraticCurveTo(1446, 655, 1470, 597);
+        ctx.quadraticCurveTo(1503, 648, 1526, 703);
+        ctx.stroke();
+        // The doorway: an open-fronted tent, with no flap.
+        // The inside is in shade, not black, so someone standing in the doorway still shows against it.
+        ctx.fillStyle = "#5a4a3a";
+        tentDoorway(ctx);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(1447, 704);
+        ctx.quadraticCurveTo(1461, 664, 1470, 617);
+        ctx.quadraticCurveTo(1484, 660, 1493, 704);
+        ctx.stroke();
+        // The pole's tip, and folds where the cloth pulls.
+        ctx.beginPath();
+        ctx.moveTo(1470, 597);
+        ctx.lineTo(1469, 588);
+        ctx.stroke();
+        ctx.lineWidth = 1.2;
+        ctx.globalAlpha = 0.45;
+        ctx.beginPath();
+        ctx.moveTo(1500, 618);
+        ctx.quadraticCurveTo(1524, 650, 1540, 696);
+        ctx.moveTo(1540, 620);
+        ctx.quadraticCurveTo(1556, 652, 1568, 692);
+        ctx.moveTo(1452, 650);
+        ctx.quadraticCurveTo(1440, 676, 1428, 696);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.restore();
+        // Grass along the foot of the cloth, front and side.
+        const sx = (x) => TENT_DOOR[0] + (x - 1470) * CAMP_SCALE;
+        const sy = (y) => TENT_DOOR[1] + (y - 702) * CAMP_SCALE;
+        tufts(ctx, sx(1410), sx(1528), sy(704), 6);
+        for (let i = 0; i <= 5; i++) {
+          const x = lerp(sx(1532), Math.min(W, sx(1596)), i / 5);
+          tufts(ctx, x, x + 6, lerp(sy(703), sy(692), i / 5), 6);
+        }
+      }
+      // Folding camp chairs: a frame of crossed legs with a cloth seat slung across it and a cloth
+      // back. The two at the sides are seen side-on, facing the fire; the one behind the fire is
+      // seen from the front. Each has cloth of its own colour.
+      function drawSeats(ctx) {
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        for (const [seat, facing, cloth] of [
+          [SEAT1, 1, "#9e4a3a"],
+          [SEAT3, -1, "#4a7991"],
+        ]) {
+          const k = depth(seat[1]);
+          ctx.save();
+          ctx.translate(seat[0], seat[1]);
+          ctx.scale(facing * k, k);
+          // The frame.
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          ctx.moveTo(-13, 0);
+          ctx.lineTo(8, -19.5);
+          ctx.moveTo(9, 0);
+          ctx.lineTo(-11, -21);
+          ctx.lineTo(-17, -48);
+          ctx.moveTo(-13.5, -33);
+          ctx.quadraticCurveTo(-3, -34.5, 7, -32);
+          ctx.lineTo(8, -19.5);
+          ctx.stroke();
+          // The cloth: the seat sags a little, and the back is a band up the back post.
+          for (const [color, width] of [
+            [INK, 6.4],
+            [cloth, 4],
+          ]) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.beginPath();
+            ctx.moveTo(-11, -21);
+            ctx.quadraticCurveTo(-2, -17.5, 8, -19.5);
+            ctx.moveTo(-12.2, -26);
+            ctx.lineTo(-16.4, -45.5);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+        // The chair behind the fire, from the front: its back shows behind whoever sits in it.
+        const k = depth(SEAT2[1]);
+        ctx.save();
+        ctx.translate(SEAT2[0], SEAT2[1]);
+        ctx.scale(k, k);
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(-12, 0);
+        ctx.lineTo(-10, -20);
+        ctx.moveTo(12, 0);
+        ctx.lineTo(10, -20);
+        ctx.moveTo(-13, -50);
+        ctx.lineTo(-11.5, -20);
+        ctx.moveTo(13, -50);
+        ctx.lineTo(11.5, -20);
+        ctx.stroke();
+        ctx.fillStyle = "#5f7f58";
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(-12.6, -48);
+        ctx.quadraticCurveTo(0, -46, 12.6, -48);
+        ctx.lineTo(11.8, -26);
+        ctx.quadraticCurveTo(0, -24.5, -11.8, -26);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(-11.5, -21.5);
+        ctx.quadraticCurveTo(0, -18.5, 11.5, -21.5);
+        ctx.lineTo(11, -18.5);
+        ctx.quadraticCurveTo(0, -15.5, -11, -18.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+      // A sheet of flame: several tongues side by side, each with its own height, lean and flicker,
+      // tallest in the middle, joined by dips that rise and fall. Every rate is a whole number of
+      // turns per loop, so the fire repeats exactly without ever looking regular.
+      function flame(ctx, width, height, tongues, theta, seed) {
+        const breeze = Math.sin(theta * 9 + seed) * width * 0.12;
+        const peaks = [];
+        for (let i = 0; i < tongues; i++) {
+          const across = (i + 0.5) / tongues;
+          const middle = 1 - Math.abs(across - 0.5) * 1.4;
+          const flick =
+            0.62 +
+            0.24 * Math.sin(theta * (31 + 7 * i + seed) + i * 2.1 + seed) +
+            0.14 * Math.sin(theta * (53 + 11 * i) + i * 1.3 + seed * 2);
+          peaks.push({
+            x: (across - 0.5) * 2 * width + Math.sin(theta * (23 + 5 * i) + i + seed) * width * 0.13,
+            h: height * middle * flick,
+            lean: Math.sin(theta * (17 + 3 * i) + i * 1.7 + seed) * width * 0.24 + breeze,
+          });
+        }
+        ctx.beginPath();
+        ctx.moveTo(-width, 0);
+        let fromX = -width;
+        let fromY = 0;
+        peaks.forEach((peak, i) => {
+          const next = peaks[i + 1];
+          ctx.bezierCurveTo(
+            fromX - width * 0.08,
+            fromY - peak.h * 0.35,
+            peak.x - width * 0.17,
+            -peak.h * 0.55,
+            peak.x + peak.lean,
+            -peak.h,
+          );
+          const dipX = next ? (peak.x + next.x) / 2 : width;
+          const dipY = next ? -Math.min(peak.h, next.h) * (0.3 + 0.14 * Math.sin(theta * (41 + i) + i + seed)) : 0;
+          ctx.bezierCurveTo(
+            peak.x + width * 0.15,
+            -peak.h * 0.6,
+            dipX + width * 0.05,
+            dipY - peak.h * 0.12,
+            dipX,
+            dipY,
+          );
+          fromX = dipX;
+          fromY = dipY;
+        });
+        ctx.quadraticCurveTo(0, 5, -width, 0);
+        ctx.fill();
+      }
+      // How the firelight breathes: slowly and only a little, between 0 and 1.
+      function flicker(u) {
+        const theta = TAU * u;
+        return 0.5 + 0.25 * Math.sin(theta * 11) + 0.15 * Math.sin(theta * 17 + 1) + 0.1 * Math.sin(theta * 29 + 2);
+      }
+      // The light a fire throws is not a disc. It lies in a wide flat pool on the ground, stands a
+      // little taller over the fire itself, and has uneven edges that drift. Each entry is one soft
+      // patch: its offset from the fire, its half-width and half-height, and its strength.
+      const FIRELIGHT = [
+        [0, 26, 250, 96, 0.8],
+        [-10, -50, 150, 130, 0.7],
+        [-70, 0, 150, 100, 0.5],
+        [80, -10, 140, 92, 0.5],
+        [20, 50, 170, 60, 0.45],
+      ];
+      function firelight(ctx, u, paint) {
+        const theta = TAU * u;
+        FIRELIGHT.forEach(([dx, dy, rx, ry, strength], i) => {
+          ctx.save();
+          ctx.translate(
+            FIRE.x + dx + Math.sin(theta * (5 + i * 2) + i) * 7,
+            FIRE.y + dy + Math.sin(theta * (7 + i * 3) + i * 2) * 4,
+          );
+          ctx.scale(1, ry / rx);
+          paint(rx * (0.97 + 0.03 * flicker(u + i * 0.13)), strength);
+          ctx.restore();
+        });
+      }
+      function drawFire(ctx, u, night) {
+        const theta = TAU * u;
+        const size = (0.8 + 0.25 * night) * (1 + 0.22 * fireFed(u));
+        ctx.save();
+        ctx.translate(FIRE.x, FIRE.y);
+        ctx.scale(CAMP_SCALE * 1.18, CAMP_SCALE * 1.18);
+        ctx.lineCap = "round";
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(-20, 3);
+        ctx.lineTo(18, -7);
+        ctx.moveTo(-18, -7);
+        ctx.lineTo(20, 3);
+        ctx.stroke();
+        ctx.strokeStyle = "#7b5a3c";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.scale(size, size);
+        // Embers under the flames.
+        ctx.fillStyle = "#f08a24";
+        ctx.globalAlpha = 0.55 + 0.25 * Math.sin(theta * 13);
+        ctx.beginPath();
+        ctx.ellipse(0, -2, 15, 4, 0, 0, TAU);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        for (const [color, w, h, tongues, seed] of [
+          ["#d9531e", 16, 52, 5, 0],
+          ["#f08a24", 11.5, 39, 4, 1.7],
+          ["#f9d15a", 6.5, 25, 3, 3.1],
+        ]) {
+          ctx.fillStyle = color;
+          flame(ctx, w, h, tongues, theta, seed);
+        }
+        // Now and then a lick of flame comes away from the top and is gone.
+        ctx.fillStyle = "#f08a24";
+        for (let i = 0; i < 3; i++) {
+          const life = mod(u * (17 + i * 6) + i * 0.37, 1);
+          if (life > 0.45) continue;
+          const t = life / 0.45;
+          const lx = Math.sin(i * 2.9 + theta * 3) * 7 + (i - 1) * 5;
+          const size = 5.5 * (1 - t);
+          ctx.globalAlpha = 0.9 * (1 - t);
+          ctx.beginPath();
+          ctx.moveTo(lx - size * 0.55, -40 - t * 22);
+          ctx.quadraticCurveTo(lx - size * 0.2, -46 - t * 22 - size, lx + size * 0.5, -40 - t * 22 - size * 2.1);
+          ctx.quadraticCurveTo(lx + size * 0.75, -42 - t * 22 - size * 0.4, lx - size * 0.55, -40 - t * 22);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = "#f9b54a";
+        for (let i = 0; i < 7; i++) {
+          const life = mod(u * 24 + i / 7, 1);
+          ctx.globalAlpha = (1 - life) * 0.9;
+          ctx.beginPath();
+          ctx.arc(Math.sin(i * 2.4 + life * 5) * (6 + life * 14), -34 - life * 80, 1.6, 0, TAU);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // ---- The people ----
+      // A pose is a set of joints. Legs are two bones of fixed length, and the knee is worked out
+      // from where the hip and the foot are, so a leg bends but never stretches or shrinks.
+      const KEYS = ["hip", "sh", "head", "hl", "hr", "kl", "kr", "fl", "fr", "tl", "tr"];
+      const BONE = 20.5;
+      const ARM = 25;
+      const STANCE = 0.62;
+      const REACH = 18.5;
+      // Ground covered in one full walk cycle, in figure units: a foot on the ground moves back
+      // under the body at exactly the body's speed, so it stays where it was put down.
+      const CYCLE = (2 * REACH) / STANCE;
+      function kneeOf(hip, foot, dir) {
+        const dx = foot[0] - hip[0];
+        const dy = foot[1] - hip[1];
+        const len = Math.hypot(dx, dy) || 1;
+        const d = Math.min(len, BONE * 2 - 0.01);
+        const out = Math.sqrt(BONE * BONE - (d * d) / 4);
+        let px = dy / len;
+        let py = -dx / len;
+        if (px * dir < 0) {
+          px = -px;
+          py = -py;
+        }
+        return [hip[0] + (dx / len) * (d / 2) + px * out, hip[1] + (dy / len) * (d / 2) + py * out];
+      }
+      // One leg through one cycle. On the ground (the first 62%, as in a normal gait) the foot goes
+      // back under the body: it lands heel first with the toe up, lies flat, then peels off heel
+      // first. In the air it swings through and the toe comes up again for the next landing.
+      function footAt(phase, amp, stride = 1, lift = 1) {
+        const reach = REACH * amp * stride;
+        // How far a foot comes off the ground can be eased separately from how far it reaches, so a
+        // walk can start and stop without the foot on the ground shifting.
+        amp *= lift;
+        if (phase < STANCE) {
+          const t = phase / STANCE;
+          const strike = (1 - smooth(0, 0.14, t)) * amp;
+          const peel = smooth(0.72, 1, t) * amp;
+          return {
+            at: [lerp(reach, -reach, t), -3.2 * peel],
+            toe: [5 - 0.6 * (strike + peel), -2.2 * strike + 3.2 * peel],
+          };
+        }
+        const t = (phase - STANCE) / (1 - STANCE);
+        return {
+          at: [lerp(-reach, reach, t * t * (3 - 2 * t)), -(3.2 * (1 - t) + 4.6 * Math.sin(Math.PI * t)) * amp],
+          toe: [5 - 0.6 * amp, lerp(3.2, -2.2, smooth(0.15, 0.85, t)) * amp],
+        };
+      }
+      const armTo = (neck, angle) => [neck[0] + Math.sin(angle) * ARM, neck[1] + Math.cos(angle) * ARM];
+      // Walking to the right. With amp 0 this is standing still.
+      function standPose(cycle = 0, amp = 0, stride = 1, ease = 1) {
+        const a = mod(cycle, 1);
+        const left = footAt(a, amp, stride, ease);
+        const right = footAt(mod(cycle + 0.5, 1), amp, stride, ease);
+        left.at[0] -= 2 * (1 - amp);
+        right.at[0] += 2 * (1 - amp);
+        // The hips rise and fall once a step in one smooth wave: lowest just after a foot lands,
+        // while both are down, and highest as the body passes over the planted leg, which is then
+        // very nearly straight.
+        const wave = Math.cos(2 * TAU * (cycle - 0.06));
+        // A short step hardly lowers the hips at all; only a full stride gets the whole rise and fall.
+        const height = lerp(38.5, 37.5 - wave * 1.25, amp * Math.min(1, stride));
+        const lean = 2.5 * amp * ease;
+        const hip = [0, -height];
+        const sh = [lean, -height - 30];
+        const neck = [sh[0], sh[1] + 5];
+        // Each arm swings against the leg on its own side.
+        const swing = Math.cos(TAU * (a - 0.03)) * 0.42 * amp * ease;
+        return {
+          hip,
+          sh,
+          // The head rides the same wave as the hips, but less of it.
+          head: [lean * 1.6, -lerp(38.5, 37.5 - wave * 0.55, amp) - 43],
+          hl: armTo(neck, -swing - 0.1),
+          hr: armTo(neck, swing + 0.1),
+          kl: kneeOf(hip, left.at, 1),
+          kr: kneeOf(hip, right.at, 1),
+          fl: left.at,
+          fr: right.at,
+          tl: left.toe,
+          tr: right.toe,
+        };
+      }
+      // Sitting down side-on, facing right, onto a seat at the origin. At t = 0 the figure stands
+      // over its feet just in front of the seat; the feet stay put while the hips go back and down.
+      const SIDE_FEET = 15;
+      function sitSide(t) {
+        const fl = [SIDE_FEET + 2, 0];
+        const fr = [SIDE_FEET - 2, 0];
+        const hip = [lerp(SIDE_FEET, -3, t), lerp(-38.5, -21.5, t * t * (3 - 2 * t))];
+        const lean = Math.sin(Math.PI * t) * 8 + 2.5 * t;
+        const sh = [hip[0] + lean, hip[1] - 30];
+        const neck = [sh[0], sh[1] + 5];
+        return {
+          hip,
+          sh,
+          head: [sh[0] + lean * 0.4, sh[1] - 13],
+          hl: armTo(neck, lerp(-0.1, 0.75, t)),
+          hr: armTo(neck, lerp(0.1, 0.55, t)),
+          kl: kneeOf(hip, fl, 1),
+          kr: kneeOf(hip, fr, 1),
+          fl,
+          fr,
+          tl: [5, 0],
+          tr: [5, 0],
+        };
+      }
+      // Sitting down seen from the front or the back. The shins stay upright and full length; the
+      // thighs point toward or away from us, so they shorten as the hips come down.
+      function sitFront(t, seat = -22, hands = [10, -27], feet = 8) {
+        const e = t * t * (3 - 2 * t);
+        const hip = [0, lerp(-38.5, seat, e)];
+        const sh = [0, hip[1] - 30];
+        const neck = [0, sh[1] + 5];
+        const hang = armTo(neck, 0.2);
+        const spread = lerp(6, feet + 0.5, e);
+        return {
+          hip,
+          sh,
+          head: [0, hip[1] - 43],
+          hl: [lerp(-hang[0], -hands[0], e), lerp(hang[1], hands[1], e)],
+          hr: [lerp(hang[0], hands[0], e), lerp(hang[1], hands[1], e)],
+          kl: [-spread, -BONE],
+          kr: [spread, -BONE],
+          fl: [-feet, 0],
+          fr: [feet, 0],
+          tl: [-4, 0],
+          tr: [4, 0],
+        };
+      }
+      const mirror = (pose) => Object.fromEntries(KEYS.map((k) => [k, [-pose[k][0], pose[k][1]]]));
+      const blend = (a, b, t) =>
+        Object.fromEntries(KEYS.map((k) => [k, [lerp(a[k][0], b[k][0], t), lerp(a[k][1], b[k][1], t)]]));
+      // From standing side-on: a short turn to face us (or away), then down. t runs 0 to 1.
+      const turnAndSit = (t, ...how) =>
+        t < 0.3 ? blend(standPose(), sitFront(0, ...how), t / 0.3) : sitFront((t - 0.3) / 0.7, ...how);
+      const DESK = [-30, [16, -50], 11.5];
+      const SIT_SIDE = sitSide(1);
+      const SIT_SIDE_LEFT = mirror(SIT_SIDE);
+      const SIT_FRONT = sitFront(1);
+      const SIT_DESK = sitFront(1, ...DESK);
+      const depth = (y) => 1.04 + clamp((y - 700) / 186) * 0.52;
+      // Where someone stands just before sitting on, or just after rising from, a side-on seat.
+      const spot = (seat, facing) => [seat[0] + facing * SIDE_FEET * depth(seat[1]), seat[1]];
+
+      function along(path, p) {
+        const lengths = [];
+        let total = 0;
+        for (let i = 1; i < path.length; i++) {
+          const len = Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]);
+          lengths.push(len);
+          total += len;
+        }
+        let d = total * clamp(p);
+        for (let i = 0; i < lengths.length; i++) {
+          if (d <= lengths[i] || i === lengths.length - 1) {
+            const t = lengths[i] ? d / lengths[i] : 0;
+            return {
+              x: lerp(path[i][0], path[i + 1][0], t),
+              y: lerp(path[i][1], path[i + 1][1], t),
+              d: total * clamp(p),
+              total,
+            };
+          }
+          d -= lengths[i];
+        }
+      }
+      const WALK_IN = [[-90, 890], DESK_SEAT];
+      const WALK_TO_CAMP = [DESK_SEAT, [330, 872], [560, 832], [740, 772], [1000, 760], [1150, 764], spot(SEAT1, 1)];
+      // In the morning: from the red chair down to the water's edge, and back up to the green chair.
+      const RIVERSIDE = [1140, 782];
+      const WALK_TO_RIVER = [spot(SEAT1, 1), [1182, 768], RIVERSIDE];
+      const WALK_FROM_RIVER = [RIVERSIDE, [1190, 768], [1234, 748], [1256, 732], SEAT2];
+      // At night: from the green chair round behind the tent, where the wood is, back to the side
+      // of the fire with a log, and then the two steps to the blue chair.
+      const WOODPILE = [1512, 694];
+      const FIRESIDE = [1322, 742];
+      const WALK_BEHIND_TENT = [SEAT2, [1340, 716], [1404, 702], WOODPILE];
+      const WALK_LOG_TO_FIRE = [WOODPILE, [1404, 702], [1348, 722], FIRESIDE];
+      const WALK_TO_BLUE = [FIRESIDE, spot(SEAT3, -1)];
+      // To the doorway, through it, and on to the right inside, behind the front of the tent.
+      const WALK_TO_TENT = [spot(SEAT3, -1), [1408, 742], TENT_DOOR, [1508, 713], [1572, 707]];
+      // A walk along a path is a whole number of steps, each the same length, fitted to the ground
+      // the path covers. It starts and ends at the moment in a stride when one foot is flat under
+      // the body and the other is passing it, which is as near to standing still as walking gets.
+      // So the first step is a full step, the planted foot never moves, and the walker arrives on
+      // a step and not partway through one. A short walk is two or three real steps.
+      const START = 0.81;
+      const groundAlong = (path, upTo) => {
+        // Ground covered across the picture, in strides of the size the figure was when it covered it.
+        let ground = 0;
+        let last = along(path, 0);
+        for (let i = 1; i <= 60; i++) {
+          const next = along(path, (upTo * i) / 60);
+          ground += Math.abs(next.x - last.x) / (CYCLE * depth((next.y + last.y) / 2));
+          last = next;
+        }
+        return ground;
+      };
+      // "stride" is how long a step to aim for, as a share of a full walking stride: a stroll of a
+      // few paces takes short quick steps, not two long slow ones.
+      const walking = (path, p, stride = 1) => {
+        const at = along(path, p);
+        const whole = groundAlong(path, 1);
+        if (whole < 1e-6) return { x: at.x, y: at.y, pose: standPose() };
+        const steps = Math.max(0.5, Math.round((whole / stride) * 2) / 2);
+        const done = (groundAlong(path, p) / whole) * steps;
+        // Only the lift of the passing foot, the lean of the body and the swing of the arms ease in
+        // and out. The foot on the ground is never eased, so it never shifts.
+        // And a short step lifts the foot and swings the arms less than a long one.
+        const length = whole / steps;
+        const moving = smooth(0, 1, Math.min(1, done / 0.14, (steps - done) / 0.14)) * lerp(0.5, 1, clamp(length));
+        const pose = standPose(START + done, 1, length, moving);
+        // The pose is drawn walking to the right; going the other way it is turned round.
+        const leftward = along(path, Math.min(1, p + 0.01)).x < along(path, Math.max(0, p - 0.01)).x;
+        return { x: at.x, y: at.y, pose: leftward ? mirror(pose) : pose };
+      };
+      const at = (point, pose, extra = {}) => ({ x: point[0], y: point[1], pose, ...extra });
+      const ease = (u, a, b) => smooth(0, 1, seg(u, a, b));
+
+      // The camp has three chairs and the same three people go round them, one place a day.
+      //
+      // The one who works the terminal by day walks to the fire in the afternoon and takes the red
+      // chair, and is still in it when the loop ends. That is where "middle" below starts the next
+      // loop: in the red chair. So each of these three is one person's day, and a person's days go
+      // worker, then middle, then sleeper.
+      function worker(u) {
+        if (u < 0.045) return walking(WALK_IN, u / 0.045);
+        if (u < 0.065) return at(DESK_SEAT, turnAndSit(seg(u, 0.045, 0.065), ...DESK));
+        if (u < 0.265) {
+          const pose = blend(SIT_DESK, SIT_DESK, 0);
+          pose.hl[1] += Math.sin(TAU * u * 173) * 1.2;
+          pose.hr[1] += Math.sin(TAU * u * 211 + 1) * 1.2;
+          return at(DESK_SEAT, pose);
+        }
+        if (u < 0.285) return at(DESK_SEAT, turnAndSit(1 - seg(u, 0.265, 0.285), ...DESK));
+        if (u < 0.455) return walking(WALK_TO_CAMP, seg(u, 0.285, 0.455));
+        if (u < 0.475) return at(SEAT1, sitSide(ease(u, 0.455, 0.475)));
+        // In the red chair for the rest of the day and all night.
+        return at(SEAT1, SIT_SIDE);
+      }
+      // Standing, seen from the front, stretching: arms up and out overhead, back arched, then down.
+      function stretchPose(s) {
+        const up = smooth(0.08, 0.38, s) * (1 - smooth(0.72, 0.95, s));
+        const pose = sitFront(0);
+        pose.sh = [0, pose.sh[1] - 2.5 * up];
+        pose.head = [0, pose.head[1] - 4 * up];
+        const neck = [0, pose.sh[1] + 5];
+        const angle = lerp(0.2, Math.PI - 0.5, up) + Math.sin(s * 40) * 0.03 * up;
+        pose.hl = [-Math.sin(angle) * ARM, neck[1] + Math.cos(angle) * ARM];
+        pose.hr = [Math.sin(angle) * ARM, neck[1] + Math.cos(angle) * ARM];
+        return pose;
+      }
+      // Where someone at the camp is drawn among the things there: behind the tent and the chairs,
+      // behind the fire, or in front of them all.
+      const campLayer = (x, y) => (x > 1330 && y < 730 ? "tent" : x > 1240 && y < 740 ? "fire" : "front");
+      // The one who wakes in the red chair. In the morning they walk down to the river, stretch,
+      // and come back to the green chair. At night, once the blue chair is empty, they go
+      // round behind the tent for a log, put it on the fire, and sit down in the blue chair.
+      function middle(u) {
+        const here = (person) => ({ ...person, layer: campLayer(person.x, person.y) });
+        if (u < 0.08) return here(at(SEAT1, SIT_SIDE));
+        if (u < 0.092) return here(at(SEAT1, sitSide(1 - ease(u, 0.08, 0.092))));
+        // An easy amble of a few short steps, a little under two seconds.
+        if (u < 0.122) return here(walking(WALK_TO_RIVER, seg(u, 0.092, 0.122), 0.5));
+        if (u < 0.172) {
+          // They turn to face the water, which is toward us, stretch, and turn to go back.
+          const s = seg(u, 0.122, 0.172);
+          const turned = smooth(0, 0.1, s) * (1 - smooth(0.92, 1, s));
+          const from = s < 0.5 ? mirror(standPose()) : standPose();
+          return here(at(RIVERSIDE, blend(from, stretchPose(s), turned)));
+        }
+        if (u < 0.2) return here(walking(WALK_FROM_RIVER, seg(u, 0.172, 0.2), 0.62));
+        if (u < 0.216) return here(at(SEAT2, turnAndSit(seg(u, 0.2, 0.216))));
+        if (u < 0.862) return here(at(SEAT2, SIT_FRONT));
+        if (u < 0.876) return here(at(SEAT2, turnAndSit(1 - seg(u, 0.862, 0.876))));
+        if (u < 0.912) return here(walking(WALK_BEHIND_TENT, seg(u, 0.876, 0.912)));
+        // Out of sight behind the tent, picking a log off the pile.
+        if (u < 0.922) return here(at(WOODPILE, standPose()));
+        if (u < 0.958) {
+          const step = walking(WALK_LOG_TO_FIRE, seg(u, 0.922, 0.958));
+          step.pose.hl = [step.pose.sh[0] - 9, step.pose.sh[1] + 16];
+          step.pose.hr = [step.pose.sh[0] - 12, step.pose.sh[1] + 18];
+          return here({ ...step, carry: 1 });
+        }
+        if (u < 0.968) {
+          // They lean in and the log goes into the fire and is gone.
+          const s = seg(u, 0.958, 0.968);
+          const lean = Math.sin(Math.PI * s);
+          const beside = [FIRESIDE[0] + SIDE_FEET * depth(FIRESIDE[1]), FIRESIDE[1]];
+          const pose = mirror(sitSide(0.22 * lean));
+          pose.hl = [pose.hip[0] - 9 - 12 * lean, lerp(pose.sh[1] + 16, pose.sh[1] + 30, lean)];
+          pose.hr = [pose.hip[0] - 12 - 12 * lean, lerp(pose.sh[1] + 18, pose.sh[1] + 32, lean)];
+          return here(at(beside, pose, { carry: 1 - smooth(0.25, 0.5, s) }));
+        }
+        if (u < 0.978) return here(walking(WALK_TO_BLUE, seg(u, 0.968, 0.978), 0.5));
+        if (u < 0.996) return here(at(SEAT3, mirror(sitSide(ease(u, 0.978, 0.996)))));
+        return here(at(SEAT3, SIT_SIDE_LEFT));
+      }
+      // How much the new log has the fire up: it catches as it goes in, and the fire dies back by
+      // mid-morning.
+      const fireFed = (u) => (u >= 0.962 ? smooth(0.962, 0.978, u) : 1 - smooth(0, 0.22, u));
+      // The one who starts the loop in the blue chair by the tent, and goes to bed.
+      function sleeper(u) {
+        if (u < 0.8) return at(SEAT3, SIT_SIDE_LEFT);
+        if (u < 0.815) return at(SEAT3, mirror(sitSide(1 - ease(u, 0.8, 0.815))));
+        // They walk in without stopping. They stoop as they reach the doorway, and from the
+        // threshold on they can only be seen through the opening, so they are lost from view as
+        // they pass its edge: nothing fades.
+        if (u < 0.874) {
+          const step = walking(WALK_TO_TENT, seg(u, 0.815, 0.874));
+          return {
+            ...step,
+            shrink: lerp(1, 0.86, smooth(TENT_DOOR[0] - 50, TENT_DOOR[0] - 4, step.x)),
+            inTent: step.x > TENT_DOOR[0],
+          };
+        }
+        return null;
+      }
+
+      // Each figure is redrawn six times a second with slightly different lines, as hand-drawn
+      // animation is, and nothing in it is quite straight or quite round.
+      function drawPerson(ctx, person, u, id, part = "all") {
+        if (!person) return;
+        if (person.inTent) {
+          // Inside the tent: only what shows through the doorway is drawn.
+          ctx.save();
+          ctx.save();
+          ctx.translate(TENT_DOOR[0], TENT_DOOR[1]);
+          ctx.scale(CAMP_SCALE, CAMP_SCALE);
+          ctx.translate(-1470, -702);
+          tentDoorway(ctx);
+          ctx.restore();
+          ctx.clip();
+          drawPerson(ctx, { ...person, inTent: false }, u, id, part);
+          ctx.restore();
+          return;
+        }
+        const { x, y, pose, alpha = 1, shrink = 1 } = person;
+        const s = depth(y) * shrink;
+        const frame = Math.floor(u * T * 6);
+        let n = 0;
+        const wobble = (size) => {
+          const v = Math.sin(frame * 12.9898 + id * 78.233 + ++n * 37.719) * 43758.5453;
+          return (v - Math.floor(v) - 0.5) * size;
+        };
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(s, s);
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 3.2;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        const limb = (a, b, bow) => {
+          const dx = b[0] - a[0];
+          const dy = b[1] - a[1];
+          const len = Math.hypot(dx, dy) || 1;
+          const mx = (a[0] + b[0]) / 2 + (-dy / len) * bow + wobble(0.9);
+          const my = (a[1] + b[1]) / 2 + (dx / len) * bow + wobble(0.9);
+          // The joints hold still; only the line between them is redrawn a little differently.
+          ctx.lineTo(a[0], a[1]);
+          ctx.quadraticCurveTo(mx, my, b[0], b[1]);
+        };
+        const neck = [pose.sh[0], pose.sh[1] + 5];
+        for (const [knee, foot, toe, bow] of [
+          [pose.kl, pose.fl, pose.tl, 1.4],
+          [pose.kr, pose.fr, pose.tr, -1.2],
+        ]) {
+          ctx.beginPath();
+          limb(pose.hip, knee, bow);
+          limb(knee, foot, -bow);
+          if (part === "upper") continue;
+          ctx.lineTo(foot[0] + toe[0], foot[1] + toe[1]);
+          ctx.stroke();
+        }
+        if (part === "legs") {
+          ctx.restore();
+          return;
+        }
+        ctx.beginPath();
+        limb(pose.hip, [pose.head[0] * 0.4 + pose.sh[0] * 0.6, pose.sh[1] - 3], 1.6);
+        ctx.stroke();
+        ctx.beginPath();
+        limb(neck, pose.hl, 2.2);
+        ctx.stroke();
+        ctx.beginPath();
+        limb(neck, pose.hr, -2);
+        ctx.stroke();
+        if (person.carry > 0.02) {
+          // A log, held in both hands. It gets smaller as it goes into the fire.
+          const mx = (pose.hl[0] + pose.hr[0]) / 2;
+          const my = (pose.hl[1] + pose.hr[1]) / 2;
+          for (const [color, width] of [
+            [INK, 8.5],
+            ["#7b5a3c", 5.5],
+          ]) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width * person.carry;
+            ctx.beginPath();
+            ctx.moveTo(mx - 13 * person.carry, my + 1.5);
+            ctx.lineTo(mx + 13 * person.carry, my - 1.5);
+            ctx.stroke();
+          }
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 3.2;
+        }
+        // The head: a loop that is not quite a circle and overshoots where it closes.
+        const pts = [];
+        for (let k = 0; k <= 9; k++) {
+          const a = (k / 8) * TAU - 1.2;
+          const r = 9.6 + wobble(1.3);
+          pts.push([pose.head[0] + Math.cos(a) * r * 0.96, pose.head[1] + Math.sin(a) * r * 1.04]);
+        }
+        ctx.fillStyle = "#efe6cf";
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let k = 1; k < pts.length - 1; k++) {
+          ctx.quadraticCurveTo(pts[k][0], pts[k][1], (pts[k][0] + pts[k + 1][0]) / 2, (pts[k][1] + pts[k + 1][1]) / 2);
+        }
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // ---- The squirrel ----
+      // Morning: down the right-hand tree, across the grass, up the left-hand tree.
+      // Afternoon: back along the top of the billboard.
+      const SQUIRREL = [
+        { a: 0.14, b: 0.16, from: [1197, 450], to: [1197, 722], mode: "climb", layer: "trunk" },
+        { a: 0.16, b: 0.19, from: [1197, 730], to: [822, 790], mode: "hop" },
+        { a: 0.19, b: 0.215, from: [822, 790], mode: "sit", face: -1 },
+        { a: 0.215, b: 0.245, from: [822, 790], to: [640, 770], mode: "hop" },
+        { a: 0.245, b: 0.265, from: [640, 770], mode: "sit", face: -1 },
+        { a: 0.265, b: 0.29, from: [640, 770], to: [236, 716], mode: "hop" },
+        { a: 0.29, b: 0.31, from: [236, 708], to: [236, 520], mode: "climb", layer: "trunk" },
+        { a: 0.4, b: 0.42, from: [183, 330], to: [183, 132], mode: "climb", fade: "in" },
+        { a: 0.42, b: 0.445, from: [196, 124], to: [620, 124], mode: "hop" },
+        { a: 0.445, b: 0.465, from: [620, 124], mode: "sit", face: 1 },
+        { a: 0.465, b: 0.49, from: [620, 124], to: [1048, 124], mode: "hop" },
+        // The leap is drawn behind the spruce's boughs, so the squirrel crosses open sky and then
+        // goes in among them.
+        { a: 0.49, b: 0.4965, from: [1048, 124], to: [1168, 232], mode: "leap", layer: "trunk" },
+      ];
+      function squirrel(u) {
+        const step = SQUIRREL.find((s) => u >= s.a && u < s.b);
+        if (!step) return null;
+        const p = seg(u, step.a, step.b);
+        const { from, to = step.from, mode } = step;
+        const dx = to[0] - from[0];
+        const dy = to[1] - from[1];
+        const dist = Math.hypot(dx, dy);
+        const out = {
+          x: from[0],
+          y: from[1],
+          layer: step.layer || "front",
+          alpha: 1,
+          flip: 1,
+          rot: 0,
+          tail: 0,
+          stretch: 0,
+          sit: 0,
+        };
+        if (step.fade === "in") out.alpha = smooth(0, 0.3, p);
+        if (step.fade === "out") out.alpha = 1 - smooth(0.6, 1, p);
+        let travel = p;
+        if (mode === "hop") {
+          // A scurry: short dashes low to the ground, each ending in a freeze with the tail up.
+          const dashes = Math.max(1, Math.round(dist / 95));
+          const q = p * dashes;
+          const f = q - Math.floor(q);
+          travel = (Math.floor(q) + smooth(0, 0.7, f)) / dashes;
+          const moving = f < 0.7 ? Math.min(1, Math.sin(Math.PI * (f / 0.7)) * 3) : 0;
+          out.stretch = Math.sin((travel * dist * TAU) / 30) * moving;
+          out.y -= Math.max(0, out.stretch) * 3;
+          out.rot = -0.1 * (1 - moving);
+          out.tail = 0.5 * (1 - moving);
+          out.flip = dx < 0 ? -1 : 1;
+        } else if (mode === "climb") {
+          out.rot = dy > 0 ? Math.PI / 2 : -Math.PI / 2;
+          out.stretch = Math.sin((p * dist * TAU) / 34);
+        } else if (mode === "leap") {
+          // Thrown, not carried: it leaves the corner fast and slightly upward, keeps its speed
+          // across, and falls faster and faster into the boughs. Its body points along its flight.
+          const kick = 30;
+          out.y += -kick * p + (dy + kick) * p * p;
+          out.rot = Math.atan2(-kick + 2 * (dy + kick) * p, dx);
+          out.stretch = 1;
+          out.tail = -0.25;
+        } else {
+          out.flip = step.face;
+          out.sit = smooth(0, 0.15, p) * (1 - smooth(0.85, 1, p));
+          out.tail = Math.sin(p * TAU * 4) * 0.12;
+        }
+        out.x += dx * travel;
+        if (mode !== "leap") out.y += dy * travel;
+        return out;
+      }
+      // Drawn facing right with its feet on y = 0.
+      function drawSquirrel(ctx, s) {
+        const e = s.stretch;
+        const fur = "#a4542c";
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.scale(s.flip, 1);
+        ctx.rotate(s.rot);
+        ctx.globalAlpha = s.alpha;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.strokeStyle = INK;
+        // Sitting up, it rocks back on its haunches.
+        ctx.translate(-6, 0);
+        ctx.rotate(-0.8 * s.sit);
+        ctx.translate(6, 0);
+
+        // The tail: a tapered plume, streaming behind on the run and curled up over the back at rest.
+        ctx.save();
+        ctx.translate(-9, -9);
+        ctx.rotate(lerp(0.2, 2, s.sit) + s.tail);
+        ctx.fillStyle = "#b5622f";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(0, -3);
+        ctx.bezierCurveTo(-10, -12, -26, -12, -31, -2);
+        ctx.bezierCurveTo(-27, 6, -12, 5, 0, 3);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.strokeStyle = "#dba063";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-5, 0);
+        ctx.quadraticCurveTo(-16, -4, -25, -2);
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.scale(1 + 0.1 * e, 1);
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(-7, -4);
+        ctx.lineTo(-8 - 4 * e, -0.5);
+        ctx.lineTo(-3 - 4 * e, -0.5);
+        ctx.moveTo(7, -8);
+        ctx.lineTo(lerp(9 + 4 * e, 12, s.sit), lerp(-0.5, -11, s.sit));
+        ctx.stroke();
+
+        ctx.fillStyle = fur;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-11, -6);
+        ctx.bezierCurveTo(-14, -16, -4, -19, 4, -16);
+        ctx.lineTo(9, -15);
+        ctx.bezierCurveTo(8, -5, -2, -3, -11, -6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#e6cda6";
+        ctx.beginPath();
+        ctx.ellipse(2, -6.3, 5.5, 2, 0, 0, TAU);
+        ctx.fill();
+        ctx.globalAlpha = s.alpha * 0.7;
+        ctx.beginPath();
+        ctx.arc(-5, -8, 6.5, -2.6, 0.6);
+        ctx.stroke();
+        ctx.globalAlpha = s.alpha;
+
+        ctx.fillStyle = fur;
+        ctx.beginPath();
+        ctx.moveTo(9, -21);
+        ctx.lineTo(10.5, -28);
+        ctx.lineTo(14, -22);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.ellipse(13, -17, 6.8, 5, -0.2, 0, TAU);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = INK;
+        ctx.beginPath();
+        ctx.arc(15, -18.2, 1.4, 0, TAU);
+        ctx.arc(19.4, -16.4, 1, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // ---- The skunk ----
+      // In the night it comes out past the left-hand end of the bush, nose first, and ambles away
+      // to the left and back toward the tree line. It is the farthest thing on the ground, so it
+      // passes behind the morning glories' post, the spruce and the birch before it leaves.
+      // It goes in three stretches, and between them it stops, lifts its head and looks about.
+      const SKUNK = {
+        from: 0.63,
+        to: 0.8,
+        path: [
+          [510, 722],
+          [430, 734],
+          [370, 726],
+          [253, 702],
+          [100, 690],
+          [-90, 682],
+        ],
+        stretches: [
+          [0, 0.24],
+          [0.4, 0.6],
+          [0.76, 1],
+        ],
+      };
+      // One size for the whole walk: its legs keep time with the ground it covers, and a size that
+      // changed on the way would put its feet out of step with it.
+      const SKUNK_SIZE = 0.86;
+      const SKUNK_REACH = 4.5;
+      const SKUNK_STANCE = 0.65;
+      // Ground covered in one turn of its legs, in the skunk's own units: a foot on the ground goes
+      // back under the body exactly as fast as the body goes forward.
+      const SKUNK_STRIDE = (2 * SKUNK_REACH) / SKUNK_STANCE;
+      function skunk(u) {
+        if (u < SKUNK.from || u > SKUNK.to) return null;
+        const p = seg(u, SKUNK.from, SKUNK.to);
+        const total = SKUNK.stretches.reduce((sum, [a, b]) => sum + b - a, 0);
+        let covered = 0;
+        let stopped = 1;
+        for (const [a, b] of SKUNK.stretches) {
+          const t = seg(p, a, b);
+          // Each stretch starts from rest and comes back to rest.
+          covered += (b - a) * (t - Math.sin(TAU * t) / TAU);
+          if (p > a && p < b) stopped = 1 - Math.min(1, Math.sin(Math.PI * t) * 4);
+        }
+        const q = along(SKUNK.path, covered / total);
+        return { x: q.x, y: q.y, d: q.d, stopped, glance: Math.sin(TAU * p * 5.5), size: SKUNK_SIZE };
+      }
+      // Drawn facing right with its feet on y = 0, then turned to walk left.
+      function drawSkunk(ctx, k) {
+        const cycle = k.d / k.size / SKUNK_STRIDE;
+        const moving = 1 - k.stopped;
+        const coat = "#1d1b19";
+        const white = "#f1ede0";
+        ctx.save();
+        ctx.translate(k.x, k.y);
+        ctx.scale(-k.size, k.size);
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        // Four short legs, stepping one after another. Each foot stays where it lands until its
+        // turn to lift, so the body walks over its feet instead of sliding.
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        for (const [hipX, lag] of [
+          [-12, 0],
+          [11, 0.25],
+          [-8, 0.5],
+          [15, 0.75],
+        ]) {
+          const phase = mod(cycle + lag, 1);
+          let footX = lerp(SKUNK_REACH, -SKUNK_REACH, phase / SKUNK_STANCE);
+          let footY = 0;
+          if (phase >= SKUNK_STANCE) {
+            const t = (phase - SKUNK_STANCE) / (1 - SKUNK_STANCE);
+            footX = lerp(-SKUNK_REACH, SKUNK_REACH, t * t * (3 - 2 * t));
+            footY = -2.6 * Math.sin(Math.PI * t);
+          }
+          ctx.moveTo(hipX, -8);
+          ctx.lineTo(hipX + footX, footY);
+        }
+        ctx.stroke();
+        ctx.translate(0, Math.sin(TAU * cycle * 2) * 0.6 * moving);
+        // The tail: a big plume carried up over the back, black with a white streak. It comes up
+        // further when the skunk stops.
+        ctx.save();
+        ctx.translate(-17, -13);
+        ctx.rotate(Math.sin(TAU * cycle) * 0.07 * moving + k.stopped * (0.14 + k.glance * 0.05));
+        ctx.fillStyle = coat;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(4, 3);
+        ctx.bezierCurveTo(-12, 2, -24, -12, -18, -30);
+        ctx.bezierCurveTo(-14, -40, 0, -40, 3, -30);
+        ctx.bezierCurveTo(6, -20, 2, -8, 6, -3);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.strokeStyle = white;
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(1, -4);
+        ctx.bezierCurveTo(-8, -10, -13, -20, -9, -31);
+        ctx.stroke();
+        ctx.restore();
+        // The body, with the white stripe from the crown of the head to the tail.
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.5;
+        ctx.fillStyle = coat;
+        ctx.beginPath();
+        ctx.moveTo(-19, -9);
+        ctx.bezierCurveTo(-20, -22, -4, -25, 8, -21 - k.stopped * 1.5);
+        ctx.bezierCurveTo(16, -19 - k.stopped * 2, 21, -15, 22, -10);
+        ctx.bezierCurveTo(16, -4, -12, -3, -19, -9);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.strokeStyle = white;
+        ctx.lineWidth = 4.5;
+        ctx.beginPath();
+        ctx.moveTo(-15, -17);
+        ctx.bezierCurveTo(-6, -22, 6, -20 - k.stopped * 1.5, 17, -15 - k.stopped * 2);
+        ctx.stroke();
+        // The head: carried low and nodding on the move; lifted, and turning this way and that, at a stop.
+        ctx.translate(22, -9 - k.stopped * 6);
+        ctx.rotate(0.25 * moving + Math.sin(TAU * cycle) * 0.06 * moving - k.stopped * (0.45 + k.glance * 0.3));
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.5;
+        ctx.fillStyle = coat;
+        ctx.beginPath();
+        ctx.moveTo(-6, -6);
+        ctx.bezierCurveTo(2, -8, 9, -3, 12, 1);
+        ctx.bezierCurveTo(8, 5, -2, 5, -7, 3);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(-3, -6.5, 2.4, Math.PI, TAU);
+        ctx.fill();
+        ctx.stroke();
+        ctx.strokeStyle = white;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-4, -4);
+        ctx.lineTo(8, -0.5);
+        ctx.stroke();
+        ctx.fillStyle = white;
+        ctx.beginPath();
+        ctx.arc(3.5, 1, 1, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // ---- Night ----
+      function hole(ctx, x, y, r, strength) {
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(0, 0, 0, ${strength})`);
+        g.addColorStop(1, "rgba(0, 0, 0, 0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+      function drawDarkness(ctx, u, light) {
+        const night = 1 - light.day;
+        ctx.fillStyle = `rgba(20, 26, 60, ${night * 0.82})`;
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalCompositeOperation = "destination-out";
+        firelight(ctx, u, (radius, strength) => hole(ctx, 0, 0, radius, strength));
+        const lamps = ctx.createLinearGradient(0, BOARD.y, 0, BOARD.y + BOARD.h);
+        lamps.addColorStop(0, "rgba(0, 0, 0, 0.85)");
+        lamps.addColorStop(1, "rgba(0, 0, 0, 0.55)");
+        ctx.fillStyle = lamps;
+        ctx.fillRect(BOARD.x, BOARD.y, BOARD.w, BOARD.h);
+        for (const f of MOONFLOWERS) {
+          const open = moonflowerOpen(u - f.delay);
+          ctx.save();
+          ctx.translate(f.x, f.fy);
+          ctx.rotate(f.rot * (1 - open * 0.6));
+          moonflowerPath(ctx, f.r, open);
+          ctx.fillStyle = `rgba(0, 0, 0, ${0.5 * open})`;
+          ctx.fill();
+          ctx.restore();
+        }
+        ctx.globalCompositeOperation = "source-over";
+      }
+      function drawGlows(ctx, u, light) {
+        const night = 1 - light.day;
+        ctx.globalCompositeOperation = "screen";
+        firelight(ctx, u, (radius, strength) => {
+          const warm = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
+          warm.addColorStop(0, `rgba(255, 150, 60, ${(0.06 + 0.16 * night) * strength * (0.95 + 0.1 * flicker(u))})`);
+          warm.addColorStop(1, "rgba(255, 150, 60, 0)");
+          ctx.fillStyle = warm;
+          ctx.fillRect(-radius, -radius, radius * 2, radius * 2);
+        });
+        ctx.globalCompositeOperation = "source-over";
+      }
+
+      // ---- The trout ----
+      // One jump at dawn in the water below the tent, one at dusk below the terminal, and one in the
+      // night as the moon passes over the billboard.
+      const JUMPS = [
+        { at: 0.03, x: 1440, y: 846, dir: -1 },
+        { at: 0.512, x: 400, y: 976, dir: -1 },
+        // Early in the night, as the moon comes over the billboard.
+        { at: 0.69, x: 760, y: 928, dir: 1 },
+      ];
+      const JUMP_LENGTH = 0.016;
+      function drawTrout(ctx, u) {
+        for (const j of JUMPS) {
+          const p = (u - j.at) / JUMP_LENGTH;
+          // Long enough for the last ring, from where it went back in, to thin away completely.
+          if (p < 0 || p > 3.9) continue;
+          const span = 80;
+          const rise = 60;
+          const exitX = j.x;
+          const entryX = j.x + j.dir * span;
+          ctx.lineCap = "round";
+          for (const [x, age] of [
+            [exitX, p],
+            [entryX, p - 1],
+          ]) {
+            // Rings spreading where it left the water and where it went back in.
+            // A ring does not fade. Its line gets thinner as it spreads, until there is no line.
+            ctx.strokeStyle = "#e3efec";
+            ctx.globalAlpha = 0.85;
+            for (const lag of [0, 0.4, 0.8]) {
+              const a = age - lag;
+              if (a < 0 || a > 2) continue;
+              ctx.lineWidth = 2.4 * (1 - a / 2) ** 1.3;
+              if (ctx.lineWidth < 0.08) continue;
+              ctx.beginPath();
+              ctx.ellipse(x, j.y, 8 + a * 28, (8 + a * 28) * 0.28, 0, 0, TAU);
+              ctx.stroke();
+            }
+            // Spray.
+            if (age >= 0 && age < 1.1) {
+              ctx.fillStyle = "#e3efec";
+              for (let i = 0; i < 7; i++) {
+                const dx = (i - 3) * 8 * age;
+                const dy = -(34 + (i % 3) * 14) * age + 52 * age * age;
+                if (dy > 0) continue;
+                ctx.globalAlpha = 0.9;
+                ctx.beginPath();
+                ctx.arc(x + dx, j.y + dy, 2.1 * (1 - age / 1.1), 0, TAU);
+                ctx.fill();
+              }
+            }
+          }
+          ctx.globalAlpha = 1;
+          if (p > 1) continue;
+          const x = lerp(exitX, entryX, p);
+          const y = j.y - 4 * rise * p * (1 - p);
+          const climb = Math.atan2(-4 * rise * (1 - 2 * p), span);
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(j.x - 300, j.y - 300, 600, 300);
+          ctx.clip();
+          ctx.translate(x, y);
+          ctx.scale(j.dir, 1);
+          ctx.rotate(climb);
+          troutBody(ctx, p);
+          ctx.restore();
+        }
+      }
+      // A brook trout, nose to the right, built along a spine that bends. It leaves the water arched
+      // one way and goes back in arched the other, and its tail beats the whole time, the beat
+      // growing toward the tail.
+      function troutBody(ctx, p) {
+        const N = 16;
+        const LENGTH = 50;
+        const arch = 0.95 * Math.cos(Math.PI * p);
+        const spine = [];
+        let x = 0;
+        let y = 0;
+        for (let i = 0; i <= N; i++) {
+          const s = i / N;
+          const beat = 0.55 * s * s * Math.sin(TAU * 2.5 * p - s * 5);
+          const dir = Math.PI + arch * (s - 0.35) * 1.6 + beat;
+          spine.push({ x, y, dir, s });
+          x += (Math.cos(dir) * LENGTH) / N;
+          y += (Math.sin(dir) * LENGTH) / N;
+        }
+        const centre = spine[Math.round(N * 0.4)];
+        const half = (s) =>
+          s < 0.3 ? 9 * Math.sin((s / 0.3) * (Math.PI / 2)) ** 0.7 : lerp(9, 2.4, ((s - 0.3) / 0.7) ** 1.2);
+        // A point off the spine: side -1 is the back, +1 the belly; amount 1 is the skin.
+        const off = (pt, side, amount) => [
+          pt.x - centre.x + side * Math.sin(pt.dir) * half(pt.s) * amount,
+          pt.y - centre.y - side * Math.cos(pt.dir) * half(pt.s) * amount,
+        ];
+        const path = (pts) => pts.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+        const tail = spine[N];
+        const fin = (angle, len) => [
+          tail.x - centre.x + Math.cos(tail.dir + angle) * len,
+          tail.y - centre.y + Math.sin(tail.dir + angle) * len,
+        ];
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.5;
+        ctx.lineJoin = "round";
+        ctx.fillStyle = "#6f7f4f";
+        // The fin on its back.
+        const d0 = spine[Math.round(N * 0.34)];
+        const d1 = spine[Math.round(N * 0.5)];
+        ctx.beginPath();
+        path([off(d0, -1, 0.9), off(spine[Math.round(N * 0.44)], -1, 1.75), off(d1, -1, 0.9)]);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // The body and the forked tail in one outline.
+        ctx.beginPath();
+        path([
+          ...spine.map((pt) => off(pt, -1, 1)),
+          fin(-0.62, 12),
+          fin(0, 5),
+          fin(0.62, 12),
+          ...spine
+            .slice()
+            .reverse()
+            .map((pt) => off(pt, 1, 1)),
+        ]);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // The belly.
+        const under = spine.filter((pt) => pt.s > 0.06 && pt.s < 0.86);
+        ctx.fillStyle = "#e8a66f";
+        ctx.beginPath();
+        path([...under.map((pt) => off(pt, 1, 0.9)), ...under.reverse().map((pt) => off(pt, 1, 0.3))]);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#f2e3b0";
+        spine.forEach((pt, i) => {
+          if (pt.s < 0.16 || pt.s > 0.74 || i % 2) return;
+          for (const amount of [0.55, 0.05]) {
+            const [sx, sy] = off(pt, -1, amount);
+            ctx.beginPath();
+            ctx.arc(sx, sy, 1.2, 0, TAU);
+            ctx.fill();
+          }
+        });
+        const [ex, ey] = off(spine[1], -1, 0.45);
+        ctx.fillStyle = INK;
+        ctx.beginPath();
+        ctx.arc(ex, ey, 1.5, 0, TAU);
+        ctx.fill();
+      }
+
+      // ---- What a click does ----
+      // Two things in the picture answer to a click, each on its own clock and outside the loop.
+      //
+      // A snake lives under the bramble. Click the bramble and it comes out and goes to hide behind
+      // the big rock by the moonflowers; click that rock and it goes back. A click on the place it
+      // is not, or on either place while it is on the way, does nothing.
+      //
+      // A bird sits in the spruce by the tent. Click the spruce and it bursts out, flies a loop in
+      // the open sky beside the tree, and goes back in. A click while it is out does nothing.
+      const BUSH_SPOT = { x0: 430, y0: 652, x1: 624, y1: 758 };
+      const ROCK_SPOT = { x0: 873, y0: 694, x1: 997, y1: 760 };
+      const SNAKE = {
+        at: "bush",
+        start: null,
+        seconds: 3,
+        length: 88,
+        // Out of the right-hand end of the bramble, behind the small boulder and the post, to the big
+        // rock. Each end of the run is only just under cover, so the head shows the moment it moves.
+        path: [
+          [596, 737],
+          [640, 740],
+          [700, 718],
+          [800, 738],
+          [860, 745],
+          [886, 746],
+        ],
+      };
+      // Where the bird is at each moment after it is startled: out of the right side of the spruce,
+      // over toward the birch, back across the front of the spruce, down onto the board under the
+      // billboard, a pause there at its right-hand end, then up past the end of the billboard and
+      // round behind the left side of the spruce.
+      const LEDGE = BOARD.y + BOARD.h + 4;
+      const BIRD = {
+        start: null,
+        seconds: 5.3,
+        // From here on it is behind the spruce: it has climbed past the end of the billboard into
+        // the gap of sky beside the tree, and turns in round the back of the boughs.
+        behindFrom: 4.86,
+        flight: [
+          [0, 1292, 300],
+          [0.6, 1400, 248],
+          [1.2, 1492, 286],
+          [1.7, 1446, 352],
+          [2.2, 1310, 332],
+          [2.7, 1170, 384],
+          [3.3, 1062, LEDGE - 8],
+          [4.3, 1062, LEDGE - 8],
+          [4.6, 1079, 350],
+          [4.85, 1075, 236],
+          [5.02, 1102, 204],
+          [5.3, 1166, 236],
+        ],
+      };
+      const clockNow = () => performance.now() / 1000;
+      const within = (x, y, spot) => x > spot.x0 && x < spot.x1 && y > spot.y0 && y < spot.y1;
+      const inSpruce = (x, y) => {
+        const c = TREES[1].crown;
+        if (y < c.top || y > c.bottom) return false;
+        return Math.abs(x - c.x) < c.half * Math.pow((y - c.top) / (c.bottom - c.top), 0.85) * 0.92;
+      };
+      // Each is finished once its time is up, whether or not a frame was drawn to show it (a tab in
+      // the background draws none), so a click is never refused because of a stale run.
+      function settle(clock) {
+        if (SNAKE.start !== null && clock - SNAKE.start >= SNAKE.seconds) {
+          SNAKE.at = SNAKE.at === "bush" ? "rock" : "bush";
+          SNAKE.start = null;
+        }
+        if (BIRD.start !== null && clock - BIRD.start >= BIRD.seconds) BIRD.start = null;
+      }
+      // What a click at this point in the picture would set off, if anything.
+      function clickable(x, y) {
+        settle(clockNow());
+        if (SNAKE.start === null && within(x, y, SNAKE.at === "bush" ? BUSH_SPOT : ROCK_SPOT)) return "snake";
+        if (BIRD.start === null && inSpruce(x, y)) return "bird";
+        return null;
+      }
+      function drawSnake(ctx, clock) {
+        settle(clock);
+        if (SNAKE.start === null) return;
+        const t = (clock - SNAKE.start) / SNAKE.seconds;
+        const path = SNAKE.at === "bush" ? SNAKE.path : SNAKE.path.slice().reverse();
+        const total = along(path, 1).total;
+        // The head runs on past the end by the snake's own length, so the tail gets there too.
+        // It is startled: off at full speed, slowing only as it gets under cover again.
+        const head = (1 - (1 - t) ** 2.4) * (total + SNAKE.length);
+        const N = 22;
+        const body = [];
+        for (let i = 0; i <= N; i++) {
+          const d = head - (i / N) * SNAKE.length;
+          const on = clamp(d, 0, total);
+          const here = along(path, on / total);
+          const ahead = along(path, Math.min(1, (on + 3) / total));
+          const behind = along(path, Math.max(0, (on - 3) / total));
+          const dx = ahead.x - behind.x;
+          const dy = ahead.y - behind.y;
+          const len = Math.hypot(dx, dy) || 1;
+          // The curves it makes stay where they are on the ground, and the body follows them
+          // through. Parts still under the bramble, or already behind the rock, lie still.
+          const out = d > 0 && d < total ? Math.min(1, d / 14, (total - d) / 14) : 0;
+          const sway = Math.sin(d * 0.085) * 6.5 * out * (0.45 + 0.55 * Math.sin((Math.PI * i) / N));
+          body.push([here.x + (-dy / len) * sway, here.y + (dx / len) * sway * 0.55, dx / len, dy / len, out]);
+        }
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        for (const [color, width] of [
+          [INK, 8],
+          ["#4a5a35", 5.5],
+          ["#cfc66e", 1.6],
+        ]) {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = width;
+          ctx.beginPath();
+          body.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+          ctx.stroke();
+        }
+        const [hx, hy, ux, uy, out] = body[0];
+        if (out <= 0) return;
+        ctx.save();
+        ctx.translate(hx, hy);
+        ctx.rotate(Math.atan2(uy, ux));
+        ctx.fillStyle = "#4a5a35";
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        ctx.ellipse(3, 0, 7, 4.4, 0, 0, TAU);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = INK;
+        ctx.beginPath();
+        ctx.arc(5.5, -1.6, 0.9, 0, TAU);
+        ctx.fill();
+        // The tongue, in and out.
+        if (Math.sin(clock * 9) > 0.35) {
+          ctx.strokeStyle = MADDER;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(10, 0);
+          ctx.lineTo(15, 0);
+          ctx.lineTo(18, -2);
+          ctx.moveTo(15, 0);
+          ctx.lineTo(18, 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      // A smooth curve through the points of a flight, each given as [when, x, y].
+      function flightAt(f, at) {
+        let i = 0;
+        while (i < f.length - 2 && at >= f[i + 1][0]) i++;
+        const t = clamp((at - f[i][0]) / (f[i + 1][0] - f[i][0]));
+        const a = f[Math.max(0, i - 1)];
+        const b = f[i];
+        const c = f[i + 1];
+        const d = f[Math.min(f.length - 1, i + 2)];
+        const through = (k) =>
+          0.5 *
+          (2 * b[k] +
+            (c[k] - a[k]) * t +
+            (2 * a[k] - 5 * b[k] + 4 * c[k] - d[k]) * t * t +
+            (3 * b[k] - a[k] - 3 * c[k] + d[k]) * t * t * t);
+        return [through(1), through(2)];
+      }
+      // The red-winged blackbird: black all over, with a red shoulder edged in yellow. It keeps low
+      // over the water both ways, so it is in front of everything on the far bank.
+      function drawBlackbird(ctx, u) {
+        if (u < BLACKBIRD.in[0] || u > BLACKBIRD.off[1]) return;
+        // It does not sit on the top. It takes hold of the stalk a little below the brown head and
+        // clings to the side of it.
+        const stalk = cattail(PERCH, PERCH.tails[0], u);
+        const grip = 0.6;
+        const perch = [
+          (1 - grip) ** 2 * stalk.foot[0] + 2 * (1 - grip) * grip * stalk.bend[0] + grip ** 2 * stalk.tip[0],
+          (1 - grip) ** 2 * stalk.foot[1] + 2 * (1 - grip) * grip * stalk.bend[1] + grip ** 2 * stalk.tip[1],
+        ];
+        const arriving = u < BLACKBIRD.in[1];
+        const leaving = u >= BLACKBIRD.off[0];
+        const flying = arriving || leaving;
+        // It slows into the landing and gathers speed as it leaves.
+        const t = arriving ? 1 - (1 - seg(u, ...BLACKBIRD.in)) ** 1.7 : seg(u, ...BLACKBIRD.off) ** 1.6;
+        const flight = arriving
+          ? [
+              [0, -70, 965],
+              [0.3, 300, 946],
+              [0.6, 650, 926],
+              [0.85, 900, 898],
+              [1, ...perch],
+            ]
+          : [
+              [0, ...perch],
+              [0.3, 1230, 880],
+              [0.65, 1470, 822],
+              [1, 1700, 790],
+            ];
+        const [x, y] = flying ? flightAt(flight, t) : perch;
+        const [nx, ny] = flying ? flightAt(flight, Math.min(1, t + 0.02)) : perch;
+        // Wings wide and body tipped back as it brakes to land.
+        const braking = arriving ? smooth(0.8, 1, t) : 0;
+        const flap = Math.sin(TAU * u * T * 6.5) * (1 + braking * 0.4);
+        // On the cattail it faces the way it came, then turns its head to look at the trout, then back.
+        // Its head is never still for long: a glance back, a glance forward, a longer look at the
+        // trout when it jumps, and another glance before it goes.
+        const glances = [0.501, 0.505, 0.512, 0.524, 0.529, 0.532, 0.536, 0.538];
+        const looking = glances.filter((when) => u >= when).length % 2 ? -1 : 1;
+        // And it tips up and down a little as it looks.
+        const nod = Math.sin(TAU * u * T * 0.9) * 0.22;
+        ctx.save();
+        ctx.translate(x, y);
+        // Clinging, it is nearly upright beside the stalk, its feet reaching across to hold it.
+        if (!flying) {
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 1.6;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(-7, -3);
+          ctx.lineTo(0, -4);
+          ctx.moveTo(-6, 4);
+          ctx.lineTo(0, 3);
+          ctx.stroke();
+          ctx.translate(-8, -3);
+        }
+        ctx.rotate(flying ? clamp(Math.atan2(ny - y, Math.max(1, nx - x)), -0.5, 0.5) - braking * 0.5 : -1.05);
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        const black = "#1c1b1e";
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.2;
+        ctx.fillStyle = black;
+        // Tail, body, head, bill.
+        ctx.beginPath();
+        ctx.moveTo(-9, -2);
+        ctx.lineTo(-27, flying ? -1 : 2);
+        ctx.lineTo(-26, flying ? 3 : 6);
+        ctx.lineTo(-8, 2.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 12.5, 5, 0, 0, TAU);
+        ctx.fill();
+        ctx.stroke();
+        // The head turns by itself: the body stays where it is on the stalk.
+        ctx.save();
+        ctx.translate(11, -3.4);
+        ctx.scale(flying ? 1 : looking, 1);
+        if (!flying) ctx.rotate(nod);
+        ctx.beginPath();
+        ctx.arc(0, 0, 4.5, 0, TAU);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#4a4a50";
+        ctx.beginPath();
+        ctx.moveTo(3.8, -1.4);
+        ctx.lineTo(10.5, 0.4);
+        ctx.lineTo(3.8, 1.6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#f4efdd";
+        ctx.beginPath();
+        ctx.arc(1.6, -0.8, 0.8, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+        ctx.fillStyle = black;
+        // The wing: beating in the air, folded on the perch. The red and yellow shoulder is at its root.
+        ctx.fillStyle = black;
+        ctx.beginPath();
+        if (flying) {
+          ctx.moveTo(6, -3);
+          ctx.quadraticCurveTo(2, -6 - 17 * flap, -9, -4 - 20 * flap);
+          ctx.quadraticCurveTo(-9, -2 - 6 * flap, -8, 2);
+        } else {
+          ctx.moveTo(6, -2.4);
+          ctx.quadraticCurveTo(-2, -5.4, -12, -0.6);
+          ctx.quadraticCurveTo(-4, 3.6, 5, 1.6);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        const lift = flying ? 3 * flap : 0;
+        ctx.fillStyle = "#e8c84a";
+        ctx.beginPath();
+        ctx.ellipse(1.5, -1 - lift, 4.8, 2, -0.25, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = "#d8301c";
+        ctx.beginPath();
+        ctx.ellipse(2.4, -2 - lift, 4.4, 1.8, -0.25, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+      function drawBird(ctx, clock, layer) {
+        settle(clock);
+        if (BIRD.start === null) return;
+        const time = clock - BIRD.start;
+        if ((time >= BIRD.behindFrom ? "behind" : "front") !== layer) return;
+        // A smooth curve through the points of the flight.
+        const where = (at) => flightAt(BIRD.flight, at);
+        const landed = time > 3.3 && time < 4.3;
+        const [x, y] = landed ? [1062, LEDGE - 8] : where(time);
+        const [nx, ny] = where(time + 0.02);
+        // It comes out of the boughs small and grows. Going back it needs no such trick: it is
+        // behind the tree by then.
+        const size = smooth(0, 0.14, time);
+        // On the board it looks one way and then the other, and bobs.
+        const facing = landed ? (time < 3.75 ? -1 : 1) : nx < x ? -1 : 1;
+        const flap = landed ? -0.15 : Math.sin(clock * TAU * 8.5);
+        ctx.save();
+        ctx.translate(x, y - (landed ? Math.abs(Math.sin((time - 3.3) * 9)) * 1.5 : 0));
+        ctx.scale(facing * size, size);
+        ctx.rotate(landed ? -0.25 : clamp(Math.atan2(ny - y, Math.abs(nx - x)), -0.6, 0.6));
+        ctx.lineJoin = "round";
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.3;
+        if (landed) {
+          ctx.beginPath();
+          ctx.moveTo(-2, 5);
+          ctx.lineTo(-3, 9);
+          ctx.moveTo(2, 5);
+          ctx.lineTo(2, 9);
+          ctx.stroke();
+        }
+        // A chickadee: grey back, pale belly, black cap and bib.
+        ctx.fillStyle = "#6f7377";
+        ctx.beginPath();
+        ctx.moveTo(-9, -1);
+        ctx.lineTo(-19, -3);
+        ctx.lineTo(-18, 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#e9e2cf";
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 10.5, 6.2, 0, 0, TAU);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#6f7377";
+        ctx.beginPath();
+        ctx.ellipse(-1, -2.2, 9, 3.6, 0, Math.PI, TAU);
+        ctx.fill();
+        ctx.fillStyle = "#1d1b19";
+        ctx.beginPath();
+        ctx.arc(8, -2.5, 4.6, Math.PI * 0.9, Math.PI * 2.1);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(12, -1);
+        ctx.lineTo(16.5, 0);
+        ctx.lineTo(12, 1.2);
+        ctx.fill();
+        ctx.fillStyle = "#f4efdd";
+        ctx.beginPath();
+        ctx.arc(9.3, -2.6, 0.9, 0, TAU);
+        ctx.fill();
+        // One wing: beating in the air, folded along the back on the board.
+        ctx.fillStyle = "#55595d";
+        ctx.beginPath();
+        ctx.moveTo(4, -2);
+        ctx.quadraticCurveTo(0, -4 - 13 * flap, -8, -3 - 16 * flap);
+        ctx.quadraticCurveTo(-7, -2 - 4 * flap, -6, 1);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // ---- One frame ----
+      function drawLand(ctx, u, light, clock) {
+        const critter = squirrel(u);
+        const night = 1 - light.day;
+        drawGround(ctx, u);
+        drawTrout(ctx, u);
+        // The cattails stand on the near shore, in front of the water and anything in it.
+        drawMarsh(ctx, u);
+        drawBlackbird(ctx, u);
+        // The skunk goes behind every trunk, the bush and the posts, so it is drawn before them all.
+        const stinker = skunk(u);
+        if (stinker) drawSkunk(ctx, stinker);
+        drawTrunks(ctx);
+        if (critter && critter.layer === "trunk") drawSquirrel(ctx, critter);
+        drawBird(ctx, clock, "behind");
+        drawCanopies(ctx);
+        // The snake is under the bramble at one end of its run and behind the rock at the other,
+        // so it is drawn before both.
+        drawSnake(ctx, clock);
+        drawBush(ctx);
+        for (const b of BOULDERS) drawRock(ctx, b, false);
+        if (critter && critter.layer === "front") drawSquirrel(ctx, critter);
+        // On the walk to camp the worker passes behind the right-hand post and its moonflowers.
+        const dev = worker(u);
+        const behindBoard = u > 0.315 && u < 0.455 && dev.x > 700 && dev.x < 1000;
+        if (behindBoard) drawPerson(ctx, dev, u, 1);
+        drawBoard(ctx);
+        drawFlowers(ctx, u);
+        drawDesk(ctx, u);
+        // The one who moves about the camp is drawn where they stand: behind the tent and chairs,
+        // behind the fire, or in front.
+        const roamer = middle(u);
+        if (roamer.layer === "tent") drawPerson(ctx, roamer, u, 2);
+        drawTent(ctx);
+        drawSeats(ctx);
+        if (roamer.layer === "fire") drawPerson(ctx, roamer, u, 2);
+        drawFire(ctx, u, night);
+        drawPerson(ctx, sleeper(u), u, 3);
+        if (roamer.layer === "front") drawPerson(ctx, roamer, u, 2);
+        const atDesk = u < 0.285;
+        if (!atDesk) drawStool(ctx);
+        if (atDesk) {
+          drawPerson(ctx, dev, u, 1, "legs");
+          drawStool(ctx);
+          drawPerson(ctx, dev, u, 1, "upper");
+        } else if (!behindBoard) {
+          drawPerson(ctx, dev, u, 1);
+        }
+        drawBird(ctx, clock, "front");
+      }
+
+      function frame(now) {
+        countLoops(now);
+        const u = freeze ?? mod(((now / 1000) * speed) / T, 1);
+        const light = daylight(u);
+
+        L.setTransform(1, 0, 0, 1, 0, 0);
+        L.clearRect(0, 0, landCanvas.width, landCanvas.height);
+        L.setTransform(scale, 0, 0, scale, 0, 0);
+        drawLand(L, u, light, clockNow());
+
+        D.setTransform(1, 0, 0, 1, 0, 0);
+        D.clearRect(0, 0, darkCanvas.width, darkCanvas.height);
+        D.setTransform(scale, 0, 0, scale, 0, 0);
+        drawDarkness(D, u, light);
+        D.setTransform(1, 0, 0, 1, 0, 0);
+        D.globalCompositeOperation = "destination-in";
+        D.drawImage(landCanvas, 0, 0);
+        D.globalCompositeOperation = "source-over";
+
+        main.setTransform(1, 0, 0, 1, 0, 0);
+        main.fillStyle = INK;
+        main.fillRect(0, 0, canvas.width, canvas.height);
+        main.save();
+        const move = smooth(0, 1, (clockNow() - cameraStart) / CAMERA);
+        view = { s: lerp(from.s, aim.s, move), x: lerp(from.x, aim.x, move), y: lerp(from.y, aim.y, move) };
+        main.setTransform(view.s, 0, 0, view.s, view.x, view.y);
+        main.beginPath();
+        main.rect(0, 0, W, H);
+        main.clip();
+        drawSky(main, u, light);
+        main.drawImage(landCanvas, 0, 0, landCanvas.width / scale, landCanvas.height / scale);
+        main.globalCompositeOperation = "multiply";
+        main.drawImage(darkCanvas, 0, 0, darkCanvas.width / scale, darkCanvas.height / scale);
+        main.globalCompositeOperation = "source-over";
+        drawGlows(main, u, light);
+        main.restore();
+
+        if (freeze === null) requestAnimationFrame(frame);
+      }
+
+      function resize() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.round(innerWidth * dpr);
+        canvas.height = Math.round(innerHeight * dpr);
+        // The picture is drawn at the larger of the two scales, so the camera can move between them
+        // without drawing it again: `fit` shows all of it; `close` fills the window with the sign's face
+        // (it is only larger than `fit` on a narrow window, and is held to a size the canvases can be).
+        fit = Math.min(canvas.width / W, canvas.height / H);
+        close = clamp((canvas.width * 0.97) / (BOARD.w - 96), fit, Math.max(fit, 1.62));
+        scale = Math.max(fit, close);
+        cameraTo(shown, true);
+        for (const c of [landCanvas, darkCanvas]) {
+          c.width = Math.ceil(W * scale);
+          c.height = Math.ceil(H * scale);
+        }
+        drawBoardFace();
+        buildGround();
+        if (freeze !== null) frame(0);
+      }
+      // Clicks. A point on the page is turned into a point in the picture first.
+      const toScene = (event) => {
+        const box = canvas.getBoundingClientRect();
+        const ratio = canvas.width / box.width;
+        return [
+          ((event.clientX - box.left) * ratio - view.x) / view.s,
+          ((event.clientY - box.top) * ratio - view.y) / view.s,
+        ];
+      };
+      // With the loop frozen (?u=) nothing redraws by itself, so a click keeps frames coming for
+      // as long as the snake or the bird is out, or the camera or the face is changing.
+      const changing = () =>
+        SNAKE.start !== null || BIRD.start !== null || clockNow() - cameraStart < CAMERA || faceFade() < 1;
+      let awake = false;
+      function wake() {
+        if (freeze === null || awake) return;
+        awake = true;
+        const tick = () => {
+          frame(0);
+          if (changing()) requestAnimationFrame(tick);
+          else awake = false;
+        };
+        requestAnimationFrame(tick);
+      }
+
+      // ---- What is found, and what is sent ----
+      // What has been found is kept in localStorage, so the first time is only ever the first time.
+      const KEPT = "loopway.found";
+      // Also held in memory, so with storage off the count still goes up and a find is a first only once.
+      let memory = { snake: false, bird: false, loops: 0 };
+      const kept = () => {
+        try {
+          return { ...memory, ...JSON.parse(localStorage.getItem(KEPT) || "{}") };
+        } catch {
+          return memory;
+        }
+      };
+      function keep(change) {
+        memory = { ...kept(), ...change };
+        try {
+          localStorage.setItem(KEPT, JSON.stringify(memory));
+        } catch {
+          // Storage is off (private mode): what is in memory is kept for this visit only.
+        }
+        // The count is on the last frame's face.
+        if (shown === FRAMES.length - 1) redrawFace();
+      }
+      // The one way anything is sent, so a blocked script never breaks the page.
+      const track = (name, props) => window.posthog && posthog.capture(name, props, { transport: "sendBeacon" });
+      function found(what) {
+        if (kept()[what]) return;
+        keep({ [what]: true });
+        track(`${what}_found`);
+      }
+      // A loop is done when the day comes round to the start again. A tab that was in the background
+      // counts one, not every one it missed.
+      let loopsSeen = 0;
+      function countLoops(now) {
+        if (freeze !== null) return;
+        const done = Math.floor(((now / 1000) * speed) / T);
+        if (done > loopsSeen && !document.hidden) keep({ loops: kept().loops + 1 });
+        loopsSeen = done;
+      }
+
+      // ---- The frames: scrolling steps through them, one at a time ----
+      // The face is painted again for the new frame and fades in over the old; the camera moves to the
+      // sign's face on a narrow window, where it would otherwise be too small to read.
+      const faceFrom = document.createElement("canvas");
+      let faceStart = -10;
+      const faceFade = () => smooth(0, 1, (clockNow() - faceStart) / 0.5);
+      function redrawFace() {
+        drawBoardFace();
+        if (freeze !== null) wake();
+      }
+      function cameraTo(frame, instant) {
+        const full = { s: fit, x: (canvas.width - W * fit) / 2, y: (canvas.height - H * fit) / 2 };
+        const centre = [BOARD.x + BOARD.w / 2, BOARD.y + BOARD.h / 2];
+        // Centred on the face, but never showing past the edge of the picture when it is big enough to fill the window.
+        const keep = (at, size, room) => (size >= room ? clamp(at, room - size, 0) : (room - size) / 2);
+        const zoom = {
+          s: close,
+          x: keep(canvas.width / 2 - centre[0] * close, W * close, canvas.width),
+          y: keep(canvas.height / 2 - centre[1] * close, H * close, canvas.height),
+        };
+        const to = frame === 0 || close === fit ? full : zoom;
+        from = instant ? to : view;
+        aim = to;
+        cameraStart = instant ? -10 : clockNow();
+        if (instant) view = to;
+      }
+      const hint = document.getElementById("scroll");
+      let lockedUntil = 0;
+      function step(direction) {
+        const to = clamp(shown + direction, 0, FRAMES.length - 1);
+        // A frame is held for a moment before the next. (A wheel flick's own repeats are handled in wheel().)
+        if (to === shown || Date.now() < lockedUntil) return;
+        track("frame_viewed", { frame: to + 1, name: FRAMES[to], from: shown + 1 });
+        lockedUntil = Date.now() + 350;
+        faceFrom.width = boardCanvas.width;
+        faceFrom.height = boardCanvas.height;
+        faceFrom.getContext("2d").drawImage(boardCanvas, 0, 0);
+        faceStart = clockNow();
+        shown = to;
+        HITS = [];
+        hint.hidden = to !== 0;
+        drawBoardFace();
+        cameraTo(to, false);
+        wake();
+      }
+      hint.hidden = false;
+      hint.addEventListener("click", () => step(1));
+      // A trackpad keeps sending wheel events for a second after a flick, so a wheel steps only when
+      // it comes after a pause: one flick is one frame.
+      let lastWheel = 0;
+      addEventListener(
+        "wheel",
+        (event) => {
+          const pause = Date.now() - lastWheel > 200;
+          lastWheel = Date.now();
+          if (pause && Math.abs(event.deltaY) > 4) step(Math.sign(event.deltaY));
+        },
+        { passive: true },
+      );
+      let swipeFrom = null;
+      addEventListener("touchstart", (event) => (swipeFrom = event.touches[0].clientY), { passive: true });
+      addEventListener("touchend", (event) => {
+        if (swipeFrom === null) return;
+        const moved = swipeFrom - event.changedTouches[0].clientY;
+        swipeFrom = null;
+        if (Math.abs(moved) > 40) step(Math.sign(moved));
+      });
+      addEventListener("keydown", (event) => {
+        // Space on the Copy button or a link is theirs, not a step.
+        if (event.key === " " && event.target.closest && event.target.closest("button, a")) return;
+        if (["ArrowDown", "PageDown", " "].includes(event.key)) {
+          event.preventDefault();
+          step(1);
+        }
+        if (["ArrowUp", "PageUp"].includes(event.key)) {
+          event.preventDefault();
+          step(-1);
+        }
+      });
+
+      // ---- The words, for everyone who can't see the sign ----
+      document.querySelectorAll("[data-host]").forEach((el) => (el.textContent = INSTALL_HOST));
+      document.addEventListener("click", (event) => {
+        const link = event.target.closest && event.target.closest('#words a[href^="https://github.com/"]');
+        if (link) track("github_clicked", { href: link.href });
+      });
+
+      // ---- Clicks on the sign: Copy and the two links ----
+      const hitAt = (x, y) =>
+        shown > 0 && faceFade() > 0.6 ? HITS.find((h) => x > h.x0 && x < h.x1 && y > h.y0 && y < h.y1) : undefined;
+      function press(hit) {
+        if (hit.kind === "github") {
+          track("github_clicked", { href: `https://github.com/${REPO}` });
+          window.open(`https://github.com/${REPO}`, "_blank", "noopener");
+        } else if (hit.kind === "bots") location.href = "/bots";
+        else {
+          track("install_copied", { frame: shown + 1 });
+          if (navigator.clipboard) navigator.clipboard.writeText(INSTALL).catch(() => {});
+          copied = true;
+          redrawFace();
+          setTimeout(() => {
+            copied = false;
+            redrawFace();
+          }, 2000);
+        }
+      }
+      canvas.addEventListener("pointerdown", (event) => {
+        const at = toScene(event);
+        const hit = hitAt(...at);
+        if (hit) return press(hit);
+        const what = clickable(...at);
+        if (what === "snake") SNAKE.start = clockNow();
+        if (what === "bird") BIRD.start = clockNow();
+        if (what) {
+          found(what);
+          wake();
+        }
+      });
+      canvas.addEventListener("pointermove", (event) => {
+        const at = toScene(event);
+        canvas.style.cursor = hitAt(...at) || clickable(...at) ? "pointer" : "default";
+      });
+      addEventListener("resize", resize);
+      wordmark.addEventListener("load", () => {
+        drawBoardFace();
+        if (freeze !== null) frame(0);
+      });
+      resize();
+      if (freeze === null) requestAnimationFrame(frame);
+    </script>
   </body>
 </html>

@@ -8,51 +8,63 @@ describe("the marketing page", () => {
     expect(html).toContain("<title>loopway</title>");
   });
 
-  it("sends only the events the funnel needs, through the shared proxy", () => {
+  it("is the billboard itself: one canvas, no iframe, no other file to load but the wordmark", () => {
+    expect(html).toContain('<canvas id="scene"');
+    expect(html).not.toContain("<iframe");
+    expect(html).toContain('fetch("wordmark.svg")');
     const scripts = [...html.matchAll(/<script\b[^>]*>/g)].map((m) => m[0]);
-    expect(scripts).toEqual(['<script src="https://a.craftmill.dev/api/ingest/static/array.js">', "<script>"]);
+    expect(scripts).toEqual([
+      '<script src="https://a.craftmill.dev/api/ingest/static/array.js">',
+      "<script>",
+      "<script>",
+    ]);
+  });
+
+  it("sends only the events the funnel needs, through the shared proxy", () => {
     expect(html).toContain('api_host: "https://a.craftmill.dev/api/ingest"');
     expect(html).toContain("autocapture: false");
-    for (const name of ['"frame_viewed"', '"install_copied"', '"github_clicked"', "`${first}_found`"]) {
+    for (const name of ['"frame_viewed"', '"install_copied"', '"github_clicked"', "`${what}_found`"]) {
       expect(html).toContain(name);
     }
     expect(html).toContain('transport: "sendBeacon"');
   });
 
-  it("is the billboard full screen, with a card for each frame after the sign", () => {
-    expect(html).toContain('class="billboard"');
-    expect(html).toContain('src="billboard/"');
-    for (const frame of ["description", "install", "get-started", "github"]) {
-      expect(html).toContain(`data-frame="${frame}"`);
-    }
-    expect(html).toContain('const names = ["tagline", "description", "install", "get-started", "github"]');
+  it("has a frame for each of the five things the sign says, painted on the sign", () => {
+    expect(html).toContain('const FRAMES = ["tagline", "description", "install", "get-started", "github"]');
     expect(html).toContain("scroll &darr;");
-    // The tracker is on the last card only.
-    expect(html.match(/class="tracker"/g)).toHaveLength(1);
-    expect(html.indexOf('class="tracker"')).toBeGreaterThan(html.indexOf('data-frame="github"'));
-    const billboard = readFileSync(new URL("../public/billboard/index.html", import.meta.url), "utf8");
-    expect(billboard).toContain("<title>Loopway billboard</title>");
-    expect(billboard).toContain("Keep your agents and team in same loop");
-    expect(billboard).not.toMatch(/<script\b[^>]*\bsrc=/);
+    expect(html).toContain("Keep your agents and team in same loop");
+    // The content is drawn on the board's face, not laid over the page.
+    expect(html).toContain("function drawFaceContent(ctx, w, h)");
+    expect(html).toContain("} else drawFaceContent(ctx, w, h);");
+    expect(html).not.toContain('class="card"');
   });
 
-  it("puts the install host in one place, with a copy button", () => {
+  it("puts the install host in one place, with a copy button painted on the sign", () => {
     expect(html.match(/loopway\.craftmill\.dev/g)).toHaveLength(1);
     expect(html).toContain("/install.sh | sh");
-    expect(html).toContain('<button type="button">Copy</button>');
-    expect(html).toContain("navigator.clipboard.writeText(");
+    expect(html).toContain('hit("copy"');
+    expect(html).toContain("navigator.clipboard.writeText(INSTALL)");
   });
 
   it("links GitHub in a new tab and the bot docs to a page that does not exist yet", () => {
+    expect(html).toContain('window.open(`https://github.com/${REPO}`, "_blank", "noopener")');
+    expect(html).toContain('location.href = "/bots"');
+    expect(html).toContain('<a href="/bots">');
     expect(html).toContain('href="https://github.com/craftmilldev/loopway" target="_blank"');
-    expect(html).toContain('href="/bots"');
   });
 
-  it("only tells the page about a first find, and keeps the finds in localStorage", () => {
-    const billboard = readFileSync(new URL("../public/billboard/index.html", import.meta.url), "utf8");
-    expect(billboard).toContain('const KEPT = "loopway.found"');
-    expect(billboard).toContain("if (!kept()[what]) keep({ [what]: true }, what)");
-    expect(billboard).toContain('parent.postMessage({ loopway: "billboard"');
+  it("keeps finds in localStorage and only sends a first find", () => {
+    expect(html).toContain('const KEPT = "loopway.found"');
+    expect(html).toContain("if (kept()[what]) return;");
+    // The tracker is painted on the last frame only.
+    const last = html.slice(html.indexOf("Small print under the main content"));
+    expect(last).toContain("found the snake:");
+    expect(html.match(/found the snake:/g)).toHaveLength(1);
+  });
+
+  it("steps one frame per flick, and ignores only Space on a button or link", () => {
+    expect(html).toContain("Date.now() - lastWheel > 200");
+    expect(html).toContain('event.key === " " && event.target.closest && event.target.closest("button, a")');
   });
 
   it("is what vercel.json serves, with no build step", () => {
