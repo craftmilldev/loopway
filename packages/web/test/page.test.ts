@@ -46,6 +46,12 @@ describe("the marketing page", () => {
     expect(html).toContain("navigator.clipboard.writeText(INSTALL)");
   });
 
+  it("has real elements for Copy and both links, for the keyboard and screen readers", () => {
+    expect(html).toContain('<button type="button" id="copy-install">');
+    expect(html).toContain('getElementById("copy-install")');
+    expect(html).toContain('<a href="/bots">');
+  });
+
   it("links GitHub in a new tab and the bot docs to a page that does not exist yet", () => {
     expect(html).toContain('window.open(`https://github.com/${REPO}`, "_blank", "noopener")');
     expect(html).toContain('location.href = "/bots"');

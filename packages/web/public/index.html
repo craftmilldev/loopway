@@ -89,6 +89,7 @@
       <h2>Install and set up</h2>
       <pre>curl -fsSL https://<span data-host></span>/install.sh | sh
 loopway setup</pre>
+      <button type="button" id="copy-install">Copy the install commands</button>
       <p>
         loopway setup checks gh, asks about a loopway bot, and offers to add .loopway/dev.md and .loopway/review.md for
         the bots.
@@ -3949,6 +3950,8 @@ loopway setup</pre>
 
       // ---- The words, for everyone who can't see the sign ----
       document.querySelectorAll("[data-host]").forEach((el) => (el.textContent = INSTALL_HOST));
+      // Copy has a real button too, for the keyboard and screen readers; it does what the painted one does.
+      document.getElementById("copy-install").addEventListener("click", () => press({ kind: "copy" }));
       document.addEventListener("click", (event) => {
         const link = event.target.closest && event.target.closest('#words a[href^="https://github.com/"]');
         if (link) track("github_clicked", { href: link.href });
