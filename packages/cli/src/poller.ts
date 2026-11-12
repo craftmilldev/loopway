@@ -64,10 +64,30 @@ export class Poller {
       }
       const found = await source.discover(repo, since);
       let latest = since;
+      // Set once a subject could not be taken in: the cursor stops there, so the next discovery tries it again.
+      let stuck = false;
       for (const subject of found.reverse()) {
-        if (Date.parse(subject.createdAt) > Date.parse(latest)) latest = subject.createdAt;
+        const touched = subject.updatedAt ?? subject.createdAt;
+        if (!stuck && Date.parse(touched) > Date.parse(latest)) latest = touched;
         if (state.subjects[subject.key] || !this.authors.has(subject.author.toLowerCase())) continue;
-        state.subjects[subject.key] = { subject: withoutBody(subject), seen: [] };
+        const old = Date.parse(subject.createdAt) < Date.parse(since);
+        // A closed subject from before loopway looked would get a thread that nothing ever closes. Reopening it is
+        // activity, and then it is open.
+        if (old && subject.open === false) continue;
+        // An older subject's history is not news: only what woke us is.
+        let seen: string[] = [];
+        if (old) {
+          try {
+            seen = await this.history(subject, since);
+          } catch (err) {
+            if (err instanceof RateLimitError) throw err;
+            this.o.log?.(`${subject.key}: ${(err as Error).message}`);
+            stuck = true;
+            latest = since;
+            continue;
+          }
+        }
+        state.subjects[subject.key] = { subject: withoutBody(subject), seen };
         await this.o.emit({ type: "new", subject });
         await this.o.save(state);
       }
@@ -76,6 +96,12 @@ export class Poller {
         await this.o.save(state);
       }
     }
+  }
+
+  /** The ids of everything that happened to `subject` before `since`, so they are not reported as news. */
+  private async history(subject: Subject, since: string): Promise<string[]> {
+    const { updates } = await this.o.source.updates(subject);
+    return updates.filter((u) => Date.parse(u.at) < Date.parse(since)).map((u) => u.id);
   }
 
   /** Takes in a subject a thread just created, so discovery never reports it as new. Already known is fine. */

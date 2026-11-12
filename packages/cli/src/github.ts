@@ -68,21 +68,25 @@ export class GitHubSource implements SubjectSource {
   }
 
   async discover(repo: string, since: string): Promise<Subject[]> {
-    // Newest first, so stop paging once a page reaches back past `since`.
+    // Most recently active first, so stop paging once a page reaches back past `since`. The `since` parameter
+    // already drops what was not touched after it.
     const found: Subject[] = [];
-    let path: string | undefined = `/repos/${repo}/issues?state=all&sort=created&direction=desc&per_page=50`;
+    let path: string | undefined =
+      `/repos/${repo}/issues?state=all&sort=updated&direction=desc&per_page=50&since=${encodeURIComponent(since)}`;
     for (let page = 0; path && page < MAX_PAGES; page++) {
       const result: { body: Issue[]; next?: string } = await this.page<Issue[]>(path);
       const { body, next } = result;
       for (const issue of body) {
         // Not <=: a subject made in the same second as the cursor comes back, and the poller drops the ones it knows.
-        if (Date.parse(issue.created_at) < Date.parse(since)) return found;
+        if (Date.parse(issue.updated_at) < Date.parse(since)) return found;
         found.push({
           key: `${repo}#${issue.number}`,
           kind: issue.pull_request ? "pull_request" : "issue",
           title: issue.title,
           author: issue.user?.login ?? "ghost",
           createdAt: issue.created_at,
+          updatedAt: issue.updated_at,
+          open: issue.state === "open",
           assignees: (issue.assignees ?? []).map((a) => a.login),
           ...(issue.body ? { body: issue.body } : {}),
         });
@@ -417,6 +421,7 @@ interface Item {
 }
 interface Issue extends Item {
   number: number;
+  state: string;
   assignees?: User[];
   created_at: string;
   pull_request?: unknown;
