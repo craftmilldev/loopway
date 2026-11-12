@@ -31,6 +31,9 @@ describe("the marketing page", () => {
 
   it("has a frame for each of the five things the sign says, painted on the sign", () => {
     expect(html).toContain('const FRAMES = ["tagline", "description", "install", "get-started", "github"]');
+    // The hint is painted at the bottom middle of the sign, with a real button behind it for the keyboard.
+    expect(html).toContain('ctx.fillText("SCROLL \\u2193", w / 2, h - 40)');
+    expect(html).toContain('kind: "scroll"');
     expect(html).toContain("scroll &darr;");
     expect(html).toContain("Keep your agents and team in same loop");
     // The content is drawn on the board's face, not laid over the page.

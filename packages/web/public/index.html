@@ -34,24 +34,13 @@
         clip-path: inset(50%);
         white-space: nowrap;
       }
+      /* The scroll hint is painted on the sign; this is the same control for the keyboard and screen readers. */
       .scroll {
-        position: fixed;
-        left: 50%;
-        bottom: 14px;
-        transform: translateX(-50%);
-        padding: 6px 10px;
-        border: 0;
-        background: none;
-        color: #e4ddc9;
-        text-shadow: 0 1px 4px #16130e;
-        font:
-          14px "Courier Prime",
-          Courier,
-          ui-monospace,
-          monospace;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        cursor: pointer;
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
       }
     </style>
     <!-- Craftmill's PostHog, through the shared proxy. It sees a page load and the frame, copy, GitHub and
@@ -1713,7 +1702,7 @@ loopway setup</pre>
           ctx.font = tagline(64);
           const size = (64 * markWidth) / ctx.measureText(line).width;
           const block = markHeight + size * 1.1;
-          const top = (h - block) / 2 - 2;
+          const top = (h - block) / 2 - 20;
           const left = (w - markWidth) / 2;
           ctx.globalCompositeOperation = "multiply";
           if (wordmark.complete && wordmark.naturalWidth) ctx.drawImage(wordmark, left, top, markWidth, markHeight);
@@ -1721,6 +1710,20 @@ loopway setup</pre>
           ctx.textBaseline = "alphabetic";
           ctx.font = tagline(size);
           ctx.fillText(line, left, top + markHeight + size * 0.88);
+          // The scroll hint, at the bottom middle of the sign's face.
+          ctx.font = `20px "Courier Prime", Courier, ui-monospace, monospace`;
+          ctx.textAlign = "center";
+          ctx.fillText("SCROLL \u2193", w / 2, h - 40);
+          ctx.textAlign = "left";
+          HITS = [
+            {
+              kind: "scroll",
+              x0: BOARD.x + w / 2 - 60,
+              y0: BOARD.y + h - 60,
+              x1: BOARD.x + w / 2 + 60,
+              y1: BOARD.y + h - 20,
+            },
+          ];
           ctx.globalCompositeOperation = "source-over";
         } else drawFaceContent(ctx, w, h);
         // The seams between the boards run through the paint.
@@ -3938,7 +3941,7 @@ loopway setup</pre>
 
       // ---- Clicks on the sign: Copy and the two links ----
       const hitAt = (x, y) =>
-        shown > 0 && faceFade() > 0.6 ? HITS.find((h) => x > h.x0 && x < h.x1 && y > h.y0 && y < h.y1) : undefined;
+        faceFade() > 0.6 ? HITS.find((h) => x > h.x0 && x < h.x1 && y > h.y0 && y < h.y1) : undefined;
       // Copy to the clipboard, and say whether it worked.
       async function copy(text) {
         try {
@@ -3956,7 +3959,8 @@ loopway setup</pre>
         }
       }
       async function press(hit) {
-        if (hit.kind === "github") {
+        if (hit.kind === "scroll") step(1);
+        else if (hit.kind === "github") {
           track("github_clicked", { href: `https://github.com/${REPO}` });
           window.open(`https://github.com/${REPO}`, "_blank", "noopener");
         } else if (hit.kind === "bots") location.href = "/bots";
