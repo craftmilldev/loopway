@@ -14,6 +14,8 @@ loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and i
 
 - Threads that create issues and pull requests: the MCP tools `create_issue` and `create_pr` open them as the bot user with the thread's marker. The thread tracks what it created, and a new dev or review thread starts for each. The TUI marks created subjects.
 
+- The home page is the billboard, full screen, and the billboard is the site: five frames that scrolling steps through, painted on the sign itself (the sign, what loopway is, install and setup with a copy button, how to get started, and the GitHub link with a small tracker of the snake, the bird and the loops you have seen). The separate `/billboard/` page is gone; `?u=` and `?speed=` work on `/`.
+
 ### Removed
 
 Everything in 1.0, with no migration: the hosted server and inbox, webhooks and sources, the MCP server, API tokens and login, the `read`/`poll`/`push` commands, and the install script. `packages/web` is now one static page.
