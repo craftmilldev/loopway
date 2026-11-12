@@ -83,6 +83,7 @@ export class GitHubSource implements SubjectSource {
           title: issue.title,
           author: issue.user?.login ?? "ghost",
           createdAt: issue.created_at,
+          assignees: (issue.assignees ?? []).map((a) => a.login),
           ...(issue.body ? { body: issue.body } : {}),
         });
       }
@@ -120,6 +121,12 @@ export class GitHubSource implements SubjectSource {
     return changed;
   }
 
+  async teamMembers(team: string): Promise<string[]> {
+    const [org, slug] = team.split("/") as [string, string];
+    const members = await this.list<User>(`/orgs/${org}/teams/${slug}/members`);
+    return members.map((m) => m.login);
+  }
+
   /** Posts a comment on an issue or pull request (`owner/repo#N`) as whoever the token belongs to. Returns its URL. */
   async comment(subject: string, body: string): Promise<string> {
     const [repo, number] = subject.split("#") as [string, string];
@@ -128,8 +135,9 @@ export class GitHubSource implements SubjectSource {
   }
 
   /** Opens an issue as whoever the token belongs to. */
-  async createIssue(repo: string, title: string, body: string): Promise<Made> {
-    return madeOf(repo, "issue", await this.post<Created>(`/repos/${repo}/issues`, { title, body }));
+  async createIssue(repo: string, title: string, body: string, assignees: string[] = []): Promise<Made> {
+    const payload = { title, body, ...(assignees.length ? { assignees } : {}) };
+    return madeOf(repo, "issue", await this.post<Created>(`/repos/${repo}/issues`, payload));
   }
 
   /** Opens a pull request from the branch `head` into `base`, as whoever the token belongs to. */
@@ -352,6 +360,7 @@ interface Look {
 /** What GitHub answers to opening an issue or a pull request. */
 interface Created extends Item {
   number: number;
+  assignees?: User[];
   created_at: string;
   html_url: string;
 }
@@ -363,6 +372,7 @@ function madeOf(repo: string, kind: Subject["kind"], c: Created): Made {
     title: c.title,
     author: c.user?.login ?? "ghost",
     createdAt: c.created_at,
+    assignees: (c.assignees ?? []).map((a) => a.login),
     ...(c.body ? { body: c.body } : {}),
   };
   return { subject, url: c.html_url };
@@ -407,6 +417,7 @@ interface Item {
 }
 interface Issue extends Item {
   number: number;
+  assignees?: User[];
   created_at: string;
   pull_request?: unknown;
 }

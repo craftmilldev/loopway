@@ -180,9 +180,12 @@ describe("loopway's MCP server", () => {
       mcp.urlFor("t1"),
       tool("create_pr", { repo: "o/r", head: "fix", base: "main", title: "Fix", body: "" }),
     );
+    await call(mcp.urlFor("t1"), tool("create_issue", { repo: "o/r", title: "Start", body: "Go.", assign: true }));
+    expect(calls[2]).toEqual(["t1", "o/r", "Start", "Go.", true]);
+    calls.pop();
     expect(pr.body.result.content[0].text).toBe("created o/r#8: https://github.com/o/r/pull/8");
     expect(calls).toEqual([
-      ["t1", "o/r", "Follow up", "Do it."],
+      ["t1", "o/r", "Follow up", "Do it.", false],
       ["t1", "o/r", "fix", "main", "Fix", ""],
     ]);
   });

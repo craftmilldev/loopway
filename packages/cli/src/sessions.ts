@@ -60,10 +60,12 @@ export interface SessionsOptions {
   mcpUrl: (threadId: string) => string;
   /** The bot user as the session sees it: GH_TOKEN and the git author and committer. */
   env: NodeJS.ProcessEnv;
+  /** Your `gh` login: the one `create_issue` can assign to. */
+  owner?: string;
   /** Posts and opens things as the bot user. */
   github: {
     comment(subject: string, body: string): Promise<string>;
-    createIssue(repo: string, title: string, body: string): Promise<Made>;
+    createIssue(repo: string, title: string, body: string, assignees?: string[]): Promise<Made>;
     createPr(repo: string, head: string, base: string, title: string, body: string): Promise<Made>;
   };
   /** Told after a thread created a subject, once it is recorded as sent: the rest of loopway takes it in. */
@@ -218,10 +220,12 @@ export class Sessions {
   }
 
   /** What the `create_issue` tool does for a thread: opens the issue with the thread's marker, then the thread tracks it. */
-  async createIssue(threadId: string, repo: string, title: string, body: string): Promise<Made> {
+  async createIssue(threadId: string, repo: string, title: string, body: string, assign = false): Promise<Made> {
     const thread = this.thread(threadId);
     this.mayWriteTo(thread, repo);
-    const open = this.o.github.createIssue(repo, title, `${body}\n\n${markerOf(thread.id)}`);
+    if (assign && !this.o.owner) throw new Error("loopway doesn't know whom to assign the issue to");
+    const assignees = assign && this.o.owner ? [this.o.owner] : [];
+    const open = this.o.github.createIssue(repo, title, `${body}\n\n${markerOf(thread.id)}`, assignees);
     return this.tracked(thread, await this.loggedIfRefused(thread, `create_issue in ${repo}`, open));
   }
 

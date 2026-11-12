@@ -13,6 +13,7 @@ import { Sessions } from "./sessions.js";
 import type { Subject } from "./source.js";
 import { loadState, saveState, stateDir } from "./state.js";
 import { loadThreads, readThreadLog, Threads, visibleThreads } from "./threads.js";
+import { resolveTrust } from "./trust.js";
 import { showTui } from "./tui.js";
 import { formatPollStatus } from "./tui-text.js";
 
@@ -83,9 +84,10 @@ async function main(): Promise<number> {
   const config = await loadGitHubConfig(loopwayHome());
   const source = new GitHubSource({ token: ghToken() });
   const me = await source.whoami();
-  const authors = config.name ? [me, config.name] : [me];
+  const trust = await resolveTrust(bots, source, me, config.name);
+  const authors = trust.everyone;
   const state = await loadState(dir);
-  const threads = await Threads.load({ dir, bots, owner: me });
+  const threads = await Threads.load({ dir, bots, owner: me, trust });
 
   // In the TUI nothing prints: the bottom of the screen shows the latest line.
   const tui = !values.json && !values["no-tui"] && !!process.stdout.isTTY && !!process.stdin.isTTY;
@@ -105,6 +107,7 @@ async function main(): Promise<number> {
     print,
     log,
     stop: stop.signal,
+    owner: me,
     created: (thread, subject) => created(thread, subject),
   });
   // A thread's lines follow the line of the event that caused them.
@@ -162,6 +165,7 @@ interface SessionsSetup {
   print: (event: LoopwayEvent) => void;
   log: (message: string) => void;
   stop: AbortSignal;
+  owner: string;
   created: (thread: string, subject: Subject) => Promise<void>;
 }
 
@@ -180,7 +184,7 @@ async function startSessions(s: SessionsSetup): Promise<{ kick: () => void; done
     comment: (thread, subject, body) => sessions.comment(thread, subject, body),
     ask: (thread, subject, question) => sessions.ask(thread, subject, question),
     permission: (thread, tool, input) => sessions.permission(thread, tool, input),
-    createIssue: (thread, repo, title, body) => sessions.createIssue(thread, repo, title, body),
+    createIssue: (thread, repo, title, body, assign) => sessions.createIssue(thread, repo, title, body, assign),
     createPr: (thread, repo, head, base, title, body) => sessions.createPr(thread, repo, head, base, title, body),
   });
   const sessions = new Sessions({
@@ -192,6 +196,7 @@ async function startSessions(s: SessionsSetup): Promise<{ kick: () => void; done
     runAgent: claudeRunner(),
     mcpUrl: (threadId) => mcp.urlFor(threadId),
     env: botEnv,
+    owner: s.owner,
     github: new GitHubSource({ token }),
     created: s.created,
     emit: s.print,
