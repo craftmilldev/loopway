@@ -276,11 +276,11 @@
         }
         function step(direction) {
           const to = Math.max(0, Math.min(names.length - 1, frame + direction));
-          // One wheel flick is many events, so a frame is held for a moment before the next.
+          // A frame is held for a moment before the next. (A wheel flick's own repeats are handled in wheel().)
           if (to === frame || Date.now() < lockedUntil) return;
           track("frame_viewed", { frame: to + 1, name: names[to], from: frame + 1 });
           frame = to;
-          lockedUntil = Date.now() + 700;
+          lockedUntil = Date.now() + 350;
           show(to);
         }
         show(0);
@@ -306,7 +306,7 @@
         });
         addEventListener("keydown", (event) => {
           // Space on the copy button or a link is theirs, not a step.
-          if (event.target.closest && event.target.closest("button, a")) return;
+          if (event.key === " " && event.target.closest && event.target.closest("button, a")) return;
           if (["ArrowDown", "PageDown", " "].includes(event.key)) step(1);
           if (["ArrowUp", "PageUp"].includes(event.key)) step(-1);
         });
