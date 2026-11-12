@@ -49,7 +49,8 @@
         t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
         return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
       };
-      const hex = (h) => (h[0] === "#" ? [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) : h.match(/\d+/g).map(Number));
+      const hex = (h) =>
+        h[0] === "#" ? [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) : h.match(/\d+/g).map(Number);
       const mix = (a, b, t) => {
         const A = hex(a);
         const B = hex(b);
@@ -197,7 +198,8 @@
         tree.twigs = [];
         tree.haze = [];
         tree.leaves = [];
-        const leaf = (x, y, rot) => tree.leaves.push({ x, y, rot, tone: Math.floor(leafRng() * 3), size: 5 + leafRng() * 2.5 });
+        const leaf = (x, y, rot) =>
+          tree.leaves.push({ x, y, rot, tone: Math.floor(leafRng() * 3), size: 5 + leafRng() * 2.5 });
         for (let i = 0; i < 11; i++) {
           const a = lerp(-Math.PI - 0.35, 0.35, (i + 0.5) / 11) + (leafRng() - 0.5) * 0.2;
           const end = [cx + Math.cos(a) * rx * 0.9, cy + Math.sin(a) * ry * 0.9];
@@ -227,7 +229,12 @@
               const side = leafRng() < 0.5 ? -1 : 1;
               const px = lerp(x0, x1, f);
               const py = lerp(y0, y1, f);
-              tree.limbMarks.push([px + (nx * side * w) / 2, py + (ny * side * w) / 2, px - nx * side * w * 0.15, py - ny * side * w * 0.15]);
+              tree.limbMarks.push([
+                px + (nx * side * w) / 2,
+                py + (ny * side * w) / 2,
+                px - nx * side * w * 0.15,
+                py - ny * side * w * 0.15,
+              ]);
             }
           }
           for (const [x, y] of limb.slice(2)) {
@@ -304,7 +311,8 @@
           }
           BRAMBLE.canes.push({ bx, by, mx, my, tx, ty, leaves });
         }
-        for (let i = 0; i < 10; i++) BRAMBLE.tangle.push(raggedWith(r, 468 + r() * 106, 708 + r() * 26, 38 + r() * 24, 20 + r() * 13));
+        for (let i = 0; i < 10; i++)
+          BRAMBLE.tangle.push(raggedWith(r, 468 + r() * 106, 708 + r() * 26, 38 + r() * 24, 20 + r() * 13));
       }
       function drawBush(ctx) {
         ctx.fillStyle = "rgba(22, 19, 14, 0.16)";
@@ -381,7 +389,10 @@
         const top = [];
         for (let i = 1; i < n; i++) {
           const t = (i + (r() - 0.5) * 0.5) / n;
-          top.push([x - Math.cos(Math.PI * t) * (w / 2) * (0.82 + r() * 0.3), y - Math.sin(Math.PI * t) * h * (0.7 + r() * 0.5)]);
+          top.push([
+            x - Math.cos(Math.PI * t) * (w / 2) * (0.82 + r() * 0.3),
+            y - Math.sin(Math.PI * t) * h * (0.7 + r() * 0.5),
+          ]);
         }
         const ridge = top[Math.floor(top.length / 2)];
         return {
@@ -392,7 +403,11 @@
           top,
           ridge,
           crack: [x + (r() - 0.5) * w * 0.4, y - h * (0.1 + r() * 0.2)],
-          tufts: Array.from({ length: 5 + Math.floor(w / 20) }, () => ({ x: x + (r() - 0.5) * w * 1.05, h: 5 + r() * 7, lean: r() * 2 - 1 })),
+          tufts: Array.from({ length: 5 + Math.floor(w / 20) }, () => ({
+            x: x + (r() - 0.5) * w * 1.05,
+            h: 5 + r() * 7,
+            lean: r() * 2 - 1,
+          })),
           moss: r() < 0.7 ? [x - w * (0.1 + r() * 0.15), w * (0.18 + r() * 0.12)] : null,
         };
       }
@@ -479,7 +494,13 @@
         return Array.from({ length: 26 }, () => {
           const a = seeded() * TAU;
           const k = Math.sqrt(seeded()) * 0.75;
-          return { x: cx + Math.cos(a) * rx * k, y: cy + Math.sin(a) * ry * k, r: 5 + seeded() * 6, a: seeded() * TAU, t };
+          return {
+            x: cx + Math.cos(a) * rx * k,
+            y: cy + Math.sin(a) * ry * k,
+            r: 5 + seeded() * 6,
+            a: seeded() * TAU,
+            t,
+          };
         });
       });
       const BIRCH_MARKS = TREES.flatMap((tree, t) => {
@@ -680,8 +701,13 @@
             for (let n = 0; n <= 28; n++) {
               const t = n / 28;
               const x = at("dx") + (t - 0.5) * len;
-              const middle = at("dy") + at("tilt") * (t - 0.5) * len + at("bow") * Math.sin(Math.PI * t) + 2 * Math.sin(t * 7 + theta * 5 + a.p);
-              const half = at("thick") * Math.sin(Math.PI * t) ** 0.6 * (1 + 0.2 * Math.sin(t * 9 - theta * 6 + a.p * 2));
+              const middle =
+                at("dy") +
+                at("tilt") * (t - 0.5) * len +
+                at("bow") * Math.sin(Math.PI * t) +
+                2 * Math.sin(t * 7 + theta * 5 + a.p);
+              const half =
+                at("thick") * Math.sin(Math.PI * t) ** 0.6 * (1 + 0.2 * Math.sin(t * 9 - theta * 6 + a.p * 2));
               top.push([x, middle - half]);
               under.push([x, middle + half]);
             }
@@ -763,7 +789,9 @@
         const want = Math.floor(near.length / 2);
         const over = near.filter((i) => lie[i] < 0).length;
         // Lines in the rock's way, nearest its middle first, are sent to whichever side is short.
-        const inWay = near.filter((i) => Math.abs(lie[i]) < berthOf(k)).sort((a, b) => Math.abs(lie[a]) - Math.abs(lie[b]));
+        const inWay = near
+          .filter((i) => Math.abs(lie[i]) < berthOf(k))
+          .sort((a, b) => Math.abs(lie[a]) - Math.abs(lie[b]));
         let move = want - over;
         for (const i of inWay) {
           if (move > 0 && lie[i] >= 0) {
@@ -830,7 +858,12 @@
           ctx.beginPath();
           ctx.moveTo(pts[0][0], pts[0][1]);
           for (let i = 1; i < pts.length - 1; i++) {
-            ctx.quadraticCurveTo(pts[i][0], pts[i][1], (pts[i][0] + pts[i + 1][0]) / 2, (pts[i][1] + pts[i + 1][1]) / 2);
+            ctx.quadraticCurveTo(
+              pts[i][0],
+              pts[i][1],
+              (pts[i][0] + pts[i + 1][0]) / 2,
+              (pts[i][1] + pts[i + 1][1]) / 2,
+            );
           }
           ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
           ctx.stroke();
@@ -942,7 +975,10 @@
             const reach = len * 0.2 * Math.sin(Math.PI * Math.min(1, t * 1.25 + 0.1)) ** 0.7;
             for (const side of [-1, 1]) {
               ctx.moveTo(px, py);
-              ctx.lineTo(px + ((-dy * side) / d) * reach + (dx / d) * reach * 0.35, py + ((dx * side) / d) * reach + (dy / d) * reach * 0.35);
+              ctx.lineTo(
+                px + ((-dy * side) / d) * reach + (dx / d) * reach * 0.35,
+                py + ((dx * side) / d) * reach + (dy / d) * reach * 0.35,
+              );
             }
           }
           ctx.stroke();
@@ -1029,7 +1065,16 @@
           for (let i = 0; i < 4; i++) {
             ctx.fillStyle = i % 2 ? "#a07f58" : "#93744f";
             ctx.globalAlpha = 0.4;
-            blobPath(ctx, raggedWith(r, d.x + (r() - 0.5) * d.rx, d.y + (r() - 0.5) * d.ry, d.rx * (0.5 + r() * 0.4), d.ry * (0.6 + r() * 0.5)));
+            blobPath(
+              ctx,
+              raggedWith(
+                r,
+                d.x + (r() - 0.5) * d.rx,
+                d.y + (r() - 0.5) * d.ry,
+                d.rx * (0.5 + r() * 0.4),
+                d.ry * (0.6 + r() * 0.5),
+              ),
+            );
             ctx.fill();
           }
           ctx.globalAlpha = 0.6;
@@ -1141,17 +1186,26 @@
         const r = rng(717);
         for (let i = 0; i < 16; i++) {
           const x = 900 + r() * 700;
-          MARSH.moss.push({ pts: raggedWith(r, x, nearBank(x) + 24 + r() * 80, 60 + r() * 70, 12 + r() * 12), tone: Math.floor(r() * 3) });
+          MARSH.moss.push({
+            pts: raggedWith(r, x, nearBank(x) + 24 + r() * 80, 60 + r() * 70, 12 + r() * 12),
+            tone: Math.floor(r() * 3),
+          });
         }
         for (let i = 0; i < 20; i++) {
           const x = 905 + (i / 20) * 690 + (r() - 0.5) * 22;
           const row = i % 3 === 2 ? 34 + r() * 50 : 2 + r() * 12;
           const clump = { x, y: nearBank(x) + row, phase: r() * TAU, blades: [], tails: [] };
           for (let b = 0; b < 8 + Math.floor(r() * 6); b++) {
-            clump.blades.push({ dx: (r() - 0.5) * 22, h: 26 + r() * 40, lean: (r() - 0.5) * 2, tone: Math.floor(r() * 3) });
+            clump.blades.push({
+              dx: (r() - 0.5) * 22,
+              h: 26 + r() * 40,
+              lean: (r() - 0.5) * 2,
+              tone: Math.floor(r() * 3),
+            });
           }
           if (row < 16) {
-            for (let t = 0; t < 1 + Math.floor(r() * 3); t++) clump.tails.push({ dx: (r() - 0.5) * 16, h: 58 + r() * 30, lean: (r() - 0.5) * 0.8 });
+            for (let t = 0; t < 1 + Math.floor(r() * 3); t++)
+              clump.tails.push({ dx: (r() - 0.5) * 16, h: 58 + r() * 30, lean: (r() - 0.5) * 0.8 });
           }
           MARSH.clumps.push(clump);
         }
@@ -1161,7 +1215,9 @@
       // cattail, sits there while the trout jumps, and goes off to the right. The times are parts
       // of the loop: flying in, and flying off.
       const BLACKBIRD = { in: [0.46, 0.495], off: [0.54, 0.566] };
-      const PERCH = MARSH.clumps.filter((c) => c.tails.length).sort((a, b) => Math.abs(a.x - 1010) - Math.abs(b.x - 1010))[0];
+      const PERCH = MARSH.clumps
+        .filter((c) => c.tails.length)
+        .sort((a, b) => Math.abs(a.x - 1010) - Math.abs(b.x - 1010))[0];
       PERCH.tails[0].perch = true;
       // How far the bird bends its cattail: 0 not at all, 1 settled under its weight. The stalk dips
       // past that when the bird lands and bounces to rest; when the bird leaves it springs back the
@@ -1669,11 +1725,23 @@
         const onPost = () => {
           const vy = lerp(RAIL + 14, POSTS.bottom - 30, seeded());
           const side = seeded() < 0.5 ? -1 : 1;
-          return { vx: post + 16 * Math.sin(vy * pitch), vy, x: post + side * (20 + seeded() * 40), fy: vy - 6 - seeded() * 22, ...bloom(size) };
+          return {
+            vx: post + 16 * Math.sin(vy * pitch),
+            vy,
+            x: post + side * (20 + seeded() * 40),
+            fy: vy - 6 - seeded() * 22,
+            ...bloom(size),
+          };
         };
         const atFoot = () => {
           const x = post - 85 + seeded() * 170;
-          return { vx: post + (x - post) * 0.5, vy: POSTS.bottom + 8, x, fy: POSTS.bottom - 16 + seeded() * 26, ...bloom(size) };
+          return {
+            vx: post + (x - post) * 0.5,
+            vy: POSTS.bottom + 8,
+            x,
+            fy: POSTS.bottom - 16 + seeded() * 26,
+            ...bloom(size),
+          };
         };
         return {
           vines: [postVine(post, 16, pitch), postVine(post, 13, pitch * 0.7, 2)],
@@ -1996,7 +2064,9 @@
           const across = (i + 0.5) / tongues;
           const middle = 1 - Math.abs(across - 0.5) * 1.4;
           const flick =
-            0.62 + 0.24 * Math.sin(theta * (31 + 7 * i + seed) + i * 2.1 + seed) + 0.14 * Math.sin(theta * (53 + 11 * i) + i * 1.3 + seed * 2);
+            0.62 +
+            0.24 * Math.sin(theta * (31 + 7 * i + seed) + i * 2.1 + seed) +
+            0.14 * Math.sin(theta * (53 + 11 * i) + i * 1.3 + seed * 2);
           peaks.push({
             x: (across - 0.5) * 2 * width + Math.sin(theta * (23 + 5 * i) + i + seed) * width * 0.13,
             h: height * middle * flick,
@@ -2009,10 +2079,24 @@
         let fromY = 0;
         peaks.forEach((peak, i) => {
           const next = peaks[i + 1];
-          ctx.bezierCurveTo(fromX - width * 0.08, fromY - peak.h * 0.35, peak.x - width * 0.17, -peak.h * 0.55, peak.x + peak.lean, -peak.h);
+          ctx.bezierCurveTo(
+            fromX - width * 0.08,
+            fromY - peak.h * 0.35,
+            peak.x - width * 0.17,
+            -peak.h * 0.55,
+            peak.x + peak.lean,
+            -peak.h,
+          );
           const dipX = next ? (peak.x + next.x) / 2 : width;
           const dipY = next ? -Math.min(peak.h, next.h) * (0.3 + 0.14 * Math.sin(theta * (41 + i) + i + seed)) : 0;
-          ctx.bezierCurveTo(peak.x + width * 0.15, -peak.h * 0.6, dipX + width * 0.05, dipY - peak.h * 0.12, dipX, dipY);
+          ctx.bezierCurveTo(
+            peak.x + width * 0.15,
+            -peak.h * 0.6,
+            dipX + width * 0.05,
+            dipY - peak.h * 0.12,
+            dipX,
+            dipY,
+          );
           fromX = dipX;
           fromY = dipY;
         });
@@ -2038,7 +2122,10 @@
         const theta = TAU * u;
         FIRELIGHT.forEach(([dx, dy, rx, ry, strength], i) => {
           ctx.save();
-          ctx.translate(FIRE.x + dx + Math.sin(theta * (5 + i * 2) + i) * 7, FIRE.y + dy + Math.sin(theta * (7 + i * 3) + i * 2) * 4);
+          ctx.translate(
+            FIRE.x + dx + Math.sin(theta * (5 + i * 2) + i) * 7,
+            FIRE.y + dy + Math.sin(theta * (7 + i * 3) + i * 2) * 4,
+          );
           ctx.scale(1, ry / rx);
           paint(rx * (0.97 + 0.03 * flicker(u + i * 0.13)), strength);
           ctx.restore();
@@ -2142,7 +2229,10 @@
           const t = phase / STANCE;
           const strike = (1 - smooth(0, 0.14, t)) * amp;
           const peel = smooth(0.72, 1, t) * amp;
-          return { at: [lerp(reach, -reach, t), -3.2 * peel], toe: [5 - 0.6 * (strike + peel), -2.2 * strike + 3.2 * peel] };
+          return {
+            at: [lerp(reach, -reach, t), -3.2 * peel],
+            toe: [5 - 0.6 * (strike + peel), -2.2 * strike + 3.2 * peel],
+          };
         }
         const t = (phase - STANCE) / (1 - STANCE);
         return {
@@ -2233,9 +2323,11 @@
         };
       }
       const mirror = (pose) => Object.fromEntries(KEYS.map((k) => [k, [-pose[k][0], pose[k][1]]]));
-      const blend = (a, b, t) => Object.fromEntries(KEYS.map((k) => [k, [lerp(a[k][0], b[k][0], t), lerp(a[k][1], b[k][1], t)]]));
+      const blend = (a, b, t) =>
+        Object.fromEntries(KEYS.map((k) => [k, [lerp(a[k][0], b[k][0], t), lerp(a[k][1], b[k][1], t)]]));
       // From standing side-on: a short turn to face us (or away), then down. t runs 0 to 1.
-      const turnAndSit = (t, ...how) => (t < 0.3 ? blend(standPose(), sitFront(0, ...how), t / 0.3) : sitFront((t - 0.3) / 0.7, ...how));
+      const turnAndSit = (t, ...how) =>
+        t < 0.3 ? blend(standPose(), sitFront(0, ...how), t / 0.3) : sitFront((t - 0.3) / 0.7, ...how);
       const DESK = [-30, [16, -50], 11.5];
       const SIT_SIDE = sitSide(1);
       const SIT_SIDE_LEFT = mirror(SIT_SIDE);
@@ -2257,7 +2349,12 @@
         for (let i = 0; i < lengths.length; i++) {
           if (d <= lengths[i] || i === lengths.length - 1) {
             const t = lengths[i] ? d / lengths[i] : 0;
-            return { x: lerp(path[i][0], path[i + 1][0], t), y: lerp(path[i][1], path[i + 1][1], t), d: total * clamp(p), total };
+            return {
+              x: lerp(path[i][0], path[i + 1][0], t),
+              y: lerp(path[i][1], path[i + 1][1], t),
+              d: total * clamp(p),
+              total,
+            };
           }
           d -= lengths[i];
         }
@@ -2406,7 +2503,11 @@
         // they pass its edge: nothing fades.
         if (u < 0.874) {
           const step = walking(WALK_TO_TENT, seg(u, 0.815, 0.874));
-          return { ...step, shrink: lerp(1, 0.86, smooth(TENT_DOOR[0] - 50, TENT_DOOR[0] - 4, step.x)), inTent: step.x > TENT_DOOR[0] };
+          return {
+            ...step,
+            shrink: lerp(1, 0.86, smooth(TENT_DOOR[0] - 50, TENT_DOOR[0] - 4, step.x)),
+            inTent: step.x > TENT_DOOR[0],
+          };
         }
         return null;
       }
@@ -2543,7 +2644,17 @@
         const dx = to[0] - from[0];
         const dy = to[1] - from[1];
         const dist = Math.hypot(dx, dy);
-        const out = { x: from[0], y: from[1], layer: step.layer || "front", alpha: 1, flip: 1, rot: 0, tail: 0, stretch: 0, sit: 0 };
+        const out = {
+          x: from[0],
+          y: from[1],
+          layer: step.layer || "front",
+          alpha: 1,
+          flip: 1,
+          rot: 0,
+          tail: 0,
+          stretch: 0,
+          sit: 0,
+        };
         if (step.fade === "in") out.alpha = smooth(0, 0.3, p);
         if (step.fade === "out") out.alpha = 1 - smooth(0.6, 1, p);
         let travel = p;
@@ -2676,7 +2787,14 @@
       const SKUNK = {
         from: 0.63,
         to: 0.8,
-        path: [[510, 722], [430, 734], [370, 726], [253, 702], [100, 690], [-90, 682]],
+        path: [
+          [510, 722],
+          [430, 734],
+          [370, 726],
+          [253, 702],
+          [100, 690],
+          [-90, 682],
+        ],
         stretches: [
           [0, 0.24],
           [0.4, 0.6],
@@ -2941,7 +3059,8 @@
           y += (Math.sin(dir) * LENGTH) / N;
         }
         const centre = spine[Math.round(N * 0.4)];
-        const half = (s) => (s < 0.3 ? 9 * Math.sin((s / 0.3) * (Math.PI / 2)) ** 0.7 : lerp(9, 2.4, ((s - 0.3) / 0.7) ** 1.2));
+        const half = (s) =>
+          s < 0.3 ? 9 * Math.sin((s / 0.3) * (Math.PI / 2)) ** 0.7 : lerp(9, 2.4, ((s - 0.3) / 0.7) ** 1.2);
         // A point off the spine: side -1 is the back, +1 the belly; amount 1 is the skin.
         const off = (pt, side, amount) => [
           pt.x - centre.x + side * Math.sin(pt.dir) * half(pt.s) * amount,
@@ -2949,7 +3068,10 @@
         ];
         const path = (pts) => pts.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
         const tail = spine[N];
-        const fin = (angle, len) => [tail.x - centre.x + Math.cos(tail.dir + angle) * len, tail.y - centre.y + Math.sin(tail.dir + angle) * len];
+        const fin = (angle, len) => [
+          tail.x - centre.x + Math.cos(tail.dir + angle) * len,
+          tail.y - centre.y + Math.sin(tail.dir + angle) * len,
+        ];
         ctx.strokeStyle = INK;
         ctx.lineWidth = 1.5;
         ctx.lineJoin = "round";
@@ -3019,7 +3141,14 @@
         length: 88,
         // Out of the right-hand end of the bramble, behind the small boulder and the post, to the big
         // rock. Each end of the run is only just under cover, so the head shows the moment it moves.
-        path: [[596, 737], [640, 740], [700, 718], [800, 738], [860, 745], [886, 746]],
+        path: [
+          [596, 737],
+          [640, 740],
+          [700, 718],
+          [800, 738],
+          [860, 745],
+          [886, 746],
+        ],
       };
       // Where the bird is at each moment after it is startled: out of the right side of the spruce,
       // over toward the birch, back across the front of the spruce, down onto the board under the
@@ -3149,7 +3278,11 @@
         const c = f[i + 1];
         const d = f[Math.min(f.length - 1, i + 2)];
         const through = (k) =>
-          0.5 * (2 * b[k] + (c[k] - a[k]) * t + (2 * a[k] - 5 * b[k] + 4 * c[k] - d[k]) * t * t + (3 * b[k] - a[k] - 3 * c[k] + d[k]) * t * t * t);
+          0.5 *
+          (2 * b[k] +
+            (c[k] - a[k]) * t +
+            (2 * a[k] - 5 * b[k] + 4 * c[k] - d[k]) * t * t +
+            (3 * b[k] - a[k] - 3 * c[k] + d[k]) * t * t * t);
         return [through(1), through(2)];
       }
       // The red-winged blackbird: black all over, with a red shoulder edged in yellow. It keeps low
@@ -3459,7 +3592,10 @@
       const toScene = (event) => {
         const box = canvas.getBoundingClientRect();
         const ratio = canvas.width / box.width;
-        return [((event.clientX - box.left) * ratio - offsetX) / scale, ((event.clientY - box.top) * ratio - offsetY) / scale];
+        return [
+          ((event.clientX - box.left) * ratio - offsetX) / scale,
+          ((event.clientY - box.top) * ratio - offsetY) / scale,
+        ];
       };
       // With the loop frozen (?u=) nothing redraws by itself, so a click keeps frames coming for
       // as long as the snake or the bird is out.
