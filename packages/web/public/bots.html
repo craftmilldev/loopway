@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>loopway bots</title>
+    <meta
+      name="description"
+      content="What goes in a loopway bot file: the front matter and the prompt of .loopway/&lt;bot&gt;.md."
+    />
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <style>
+      :root {
+        --paper: #e4ddc9;
+        --ink: #16130e;
+        --ink-soft: #4b4534;
+        --madder: #9e2b1c;
+        --rule: rgba(22, 19, 14, 0.32);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink-soft);
+        font:
+          17px/1.5 "Sorts Mill Goudy",
+          Georgia,
+          "Times New Roman",
+          serif;
+      }
+      main {
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 72px 24px;
+      }
+      .mark {
+        font:
+          14px "Courier Prime",
+          Courier,
+          ui-monospace,
+          monospace;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--madder);
+      }
+      .mark a {
+        color: inherit;
+        text-decoration: none;
+      }
+      h1 {
+        margin: 12px 0 16px;
+        color: var(--ink);
+        font-size: 40px;
+        font-weight: 400;
+        line-height: 1.1;
+        letter-spacing: -0.02em;
+      }
+      h2 {
+        margin: 40px 0 8px;
+        color: var(--ink);
+        font-size: 24px;
+        font-weight: 400;
+      }
+      pre {
+        margin: 24px 0;
+        padding: 16px;
+        overflow-x: auto;
+        border: 1px solid var(--rule);
+        color: var(--ink);
+        font:
+          14px/1.5 "Courier Prime",
+          Courier,
+          ui-monospace,
+          monospace;
+      }
+      code {
+        color: var(--ink);
+        font:
+          15px "Courier Prime",
+          Courier,
+          ui-monospace,
+          monospace;
+      }
+      pre code {
+        font-size: inherit;
+      }
+      a {
+        color: var(--ink);
+      }
+      dt {
+        margin-top: 16px;
+        color: var(--ink);
+      }
+      dd {
+        margin: 4px 0 0;
+      }
+      footer {
+        margin-top: 48px;
+        padding-top: 16px;
+        border-top: 1px solid var(--rule);
+        font-size: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="mark"><a href="/">loopway</a></div>
+      <h1>Bot files</h1>
+      <p>
+        <code>loopway</code> reads the <code>.loopway/</code> folder in the directory it runs from. Each bot is one
+        file, <code>.loopway/&lt;bot&gt;.md</code>: Markdown with YAML front matter. The front matter is the bot's
+        rules; the Markdown below it is its prompt, which starts each thread's session. The file's name is the bot's
+        name.
+      </p>
+
+      <h2>Front matter</h2>
+      <dl>
+        <dt><code>repos</code></dt>
+        <dd>
+          The repos the bot reads, as <code>owner/name</code>. A bot only counts for the repos it lists, and loopway
+          polls the union of every bot's repos.
+        </dd>
+        <dt><code>on</code></dt>
+        <dd>
+          Which new subjects start a thread for the bot: <code>issue</code>, <code>pull_request</code>, or a list of
+          both. A new issue starts a thread for every bot with <code>on: issue</code>, and a new pull request for every
+          bot with <code>on: pull_request</code>.
+        </dd>
+        <dt><code>model</code></dt>
+        <dd>Passed to Claude Code as its model, like <code>sonnet</code>. Left out, Claude Code picks.</dd>
+        <dt><code>harness</code></dt>
+        <dd>What runs the bot's sessions. Only <code>claude</code> (Claude Code), which is the default.</dd>
+        <dt><code>allow</code> and <code>deny</code></dt>
+        <dd>
+          Lists of tool patterns in Claude Code's syntax, like <code>allow: ["Bash(npm test:*)", "Read"]</code>. They
+          decide what the bot may do without asking you: <code>deny</code> is checked first, then <code>allow</code>,
+          and anything else is asked on the thread for a 👍 or 👎.
+        </dd>
+      </dl>
+      <p>Keys loopway does not know are ignored.</p>
+
+      <h2>The prompt</h2>
+      <p>
+        Everything after the front matter is the prompt. It is the first thing each new session reads, followed by the
+        thread's updates. Write it as you would brief a person: what the bot is, what it does, when to ask.
+      </p>
+
+      <h2>Examples</h2>
+      <p><code>.loopway/dev.md</code> takes issues and opens pull requests:</p>
+      <pre><code>---
+repos: [craftmilldev/loopway]
+on: issue
+---
+
+You are the dev bot. When an issue is assigned to you, read it, make the change on a branch, run the tests, and open
+a pull request that says `Closes #N`. Ask on the issue when something is unclear.</code></pre>
+      <p><code>.loopway/review.md</code> reads pull requests and reviews them:</p>
+      <pre><code>---
+repos: [craftmilldev/loopway]
+on: pull_request
+---
+
+You are the review bot. Read the pull request and its diff, check it against the issue it closes, and leave a
+review. Be specific, and say what you ran.</code></pre>
+
+      <footer>
+        <a href="/">Back to loopway</a> ·
+        <a href="https://github.com/craftmilldev/loopway#bots-loopway">The README</a>
+      </footer>
+    </main>
+  </body>
+</html>
