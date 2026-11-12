@@ -169,19 +169,28 @@ describe("a comment's text", () => {
 });
 
 describe("discover", () => {
-  it("returns subjects created since, telling issues from pull requests", async () => {
+  it("returns subjects created or touched since, telling issues from pull requests", async () => {
     const { source } = fakeGitHub({
       "/repos/o/r/issues": [
         issue({ number: 3, created_at: "2026-11-10T13:00:00Z", pull_request: {} }),
         issue({ number: 2, created_at: "2026-11-10T12:30:00Z", user: { login: "other" } }),
-        issue({ number: 1, created_at: "2026-11-10T11:00:00Z" }), // before since
+        issue({ number: 0, created_at: "2026-11-09T11:00:00Z" }), // old, but touched after since
+        issue({ number: 1, created_at: "2026-11-10T11:00:00Z", updated_at: "2026-11-10T11:30:00Z" }), // untouched
       ],
     });
     const found = await source.discover("o/r", "2026-11-10T12:00:00.000Z");
     expect(found.map((s) => [s.key, s.kind, s.author])).toEqual([
       ["o/r#3", "pull_request", "me"],
       ["o/r#2", "issue", "other"],
+      ["o/r#0", "issue", "me"],
     ]);
+  });
+
+  it("asks only for what was active since, most recently active first", async () => {
+    const { source, requests } = fakeGitHub({ "/repos/o/r/issues": [] });
+    await source.discover("o/r", "2026-11-10T12:00:00.000Z");
+    expect(requests[0]).toContain("sort=updated&direction=desc");
+    expect(requests[0]).toContain("since=2026-11-10T12%3A00%3A00.000Z");
   });
 });
 

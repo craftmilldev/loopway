@@ -6,6 +6,8 @@ export interface Subject {
   author: string;
   /** ISO time the subject was created. */
   createdAt: string;
+  /** ISO time of its last activity (a comment, an assignment, a close or reopen), when the source says. */
+  updatedAt?: string;
   /** Its text, only when it was just read from the source: the poller doesn't keep it. */
   body?: string;
 }
@@ -43,7 +45,10 @@ export interface Updates {
 export interface SubjectSource {
   /** Who the credentials belong to. */
   whoami(): Promise<string>;
-  /** Issues and pull requests in `repo` created after `since`, newest first or not; the caller filters by author. */
+  /**
+   * Issues and pull requests in `repo` created or active since `since`, newest first or not; the caller filters by
+   * author. An old subject someone just touched comes back, which is how loopway picks up one older than itself.
+   */
   discover(repo: string, since: string): Promise<Subject[]>;
   /**
    * Optional, cheap, and batched: which of these subjects have something new since they were last polled. The poller

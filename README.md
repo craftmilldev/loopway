@@ -5,7 +5,7 @@ loopway runs on your machine and polls the collaboration tools your agents work 
 This is 2.0, an alpha. It started as a poller; threads are the second slice, and later ones grow it into a place that runs agents on what it finds. Design and plan: [#486](https://github.com/craftmilldev/loopway/issues/486).
 
 - A **subject** is an issue or a pull request, keyed `owner/repo#N`.
-- **Discovery**, every 2 minutes: new issues and pull requests in your repos, authored by you or by the bot user.
+- **Discovery**, every 2 minutes: new issues and pull requests in your repos, authored by you or by the bot user. An older one, made before loopway was watching, is picked up the first time anyone touches it (a comment, an assignment, a close or reopen).
 - **Updates**, every 30 seconds, for each known subject: comments, reviews, review comments, state changes (closed, merged, reopened), labels, assignees, edits, and CI check runs and statuses on pull requests.
 - It backs off when GitHub rate limits it (`x-ratelimit-reset`, `retry-after`).
 
@@ -49,7 +49,7 @@ To run it from a directory outside the checkout, `npm link -w @loopway/cli` puts
 
 `loopway --json` prints the same as NDJSON, one object per line. Stop it with Ctrl-C.
 
-The first run starts now: it does not replay history. After that it remembers where it got to, so a restart prints nothing twice and picks up what happened while it was stopped.
+The first run starts now: it does not replay history. An issue or pull request from before that stays quiet until something happens to it; then it is reported as new, with only what happened since as updates, and its bots start threads. After that it remembers where it got to, so a restart prints nothing twice and picks up what happened while it was stopped.
 
 ## Threads
 

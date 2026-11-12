@@ -18,6 +18,10 @@ loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and i
 
 - A `/bots` page on the site: what goes in a `.loopway/<bot>.md` file. The get-started frame links to it.
 
+### Fixed
+
+- An issue or pull request older than loopway never started a thread, however you opened, closed, assigned or commented on it: discovery only looked at what was created after it first ran. It now also picks up an old one by you or the bot when something happens to it.
+
 ### Removed
 
 Everything in 1.0, with no migration: the hosted server and inbox, webhooks and sources, the MCP server, API tokens and login, the `read`/`poll`/`push` commands, and the install script. `packages/web` is now one static page.

@@ -30,7 +30,7 @@ export class FakeSource implements SubjectSource {
     this.calls.push(`discover ${repo}`);
     this.maybeFail();
     return this.subjects
-      .filter((s) => s.key.startsWith(repo + "#") && Date.parse(s.createdAt) >= Date.parse(since))
+      .filter((s) => s.key.startsWith(repo + "#") && Date.parse(s.updatedAt ?? s.createdAt) >= Date.parse(since))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
@@ -52,6 +52,12 @@ export class FakeSource implements SubjectSource {
 
   add(key: string, author: string, createdAt: string, kind: Subject["kind"] = "issue", body?: string) {
     this.subjects.push({ key, kind, title: `title of ${key}`, author, createdAt, ...(body ? { body } : {}) });
+  }
+
+  /** Something happened to a subject at `at`: its last activity moves. */
+  touch(key: string, at: string) {
+    const s = this.subjects.find((x) => x.key === key);
+    if (s) s.updatedAt = at;
   }
 
   say(key: string, update: Partial<Update> & { id: string }) {

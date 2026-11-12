@@ -65,9 +65,13 @@ export class Poller {
       const found = await source.discover(repo, since);
       let latest = since;
       for (const subject of found.reverse()) {
-        if (Date.parse(subject.createdAt) > Date.parse(latest)) latest = subject.createdAt;
+        const touched = subject.updatedAt ?? subject.createdAt;
+        if (Date.parse(touched) > Date.parse(latest)) latest = touched;
         if (state.subjects[subject.key] || !this.authors.has(subject.author.toLowerCase())) continue;
-        state.subjects[subject.key] = { subject: withoutBody(subject), seen: [] };
+        // A subject older than the cursor was here before loopway looked: what happened before is history, and only
+        // what woke us is news.
+        const seen = Date.parse(subject.createdAt) < Date.parse(since) ? await this.history(subject, since) : [];
+        state.subjects[subject.key] = { subject: withoutBody(subject), seen };
         await this.o.emit({ type: "new", subject });
         await this.o.save(state);
       }
@@ -76,6 +80,12 @@ export class Poller {
         await this.o.save(state);
       }
     }
+  }
+
+  /** The ids of everything that happened to `subject` before `since`, so they are not reported as news. */
+  private async history(subject: Subject, since: string): Promise<string[]> {
+    const { updates } = await this.o.source.updates(subject);
+    return updates.filter((u) => Date.parse(u.at) < Date.parse(since)).map((u) => u.id);
   }
 
   /** Takes in a subject a thread just created, so discovery never reports it as new. Already known is fine. */

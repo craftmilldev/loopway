@@ -30,6 +30,37 @@ describe("discovery", () => {
     expect(h.events).toHaveLength(1);
   });
 
+  it("picks up a subject older than loopway when someone touches it, and reports only what woke it", async () => {
+    const h = harness();
+    h.source.add("o/r#1", "me", "2026-11-09T09:00:00Z"); // before loopway started
+    h.source.say("o/r#1", { id: "old", at: "2026-11-09T10:00:00Z" });
+    await h.poller.discover();
+    expect(h.events).toEqual([]);
+    h.source.say("o/r#1", { id: "new", kind: "closed", at: "2026-11-10T13:00:00Z" });
+    h.source.touch("o/r#1", "2026-11-10T13:00:00Z");
+    await h.poller.discover();
+    await h.poller.updates();
+    expect(
+      h.events.map((e) =>
+        e.type === "new" ? `new ${e.subject.key}` : e.type === "update" ? `update ${e.update.id}` : e.type,
+      ),
+    ).toEqual(["new o/r#1", "update new"]);
+    expect(h.state.repos["o/r"]?.since).toBe("2026-11-10T13:00:00Z");
+  });
+
+  it("ignores an old subject by someone else when it is touched, and one it already knows is not reported new again", async () => {
+    const h = harness();
+    h.source.add("o/r#1", "someone-else", "2026-11-09T09:00:00Z");
+    h.source.add("o/r#2", "me", "2026-11-09T09:00:00Z");
+    await h.poller.discover();
+    h.source.touch("o/r#1", "2026-11-10T13:00:00Z");
+    h.source.touch("o/r#2", "2026-11-10T13:01:00Z");
+    await h.poller.discover();
+    h.source.touch("o/r#2", "2026-11-10T13:02:00Z");
+    await h.poller.discover();
+    expect(h.events.map((e) => e.type === "new" && e.subject.key)).toEqual(["o/r#2"]);
+  });
+
   it("does not replay history on the first run", async () => {
     const h = harness();
     h.source.add("o/r#1", "me", "2026-11-09T09:00:00Z"); // before loopway started

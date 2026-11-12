@@ -4,7 +4,7 @@ import type { Subject } from "./source.js";
 
 /** What loopway remembers between runs, in `<stateDir>/state.json`. */
 export interface State {
-  /** Per repo, the creation time discovery has reached. A repo seen for the first time starts at "now". */
+  /** Per repo, the creation or activity time discovery has reached. A repo seen for the first time starts at "now". */
   repos: Record<string, { since: string }>;
   /** Every known subject, with the update ids already printed and the source's cursor for it. */
   subjects: Record<string, { subject: Subject; version?: string; seen: string[] }>;
