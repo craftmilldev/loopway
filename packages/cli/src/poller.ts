@@ -22,7 +22,7 @@ export interface PollerOptions {
   /** Called after every change to `state`. */
   save: (state: State) => Promise<void>;
   repos: string[];
-  /** Logins whose issues and pull requests become subjects: you and the bot user. */
+  /** Logins whose issues and pull requests become subjects: everyone any bot trusts. */
   authors: string[];
   /** Awaited before the poller saves its own state, so whatever acts on an event has recorded it first. */
   emit: (event: LoopwayEvent) => void | Promise<void>;

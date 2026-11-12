@@ -1,11 +1,11 @@
 # loopway
 
-loopway runs on your machine and polls the collaboration tools your agents work in. For now that is GitHub: it prints every new issue and pull request by you or your bot, and every update to the ones it knows, and sorts them into threads, one bot plus the subjects it tracks. No webhooks, no server.
+loopway runs on your machine and polls the collaboration tools your agents work in. For now that is GitHub: it prints every new issue and pull request by you, your bot or anyone a bot trusts, and every update to the ones it knows, and sorts them into threads, one bot plus the subjects it tracks. No webhooks, no server.
 
 This is 2.0, an alpha. It started as a poller; threads are the second slice, and later ones grow it into a place that runs agents on what it finds. Design and plan: [#486](https://github.com/craftmilldev/loopway/issues/486).
 
 - A **subject** is an issue or a pull request, keyed `owner/repo#N`.
-- **Discovery**, every 2 minutes: new issues and pull requests in your repos, authored by you or by the bot user. An older one, made before loopway was watching, is picked up the first time anyone touches it while it is open (a comment, an assignment, a reopen). An old closed one stays quiet until it is reopened.
+- **Discovery**, every 2 minutes: new issues and pull requests in your repos, authored by you, the bot user or a login a bot lists under `trusted`. An older one, made before loopway was watching, is picked up the first time anyone touches it while it is open (a comment, an assignment, a reopen). An old closed one stays quiet until it is reopened.
 - **Updates**, every 30 seconds, for each known subject: comments, reviews, review comments, state changes (closed, merged, reopened), labels, assignees, edits, and CI check runs and statuses on pull requests.
 - It backs off when GitHub rate limits it (`x-ratelimit-reset`, `retry-after`).
 
@@ -136,7 +136,7 @@ Open asks live in the thread's JSON, so a restart keeps waiting on them. The log
 
 ## Bots: `.loopway/`
 
-`loopway` reads the `.loopway/` folder in the directory it runs from. Each bot is one file, `.loopway/<bot>.md`: Markdown with YAML front matter. The front matter is the bot's rules; the Markdown is its prompt, which starts each thread's session. The keys: `repos`; `on: issue`, `on: pull_request` or a list of both, which says which new subjects start a thread for the bot; `model` (like `sonnet`, passed to Claude Code); `harness` (only `claude`, the default); `allow` and `deny`, lists of tool patterns that decide permission asks (see Asks). Keys loopway does not know are ignored. It polls the union of every bot's repos.
+`loopway` reads the `.loopway/` folder in the directory it runs from. Each bot is one file, `.loopway/<bot>.md`: Markdown with YAML front matter. The front matter is the bot's rules; the Markdown is its prompt, which starts each thread's session. The keys: `repos`; `on: issue`, `on: pull_request` or a list of both, which says which new subjects start a thread for the bot; `model` (like `sonnet`, passed to Claude Code); `harness` (only `claude`, the default); `allow` and `deny`, lists of tool patterns that decide permission asks (see Asks); and `trusted` (see Who a bot listens to). Keys loopway does not know are ignored. It polls the union of every bot's repos.
 
 `.loopway/dev.md`:
 
@@ -162,6 +162,14 @@ You are the review bot. Read the pull request and its diff, check it against the
 review. Be specific, and say what you ran.
 ```
 
+
+### Who a bot listens to
+
+`trusted: [alice, acme/devs]` in a bot file lists GitHub logins and `org/team` slugs. You and the bot user are always trusted; a team is turned into its members when loopway starts, and if a team can't be read (wrong name, or your `gh` token lacks `read:org`) loopway stops with an error instead of running with a shorter list. Left out, the bot trusts only you and the bot user.
+
+- **Who can start work:** a new issue or pull request starts a thread for a bot only when its author is trusted by that bot **and** it is assigned to you. Until then it is known and watched: assigning it to you later (an `assigned` update) starts the thread. Nobody else's machine, and nobody you haven't listed, can start work on yours.
+- **Whose words reach the session:** a comment, or a review (with or without text, since an approval steers a session too), from a login the bot doesn't trust is not queued for it. The log says `ignored comment on owner/repo#N by someone, who tN's bot does not trust` (`--json`: an `ignored` line). Closes, labels and CI results carry no text from the person, so they still pass.
+- **Subjects a thread creates:** a pull request needs no assignment, since the thread that opened it is already watching, so the review bot's thread starts at once. An issue is only filed unless `create_issue` is called with `assign: true`, which assigns it to you and starts the dev thread. The session decides which one it means.
 ## The TUI
 
 In a terminal, a bare `loopway` opens a full-screen TUI on the same poller. `loopway --no-tui`, `--json`, or output that isn't a terminal (`loopway | cat`) keeps the plain log below.

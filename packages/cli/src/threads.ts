@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { askLabel, callKey, openAsks, type Ask } from "./asks.js";
 import type { Bot } from "./bots.js";
 import type { LoopwayEvent, ThreadEvent } from "./format.js";
-import { decide, type Action } from "./rules.js";
+import { decide, type Action, type Trust } from "./rules.js";
 import type { Update } from "./source.js";
 import { writeJson } from "./state.js";
 import { holds, type Thread } from "./thread.js";
@@ -57,6 +57,8 @@ export interface ThreadsOptions {
   bots: Bot[];
   /** Your `gh` login: only your comment answers a question, and only your reaction a permission ask. */
   owner?: string;
+  /** Who the bots listen to. Left out, they listen to everyone and need no assignment. */
+  trust?: Trust;
   now?: () => number;
   newId?: () => string;
 }
@@ -84,7 +86,7 @@ export class Threads {
     if (event.type !== "new" && event.type !== "update" && event.type !== "created") return [];
     const touched = new Set<Thread>();
     const events: ThreadEvent[] = [];
-    for (const action of decide(event, this.all, this.o.bots)) {
+    for (const action of decide(event, this.all, this.o.bots, this.o.trust)) {
       const thread = this.apply(action, events);
       touched.add(thread);
     }
@@ -109,6 +111,8 @@ export class Threads {
     if (action.type === "track") thread.subjects.push({ key: action.subject.key, status: "open", created: true });
     if (action.type === "queue") this.queue(thread, action.subject, action.update, events);
     if (action.type === "queue") this.answerQuestions(thread, action.subject, action.update, events);
+    if (action.type === "ignore")
+      events.push({ type: "ignored", subject: action.subject, update: action.update, thread: thread.id });
     if (action.type === "mark") thread.subjects.find((s) => s.key === action.subject)!.status = action.status;
     if (action.type === "close") this.close(thread, events);
     return thread;

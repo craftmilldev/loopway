@@ -26,6 +26,15 @@ export class FakeSource implements SubjectSource {
     return "me";
   }
 
+  /** Teams by `org/slug`. A team that isn't here can't be read. */
+  teams = new Map<string, string[]>();
+
+  async teamMembers(team: string) {
+    const members = this.teams.get(team);
+    if (!members) throw new Error("404 Not Found");
+    return members;
+  }
+
   async discover(repo: string, since: string) {
     this.calls.push(`discover ${repo}`);
     this.maybeFail();
@@ -50,8 +59,23 @@ export class FakeSource implements SubjectSource {
     this.reacted.set(commentUrl, [...(this.reacted.get(commentUrl) ?? []), { user, content }]);
   }
 
-  add(key: string, author: string, createdAt: string, kind: Subject["kind"] = "issue", body?: string) {
-    this.subjects.push({ key, kind, title: `title of ${key}`, author, createdAt, ...(body ? { body } : {}) });
+  add(
+    key: string,
+    author: string,
+    createdAt: string,
+    kind: Subject["kind"] = "issue",
+    body?: string,
+    assignees?: string[],
+  ) {
+    this.subjects.push({
+      key,
+      kind,
+      title: `title of ${key}`,
+      author,
+      createdAt,
+      ...(assignees ? { assignees } : {}),
+      ...(body ? { body } : {}),
+    });
   }
 
   /** Something happened to a subject at `at`: its last activity moves. */
@@ -83,7 +107,14 @@ export class FakeSource implements SubjectSource {
 export function fakeOpening() {
   let number = 100;
   const opened: string[] = [];
-  const open = (kind: Subject["kind"], repo: string, title: string, body: string, note: string): Made => {
+  const open = (
+    kind: Subject["kind"],
+    repo: string,
+    title: string,
+    body: string,
+    note: string,
+    assignees: string[] = [],
+  ): Made => {
     if (opening.refuses) throw new Error(opening.refuses);
     number++;
     opened.push(`${note}: ${body}`);
@@ -94,15 +125,25 @@ export function fakeOpening() {
       title,
       author: "loopway-bot",
       createdAt: "2026-11-10T15:00:00Z",
+      assignees: opening.dropsAssignees ? [] : assignees,
       body,
     };
     return { subject, url: `https://github.com/${repo}/${path}/${number}` };
   };
   const opening = {
     refuses: "",
+    /** Set to make GitHub silently drop the assignees, as it does for a login it can't assign. */
+    dropsAssignees: false,
     opened,
-    createIssue: async (repo: string, title: string, body: string) =>
-      open("issue", repo, title, body, `issue ${repo} ${title}`),
+    createIssue: async (repo: string, title: string, body: string, assignees: string[] = []) =>
+      open(
+        "issue",
+        repo,
+        title,
+        body,
+        `issue ${repo} ${title}${assignees.length ? ` for ${assignees.join(",")}` : ""}`,
+        assignees,
+      ),
     createPr: async (repo: string, head: string, base: string, title: string, body: string) =>
       open("pull_request", repo, title, body, `pr ${repo} ${head}->${base} ${title}`),
   };

@@ -123,10 +123,18 @@ describe("opening an issue or a pull request", () => {
         title: "Follow up",
         author: "loopway-bot",
         createdAt: "2026-11-10T13:00:00Z",
+        assignees: [],
         body: "Do it.",
       },
     });
     expect(sent).toEqual([{ path: "/repos/o/r/issues", method: "POST", body: { title: "Follow up", body: "Do it." } }]);
+  });
+
+  it("assigns the issue when asked, and reads the assignees GitHub echoes back", async () => {
+    const { source, sent } = sentTo(made({ assignees: [{ login: "mcwhittemore" }] }));
+    const issue = await source.createIssue("o/r", "Do it", "Now.", ["mcwhittemore"]);
+    expect(issue.subject.assignees).toEqual(["mcwhittemore"]);
+    expect(sent[0]?.body).toEqual({ title: "Do it", body: "Now.", assignees: ["mcwhittemore"] });
   });
 
   it("posts a pull request from its branch to the repo's pulls endpoint", async () => {
@@ -344,5 +352,21 @@ describe("rate limits", () => {
     const err = await source.whoami().catch((e: unknown) => e);
     expect(err).not.toBeInstanceOf(RateLimitError);
     expect((err as Error).message).toContain("403");
+  });
+});
+
+describe("assignees and teams", () => {
+  it("discover reads who each issue is assigned to", async () => {
+    const { source } = fakeGitHub({
+      "/repos/o/r/issues": [issue({ assignees: [{ login: "me" }, { login: "alice" }] }), issue({ number: 8 })],
+    });
+    const found = await source.discover("o/r", "2026-11-10T12:00:00Z");
+    expect(found.map((s) => s.assignees)).toEqual([["me", "alice"], []]);
+  });
+
+  it("teamMembers lists a team's logins, and fails when GitHub can't show the team", async () => {
+    const { source } = fakeGitHub({ "/orgs/acme/teams/devs/members": [{ login: "bob" }, { login: "carol" }] });
+    expect(await source.teamMembers("acme/devs")).toEqual(["bob", "carol"]);
+    await expect(source.teamMembers("acme/ghosts")).rejects.toThrow();
   });
 });

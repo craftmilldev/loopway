@@ -14,6 +14,11 @@ export interface Bot {
   harness: "claude";
   /** Passed to the harness as its model, like `sonnet`. Left out, the harness picks. */
   model?: string;
+  /**
+   * Logins and `org/team` slugs whose issues, pull requests, comments and reviews this bot acts on, besides yours and
+   * the bot user's, who are always trusted. Work still starts only on what is assigned to you.
+   */
+  trusted: string[];
   /** Tool patterns in Claude Code's permission syntax (`Bash(npm test:*)`) that pass without asking. */
   allow: string[];
   /** Tool patterns that are refused without asking. They win over `allow`. */
@@ -70,6 +75,7 @@ export function parseBot(name: string, text: string, where = `${name}.md`): Bot 
     on: parseOn(rules.on, where),
     harness: parseHarness(rules.harness, where),
     model: typeof rules.model === "string" ? rules.model : undefined,
+    trusted: parseTrusted(rules.trusted, where),
     allow: parsePatterns(rules.allow, "allow", where),
     deny: parsePatterns(rules.deny, "deny", where),
     rules,
@@ -82,6 +88,18 @@ function parsePatterns(raw: unknown, key: string, where: string): string[] {
   if (!Array.isArray(raw) || raw.some((p) => typeof p !== "string"))
     throw new Error(`${where}: "${key}" is a list of tool patterns, like ["Bash(npm test:*)"]`);
   return raw as string[];
+}
+
+const LOGIN = /^[\w-]+(?:\/[\w.-]+)?$/;
+
+function parseTrusted(raw: unknown, where: string): string[] {
+  if (raw === undefined) return [];
+  const list = Array.isArray(raw) ? raw : [raw];
+  for (const entry of list) {
+    if (typeof entry !== "string" || !LOGIN.test(entry))
+      throw new Error(`${where}: "trusted" is a list of GitHub logins and org/team slugs, like ["alice", "acme/devs"]`);
+  }
+  return list as string[];
 }
 
 function parseHarness(raw: unknown, where: string): Bot["harness"] {
