@@ -4,6 +4,7 @@
   "installCommand": null,
   "buildCommand": null,
   "outputDirectory": "public",
+  "cleanUrls": true,
   "ignoreCommand": "node scripts/should-build.mjs",
   "git": {
     "deploymentEnabled": {

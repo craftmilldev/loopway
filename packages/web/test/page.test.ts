@@ -82,6 +82,20 @@ describe("the marketing page", () => {
     expect(html).toContain('event.key === " " && event.target.closest && event.target.closest("button, a")');
   });
 
+  it("links the bot docs from the get-started frame, to a page that explains the bot files", () => {
+    expect(html).toContain('<a href="/bots">');
+    expect(html).toContain('location.href = "/bots"');
+    const bots = readFileSync(new URL("../public/bots.html", import.meta.url), "utf8");
+    expect(bots).toContain("<title>loopway bots</title>");
+    expect(bots).toContain('<a href="/">');
+    expect(bots).not.toMatch(/<script\b/);
+    for (const key of ["repos", "on", "model", "harness", "allow", "deny"]) {
+      expect(bots).toContain(`<code>${key}</code>`);
+    }
+    expect(bots).toContain(".loopway/dev.md");
+    expect(bots).toContain(".loopway/review.md");
+  });
+
   it("is what vercel.json serves, with no build step", () => {
     const config = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8")) as Record<
       string,
@@ -89,6 +103,7 @@ describe("the marketing page", () => {
     >;
     expect(config.outputDirectory).toBe("public");
     expect(config.buildCommand).toBeNull();
+    expect(config.cleanUrls).toBe(true);
     expect(config.crons).toBeUndefined();
   });
 });

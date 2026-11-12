@@ -16,6 +16,8 @@ loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and i
 
 - The home page is the billboard, full screen, and the billboard is the site: five frames that scrolling steps through, painted on the sign itself (the sign, what loopway is, install and setup with a copy button, how to get started, and the GitHub link with a small tracker of the snake, the bird and the loops you have seen). The separate `/billboard/` page is gone; `?u=` and `?speed=` work on `/`.
 
+- A `/bots` page on the site: what goes in a `.loopway/<bot>.md` file. The get-started frame links to it.
+
 ### Removed
 
 Everything in 1.0, with no migration: the hosted server and inbox, webhooks and sources, the MCP server, API tokens and login, the `read`/`poll`/`push` commands, and the install script. `packages/web` is now one static page.
