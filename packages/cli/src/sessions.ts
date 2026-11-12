@@ -36,11 +36,15 @@ const GROUND_RULES =
   "body) posts a comment on an issue or pull request, and everything you want people to hear goes through it. Never " +
   "comment with gh or the API. Open issues and pull requests only through mcp__loopway__create_issue(repo, title, body) " +
   "and mcp__loopway__create_pr(repo, head, base, title, body), never with gh: loopway tracks what you open and starts " +
-  "threads for it. Push a pull request's branch with git first. Post at least one message on every turn, even if it is " +
-  "only to say there is nothing to do. Use gh and git for the rest; they act as loopway-bot. " +
+  "threads for it. Push a pull request's branch with git first. Comment only when you have something new to say: you " +
+  "did work, found a problem, disagree, or need an answer. A turn with nothing to do ends without a comment; never post " +
+  "an acknowledgement, thanks or 'nothing to do', since other bots read every comment and answer it. Use gh and git " +
+  "for the rest; they act as loopway-bot. " +
   "When you need someone to decide, or you are stuck, call mcp__loopway__ask(subject, question) and end your turn: " +
   "you are resumed with the answer. If a tool call is refused because loopway asked about it, end your turn too.";
-const REMINDER = "Reminder: talk only through mcp__loopway__comment, and post at least one message on this turn.";
+const REMINDER =
+  "Reminder: talk only through mcp__loopway__comment, and only when you have something new to say. If these updates " +
+  "need nothing from you, end your turn without a comment.";
 
 export interface SessionsOptions {
   /** The project's state directory (see `stateDir`): the thread files and logs live in it. */

@@ -120,5 +120,18 @@ Commit it, push, and comment on the issue with the PR link and the bottom line.
   and say so.
 - When the pull request is merged or closed, remove your worktree with `git worktree remove .claude/worktrees/issue-<n>`.
 
-Every comment says what you did and what you ran, in plain words. Don't claim something passed that you did not see
+## When not to comment
+
+Most later updates need nothing from you, and then you end your turn **without a comment**. Nobody is waiting for an
+acknowledgement, and every comment you post is read by the review bot, which may answer it, so a "nothing to do" from
+you starts a loop. Stay quiet when the update is:
+
+- a review that says **Ready to merge**, or one with no **Must fix** you haven't already handled;
+- a review bot comment that only restates its earlier points, or says your fixes look right;
+- your own comment, or the PR you opened, coming back to you;
+- CI starting, passing, or anything else that asks nothing of you;
+- thanks, a 👍, or anything else that isn't a request.
+
+Comment only when you pushed a change, found a problem, disagree with a point, or need Matthew to decide. One comment
+per turn, saying what you did and what you ran, in plain words. Don't claim something passed that you did not see
 pass.
