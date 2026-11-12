@@ -285,7 +285,15 @@
         }
         show(0);
         hint.addEventListener("click", () => step(1));
-        addEventListener("wheel", (event) => Math.abs(event.deltaY) > 4 && step(Math.sign(event.deltaY)), {
+        // A trackpad keeps sending wheel events for a second after a flick, so a wheel steps only when
+        // it comes after a pause: one flick is one frame.
+        let lastWheel = 0;
+        function wheel(direction) {
+          const pause = Date.now() - lastWheel > 200;
+          lastWheel = Date.now();
+          if (pause) step(direction);
+        }
+        addEventListener("wheel", (event) => Math.abs(event.deltaY) > 4 && wheel(Math.sign(event.deltaY)), {
           passive: true,
         });
         let swipeFrom = null;
@@ -297,6 +305,8 @@
           if (Math.abs(moved) > 40) step(Math.sign(moved));
         });
         addEventListener("keydown", (event) => {
+          // Space on the copy button or a link is theirs, not a step.
+          if (event.target.closest && event.target.closest("button, a")) return;
           if (["ArrowDown", "PageDown", " "].includes(event.key)) step(1);
           if (["ArrowUp", "PageUp"].includes(event.key)) step(-1);
         });
@@ -317,8 +327,8 @@
         }
         addEventListener("message", (event) => {
           if (event.origin !== location.origin || !event.data || event.data.loopway !== "billboard") return;
-          const { step: direction, found, first } = event.data;
-          if (direction) step(direction);
+          const { step: direction, wheel: fromWheel, found, first } = event.data;
+          if (direction) fromWheel ? wheel(direction) : step(direction);
           if (found) showFound(found);
           // The first time only: the billboard says so, because it is what remembers.
           if (first) track(`${first}_found`);

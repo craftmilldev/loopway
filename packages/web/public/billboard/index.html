@@ -3616,23 +3616,25 @@
       // When this picture is the page's billboard, the page is told as things happen: a message for
       // each first find, and one whenever the count changes. On its own (/billboard/) nobody listens.
       const KEPT = "loopway.found";
+      // Also held in memory, so with storage off the count still goes up and a find is a first only once.
+      let memory = { snake: false, bird: false, loops: 0 };
       const kept = () => {
         try {
-          return { snake: false, bird: false, loops: 0, ...JSON.parse(localStorage.getItem(KEPT) || "{}") };
+          return { ...memory, ...JSON.parse(localStorage.getItem(KEPT) || "{}") };
         } catch {
-          return { snake: false, bird: false, loops: 0 };
+          return memory;
         }
       };
       const tell = (message) =>
         parent !== window && parent.postMessage({ loopway: "billboard", ...message }, location.origin);
       function keep(change, first) {
-        const now = { ...kept(), ...change };
+        memory = { ...kept(), ...change };
         try {
-          localStorage.setItem(KEPT, JSON.stringify(now));
+          localStorage.setItem(KEPT, JSON.stringify(memory));
         } catch {
-          // Storage is off (private mode): the count is kept for this visit only, and every find is a first.
+          // Storage is off (private mode): what is in memory is kept for this visit only.
         }
-        tell({ found: now, first });
+        tell({ found: memory, first });
       }
       function found(what) {
         if (!kept()[what]) keep({ [what]: true }, what);
@@ -3649,7 +3651,7 @@
       // The page steps through its cards on scroll, and a wheel or a swipe over the picture goes to the
       // picture, not the page, so it is passed on.
       let swipeFrom = null;
-      addEventListener("wheel", (event) => tell({ step: Math.sign(event.deltaY) }), { passive: true });
+      addEventListener("wheel", (event) => tell({ step: Math.sign(event.deltaY), wheel: true }), { passive: true });
       addEventListener("touchstart", (event) => (swipeFrom = event.touches[0].clientY), { passive: true });
       addEventListener("touchend", (event) => {
         if (swipeFrom === null) return;
