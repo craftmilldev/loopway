@@ -5,11 +5,5 @@
   "buildCommand": null,
   "outputDirectory": "public",
   "cleanUrls": true,
-  "ignoreCommand": "node scripts/should-build.mjs",
-  "git": {
-    "deploymentEnabled": {
-      "**": false,
-      "main": true
-    }
-  }
+  "ignoreCommand": "node scripts/should-build.mjs"
 }
