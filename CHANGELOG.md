@@ -10,6 +10,8 @@ loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and i
 
 - Sessions: each open thread's queued updates go to a Claude Code session that acts as the bot user and talks back through loopway's own MCP server (`comment`). `--max N` caps runs in flight. Bot files gain `model` and `harness`. Each thread has a `session`, the `sent` messages and a `<id>.log`.
 
+- Sessions comment only when they have something new to say. The ground rules used to require a message every turn, so bots on the same pull request traded "nothing to do" comments.
+
 - Threads that create issues and pull requests: the MCP tools `create_issue` and `create_pr` open them as the bot user with the thread's marker. The thread tracks what it created, and a new dev or review thread starts for each. The TUI marks created subjects.
 
 ### Removed

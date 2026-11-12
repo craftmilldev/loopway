@@ -81,6 +81,22 @@ One comment on the pull request:
   nothing.
 - `## Worth considering`: smaller points, clearly optional. Keep it short; no style nits Prettier or ESLint would catch.
 
-On a later turn, say which earlier points are fixed, which are not, and anything new, in the same shape. When the
-pull request is merged or closed, remove your worktree with `git worktree remove .claude/worktrees/review-<pr>` and
-delete the `review-<pr>` branch.
+When the pull request is merged or closed, remove your worktree with `git worktree remove .claude/worktrees/review-<pr>`
+and delete the `review-<pr>` branch.
+
+## 5. Later turns: review again only when something changed
+
+A later turn gets a new review only when there are **new commits** since your last one, or someone asks you a question.
+Then fetch, rerun the checks, and post one comment in the same shape, saying which earlier points are fixed, which are
+not, and anything new.
+
+Otherwise end your turn **without a comment**. Nobody is waiting for an acknowledgement, and the dev bot reads every
+comment you post and may answer it, so a "nothing new" from you starts a loop. Stay quiet when the update is:
+
+- the dev bot's reply with no new commits (a disagreement with a point is the exception: answer it once, then let
+  Matthew decide);
+- your own review coming back to you;
+- CI starting or passing, a label, or a 👍;
+- thanks, or a comment that asks nothing of you.
+
+Never repeat a verdict that hasn't changed.
