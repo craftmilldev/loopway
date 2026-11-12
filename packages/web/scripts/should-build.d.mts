@@ -6,6 +6,7 @@ export function decide(args: {
   previousSha: string | undefined;
   git: (...args: string[]) => string;
   force?: boolean;
+  branch?: string;
 }): {
   build: boolean;
   reason: string;

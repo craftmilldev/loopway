@@ -7,6 +7,7 @@
 // Everything web reads at build or run time must sit inside packages/web or come through an @loopway/* dependency.
 // If web ever reads a file elsewhere in the repo, add it to ROOT_INPUTS (and keep AGENTS.md in step).
 // When unsure (no previous SHA, unreadable package.json, git failure) it builds: an unneeded build is the worst case.
+// Any branch other than main is skipped first (VERCEL_GIT_COMMIT_REF), even with FORCE_BUILD=1.
 // FORCE_BUILD=1 always builds: for changes that live outside git, like env vars, which a redeploy of the same commit
 // would otherwise skip. Set it on the project, redeploy, then remove it (while it is set, every deploy builds).
 import { execFileSync } from "node:child_process";
@@ -54,7 +55,10 @@ export function webClosure(root) {
 }
 
 // Returns { build, reason }. `git(...args)` runs git in the repo and returns stdout, throwing on failure.
-export function decide({ root, previousSha, git, force = false }) {
+export function decide({ root, previousSha, git, force = false, branch }) {
+  // Only main deploys. `git.deploymentEnabled` in vercel.json is meant to do this, but previews were still being
+  // created, so the ignore command refuses too. Unknown branch (env not set) falls through to the diff.
+  if (branch && branch !== "main") return { build: false, reason: `only main deploys (branch is ${branch})` };
   if (force) return { build: true, reason: "FORCE_BUILD is set" };
   if (!previousSha) return { build: true, reason: "VERCEL_GIT_PREVIOUS_SHA is not set" };
   // Vercel runs the ignore command in its root directory (packages/web), and git resolves pathspecs against the
@@ -87,6 +91,7 @@ function main() {
       previousSha: process.env.VERCEL_GIT_PREVIOUS_SHA,
       git,
       force: process.env.FORCE_BUILD === "1",
+      branch: process.env.VERCEL_GIT_COMMIT_REF,
     });
   } catch (err) {
     decision = { build: true, reason: `could not tell what changed (${err.message})` };

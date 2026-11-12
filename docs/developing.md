@@ -55,4 +55,4 @@ Tests fake the source (`test/fake.ts`) for the poller, and fake `fetch` for `Git
 
 ## The marketing page
 
-`packages/web/public/index.html` is the whole site. `packages/web/vercel.json` serves `public/` with no install or build, and `scripts/should-build.mjs` (the `ignoreCommand`) skips deploys when nothing in `packages/web` changed. Verifications for each PR live in `verifications/`.
+`packages/web/public/index.html` is the whole site. `packages/web/vercel.json` serves `public/` with no install or build, and `scripts/should-build.mjs` (the `ignoreCommand`) skips deploys when nothing in `packages/web` changed, and always for any branch but `main` (only `main` deploys; pull requests get no preview, Vercel check or comment). Verifications for each PR live in `verifications/`.

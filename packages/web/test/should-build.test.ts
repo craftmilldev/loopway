@@ -156,3 +156,23 @@ describe("decide with real git from packages/web", () => {
     expect(decide({ root, previousSha: web, git: fromWeb }).build).toBe(false);
   });
 });
+
+describe("only main deploys", () => {
+  const git = () => {
+    throw new Error("git should not be asked");
+  };
+
+  it("skips a pull request branch without looking at what changed, even with FORCE_BUILD", () => {
+    const result = decide({ root, previousSha: "abc", git, branch: "billboard-animation", force: true });
+    expect(result.build).toBe(false);
+    expect(result.reason).toContain("billboard-animation");
+  });
+
+  it("does not build a branch with a slash in its name", () => {
+    expect(decide({ root, previousSha: undefined, git, branch: "bb/some-thread" }).build).toBe(false);
+  });
+
+  it("still builds main when the previous sha is unknown", () => {
+    expect(decide({ root, previousSha: undefined, git, branch: "main" }).build).toBe(true);
+  });
+});
