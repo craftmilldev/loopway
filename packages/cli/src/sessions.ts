@@ -46,6 +46,31 @@ const REMINDER =
   "Reminder: talk only through mcp__loopway__comment, and only when you have something new to say. If these updates " +
   "need nothing from you, end your turn without a comment.";
 
+const CHAT_INTRO =
+  "Chat mode has started: the owner is talking to you live in their terminal, and reads what you write there as it " +
+  "comes. Answer in plain text, briefly, like a conversation; do not post your replies as GitHub comments. Do the work " +
+  "they ask for with your tools as usual. Messages sent while you work reach you on your next turn. You will be told " +
+  "when the chat is over.";
+const CHAT_END =
+  "The chat is over. If you took an action because of it (changed code, opened or changed an issue or pull request, " +
+  "ran something that matters), or if it showed that the ticket was unclear (its testing steps, scope or done-when), " +
+  "post one comment with mcp__loopway__comment on the thread's main subject: a high-level overview of the " +
+  "conversation and what was done because of it. If the chat was only for understanding and the ticket was clear, end " +
+  "your turn without a comment.";
+
+/** A chat block with a thread's session: what the owner typed that is not yet delivered, and what the end still owes. */
+interface Chat {
+  active: boolean;
+  /** Messages waiting for the session, oldest first. */
+  inbox: string[];
+  /** The session has not been told this block started. */
+  intro: boolean;
+  /** Something was said in the block: the session is told when it ends, to report it. */
+  said: boolean;
+  /** The block is over and the session has not been told yet. */
+  ended: boolean;
+}
+
 export interface SessionsOptions {
   /** The project's state directory (see `stateDir`): the thread files and logs live in it. */
   dir: string;
@@ -85,6 +110,7 @@ export class Sessions {
   private readonly running = new Map<string, Promise<void>>();
   private readonly retryAt = new Map<string, number>();
   private readonly asking = new Map<string, Promise<unknown>>();
+  private readonly chats = new Map<string, Chat>();
   private heldUntil = 0;
   /** Aborts when loopway stops, which stops the runs in flight. */
   private stopped?: AbortSignal;
@@ -116,6 +142,39 @@ export class Sessions {
       if (this.running.size >= this.o.max) return;
       if (this.ready(thread)) this.start(thread);
     }
+  }
+
+  /** Whether the owner is in a chat block with this thread. */
+  chatting(threadId: string): boolean {
+    return this.chats.get(threadId)?.active === true;
+  }
+
+  /**
+   * One message of a chat block, typed by the owner. The first one starts the block. It goes to the session on its
+   * next turn: at once if the thread is idle, after the run in flight if not, and in the order typed.
+   */
+  chat(threadId: string, text: string): void {
+    const thread = this.thread(threadId);
+    let chat = this.chats.get(threadId);
+    if (!chat?.active) {
+      chat = { active: true, inbox: chat?.inbox ?? [], intro: true, said: false, ended: chat?.ended ?? false };
+      this.chats.set(threadId, chat);
+      this.log(thread, "── chat started ──");
+    }
+    chat.inbox.push(text);
+    chat.said = true;
+    this.log(thread, `you> ${text}`);
+    this.kick();
+  }
+
+  /** Ends the chat block. If anything was said, the session is told so, and reports it to the ticket if it should. */
+  endChat(threadId: string): void {
+    const chat = this.chats.get(threadId);
+    if (!chat?.active) return;
+    chat.active = false;
+    if (chat.said) chat.ended = true;
+    this.log(this.thread(threadId), "── chat ended ──");
+    this.kick();
   }
 
   /** Resolves when no run is in flight. */
@@ -281,12 +340,14 @@ export class Sessions {
   }
 
   private ready(thread: Thread): boolean {
+    if (thread.status !== "open" || this.running.has(thread.id) || this.now() < (this.retryAt.get(thread.id) ?? 0))
+      return false;
+    const chat = this.chats.get(thread.id);
+    // The owner is talking to it: updates wait until the block ends, and a chat reaches it even while it is blocked.
+    if (chat?.active) return chat.inbox.length > 0;
+    if (chat && chat.inbox.length > 0) return true;
     return (
-      thread.status === "open" &&
-      thread.session?.status !== "blocked" &&
-      (thread.queue.length > 0 || !thread.session?.id) &&
-      !this.running.has(thread.id) &&
-      this.now() >= (this.retryAt.get(thread.id) ?? 0)
+      thread.session?.status !== "blocked" && (thread.queue.length > 0 || !thread.session?.id || chat?.ended === true)
     );
   }
 
@@ -300,27 +361,38 @@ export class Sessions {
 
   /** One run: everything queued now goes to the session. Never throws; a failure is the thread's `session`. */
   private async deliver(thread: Thread): Promise<void> {
-    const batch = [...thread.queue];
+    const chat = this.chats.get(thread.id);
+    // While the owner is in a chat block only the chat is delivered; the queue waits for the block to end.
+    const batch = chat?.active ? [] : [...thread.queue];
+    const chatNow = chat ? { inbox: [...chat.inbox], intro: chat.intro, ended: chat.ended && !chat.active } : undefined;
     const session = (thread.session ??= { id: null, status: "idle", lastRunAt: null });
     const sentBefore = thread.sent?.length ?? 0;
     try {
-      await this.begin(thread, session, batch.length);
-      const failure = await this.execute(thread, session, batch);
-      if (failure) return await this.fail(thread, session, failure);
+      const chatOnly = batch.length === 0 && !!chatNow?.inbox.length;
+      await this.begin(thread, session, batch.length, chatOnly);
+      if (chatNow?.inbox.length) this.log(thread, `-> chat: ${chatNow.inbox.length} messages`);
+      const failure = await this.execute(thread, session, batch, chatNow);
+      if (failure) return await this.fail(thread, session, failure, !!chatNow?.inbox.length || !!chatNow?.ended);
       thread.queue.splice(0, batch.length);
-      await this.finish(thread, session, (thread.sent?.length ?? 0) > sentBefore);
+      if (chat && chatNow) {
+        chat.inbox.splice(0, chatNow.inbox.length);
+        chat.intro = false;
+        if (chatNow.ended) chat.ended = false;
+      }
+      // A chat is answered in the log, not on GitHub, so it is not a silent turn.
+      await this.finish(thread, session, (thread.sent?.length ?? 0) > sentBefore || chatOnly);
     } catch (err) {
       await this.fail(thread, session, (err as Error).message).catch(() => {});
     }
   }
 
-  private async begin(thread: Thread, session: Session, delivered: number): Promise<void> {
+  private async begin(thread: Thread, session: Session, delivered: number, chatOnly = false): Promise<void> {
     const at = new Date(this.now()).toISOString();
     session.status = "running";
     session.lastRunAt = at;
     delete session.lastError;
     await this.o.threads.save(thread);
-    this.log(thread, `-> delivered ${delivered} updates`);
+    if (!chatOnly) this.log(thread, `-> delivered ${delivered} updates`);
     this.o.emit({
       type: "run_started",
       at,
@@ -332,7 +404,12 @@ export class Sessions {
   }
 
   /** Runs the session over the batch; the reason it failed, if it did. */
-  private async execute(thread: Thread, session: Session, batch: Pending[]): Promise<string | undefined> {
+  private async execute(
+    thread: Thread,
+    session: Session,
+    batch: Pending[],
+    chat?: ChatDelivery,
+  ): Promise<string | undefined> {
     const bot = this.o.bots.find((b) => b.name === thread.bot);
     if (!bot) return `there is no bot ${thread.bot} in .loopway/`;
     const resume = session.id !== null;
@@ -340,7 +417,7 @@ export class Sessions {
     const outcome = await this.o.runAgent({
       sessionId,
       resume,
-      message: resume ? `${REMINDER}\n\n${updatesText(batch)}` : firstMessage(bot, thread, batch),
+      message: messageFor(bot, thread, resume, batch, chat),
       model: bot.model,
       cwd: this.o.root,
       env: { ...process.env, ...this.o.env },
@@ -375,14 +452,14 @@ export class Sessions {
     this.o.emit({ type: "silent_turn", at, thread: thread.id });
   }
 
-  private async fail(thread: Thread, session: Session, error: string): Promise<void> {
+  private async fail(thread: Thread, session: Session, error: string, chatKept = false): Promise<void> {
     const at = new Date(this.now()).toISOString();
     // A run cut off after it asked is still waiting for the answer, and keeps its session to be resumed with it.
     const waiting = openAsks(thread).length > 0;
     session.status = waiting ? "blocked" : "failed";
     session.lastError = error;
     // A run with nothing queued was a first run, and the news was the subject itself: it is told again, as a new session.
-    if (thread.queue.length === 0 && !waiting) session.id = null;
+    if (thread.queue.length === 0 && !waiting && !chatKept) session.id = null;
     this.retryAt.set(thread.id, this.now() + RETRY_AFTER_FAILURE_MS);
     await this.o.threads.save(thread);
     this.log(thread, `!! run failed: ${error}`);
@@ -396,12 +473,28 @@ export class Sessions {
   }
 }
 
-/** A new session is told who it is and what to do, then what happened. */
-function firstMessage(bot: Bot, thread: Thread, batch: Pending[]): string {
+/** What a run delivers of a chat block: the messages, whether it opens the block, and whether it closes it. */
+interface ChatDelivery {
+  inbox: string[];
+  intro: boolean;
+  ended: boolean;
+}
+
+/**
+ * A new session is told who it is and what to do, then what happened; a resumed one, what happened. Chat messages and
+ * the end of a chat block come before the updates.
+ */
+function messageFor(bot: Bot, thread: Thread, resume: boolean, batch: Pending[], chat?: ChatDelivery): string {
   const subjects = thread.subjects.map((s) => s.key).join(", ");
-  return [GROUND_RULES, bot.prompt, `This thread tracks: ${subjects}. Read them with gh.`, updatesText(batch)].join(
-    "\n\n",
-  );
+  const chatParts = [
+    ...(chat?.inbox.length ? [chat.intro ? CHAT_INTRO : "", ...chat.inbox.map((m) => `Chat: ${m}`)] : []),
+    ...(chat?.ended ? [CHAT_END] : []),
+  ].filter(Boolean);
+  const updates = batch.length > 0 || chatParts.length === 0 ? [updatesText(batch)] : [];
+  const head = resume ? [] : [GROUND_RULES, bot.prompt, `This thread tracks: ${subjects}. Read them with gh.`];
+  // The reminder is about updates; a run that only carries chat has none.
+  const reminder = resume && updates.length > 0 ? [REMINDER] : [];
+  return [...head, ...chatParts, ...reminder, ...updates].join("\n\n");
 }
 
 /** The queued updates, oldest first. */

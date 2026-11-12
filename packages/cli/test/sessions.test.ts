@@ -451,3 +451,108 @@ describe("issues and pull requests a session opens", () => {
     expect(s.github.opened).toEqual([]);
   });
 });
+
+describe("chat", () => {
+  /** A thread that has already had a run, so chat resumes its session. */
+  async function chatting() {
+    const s = await setup();
+    const thread = s.add(queued(aThread("t1", "dev", ["o/r#12"]), ["c:1", "2026-11-10T14:05:00Z"]));
+    s.sessions.kick();
+    await s.sessions.idle();
+    return { s, thread };
+  }
+
+  it("tells the session it is in chat mode, and sends each message to the resumed session and the log", async () => {
+    const { s } = await chatting();
+    s.sessions.chat("t1", "how is it going?");
+    expect(s.sessions.chatting("t1")).toBe(true);
+    await s.sessions.idle();
+    const run = s.agent.runs[1]!;
+    expect([run.resume, run.sessionId]).toEqual([true, "session-1"]);
+    expect(run.message).toMatch(/Chat mode has started/);
+    expect(run.message).toMatch(/Chat: how is it going\?/);
+    expect(run.message).not.toMatch(/updates since your last turn/);
+    expect(await s.log("t1")).toMatch(/── chat started ──\nyou> how is it going\?\n-> chat: 1 messages/);
+  });
+
+  it("does not repeat the introduction in the next message of the block", async () => {
+    const { s } = await chatting();
+    s.sessions.chat("t1", "one");
+    await s.sessions.idle();
+    s.sessions.chat("t1", "two");
+    await s.sessions.idle();
+    expect(s.agent.runs[2]?.message).toMatch(/^Chat: two$/);
+  });
+
+  it("queues messages typed during a run and delivers them together, in order, afterwards", async () => {
+    const { s } = await chatting();
+    let release!: () => void;
+    s.agent.behave = () => new Promise((r) => (release = () => r(ok)));
+    s.sessions.chat("t1", "first");
+    await vi.waitFor(() => expect(s.agent.runs).toHaveLength(2));
+    s.sessions.chat("t1", "second");
+    s.sessions.chat("t1", "third");
+    expect(s.agent.runs).toHaveLength(2);
+    s.agent.behave = async () => ok;
+    release();
+    await vi.waitFor(() => expect(s.agent.runs).toHaveLength(3));
+    await s.sessions.idle();
+    expect(s.agent.runs[2]?.message).toMatch(/Chat: second\n\nChat: third/);
+  });
+
+  it("holds queued updates until the chat ends, then delivers them with the end of the chat", async () => {
+    const { s, thread } = await chatting();
+    s.sessions.chat("t1", "hello");
+    await s.sessions.idle();
+    queued(thread, ["c:2", "2026-11-10T14:20:00Z"]);
+    s.sessions.kick();
+    await s.sessions.idle();
+    expect(s.agent.runs).toHaveLength(2);
+    s.sessions.endChat("t1");
+    await s.sessions.idle();
+    expect(s.sessions.chatting("t1")).toBe(false);
+    const last = s.agent.runs[2]!.message;
+    expect(last).toMatch(/The chat is over/);
+    expect(last).toMatch(/end your turn without a comment/);
+    expect(last).toMatch(/1 updates since your last turn/);
+    expect(thread.queue).toEqual([]);
+  });
+
+  it("says the chat is over once: only when something was said, and not again later", async () => {
+    const { s } = await chatting();
+    s.sessions.endChat("t1");
+    await s.sessions.idle();
+    expect(s.agent.runs).toHaveLength(1);
+    s.sessions.chat("t1", "hello");
+    await s.sessions.idle();
+    s.sessions.endChat("t1");
+    await s.sessions.idle();
+    s.sessions.kick();
+    await s.sessions.idle();
+    expect(s.agent.runs.filter((r) => r.message.includes("The chat is over"))).toHaveLength(1);
+    expect(s.agent.runs).toHaveLength(3);
+  });
+
+  it("starts a thread's session from a chat when it has not run yet, with the ground rules", async () => {
+    const s = await setup();
+    s.add(aThread("t1", "dev", ["o/r#12"]));
+    s.sessions.chat("t1", "hi");
+    await s.sessions.idle();
+    expect(s.agent.runs).toHaveLength(1);
+    expect(s.agent.runs[0]?.resume).toBe(false);
+    expect(s.agent.runs[0]?.message).toMatch(/You are loopway-bot[\s\S]*Chat mode has started[\s\S]*Chat: hi/);
+  });
+
+  it("keeps the messages and the session when the run fails", async () => {
+    const { s, thread } = await chatting();
+    s.agent.behave = async () => ({ code: 1, finished: false });
+    s.sessions.chat("t1", "hello");
+    await s.sessions.idle();
+    expect(thread.session?.id).toBe("session-1");
+    s.clock.t += RETRY_AFTER_FAILURE_MS;
+    s.agent.behave = async () => ok;
+    s.sessions.kick();
+    await s.sessions.idle();
+    expect(s.agent.runs[2]?.message).toMatch(/Chat: hello/);
+  });
+});

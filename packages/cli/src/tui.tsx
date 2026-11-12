@@ -16,6 +16,8 @@ export interface TuiProps {
   status: (now: number) => string;
   /** Polls GitHub now, instead of waiting for the poller's timers. */
   onRefresh: () => void;
+  /** Chat with a thread's session, when there are sessions. */
+  chat?: { send: (threadId: string, text: string) => void; end: (threadId: string) => void };
   now?: () => number;
   refreshMs?: number;
 }
@@ -27,14 +29,16 @@ export async function showTui(props: TuiProps): Promise<void> {
 }
 
 /** The main view of threads, and the view of one thread. q quits; Ctrl-C does too. */
-export function Tui({ threads, readLog, latest, status, onRefresh, now = Date.now, refreshMs = 1000 }: TuiProps) {
+export function Tui({ threads, readLog, latest, status, onRefresh, chat, now = Date.now, refreshMs = 1000 }: TuiProps) {
   const { exit } = useApp();
   const [filter, setFilter] = useState<string>();
   const [selectedId, setSelectedId] = useState<string>();
   const [openId, setOpenId] = useState<string>();
+  /** The thread being chatted with: typing `q` there is a letter, not quit. */
+  const [chatId, setChatId] = useState<string>();
   useRefresh(refreshMs);
   useInput((input) => {
-    if (input === "q") exit();
+    if (input === "q" && !chatId) exit();
   });
 
   const all = threads();
@@ -45,6 +49,17 @@ export function Tui({ threads, readLog, latest, status, onRefresh, now = Date.no
         thread={open}
         log={readLog(open.id)}
         onBack={() => setOpenId(undefined)}
+        chat={
+          chat && {
+            active: chatId === open.id,
+            onStart: () => setChatId(open.id),
+            onSend: (text) => chat.send(open.id, text),
+            onEnd: () => {
+              chat.end(open.id);
+              setChatId(undefined);
+            },
+          }
+        }
         onFilter={(subject) => {
           setFilter(subject);
           setOpenId(undefined);

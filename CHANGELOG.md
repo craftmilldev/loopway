@@ -16,6 +16,8 @@ loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and i
 
 - The home page is the billboard, full screen, and the billboard is the site: five frames that scrolling steps through, painted on the sign itself (the sign, what loopway is, install and setup with a copy button, how to get started, and the GitHub link with a small tracker of the snake, the bird and the loops you have seen). The separate `/billboard/` page is gone; `?u=` and `?speed=` work on `/`.
 
+- Chat in the TUI: `c` in a thread view talks to its session live. The session knows it is in a chat block, and when `Esc` ends it, comments on the ticket with an overview if it acted on the conversation or the ticket was unclear.
+
 - A `/bots` page on the site: what goes in a `.loopway/<bot>.md` file. The get-started frame links to it.
 
 - Bots say who they listen to: `trusted: [alice, acme/devs]` in a bot file (logins and `org/team` slugs; loopway won't run if a team can't be read). A new issue or pull request starts a thread only when its author is trusted and it is assigned to you; assigning it later starts one. Comments and reviews from anyone else are ignored, with a log line. `create_issue` takes `assign` to start work on what it files, and a pull request a thread opens still gets its review thread at once. See [#530](https://github.com/craftmilldev/loopway/issues/530).

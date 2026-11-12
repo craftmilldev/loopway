@@ -15,26 +15,50 @@ export interface ThreadViewProps {
   onBack: () => void;
   /** Filters the main view to the threads holding this subject. */
   onFilter: (subject: string) => void;
+  /** Chat with the thread's session. Missing when sessions are off. */
+  chat?: {
+    /** In a chat block: the keys type a message instead of moving around. */
+    active: boolean;
+    onStart: () => void;
+    onSend: (text: string) => void;
+    onEnd: () => void;
+  };
 }
 
 /**
  * One thread: its subjects, session status, pending updates, sent messages and session log. ↑/↓ selects a subject and
  * Enter filters the main view to it. The log follows new output until PgUp/PgDn/Home scroll it, and End follows again.
- * ← or Esc goes back.
+ * ← or Esc goes back. `c` starts a chat with the session: what you type goes to it on Enter, and Esc ends the chat.
  */
-export function ThreadView({ thread, log, onBack, onFilter }: ThreadViewProps) {
+export function ThreadView({ thread, log, onBack, onFilter, chat }: ThreadViewProps) {
   const [subject, setSubject] = useState(0);
+  const [draft, setDraft] = useState("");
+  const chatting = chat?.active === true;
   const open = openAsks(thread);
   const asks = lastOf(open, LISTED);
   const pending = lastOf(thread.queue, LISTED);
   const sent = lastOf(thread.sent ?? [], LISTED);
   const lines = log.split("\n").filter((line, i, all) => line !== "" || i < all.length - 1);
   const { rows } = useWindowSize();
-  const logRows = Math.max(MIN_LOG_ROWS, rows - listedRows(thread, asks, pending, sent) - 3);
+  const logRows = Math.max(MIN_LOG_ROWS, rows - listedRows(thread, asks, pending, sent) - (chatting ? 4 : 3));
   const [top, scrollLog] = useScroll(lines.length, logRows);
   const first = top ?? Math.max(0, lines.length - logRows);
 
-  useInput((_input, key) => {
+  useInput((input, key) => {
+    if (chat && chatting) {
+      if (key.escape) chat.onEnd();
+      else if (key.return) {
+        if (draft.trim()) chat.onSend(draft.trim());
+        setDraft("");
+      } else if (key.backspace || key.delete) setDraft(draft.slice(0, -1));
+      else if (!key.ctrl && !key.meta && !key.tab && input) setDraft(draft + input);
+      if (key.pageUp || key.pageDown) scrollLog(key);
+      return;
+    }
+    if (input === "c" && chat && thread.status === "open") {
+      setDraft("");
+      chat.onStart();
+    }
     if (key.escape || key.leftArrow) onBack();
     if (key.upArrow) setSubject(Math.max(0, subject - 1));
     if (key.downArrow) setSubject(Math.min(thread.subjects.length - 1, subject + 1));
@@ -94,7 +118,19 @@ export function ThreadView({ thread, log, onBack, onFilter }: ThreadViewProps) {
           </Text>
         ))}
       </Box>
-      <Text dimColor>↑/↓ subject · enter filter by it · pgup/pgdn scroll log · ← back · q quit</Text>
+      {chatting ? (
+        <Box flexDirection="column">
+          <Text color="cyan" wrap="truncate-start">
+            chat › {draft}▏
+          </Text>
+          <Text dimColor>enter send · esc end chat (the session reports to the ticket if it should)</Text>
+        </Box>
+      ) : (
+        <Text dimColor>
+          ↑/↓ subject · enter filter by it · pgup/pgdn scroll log{chat && thread.status === "open" ? " · c chat" : ""} ·
+          ← back · q quit
+        </Text>
+      )}
     </Box>
   );
 }
