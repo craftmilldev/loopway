@@ -75,8 +75,8 @@ describe("the marketing page", () => {
   });
 
   it("steps one frame per flick, and ignores only Space on a button or link", () => {
-    expect(html).toContain("now - lastWheel > 200");
-    expect(html).toContain("Math.abs(wheelSum) >= 30");
+    expect(html).toContain("now - lastWheel > 120");
+    expect(html).toContain("Math.abs(wheelSum) >= 10");
     // The camera does not move: all of the animation stays in view.
     expect(html).not.toContain("cameraTo");
     expect(html).toContain('event.key === " " && event.target.closest && event.target.closest("button, a")');

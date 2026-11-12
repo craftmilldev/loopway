@@ -3873,7 +3873,7 @@ loopway setup</pre>
         // A frame is held for a moment before the next. (A wheel flick's own repeats are handled in wheel().)
         if (to === shown || Date.now() < lockedUntil) return;
         track("frame_viewed", { frame: to + 1, name: FRAMES[to], from: shown + 1 });
-        lockedUntil = Date.now() + 350;
+        lockedUntil = Date.now() + 250;
         faceFrom.width = boardCanvas.width;
         faceFrom.height = boardCanvas.height;
         faceFrom.getContext("2d").drawImage(boardCanvas, 0, 0);
@@ -3886,23 +3886,29 @@ loopway setup</pre>
       }
       hint.hidden = false;
       hint.addEventListener("click", () => step(1));
-      // A trackpad keeps sending wheel events for a second or more after a flick, and its first few are
-      // tiny. So the wheel adds up, steps once when it has gone far enough, and is ready again only after
-      // a pause with no wheel events: one flick is one frame, however long it coasts.
+      // A light scroll steps: the wheel adds up to a small amount and steps once. A trackpad then keeps
+      // sending events for a second or more as it coasts, so the wheel is ready again only when it goes
+      // quiet for a moment, turns round, or a new flick begins (an event several times the last, and big).
       let wheelSum = 0;
       let wheelReady = true;
       let lastWheel = 0;
+      let lastSize = 0;
+      let lastWay = 0;
       addEventListener(
         "wheel",
         (event) => {
           const now = Date.now();
-          if (now - lastWheel > 200) {
+          const size = Math.abs(event.deltaY);
+          const way = Math.sign(event.deltaY);
+          if (now - lastWheel > 120 || way !== lastWay || (size >= 40 && size > lastSize * 3)) {
             wheelSum = 0;
             wheelReady = true;
           }
           lastWheel = now;
+          lastSize = size;
+          lastWay = way;
           wheelSum += event.deltaY;
-          if (wheelReady && Math.abs(wheelSum) >= 30) {
+          if (wheelReady && Math.abs(wheelSum) >= 10) {
             wheelReady = false;
             step(Math.sign(wheelSum));
           }
