@@ -271,4 +271,24 @@ describe("who the bots listen to, and what starts work", () => {
     const started = { ...filed, assignees: ["me"] };
     expect(opened(decide({ type: "created", thread: "t1", subject: started }, maker, bots, trust))).toEqual(["dev"]);
   });
+
+  it("starts a dev thread for an issue a dev thread only filed, once it is assigned to you", () => {
+    const filed = { ...aSubject(6), author: "loopway-bot", assignees: [] };
+    const maker = { ...aThread("t1", "dev", ["o/r#1", "o/r#6"]) };
+    maker.subjects[1]!.created = true;
+    const assign = { ...anUpdate("event:7", "assigned"), detail: "me", actor: "me" };
+    const actions = decide({ type: "update", subject: filed, update: assign }, [maker], bots, trust);
+    expect(opened(actions)).toEqual(["dev"]);
+    // a bot that is already working the subject doesn't get a second thread
+    const worker = aThread("t2", "dev", ["o/r#6"]);
+    expect(opened(decide({ type: "update", subject: filed, update: assign }, [worker], bots, trust))).toEqual([]);
+  });
+
+  it("holds back a review from someone the bot does not trust even with no text", () => {
+    const threads = [aThread("t1", "dev", ["o/r#1"])];
+    const approval = { ...anUpdate("review:1", "review"), detail: "approved", actor: "mallory" };
+    expect(decide({ type: "update", subject: aSubject(1), update: approval }, threads, bots, trust)[0]?.type).toBe(
+      "ignore",
+    );
+  });
 });

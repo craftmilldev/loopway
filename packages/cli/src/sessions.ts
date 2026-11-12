@@ -226,7 +226,14 @@ export class Sessions {
     if (assign && !this.o.owner) throw new Error("loopway doesn't know whom to assign the issue to");
     const assignees = assign && this.o.owner ? [this.o.owner] : [];
     const open = this.o.github.createIssue(repo, title, `${body}\n\n${markerOf(thread.id)}`, assignees);
-    return this.tracked(thread, await this.loggedIfRefused(thread, `create_issue in ${repo}`, open));
+    const made = await this.tracked(thread, await this.loggedIfRefused(thread, `create_issue in ${repo}`, open));
+    // GitHub drops assignees the token can't assign (no push access, say). Say so, rather than report work started.
+    if (assign && !made.subject.assignees?.some((a) => a.toLowerCase() === this.o.owner?.toLowerCase())) {
+      throw new Error(
+        `${made.subject.key} was created (${made.url}) but GitHub did not assign it to ${this.o.owner}, so no thread starts on it`,
+      );
+    }
+    return made;
   }
 
   /** What the `create_pr` tool does for a thread: opens the pull request with the thread's marker, then the thread tracks it. */

@@ -113,13 +113,15 @@ export function fakeOpening() {
       title,
       author: "loopway-bot",
       createdAt: "2026-11-10T15:00:00Z",
-      assignees,
+      assignees: opening.dropsAssignees ? [] : assignees,
       body,
     };
     return { subject, url: `https://github.com/${repo}/${path}/${number}` };
   };
   const opening = {
     refuses: "",
+    /** Set to make GitHub silently drop the assignees, as it does for a login it can't assign. */
+    dropsAssignees: false,
     opened,
     createIssue: async (repo: string, title: string, body: string, assignees: string[] = []) =>
       open(

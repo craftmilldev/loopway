@@ -369,6 +369,13 @@ describe("messages a session sends", () => {
 });
 
 describe("issues and pull requests a session opens", () => {
+  it("tells the session when GitHub did not assign the issue, though it was created", async () => {
+    const s = await setup();
+    s.add(aThread("t1", "dev", ["o/r#12"]));
+    s.github.dropsAssignees = true;
+    await expect(s.sessions.createIssue("t1", "o/r", "Do it", "Now.", true)).rejects.toThrow(/did not assign it/);
+  });
+
   it("assigns an issue to you only when the thread asks, and says so", async () => {
     const s = await setup();
     s.add(aThread("t1", "dev", ["o/r#12"]));

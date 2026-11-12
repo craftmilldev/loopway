@@ -79,8 +79,8 @@ function created(threadId: string, subject: Subject, threads: Thread[], bots: Bo
 /** An open thread takes the update, and notes the subject closing or reopening. */
 function follow(thread: Thread, key: string, update: Update, trust?: Trust): Action[] {
   if (update.body?.includes(markerOf(thread.id))) return [];
-  // Only text can steer a session, so only text is held back: a close, a label or a CI result still goes through.
-  if (update.body && trust && !trust.trusts(thread.bot, update.actor))
+  // Only words and verdicts can steer a session, so only they are held back: a close, a label or a CI result still goes through.
+  if ((update.body || update.kind === "review") && trust && !trust.trusts(thread.bot, update.actor))
     return [{ type: "ignore", thread: thread.id, subject: key, update }];
   const queue: Action = { type: "queue", thread: thread.id, subject: key, update };
   if (update.kind === "reopened") return [queue, { type: "mark", thread: thread.id, subject: key, status: "open" }];
@@ -104,7 +104,10 @@ function startThreadsForUpdate(
   // Reopened after its thread closed: a new thread. Known but never given a thread: one now.
   if (update.kind === "reopened")
     return startThreads(subject, withoutOpen(subject, threads, bots), [update], trust, assigned);
-  return startThreads(subject, never(subject, threads, bots), [], trust, assigned);
+  // Assigning to you is how an issue a thread only filed gets worked: its creator's hold on it doesn't count.
+  const reported = update.kind === "assigned" && sameLogin(update.detail, trust?.owner);
+  const candidates = reported ? withoutWorker(subject, threads, bots) : never(subject, threads, bots);
+  return startThreads(subject, candidates, [], trust, assigned);
 }
 
 const sameLogin = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
@@ -134,6 +137,12 @@ function startThreads(
 /** Bots with no open thread on the subject. */
 const withoutOpen = (subject: Subject, threads: Thread[], bots: Bot[]) =>
   bots.filter((b) => !threads.some((t) => t.bot === b.name && t.status === "open" && holds(t, subject.key)));
+
+/** Bots with no thread on the subject except ones that only created it. */
+const withoutWorker = (subject: Subject, threads: Thread[], bots: Bot[]) =>
+  bots.filter(
+    (b) => !threads.some((t) => t.bot === b.name && t.subjects.some((s) => s.key === subject.key && !s.created)),
+  );
 
 /** Bots that never had a thread on the subject, open or closed. */
 const never = (subject: Subject, threads: Thread[], bots: Bot[]) =>
