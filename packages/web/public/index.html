@@ -1713,15 +1713,15 @@ loopway setup</pre>
           // The scroll hint, at the bottom middle of the sign's face.
           ctx.font = `20px "Courier Prime", Courier, ui-monospace, monospace`;
           ctx.textAlign = "center";
-          ctx.fillText("SCROLL \u2193", w / 2, h - 40);
+          ctx.fillText("SCROLL \u2193", w / 2, h - 28);
           ctx.textAlign = "left";
           HITS = [
             {
               kind: "scroll",
               x0: BOARD.x + w / 2 - 60,
-              y0: BOARD.y + h - 60,
+              y0: BOARD.y + h - 50,
               x1: BOARD.x + w / 2 + 60,
-              y1: BOARD.y + h - 20,
+              y1: BOARD.y + h - 10,
             },
           ];
           ctx.globalCompositeOperation = "source-over";
