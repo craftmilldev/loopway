@@ -170,7 +170,7 @@ describe("loopway's MCP server", () => {
     });
     const issue = await call(
       mcp.urlFor("t1"),
-      tool("create_issue", { repo: "o/r", title: "Follow up", body: "Do it." }),
+      tool("create_issue", { repo: "o/r", title: "Follow up", body: "Do it.", subscribe: true }),
     );
     expect(issue.body.result).toEqual({
       content: [{ type: "text", text: "created o/r#7: https://github.com/o/r/issues/7" }],
@@ -180,12 +180,15 @@ describe("loopway's MCP server", () => {
       mcp.urlFor("t1"),
       tool("create_pr", { repo: "o/r", head: "fix", base: "main", title: "Fix", body: "" }),
     );
-    await call(mcp.urlFor("t1"), tool("create_issue", { repo: "o/r", title: "Start", body: "Go.", assign: true }));
-    expect(calls[2]).toEqual(["t1", "o/r", "Start", "Go.", true]);
+    await call(
+      mcp.urlFor("t1"),
+      tool("create_issue", { repo: "o/r", title: "Start", body: "Go.", assign: true, subscribe: false }),
+    );
+    expect(calls[2]).toEqual(["t1", "o/r", "Start", "Go.", { subscribe: false, assign: true }]);
     calls.pop();
     expect(pr.body.result.content[0].text).toBe("created o/r#8: https://github.com/o/r/pull/8");
     expect(calls).toEqual([
-      ["t1", "o/r", "Follow up", "Do it.", false],
+      ["t1", "o/r", "Follow up", "Do it.", { subscribe: true, assign: false }],
       ["t1", "o/r", "fix", "main", "Fix", ""],
     ]);
   });
@@ -199,7 +202,7 @@ describe("loopway's MCP server", () => {
         method: "tools/call",
         params: { name, arguments: args },
       });
-    const failed = await tool("create_issue", { repo: "o/r", title: "x", body: "y" });
+    const failed = await tool("create_issue", { repo: "o/r", title: "x", body: "y", subscribe: true });
     expect(failed.body.result).toMatchObject({
       isError: true,
       content: [{ text: "could not create the issue: not here" }],
@@ -207,6 +210,12 @@ describe("loopway's MCP server", () => {
     const failedPr = await tool("create_pr", { repo: "o/r", head: "a", base: "main", title: "x", body: "y" });
     expect(failedPr.body.result.content[0].text).toBe("could not create the pull request: not here");
     expect((await tool("create_issue", { repo: "o/r", body: "y" })).body.result.isError).toBe(true);
+    // subscribe has no default: the session has to say which one it means.
+    const unsure = await tool("create_issue", { repo: "o/r", title: "x", body: "y" });
+    expect(unsure.body.result).toMatchObject({
+      isError: true,
+      content: [{ text: expect.stringContaining("subscribe") }],
+    });
     expect((await tool("create_pr", { repo: "o/r", head: "a", title: "x", body: "y" })).body.result.isError).toBe(true);
   });
 
@@ -321,7 +330,7 @@ describe("the whole loop for a thread that opens an issue and a pull request", (
     const mcp = await startMcp({
       ...noAsks,
       comment: (id, subject, body) => sessions.comment(id, subject, body),
-      createIssue: (id, repo, title, body) => sessions.createIssue(id, repo, title, body),
+      createIssue: (id, repo, title, body, options) => sessions.createIssue(id, repo, title, body, options),
       createPr: (id, repo, head, base, title, body) => sessions.createPr(id, repo, head, base, title, body),
     });
     const h = harness({
@@ -339,9 +348,9 @@ describe("the whole loop for a thread that opens an issue and a pull request", (
       mcpUrl: (id) => mcp.urlFor(id),
       env: { FAKE_CLAUDE: "open", FAKE_SUBJECT: "o/r#12", FAKE_RECORD: record },
       github: { ...github, comment: async () => "" },
-      created: async (thread, subject) => {
+      created: async (thread, subject, subscribe) => {
         await h.poller.know(subject);
-        for (const e of await threads.handle({ type: "created", thread, subject })) h.events.push(e);
+        for (const e of await threads.handle({ type: "created", thread, subject, subscribe })) h.events.push(e);
       },
       emit: () => {},
     });
@@ -383,6 +392,65 @@ describe("the whole loop for a thread that opens an issue and a pull request", (
         h.source.add(key, "loopway-bot", "2026-11-10T15:00:00Z", kind, `x\n\n<!-- loopway:thread=${t1?.id} -->`);
       await h.poller.discover();
       expect(threads.all).toHaveLength(3);
+    } finally {
+      await mcp.close();
+    }
+  });
+
+  it("with subscribe: false, the thread tracks the pull request but not the issue, which still gets its own thread", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "loopway-open-"));
+    const record = join(dir, "record.jsonl");
+    const bots = [aBot("dev", ["issue"]), aBot("review", ["pull_request"])];
+    let n = 0;
+    const threads = await Threads.load({ dir, bots, newId: () => `t${++n}` });
+    // eslint-disable-next-line prefer-const
+    let sessions: Sessions;
+    const mcp = await startMcp({
+      ...noAsks,
+      comment: (id, subject, body) => sessions.comment(id, subject, body),
+      createIssue: (id, repo, title, body, options) => sessions.createIssue(id, repo, title, body, options),
+      createPr: (id, repo, head, base, title, body) => sessions.createPr(id, repo, head, base, title, body),
+    });
+    const h = harness({
+      start: "2026-11-10T12:00:00Z",
+      react: async (event, push) => void (await threads.handle(event)).forEach(push),
+    });
+    const github = fakeOpening();
+    sessions = new Sessions({
+      dir,
+      threads,
+      bots,
+      root: tmpdir(),
+      max: 3,
+      runAgent: claudeRunner(fakeClaude),
+      mcpUrl: (id) => mcp.urlFor(id),
+      env: { FAKE_CLAUDE: "open", FAKE_SUBSCRIBE: "false", FAKE_SUBJECT: "o/r#12", FAKE_RECORD: record },
+      github: { ...github, comment: async () => "" },
+      created: async (thread, subject, subscribe) => {
+        await h.poller.know(subject);
+        for (const e of await threads.handle({ type: "created", thread, subject, subscribe })) h.events.push(e);
+      },
+      emit: () => {},
+    });
+    try {
+      await h.poller.discover();
+      h.source.add("o/r#12", "me", "2026-11-10T12:01:00Z");
+      await h.poller.discover();
+      sessions.kick();
+      await sessions.idle();
+
+      expect(threads.all.map((t) => [t.id, t.bot, t.subjects.map((s) => s.key)])).toEqual([
+        ["t1", "dev", ["o/r#12", "o/r#102"]],
+        ["t2", "dev", ["o/r#101"]],
+        ["t3", "review", ["o/r#102"]],
+      ]);
+      // The issue went out without the thread's marker, so discovery can't hand it back to t1 either.
+      expect(github.opened[0]).not.toContain("loopway:thread=");
+      expect(github.opened[1]).toContain(`<!-- loopway:thread=${threads.all[0]?.id} -->`);
+      h.source.add("o/r#101", "loopway-bot", "2026-11-10T15:00:00Z", "issue", "Do the rest.");
+      await h.poller.discover();
+      expect(threads.all).toHaveLength(3);
+      expect(threads.all[0]?.subjects.map((s) => s.key)).toEqual(["o/r#12", "o/r#102"]);
     } finally {
       await mcp.close();
     }

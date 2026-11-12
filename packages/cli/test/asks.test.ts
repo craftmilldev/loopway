@@ -359,7 +359,7 @@ describe("over MCP, with a claude stand-in", () => {
     const mcp = await startMcp({
       comment: (id, subject, body) => s.sessions.comment(id, subject, body),
       ask: (id, subject, q) => s.sessions.ask(id, subject, q),
-      createIssue: (id, repo, title, body) => s.sessions.createIssue(id, repo, title, body),
+      createIssue: (id, repo, title, body) => s.sessions.createIssue(id, repo, title, body, { subscribe: true }),
       createPr: (id, repo, head, base, title, body) => s.sessions.createPr(id, repo, head, base, title, body),
       permission: (id, tool, input) => s.sessions.permission(id, tool, input),
     });
@@ -392,7 +392,7 @@ describe("over MCP, with a claude stand-in", () => {
     const mcp = await startMcp({
       comment: (id, subject, body) => s.sessions.comment(id, subject, body),
       ask: (id, subject, q) => s.sessions.ask(id, subject, q),
-      createIssue: (id, repo, title, body) => s.sessions.createIssue(id, repo, title, body),
+      createIssue: (id, repo, title, body) => s.sessions.createIssue(id, repo, title, body, { subscribe: true }),
       createPr: (id, repo, head, base, title, body) => s.sessions.createPr(id, repo, head, base, title, body),
       permission: (id, tool, input) => s.sessions.permission(id, tool, input),
     });

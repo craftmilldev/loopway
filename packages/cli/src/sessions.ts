@@ -16,6 +16,7 @@ import {
   type Ask,
   type PermissionResult,
 } from "./asks.js";
+import type { IssueOptions } from "./mcp.js";
 import type { Bot } from "./bots.js";
 import type { RunAgent, RunOutcome } from "./claude.js";
 import type { SessionEvent } from "./format.js";
@@ -34,7 +35,7 @@ const SUBJECT = /^[\w.-]+\/[\w.-]+#\d+$/;
 const GROUND_RULES =
   "You are loopway-bot, working a thread on GitHub. Talk only through loopway's tools: mcp__loopway__comment(subject, " +
   "body) posts a comment on an issue or pull request, and everything you want people to hear goes through it. Never " +
-  "comment with gh or the API. Open issues and pull requests only through mcp__loopway__create_issue(repo, title, body) " +
+  "comment with gh or the API. Open issues and pull requests only through mcp__loopway__create_issue(repo, title, body, subscribe) " +
   "and mcp__loopway__create_pr(repo, head, base, title, body), never with gh: loopway tracks what you open and starts " +
   "threads for it. Push a pull request's branch with git first. Comment only when you have something new to say: you " +
   "did work, found a problem, disagree, or need an answer. A turn with nothing to do ends without a comment; never post " +
@@ -94,7 +95,7 @@ export interface SessionsOptions {
     createPr(repo: string, head: string, base: string, title: string, body: string): Promise<Made>;
   };
   /** Told after a thread created a subject, once it is recorded as sent: the rest of loopway takes it in. */
-  created: (thread: string, subject: Subject) => Promise<void>;
+  created: (thread: string, subject: Subject, subscribe: boolean) => Promise<void>;
   emit: (event: SessionEvent) => void;
   now?: () => number;
   newSessionId?: () => string;
@@ -278,14 +279,26 @@ export class Sessions {
     return at;
   }
 
-  /** What the `create_issue` tool does for a thread: opens the issue with the thread's marker, then the thread tracks it. */
-  async createIssue(threadId: string, repo: string, title: string, body: string, assign = false): Promise<Made> {
+  /** What the `create_issue` tool does for a thread: opens the issue, and with `subscribe` the thread tracks it (marker and all). */
+  async createIssue(
+    threadId: string,
+    repo: string,
+    title: string,
+    body: string,
+    { subscribe, assign = false }: IssueOptions,
+  ): Promise<Made> {
     const thread = this.thread(threadId);
     this.mayWriteTo(thread, repo);
     if (assign && !this.o.owner) throw new Error("loopway doesn't know whom to assign the issue to");
     const assignees = assign && this.o.owner ? [this.o.owner] : [];
-    const open = this.o.github.createIssue(repo, title, `${body}\n\n${markerOf(thread.id)}`, assignees);
-    const made = await this.tracked(thread, await this.loggedIfRefused(thread, `create_issue in ${repo}`, open));
+    // No marker without a subscription: the marker is how discovery would hand the issue back to this thread.
+    const text = subscribe ? `${body}\n\n${markerOf(thread.id)}` : body;
+    const open = this.o.github.createIssue(repo, title, text, assignees);
+    const made = await this.tracked(
+      thread,
+      await this.loggedIfRefused(thread, `create_issue in ${repo}`, open),
+      subscribe,
+    );
     // GitHub drops assignees the token can't assign (no push access, say). Say so, rather than report work started.
     if (assign && !made.subject.assignees?.some((a) => a.toLowerCase() === this.o.owner?.toLowerCase())) {
       throw new Error(
@@ -311,10 +324,10 @@ export class Sessions {
   }
 
   /** Records a subject the thread created as sent, and lets the rest of loopway take it in. */
-  private async tracked(thread: Thread, made: Made): Promise<Made> {
+  private async tracked(thread: Thread, made: Made, subscribe = true): Promise<Made> {
     const { subject, url } = made;
     await this.recordSent(thread, subject.key, subject.kind, url, `created ${subject.key}`);
-    await this.o.created(thread.id, subject);
+    await this.o.created(thread.id, subject, subscribe);
     return made;
   }
 

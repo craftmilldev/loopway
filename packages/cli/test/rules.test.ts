@@ -153,6 +153,13 @@ describe("a subject a thread created", () => {
     ]);
   });
 
+  it("is not tracked by the thread that made it with subscribe: false, but still starts its threads", () => {
+    const threads = [aThread("t1", "dev", ["o/r#1"])];
+    expect(decide({ type: "created", thread: "t1", subject: issue, subscribe: false }, threads, bots)).toEqual([
+      { type: "open", bot: "dev", subject: issue, pending: [creation(issue)] },
+    ]);
+  });
+
   it("joins the thread that made it, and starts a review thread for a pull request", () => {
     const threads = [aThread("t1", "dev", ["o/r#1"])];
     expect(decide({ type: "created", thread: "t1", subject: pr }, threads, bots)).toEqual([

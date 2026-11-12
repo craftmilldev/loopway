@@ -5,7 +5,7 @@ import type { Thread } from "./thread.js";
 export type LoopwayEvent =
   | { type: "new"; subject: Subject }
   | { type: "update"; subject: Subject; update: Update }
-  | { type: "created"; thread: string; subject: Subject }
+  | { type: "created"; thread: string; subject: Subject; subscribe?: boolean }
   | ThreadEvent
   | SessionEvent;
 
