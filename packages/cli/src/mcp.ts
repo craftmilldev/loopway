@@ -12,7 +12,7 @@ export interface Tools {
   /** Decides a call Claude Code would prompt for: the rules, then a reaction from the owner. */
   permission(threadId: string, tool: string, input: unknown): Promise<PermissionResult>;
   /** Opens an issue in `repo` (`owner/name`) for thread `threadId`, and has the thread track it. */
-  createIssue(threadId: string, repo: string, title: string, body: string): Promise<Made>;
+  createIssue(threadId: string, repo: string, title: string, body: string, assign: boolean): Promise<Made>;
   /** Opens a pull request from branch `head` into `base` for thread `threadId`, and has the thread track it. */
   createPr(threadId: string, repo: string, head: string, base: string, title: string, body: string): Promise<Made>;
 }
@@ -72,13 +72,18 @@ const CREATE_ISSUE_TOOL = {
   name: "create_issue",
   description:
     "Open a GitHub issue as loopway-bot. This is the only way to open one: never use gh for it. The thread then tracks " +
-    "the new issue, and loopway starts a thread to work it.",
+    "the new issue. Set assign to assign it to the person running loopway, which starts a thread to work it; without " +
+    "assign the issue is only filed, and nobody starts on it.",
   inputSchema: {
     type: "object",
     properties: {
       repo: { type: "string", description: "The repository, like owner/name." },
       title: { type: "string", description: "The issue's title." },
       body: { type: "string", description: "The issue's text, in Markdown." },
+      assign: {
+        type: "boolean",
+        description: "Assign the issue to the person running loopway, so work starts on it. Default false.",
+      },
     },
     required: ["repo", "title", "body"],
   },
@@ -206,11 +211,19 @@ async function permission(tools: Tools, threadId: string, args: Record<string, u
 }
 
 async function createIssue(tools: Tools, threadId: string, args: Record<string, unknown> | undefined) {
-  const { repo, title, body } = args ?? {};
-  if (!isText(repo) || !isText(title) || typeof body !== "string")
-    return text("create_issue needs a repo (owner/name), a title and a body", true);
+  const { repo, title, body, assign } = args ?? {};
+  if (
+    !isText(repo) ||
+    !isText(title) ||
+    typeof body !== "string" ||
+    (assign !== undefined && typeof assign !== "boolean")
+  )
+    return text(
+      "create_issue needs a repo (owner/name), a title, a body and, optionally, assign (true or false)",
+      true,
+    );
   try {
-    return text(created(await tools.createIssue(threadId, repo, title, body)));
+    return text(created(await tools.createIssue(threadId, repo, title, body, assign === true)));
   } catch (err) {
     return text(`could not create the issue: ${(err as Error).message}`, true);
   }

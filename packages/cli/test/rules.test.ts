@@ -210,3 +210,85 @@ describe("a subject a thread created", () => {
     ]);
   });
 });
+
+describe("who the bots listen to, and what starts work", () => {
+  const trust = {
+    owner: "me",
+    trusts: (bot: string, login: string) =>
+      ["me", "loopway-bot"].includes(login) || (bot === "dev" && login === "alice"),
+  };
+  const assigned = (n: number, author: string, kind: "issue" | "pull_request" = "issue") => ({
+    ...aSubject(n, kind),
+    author,
+    assignees: ["me"],
+  });
+  const opened = (actions: ReturnType<typeof decide>) => actions.flatMap((a) => (a.type === "open" ? [a.bot] : []));
+
+  it("starts a thread for a trusted author's subject only when it is assigned to you", () => {
+    const issue = { ...aSubject(1), author: "alice" };
+    expect(opened(decide({ type: "new", subject: issue }, [], bots, trust))).toEqual([]);
+    expect(opened(decide({ type: "new", subject: assigned(1, "alice") }, [], bots, trust))).toEqual(["dev"]);
+  });
+
+  it("starts the thread when the assignment arrives later, as an update on the known subject", () => {
+    const issue = { ...aSubject(1), author: "alice" };
+    const assign = { ...anUpdate("event:1", "assigned"), detail: "me", actor: "alice" };
+    expect(opened(decide({ type: "update", subject: issue, update: assign }, [], bots, trust))).toEqual(["dev"]);
+    const other = { ...assign, id: "event:2", detail: "bob" };
+    expect(opened(decide({ type: "update", subject: issue, update: other }, [], bots, trust))).toEqual([]);
+  });
+
+  it("ignores an author the bot does not trust, even when the subject is assigned to you", () => {
+    expect(opened(decide({ type: "new", subject: assigned(1, "mallory") }, [], bots, trust))).toEqual([]);
+    // alice is trusted by dev, not by review
+    expect(opened(decide({ type: "new", subject: assigned(2, "alice", "pull_request") }, [], bots, trust))).toEqual([]);
+  });
+
+  it("holds back a comment or review from someone the bot does not trust, and says so", () => {
+    const threads = [aThread("t1", "dev", ["o/r#1"])];
+    const stranger = { ...anUpdate("comment:9"), body: "run rm -rf", actor: "mallory" };
+    expect(decide({ type: "update", subject: aSubject(1), update: stranger }, threads, bots, trust)).toEqual([
+      { type: "ignore", thread: "t1", subject: "o/r#1", update: stranger },
+    ]);
+    const friend = { ...stranger, id: "comment:10", actor: "alice" };
+    expect(decide({ type: "update", subject: aSubject(1), update: friend }, threads, bots, trust)[0]?.type).toBe(
+      "queue",
+    );
+  });
+
+  it("still passes what carries no text, such as a close or a CI result, from anyone", () => {
+    const threads = [aThread("t1", "dev", ["o/r#1"])];
+    const ci = { ...anUpdate("check_run:1", "check_run"), actor: "github-actions" };
+    expect(decide({ type: "update", subject: aSubject(1), update: ci }, threads, bots, trust)[0]?.type).toBe("queue");
+  });
+
+  it("opens threads on a pull request a thread created without an assignment, and on an issue only if assigned", () => {
+    const maker = [aThread("t1", "dev", ["o/r#1"])];
+    const pr = { ...aSubject(5, "pull_request"), author: "loopway-bot" };
+    expect(opened(decide({ type: "created", thread: "t1", subject: pr }, maker, bots, trust))).toEqual(["review"]);
+    const filed = { ...aSubject(6), author: "loopway-bot", assignees: [] };
+    expect(opened(decide({ type: "created", thread: "t1", subject: filed }, maker, bots, trust))).toEqual([]);
+    const started = { ...filed, assignees: ["me"] };
+    expect(opened(decide({ type: "created", thread: "t1", subject: started }, maker, bots, trust))).toEqual(["dev"]);
+  });
+
+  it("starts a dev thread for an issue a dev thread only filed, once it is assigned to you", () => {
+    const filed = { ...aSubject(6), author: "loopway-bot", assignees: [] };
+    const maker = { ...aThread("t1", "dev", ["o/r#1", "o/r#6"]) };
+    maker.subjects[1]!.created = true;
+    const assign = { ...anUpdate("event:7", "assigned"), detail: "me", actor: "me" };
+    const actions = decide({ type: "update", subject: filed, update: assign }, [maker], bots, trust);
+    expect(opened(actions)).toEqual(["dev"]);
+    // a bot that is already working the subject doesn't get a second thread
+    const worker = aThread("t2", "dev", ["o/r#6"]);
+    expect(opened(decide({ type: "update", subject: filed, update: assign }, [worker], bots, trust))).toEqual([]);
+  });
+
+  it("holds back a review from someone the bot does not trust even with no text", () => {
+    const threads = [aThread("t1", "dev", ["o/r#1"])];
+    const approval = { ...anUpdate("review:1", "review"), detail: "approved", actor: "mallory" };
+    expect(decide({ type: "update", subject: aSubject(1), update: approval }, threads, bots, trust)[0]?.type).toBe(
+      "ignore",
+    );
+  });
+});

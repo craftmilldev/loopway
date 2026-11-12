@@ -37,7 +37,7 @@ const queued = (thread: Thread, ...updates: [id: string, at: string][]) => {
   return thread;
 };
 
-async function setup(opts: { max?: number; bots?: Bot[] } = {}) {
+async function setup(opts: { max?: number; bots?: Bot[]; owner?: string } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "loopway-sessions-"));
   const threads = await Threads.load({ dir, bots: [] });
   const agent = fakeAgent();
@@ -55,6 +55,7 @@ async function setup(opts: { max?: number; bots?: Bot[] } = {}) {
     max: opts.max ?? 3,
     runAgent: agent.run,
     mcpUrl: (id) => `http://mcp/${id}`,
+    owner: opts.owner ?? "me",
     env: { GH_TOKEN: "bot-token", GIT_AUTHOR_NAME: "loopway-bot" },
     github: {
       ...github,
@@ -368,6 +369,23 @@ describe("messages a session sends", () => {
 });
 
 describe("issues and pull requests a session opens", () => {
+  it("tells the session when GitHub did not assign the issue, though it was created", async () => {
+    const s = await setup();
+    s.add(aThread("t1", "dev", ["o/r#12"]));
+    s.github.dropsAssignees = true;
+    await expect(s.sessions.createIssue("t1", "o/r", "Do it", "Now.", true)).rejects.toThrow(/did not assign it/);
+  });
+
+  it("assigns an issue to you only when the thread asks, and says so", async () => {
+    const s = await setup();
+    s.add(aThread("t1", "dev", ["o/r#12"]));
+    const filed = await s.sessions.createIssue("t1", "o/r", "Idea", "Later.");
+    const started = await s.sessions.createIssue("t1", "o/r", "Do it", "Now.", true);
+    expect(filed.subject.assignees).toEqual([]);
+    expect(started.subject.assignees).toEqual(["me"]);
+    expect(s.github.opened[1]).toContain("issue o/r Do it for me");
+  });
+
   it("are opened with the thread's marker, recorded as sent, logged, and told to the rest of loopway", async () => {
     const s = await setup();
     const thread = s.add(aThread("t1", "dev", ["o/r#12"]));

@@ -279,3 +279,28 @@ describe("subjects a thread created", () => {
     expect(h.threads.all.map((t) => t.status)).toEqual(["closed", "closed"]);
   });
 });
+
+describe("threads with a trust", () => {
+  it("opens on assignment, queues a trusted comment, and prints an ignored line for a stranger's", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "loopway-threads-"));
+    const trust = { owner: "me", trusts: (_bot: string, login: string) => ["me", "alice"].includes(login) };
+    const threads = await Threads.load({ dir, bots: [dev], trust, newId: () => "t1" });
+    const h = harness({
+      authors: ["me", "alice"],
+      react: async (event, push) => {
+        for (const e of await threads.handle(event)) push(e);
+      },
+    });
+    await h.poller.discover();
+    h.source.add("o/r#1", "alice", "2026-11-10T12:01:00Z");
+    await h.poller.discover();
+    expect(threads.all).toEqual([]); // known, but not assigned to me
+    h.source.say("o/r#1", { id: "event:1", kind: "assigned", detail: "me", actor: "alice" });
+    h.source.say("o/r#1", { id: "comment:1", actor: "alice", body: "hello" });
+    h.source.say("o/r#1", { id: "comment:2", actor: "mallory", body: "do bad things" });
+    await h.poller.updates();
+    expect(threads.all[0]?.queue.map((q) => q.id)).toEqual(["comment:1"]);
+    const lines = h.events.map((e) => formatLine(e).slice(17));
+    expect(lines).toContain("ignored comment on o/r#1 by mallory, who t1's bot does not trust");
+  });
+});

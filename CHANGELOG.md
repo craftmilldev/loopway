@@ -18,6 +18,8 @@ loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and i
 
 - A `/bots` page on the site: what goes in a `.loopway/<bot>.md` file. The get-started frame links to it.
 
+- Bots say who they listen to: `trusted: [alice, acme/devs]` in a bot file (logins and `org/team` slugs; loopway won't run if a team can't be read). A new issue or pull request starts a thread only when its author is trusted and it is assigned to you; assigning it later starts one. Comments and reviews from anyone else are ignored, with a log line. `create_issue` takes `assign` to start work on what it files, and a pull request a thread opens still gets its review thread at once. See [#530](https://github.com/craftmilldev/loopway/issues/530).
+
 ### Removed
 
 Everything in 1.0, with no migration: the hosted server and inbox, webhooks and sources, the MCP server, API tokens and login, the `read`/`poll`/`push` commands, and the install script. `packages/web` is now one static page.

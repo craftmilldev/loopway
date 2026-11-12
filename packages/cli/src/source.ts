@@ -6,6 +6,8 @@ export interface Subject {
   author: string;
   /** ISO time the subject was created. */
   createdAt: string;
+  /** Logins it is assigned to, as read when it was found or created. */
+  assignees?: string[];
   /** Its text, only when it was just read from the source: the poller doesn't keep it. */
   body?: string;
 }
@@ -50,6 +52,8 @@ export interface SubjectSource {
    * polls only those. A source without it is polled for every subject. It may over-report; it must not under-report.
    */
   changed?(subjects: Subject[]): Promise<Set<string>>;
+  /** The logins in a team (`org/slug`). Fails when the team can't be read, which is why loopway then won't run. */
+  teamMembers?(team: string): Promise<string[]>;
   /** The reactions on a comment, by its URL. */
   reactions(commentUrl: string): Promise<Reaction[]>;
   /** Everything visible about a subject. Repeats are fine: the poller drops ids it has seen. */

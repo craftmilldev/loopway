@@ -22,6 +22,7 @@ export type SessionEvent =
 export type ThreadEvent =
   | { type: "thread_opened"; thread: Thread }
   | { type: "queued"; subject: string; update: Update; thread: string }
+  | { type: "ignored"; subject: string; update: Update; thread: string }
   | { type: "thread_closed"; thread: Thread }
   | { type: "answered"; at: string; thread: string; what: string; how: "approved" | "denied" | "replied" };
 
@@ -58,6 +59,8 @@ export function formatLine(event: LoopwayEvent): string {
     }
     case "queued":
       return `${stamp(event.update.at)} queued ${event.subject} ${event.update.kind} -> ${event.thread}`;
+    case "ignored":
+      return `${stamp(event.update.at)} ignored ${event.update.kind} on ${event.subject} by ${event.update.actor}, who ${event.thread}'s bot does not trust`;
     case "thread_closed":
       return `${stamp(event.thread.latestAt)} thread closed ${event.thread.id}`;
     case "run_started": {
@@ -122,6 +125,18 @@ export function formatJson(event: LoopwayEvent): string {
     case "queued": {
       const { subject, thread, update } = event;
       return JSON.stringify({ type: "queued", time: update.at, subject, id: update.id, kind: update.kind, thread });
+    }
+    case "ignored": {
+      const { subject, thread, update } = event;
+      return JSON.stringify({
+        type: "ignored",
+        time: update.at,
+        subject,
+        id: update.id,
+        kind: update.kind,
+        actor: update.actor,
+        thread,
+      });
     }
     case "thread_closed":
       return JSON.stringify({ type: "thread_closed", time: event.thread.latestAt, thread: event.thread.id });
