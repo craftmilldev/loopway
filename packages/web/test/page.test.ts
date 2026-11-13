@@ -8,16 +8,25 @@ describe("the marketing page", () => {
     expect(html).toContain("<title>loopway</title>");
   });
 
-  it("is the billboard itself: one canvas, no iframe, no other file to load but the wordmark", () => {
+  it("is the billboard itself: one canvas, no iframe, and no other file to load", () => {
     expect(html).toContain('<canvas id="scene"');
     expect(html).not.toContain("<iframe");
-    expect(html).toContain('fetch("wordmark.svg")');
+    expect(html).not.toContain("fetch(");
     const scripts = [...html.matchAll(/<script\b[^>]*>/g)].map((m) => m[0]);
     expect(scripts).toEqual([
       '<script src="https://a.craftmill.dev/api/ingest/static/array.js">',
       "<script>",
+      '<script type="image/svg+xml" id="wordmark-svg">',
       "<script>",
     ]);
+  });
+
+  it("carries the wordmark in the page, the same as wordmark.svg", () => {
+    const file = readFileSync(new URL("../public/wordmark.svg", import.meta.url), "utf8");
+    const inline = html.match(/<script type="image\/svg\+xml" id="wordmark-svg">([\s\S]*?)<\/script>/)?.[1];
+    // The formatter re-indents the copy, so the two are compared without their white space.
+    const bare = (text: string | undefined) => text?.replace(/\s+/g, "");
+    expect(bare(inline)).toBe(bare(file));
   });
 
   it("sends only the events the funnel needs, through the shared proxy", () => {
@@ -32,10 +41,14 @@ describe("the marketing page", () => {
   it("has a frame for each of the five things the sign says, painted on the sign", () => {
     expect(html).toContain('const FRAMES = ["tagline", "description", "install", "get-started", "github"]');
     // The hint is painted at the bottom middle of the sign, with a real button behind it for the keyboard.
-    expect(html).toContain('ctx.fillText("SCROLL \\u2193", w / 2, h - 28)');
+    expect(html).toContain('ctx.fillText("SCROLL \\u2193", 0, 0)');
     expect(html).toContain('kind: "scroll"');
+    // It wiggles, so it is drawn live over the still face rather than painted into it.
+    expect(html).toContain("function drawScrollHint(ctx, cx, baseline, fade)");
+    // A frozen day is never redrawn, so the hint rests instead of being caught part-way through a wiggle.
+    expect(html).toContain("freeze === null ? clockNow() % 3.5 : 1.5");
     expect(html).toContain("scroll &darr;");
-    expect(html).toContain("Keep your agents and team in same loop");
+    expect(html).toContain("Keep your agents and team in the same loop");
     // The content is drawn on the board's face, not laid over the page.
     expect(html).toContain("function drawFaceContent(ctx, w, h)");
     expect(html).toContain("} else drawFaceContent(ctx, w, h);");
@@ -70,8 +83,91 @@ describe("the marketing page", () => {
     expect(html).toContain("if (kept()[what]) return;");
     // The tracker is painted on the last frame only.
     const last = html.slice(html.indexOf("Small print under the main content"));
-    expect(last).toContain("found the snake:");
-    expect(html.match(/found the snake:/g)).toHaveLength(1);
+    // In the order of the day, with the secret dead fish last and only once it is earned.
+    const order = ["snake", "bird", "moose", "trout", "eagle", "hummingbird", "squirrel", "blackbird", "moth", "skunk"];
+    const listed = last.slice(last.indexOf("const names = ["), last.indexOf("];", last.indexOf("const names = [")));
+    expect([...listed.matchAll(/^\s+"(\w+)",$/gm)].map((m) => m[1])).toEqual(order);
+    expect(last).toContain('const label = name === "bird" ? "chickadee" : name;');
+    // The dead fish are not a box: three fish, one for each trout, and nothing at all until one is caught.
+    expect(last).toContain("if (found.deadfish) {");
+    expect(last).toContain("for (const when of FISH) {");
+    expect(html).toContain('const FISH = ["dawn", "dusk", "night"];');
+    expect(html).toContain("found(`deadfish_${EAGLE.fish}`);");
+    // They can be given up with a click, all three at once.
+    expect(html).toContain(
+      "keep({ deadfish: false, deadfish_dawn: false, deadfish_dusk: false, deadfish_night: false });",
+    );
+    expect(html).toContain('track("deadfish_unchecked");');
+    expect(last).toContain("loops completed:");
+    expect(html.match(/loops completed:/g)).toHaveLength(1);
+  });
+
+  it("sends a moose to eat the cattails before midday or midnight, and only its box unticks", () => {
+    expect(html).toContain("!mooseAte && MOOSE.start === null && mod(daylight(dayNow()).sunU + 0.06, 0.5) < 0.31;");
+    expect(html).toContain('if (what === "moose") MOOSE.start = clockNow();');
+    // The bunch stays eaten: what is kept decides it, on this visit and the next.
+    expect(html).toContain("mooseAte = !!kept().moose;");
+    // Only a ticked moose box is a button, and all it does is untick.
+    expect(html.match(/hit\("moose"/g)).toHaveLength(1);
+    expect(html).toContain('if (name === "moose" && found.moose && MOOSE.start === null)');
+    expect(html).toContain("keep({ moose: false });");
+    expect(html).toContain('track("moose_unchecked");');
+  });
+
+  it("ticks off the ones that come by on their own when they are first seen, and sends nothing", () => {
+    for (const name of ["squirrel", "blackbird", "skunk", "trout"]) expect(html).toContain(`see("${name}");`);
+    // Seeing keeps the tick and stops there: only found() sends an event.
+    const see = html.slice(html.indexOf("function see(what) {"), html.indexOf("function found(what) {"));
+    expect(see).toContain("if (!kept()[what]) keep({ [what]: true });");
+    expect(see).not.toContain("track(");
+    for (const name of ["snake", "bird", "hummingbird", "moth", "moose"])
+      expect(html).toContain(
+        `if (what === "${name}") ${name === "hummingbird" ? "HUMMER" : name.toUpperCase()}.start = clockNow();`,
+      );
+    expect(html).not.toMatch(/keep\(\{ (snake|bird|hummingbird|moth): false \}\)/);
+  });
+
+  it("sends a hummingbird to the freshly opened morning glory, and only then", () => {
+    expect(html).toContain("return u >= 0.13 && u <= 0.16 + (5 * speed) / T;");
+    expect(html).toContain('if (what === "hummingbird") HUMMER.start = clockNow();');
+    expect(html).toContain('drawHummer(ctx, clock, "behind");\n        drawBoard(ctx);');
+  });
+
+  it("sends a moth from the open moonflower to the red chair when all three are at the fire", () => {
+    expect(html).toContain("moonflowerOpen(u - MOTH_FLOWER.delay) > 0.9 &&");
+    expect(html).toContain("sits(worker(u), SEAT1) &&");
+    expect(html).toContain("sits(middle(u), SEAT2) &&");
+    expect(html).toContain("sits(sleeper(u), SEAT3)");
+    expect(html).toContain("const dev = swatting(worker(u), clock);");
+    expect(html).toContain('if (what === "moth") MOTH.start = clockNow();');
+  });
+
+  it("sends an eagle after a jumping trout: a catch in the middle second, a miss either side", () => {
+    // Too far from the perfect moment and it does not fly; within half a second of it, it catches.
+    expect(html).toContain("if (Math.abs(late) > 1.5) continue;");
+    expect(html).toContain("const hit = Math.abs(late) <= 0.5;");
+    expect(html).toContain('if (what === "eagle") launchEagle();');
+    // A trout that is taken does not come down, and makes no splash going in.
+    expect(html).toContain("[entryX, taken ? -1 : p - 1],");
+    expect(html).toContain("if (p > 1 || taken) continue;");
+    // The catch is what earns the secret box.
+    expect(html).toContain('found("deadfish");');
+  });
+
+  it("forgets everything on three quick clicks on the loop count", () => {
+    expect(html).toContain('hit("reset", right - ctx.measureText(loops).width - 6, 266, right + 6, 296);');
+    expect(html).toContain("resetClicks = [...resetClicks.filter((at) => now - at < 1), now];");
+    expect(html).toContain("if (resetClicks.length < 3) return;");
+    expect(html).toContain(
+      'keep(Object.fromEntries(Object.keys(memory).map((key) => [key, key === "loops" ? 0 : false])));',
+    );
+    expect(html).toContain('track("tracker_reset");');
+  });
+
+  it("puts the log on the fire: let go, dropped in, and left there to burn", () => {
+    expect(html).toContain("carry: u < LOG.let ? 1 : 0");
+    expect(html).toContain("const flying = u >= LOG.let && u < LOG.lands;");
+    expect(html).not.toContain("carry: 1 - smooth(0.25, 0.5, s)");
   });
 
   it("steps one frame per flick, and ignores only Space on a button or link", () => {
@@ -105,5 +201,24 @@ describe("the marketing page", () => {
     expect(config.buildCommand).toBeNull();
     expect(config.cleanUrls).toBe(true);
     expect(config.crons).toBeUndefined();
+  });
+
+  it("asks for the hummingbird's flower before the snake's rock, which it half covers", () => {
+    expect(html.indexOf('return "hummingbird"')).toBeLessThan(html.indexOf('return "snake"'));
+  });
+
+  it("repaints the tracker whenever what is kept changes, and the docs name every event it sends", () => {
+    expect(html).toContain("if (shown === FRAMES.length - 1) redrawFace();");
+    const docs = readFileSync(new URL("../../../docs/developing.md", import.meta.url), "utf8");
+    for (const name of [
+      "deadfish_dawn_found",
+      "deadfish_dusk_found",
+      "deadfish_night_found",
+      "deadfish_unchecked",
+      "moose_unchecked",
+      "tracker_reset",
+    ]) {
+      expect(docs).toContain(name);
+    }
   });
 });
