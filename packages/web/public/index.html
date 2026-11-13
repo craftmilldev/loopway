@@ -1846,11 +1846,13 @@ loopway setup</pre>
           ctx.fillRect(left, 226, right - left, 1.2);
           ctx.fillStyle = INKY;
           ctx.font = `15px "Courier Prime", Courier, ui-monospace, monospace`;
+          const yes = (is) => (is ? "yes" : "not yet");
           ctx.fillText(
-            `found the snake: ${found.snake ? "yes" : "not yet"}   found the bird: ${found.bird ? "yes" : "not yet"}   loops completed: ${found.loops}`,
+            `found the snake: ${yes(found.snake)}   found the bird: ${yes(found.bird)}   found the hummingbird: ${yes(found.hummingbird)}`,
             left,
             256,
           );
+          ctx.fillText(`loops completed: ${found.loops}`, left, 278);
         }
         ctx.globalCompositeOperation = "source-over";
       }

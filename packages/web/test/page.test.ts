@@ -82,6 +82,7 @@ describe("the marketing page", () => {
     // The tracker is painted on the last frame only.
     const last = html.slice(html.indexOf("Small print under the main content"));
     expect(last).toContain("found the snake:");
+    expect(last).toContain("found the hummingbird:");
     expect(html.match(/found the snake:/g)).toHaveLength(1);
   });
 
