@@ -81,7 +81,8 @@ describe("the marketing page", () => {
     expect(html).toContain("if (kept()[what]) return;");
     // The tracker is painted on the last frame only.
     const last = html.slice(html.indexOf("Small print under the main content"));
-    expect(last).toContain('for (const name of ["snake", "bird", "hummingbird", "moth", "moose"]) {');
+    expect(last).toContain('[262, ["snake", "bird", "hummingbird", "moth", "moose"]],');
+    expect(last).toContain('[286, ["squirrel", "blackbird", "skunk", "trout"]],');
     expect(last).toContain("loops completed:");
     expect(html.match(/loops completed:/g)).toHaveLength(1);
   });
@@ -93,8 +94,21 @@ describe("the marketing page", () => {
     expect(html).toContain("mooseAte = !!kept().moose;");
     // Only a ticked moose box is a button, and all it does is untick.
     expect(html.match(/hit\("moose"/g)).toHaveLength(1);
-    expect(html).toContain('if (name === "moose" && found.moose && MOOSE.start === null) hit("moose"');
-    expect(html).toContain("if (MOOSE.start === null) keep({ moose: false });");
+    expect(html).toContain('if (name === "moose" && found.moose && MOOSE.start === null)');
+    expect(html).toContain("keep({ moose: false });");
+    expect(html).toContain('track("moose_unchecked");');
+  });
+
+  it("ticks off the ones that come by on their own when they are first seen, and sends nothing", () => {
+    for (const name of ["squirrel", "blackbird", "skunk", "trout"]) expect(html).toContain(`see("${name}");`);
+    // Seeing keeps the tick and stops there: only found() sends an event.
+    const see = html.slice(html.indexOf("function see(what) {"), html.indexOf("function found(what) {"));
+    expect(see).toContain("if (!kept()[what]) keep({ [what]: true });");
+    expect(see).not.toContain("track(");
+    for (const name of ["snake", "bird", "hummingbird", "moth", "moose"])
+      expect(html).toContain(
+        `if (what === "${name}") ${name === "hummingbird" ? "HUMMER" : name.toUpperCase()}.start = clockNow();`,
+      );
     expect(html).not.toMatch(/keep\(\{ (snake|bird|hummingbird|moth): false \}\)/);
   });
 

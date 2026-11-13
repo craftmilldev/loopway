@@ -2257,25 +2257,32 @@ loopway setup</pre>
           ctx.fillRect(left, 226, right - left, 1.2);
           ctx.fillStyle = INKY;
           ctx.font = `15px "Courier Prime", Courier, ui-monospace, monospace`;
-          // A box for each thing there is to find, ticked once it has been. A tick is only ever earned
-          // out in the picture: no box can be ticked here. The moose's is the one box that can be
-          // unticked, which puts its cattails back.
-          let x = left;
+          // A box for each thing there is to find, ticked once it has been. The top row is what has to
+          // be looked for; the bottom row is what comes by on its own, ticked the first time it is on the
+          // picture. A tick is only ever earned out in the picture: no box can be ticked here. The
+          // moose's is the one box that can be unticked, which puts its cattails back.
           ctx.strokeStyle = INKY;
           ctx.lineWidth = 1.4;
-          for (const name of ["snake", "bird", "hummingbird", "moth", "moose"]) {
-            ctx.strokeRect(x, 251, 12, 12);
-            if (found[name]) {
-              ctx.beginPath();
-              ctx.moveTo(x + 2.5, 257);
-              ctx.lineTo(x + 5.5, 260.5);
-              ctx.lineTo(x + 11, 251.5);
-              ctx.stroke();
+          for (const [row, names] of [
+            [262, ["snake", "bird", "hummingbird", "moth", "moose"]],
+            [286, ["squirrel", "blackbird", "skunk", "trout"]],
+          ]) {
+            let x = left;
+            for (const name of names) {
+              ctx.strokeRect(x, row - 11, 12, 12);
+              if (found[name]) {
+                ctx.beginPath();
+                ctx.moveTo(x + 2.5, row - 5);
+                ctx.lineTo(x + 5.5, row - 1.5);
+                ctx.lineTo(x + 11, row - 10.5);
+                ctx.stroke();
+              }
+              ctx.fillText(name, x + 19, row);
+              const width = 19 + ctx.measureText(name).width;
+              if (name === "moose" && found.moose && MOOSE.start === null)
+                hit("moose", x - 6, row - 22, x + width + 6, row + 10);
+              x += width + 24;
             }
-            ctx.fillText(name, x + 19, 262);
-            const width = 19 + ctx.measureText(name).width;
-            if (name === "moose" && found.moose && MOOSE.start === null) hit("moose", x - 6, 240, x + width + 6, 272);
-            x += width + 24;
           }
           ctx.textAlign = "right";
           ctx.fillText(`loops completed: ${found.loops}`, right, 262);
@@ -4842,6 +4849,11 @@ loopway setup</pre>
         countLoops(now);
         const u = freeze ?? mod(((now / 1000) * speed) / T, 1);
         const light = daylight(u);
+        // The ones that come by on their own are ticked off the first time they are on the picture.
+        if (squirrel(u)) see("squirrel");
+        if (u > BLACKBIRD.in[0] + 0.006 && u < BLACKBIRD.off[1] - 0.006) see("blackbird");
+        if (skunk(u)) see("skunk");
+        if (JUMPS.some((j) => u >= j.at && u <= j.at + JUMP_LENGTH)) see("trout");
 
         L.setTransform(1, 0, 0, 1, 0, 0);
         L.clearRect(0, 0, landCanvas.width, landCanvas.height);
@@ -4924,7 +4936,18 @@ loopway setup</pre>
       // What has been found is kept in localStorage, so the first time is only ever the first time.
       const KEPT = "loopway.found";
       // Also held in memory, so with storage off the count still goes up and a find is a first only once.
-      let memory = { snake: false, bird: false, hummingbird: false, moth: false, moose: false, loops: 0 };
+      let memory = {
+        snake: false,
+        bird: false,
+        hummingbird: false,
+        moth: false,
+        moose: false,
+        squirrel: false,
+        blackbird: false,
+        skunk: false,
+        trout: false,
+        loops: 0,
+      };
       const kept = () => {
         try {
           return { ...memory, ...JSON.parse(localStorage.getItem(KEPT) || "{}") };
@@ -4946,6 +4969,14 @@ loopway setup</pre>
       }
       // The one way anything is sent, so a blocked script never breaks the page.
       const track = (name, props) => window.posthog && posthog.capture(name, props, { transport: "sendBeacon" });
+      // Seen, not found: these are kept and ticked, and nothing is sent. What is kept is only read the
+      // first time each is on the picture in a visit, not every frame.
+      const SEEN = {};
+      function see(what) {
+        if (SEEN[what]) return;
+        SEEN[what] = true;
+        if (!kept()[what]) keep({ [what]: true });
+      }
       function found(what) {
         if (kept()[what]) return;
         keep({ [what]: true });
@@ -5076,7 +5107,10 @@ loopway setup</pre>
         } else if (hit.kind === "bots") location.href = "/bots";
         else if (hit.kind === "moose") {
           // Unticking the moose puts the cattails back, and the moose can come again.
-          if (MOOSE.start === null) keep({ moose: false });
+          if (MOOSE.start === null) {
+            keep({ moose: false });
+            track("moose_unchecked");
+          }
         } else if (await copy(INSTALL)) {
           // Only a copy that happened counts, and only then does the button say so.
           track("install_copied", { frame: shown + 1 });
