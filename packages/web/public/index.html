@@ -2026,7 +2026,7 @@ loopway setup</pre>
             const eased = smooth(0, 1, swing);
             foot = [lerp(from[0], to[0], eased), lerp(from[1], to[1], eased)];
             // A moose steps high: the front foot most, and a little sooner.
-            lift = (leg.hind ? 12 : 15) * Math.sin(Math.PI * swing ** (leg.hind ? 0.95 : 0.85)) ** 1.5;
+            lift = (leg.hind ? 9 : 12) * Math.sin(Math.PI * swing ** (leg.hind ? 0.95 : 0.85)) ** 1.5;
           }
           return {
             ...leg,
@@ -2172,8 +2172,8 @@ loopway setup</pre>
         //   there back and down to the hock; and the cannon bone. The hock bends backward only and
         //   is never straight: it opens out as the leg pushes off behind, and folds right up to
         //   bring the foot forward.
-        //   The hoof hangs from the fetlock. On the ground it is flat; in the air the toe drops and
-        //   trails behind, and comes up level again to land.
+        //   The hoof hangs from the fetlock. On the ground it is flat; in the air the toe drops a
+        //   very little, and comes up level again to land.
         // The foot is where the walk put it. Everything above it is worked out from there.
         const RIG = {
           front: { upper: 73, lower: 25, pivot: -104, bend: -1 },
@@ -2218,45 +2218,49 @@ loopway setup</pre>
           const knee = [root[0] + e[0] * a + e[1] * h * rig.bend, root[1] + e[1] * a - e[0] * h * rig.bend];
           const ankle = fetlock;
           // The hoof, turned about the fetlock.
-          const hang = swing === null ? 0 : Math.sin(Math.PI * swing ** 0.8) ** 1.3 * (hind ? 0.7 : 0.95);
+          // Only a little: the hoof stays very nearly in line with the bone above it.
+          const hang = swing === null ? 0 : Math.sin(Math.PI * swing ** 0.8) ** 1.3 * (hind ? 0.14 : 0.2);
           const turned = (vx, vy) => [
             ankle[0] + vx * Math.cos(hang) + vy * Math.sin(hang),
             ankle[1] - vx * Math.sin(hang) + vy * Math.cos(hang),
           ];
-          // The leg is drawn as one shape, not as bones laid end to end. A single line runs down
-          // its middle through every joint and bends as it passes each one, the way a leg's own
-          // line does, so no joint is a corner. The leg is as wide across that line as a moose's is
-          // there: heavy at the top, narrowing to the joint, thinner still along the bone below it,
-          // a knob at the fetlock, and spreading into the hoof. The hock has its point at the back
+          // The leg is drawn as one shape, not as pieces laid end to end, but its bones are
+          // straight: a line runs down its middle from the top of the leg to the knee or hock, to
+          // the fetlock, to the toe, straight along each bone and turning only at the joint itself,
+          // over a very short way. The leg is as wide across that line as a moose's is there:
+          // heavy at the top, narrowing to the joint, thinner still along the bone below it, a
+          // knob at the fetlock, and spreading into the hoof. The hock has its point at the back
           // and the knee its cap at the front.
-          // It starts at the joint high inside the body, so however the leg swings it comes out
-          // from under the coat and never shows its top end.
-          const joints = hind ? [haunch, root, knee, ankle, turned(-4.2, 11)] : [root, knee, ankle, turned(-4.2, 11)];
-          const wide = hind ? [13, 12, 5.9, 4.5, 5.7] : [10.5, 5.5, 4.4, 5.6];
-          const waist = hind ? [0, 0.8, 1.5, 0.2] : [1, 1.2, 0.2];
-          const bend = hind ? 2 : 1;
+          //
+          // The top of the leg is not the joint it swings from. It is where the leg leaves the
+          // body: a hind leg is as wide there as the haunch, and its back edge is the back edge of
+          // the rump carried on down to the hock; a front leg's front edge is the breast carried
+          // on down to the knee. So the body's outline runs into the leg's with no step.
+          const top = hind ? [Math.min(hipX + 17, 79), -77] : [hipX - 6, -84];
+          const joints = [top, knee, ankle, turned(-4.2, 11)];
+          const wide = hind ? [16.5, 5.9, 4.5, 5.7] : [11.5, 5.5, 4.4, 5.6];
+          const waist = hind ? [1.2, 1.5, 0.2] : [1.4, 1.2, 0.2];
           const last = joints.length - 2;
-          const through = (i) => joints[clamp(i, 0, joints.length - 1)];
-          const middle = [];
+          let middle = [];
           for (let i = 0; i <= last; i++) {
-            const [p0, p1, p2, p3] = [through(i - 1), through(i), through(i + 1), through(i + 2)];
             for (let n = 0; n < (i === last ? 11 : 10); n++) {
               const t = n / 10;
-              const on = (k) =>
-                0.5 *
-                (2 * p1[k] +
-                  (p2[k] - p0[k]) * t +
-                  (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t * t +
-                  (3 * p1[k] - p0[k] - 3 * p2[k] + p3[k]) * t * t * t);
               middle.push({
-                x: on(0),
-                y: on(1),
+                x: lerp(joints[i][0], joints[i + 1][0], t),
+                y: lerp(joints[i][1], joints[i + 1][1], t),
                 w: lerp(wide[i], wide[i + 1], smooth(0, 1, t)) - waist[i] * Math.sin(Math.PI * t),
                 // The point of the hock, or the cap of the knee: on one side only.
-                knob: Math.exp(-(((i + t - bend) / 0.24) ** 2)) * (hind ? 2.6 : 1.4),
+                knob: Math.exp(-(((i + t - 1) / 0.2) ** 2)) * (hind ? 2.4 : 1.3),
               });
             }
           }
+          // The corner at each joint is taken off, and only the corner: the bones stay straight.
+          middle = middle.map((p, i) => {
+            const before = middle[i - 1];
+            const after = middle[i + 1];
+            if (!before || !after) return p;
+            return { ...p, x: (before.x + 2 * p.x + after.x) / 4, y: (before.y + 2 * p.y + after.y) / 4 };
+          });
           // The two edges: the back of the leg and the front of it.
           const back = [];
           const front = [];
@@ -2269,7 +2273,7 @@ loopway setup</pre>
             back.push([p.x + nx * (p.w + (hind ? p.knob : 0)), p.y + ny * (p.w + (hind ? p.knob : 0))]);
             front.push([p.x - nx * (p.w + (hind ? 0 : p.knob)), p.y - ny * (p.w + (hind ? 0 : p.knob))]);
           });
-          return { back, front, knee, ankle, root, hind, bendAt: bend * 10, hoofAt: last * 10 + 5 };
+          return { back, front, knee, ankle, root, hind, bendAt: 10, hoofAt: last * 10 + 5 };
         };
         // The outline of a leg from one place down it to its foot: down the front and back up the back.
         const trace = (l, from = 0) => {
@@ -2398,30 +2402,38 @@ loopway setup</pre>
           ctx.quadraticCurveTo(...at(89, -86), 84, -90 + ru);
           ctx.closePath();
         };
-        const antler = (dx, dy, color) =>
+        // An antler: a short beam up from the head, a brow tine pointing forward, and a broad palm
+        // with four more tines along its top, each a point between two rounded notches. The outline
+        // goes once round and never crosses itself. The far one is behind the near one and is
+        // drawn smaller and fainter, so the two do not read as one tangle of lines.
+        const antler = (dx, dy, color, far) =>
           headed(() => {
             ctx.translate(dx, dy);
+            if (far) ctx.scale(0.9, 0.9);
             ctx.beginPath();
-            ctx.moveTo(3, -9);
-            ctx.lineTo(9, -22);
-            ctx.bezierCurveTo(2, -30, -6, -38, -17, -43);
-            ctx.lineTo(-11, -35);
-            ctx.lineTo(-5, -50);
-            ctx.lineTo(-1, -36);
-            ctx.lineTo(8, -53);
-            ctx.lineTo(9, -37);
-            ctx.lineTo(21, -49);
-            ctx.lineTo(19, -33);
-            ctx.lineTo(33, -38);
-            ctx.bezierCurveTo(27, -25, 20, -18, 11, -14);
+            ctx.moveTo(2, -10);
+            ctx.quadraticCurveTo(4, -17, 1, -23);
+            ctx.quadraticCurveTo(-5, -27, -14, -30);
+            ctx.quadraticCurveTo(-7, -31, -3, -33);
+            ctx.quadraticCurveTo(-6, -41, -9, -50);
+            ctx.quadraticCurveTo(-4, -44, 0, -41);
+            ctx.quadraticCurveTo(2, -49, 4, -56);
+            ctx.quadraticCurveTo(7, -48, 10, -43);
+            ctx.quadraticCurveTo(14, -50, 18, -55);
+            ctx.quadraticCurveTo(19, -47, 21, -42);
+            ctx.quadraticCurveTo(26, -46, 31, -48);
+            ctx.quadraticCurveTo(28, -41, 27, -37);
+            ctx.quadraticCurveTo(32, -37, 37, -36);
+            ctx.quadraticCurveTo(28, -28, 20, -24);
+            ctx.quadraticCurveTo(13, -19, 10, -13);
             ctx.closePath();
             ctx.fillStyle = color;
             ctx.fill();
-            ctx.strokeStyle = INK;
-            ctx.lineWidth = 2;
+            ctx.strokeStyle = far ? "rgba(22, 19, 14, 0.75)" : INK;
+            ctx.lineWidth = far ? 1.6 : 2;
             ctx.stroke();
           });
-        antler(9, 3, "#b3a27c");
+        antler(13, 1, "#a8976f", true);
         // Every outline first, then the coat over them: so the neck, the head and the near legs grow out
         // of the body with no line across the join.
         near.forEach(inkLeg);
@@ -2503,9 +2515,9 @@ loopway setup</pre>
         const hindleg = near.find((l) => l.hind);
         ctx.beginPath();
         ctx.moveTo(-40, -114 + sh);
-        ctx.quadraticCurveTo(-29, -90, foreleg.back[4][0] + 1, Math.min(-66, foreleg.back[4][1]));
+        ctx.quadraticCurveTo(-29, -90, foreleg.back[3][0] + 1, Math.min(-66, foreleg.back[3][1]));
         ctx.moveTo(57, -101 + ru);
-        ctx.quadraticCurveTo(46, -86, hindleg.front[11][0] + 3, Math.min(-68, hindleg.front[11][1]));
+        ctx.quadraticCurveTo(46, -86, hindleg.front[3][0] + 2, Math.min(-66, hindleg.front[3][1]));
         ctx.stroke();
         antler(0, 0, "#d2c19a");
         ctx.restore();
