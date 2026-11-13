@@ -86,10 +86,8 @@ describe("the marketing page", () => {
     expect(html.match(/loops completed:/g)).toHaveLength(1);
   });
 
-  it("sends a moose to eat the cattails at dawn or dusk, and only its box unticks", () => {
-    expect(html).toContain(
-      "const mooseReady = () => !mooseAte && MOOSE.start === null && daylight(dayNow()).twilight > 0.05;",
-    );
+  it("sends a moose to eat the cattails before midday or midnight, and only its box unticks", () => {
+    expect(html).toContain("!mooseAte && MOOSE.start === null && mod(daylight(dayNow()).sunU + 0.06, 0.5) < 0.31;");
     expect(html).toContain('if (what === "moose") MOOSE.start = clockNow();');
     // The bunch stays eaten: what is kept decides it, on this visit and the next.
     expect(html).toContain("mooseAte = !!kept().moose;");

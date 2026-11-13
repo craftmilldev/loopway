@@ -1485,7 +1485,7 @@ loopway setup</pre>
         .filter((c) => c.tails.length)
         .sort((a, b) => Math.abs(a.x - 1010) - Math.abs(b.x - 1010))[0];
       PERCH.tails[0].perch = true;
-      // A bull moose. Click the bunch of cattails below the tent at dawn or dusk and it walks in along
+      // A bull moose. Click the bunch of cattails below the tent in the morning or the evening and it walks in along
       // the near bank from the right, puts its head down and eats the bunch, heads first and then the
       // leaves, lifts its head, turns, and walks back out the way it came. The bunch stays eaten, on
       // this visit and the next, until the moose's box on the last frame is unticked.
@@ -1533,9 +1533,16 @@ loopway setup</pre>
         if (time >= MOOSE.seconds) return null;
         const coming = time < MOOSE.arrive;
         const going = time >= MOOSE.leave;
-        const p = coming ? time / MOOSE.arrive : going ? 1 - (time - MOOSE.leave) / (MOOSE.seconds - MOOSE.leave) : 1;
-        const x = lerp(MOOSE.edge[0], MOOSE.stand[0], p);
-        const y = lerp(MOOSE.edge[1], MOOSE.stand[1], p);
+        // It turns on its front feet, so its head comes round into the picture and its rump swings out:
+        // 1 is facing left, -1 facing right, and in between it is seen turning.
+        const flip = lerp(1, -1, smooth(MOOSE.turn - 0.16, MOOSE.turn + 0.16, time));
+        const pivot = 40 * MOOSE.size;
+        const turned = [MOOSE.stand[0] - 2 * pivot, MOOSE.stand[1]];
+        const p = coming ? time / MOOSE.arrive : going ? (time - MOOSE.leave) / (MOOSE.seconds - MOOSE.leave) : 0;
+        const from = coming ? MOOSE.edge : going ? turned : MOOSE.stand;
+        const to = coming ? MOOSE.stand : going ? MOOSE.edge : MOOSE.stand;
+        const x = coming || going ? lerp(from[0], to[0], p) : MOOSE.stand[0] - pivot + pivot * flip;
+        const y = lerp(from[1], to[1], p);
         // Its legs come to rest as it stops and pick up as it sets off.
         const walk = coming ? clamp((MOOSE.arrive - time) / 0.4) : going ? clamp((time - MOOSE.leave) / 0.4) : 0;
         const eating = time >= MOOSE.down[1] && time < MOOSE.up[0];
@@ -1546,9 +1553,11 @@ loopway setup</pre>
         return {
           x,
           y,
-          facing: time < MOOSE.turn ? -1 : 1,
+          // Never quite edge-on, which would be no moose at all.
+          flip: Math.abs(flip) < 0.08 ? 0.08 * (flip < 0 ? -1 : 1) : flip,
           walk,
-          stride: ((MOOSE.stand[0] - x) * Math.PI) / (32 * MOOSE.size),
+          // The stride always runs forward with the ground it covers, whichever way it is going.
+          stride: (Math.abs(x - (going ? turned[0] : MOOSE.stand[0])) * (going ? 1 : -1) * Math.PI) / (32 * MOOSE.size),
           head,
           chew: time >= MOOSE.down[1] && time < MOOSE.leave ? Math.sin(time * 13) : 0,
         };
@@ -1642,138 +1651,232 @@ loopway setup</pre>
         }
         if (moose) drawMoose(ctx, moose);
       }
-      // The moose, drawn facing left with its feet at the origin: long pale legs, a dark body with a
-      // hump over the shoulders, a long head with a bulb of a nose, a bell under the chin, and the
+      // The moose, drawn facing left with its feet at the origin, as one drawn animal and not a set of
+      // parts: a deep chest under a high shoulder hump, a back that slopes away to a lower rump, a
+      // tucked belly, long legs that are thick above the knee and thin below it, a long face that ends
+      // in a swollen nose with the top lip hanging over the bottom one, a bell under the jaw, and the
       // flat, fingered antlers of a bull.
       function drawMoose(ctx, m) {
         ctx.save();
         ctx.translate(m.x, m.y);
-        ctx.scale(-m.facing * MOOSE.size, MOOSE.size);
+        ctx.scale(m.flip * MOOSE.size, MOOSE.size);
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
         const coat = "#4f3a29";
-        // Legs: each a hip, a knee and a hoof. Opposite corners move together.
-        for (const [hipX, off, far] of [
-          [-36, Math.PI, true],
-          [76, 0, true],
-          [-50, 0, false],
-          [62, Math.PI, false],
-        ]) {
+        // A leg: hip, knee (the hock, on a hind leg, which bends back), ankle and hoof. Opposite
+        // corners move together.
+        const leg = (hipX, off, hind) => {
           const reach = Math.sin(m.stride + off) * 15 * m.walk;
           const lift = Math.max(0, Math.cos(m.stride + off)) * 9 * m.walk;
-          const foot = [hipX - reach, -lift];
-          const knee = [(hipX + foot[0]) / 2 + (hipX < 0 ? -3 : 5), -33 - lift * 0.6];
-          for (const [color, width] of [
-            [INK, 10],
-            [far ? "#57493b" : "#7d6c58", 6],
-          ]) {
-            ctx.strokeStyle = color;
-            ctx.lineWidth = width;
-            ctx.beginPath();
-            ctx.moveTo(hipX, -66);
-            ctx.lineTo(knee[0], knee[1]);
-            ctx.lineTo(foot[0], foot[1] - 3);
+          const hoof = [hipX - reach, -lift];
+          const knee = [lerp(hipX, hoof[0], 0.5) + (hind ? 8 : -2), -37 - lift * 0.6];
+          return {
+            upper: [
+              [hipX + (hind ? 5 : 0), -76, hind ? 14 : 10.5],
+              [lerp(hipX, knee[0], 0.6) + (hind ? 5 : 0), -54, hind ? 8.5 : 7],
+              [knee[0], knee[1], 5.2],
+            ],
+            lower: [
+              [knee[0], knee[1], 5.2],
+              [lerp(knee[0], hoof[0], 0.45), lerp(knee[1], hoof[1], 0.45), 3.3],
+              [lerp(knee[0], hoof[0], 0.84), lerp(knee[1], hoof[1], 0.84), 3.5],
+              [hoof[0] - 0.5, hoof[1] - 5, 4.6],
+            ],
+            hoof: [
+              [hoof[0] - 0.5, hoof[1] - 5, 4.6],
+              [hoof[0] - 1.5, hoof[1], 5.6],
+            ],
+          };
+        };
+        // A run of points down the middle of a limb, each with half the limb's width there.
+        const limb = (pts) => {
+          ctx.beginPath();
+          pts.forEach(([x, y, w], i) => (i ? ctx.lineTo(x - w, y) : ctx.moveTo(x - w, y)));
+          for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i][0] + pts[i][2], pts[i][1]);
+          ctx.closePath();
+        };
+        const inkLeg = (l) => {
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 4.6;
+          for (const part of [l.upper, l.lower, l.hoof]) {
+            limb(part);
             ctx.stroke();
           }
+        };
+        const paintLeg = (l, upper, lower) => {
+          for (const [part, color] of [
+            [l.upper, upper],
+            [l.lower, lower],
+            [l.hoof, "#2a221b"],
+          ]) {
+            limb(part);
+            ctx.fillStyle = color;
+            ctx.fill();
+          }
+        };
+        for (const far of [leg(-36, Math.PI, false), leg(74, 0, true)]) {
+          inkLeg(far);
+          paintLeg(far, "#3c2d21", "#5d5043");
         }
+        const near = [leg(-52, 0, false), leg(60, Math.PI, true)];
         // The neck swings from the shoulder, and the head from the end of the neck.
         const neckAngle = lerp(3.552, 2.292, m.head);
-        const headAngle = lerp(2.674, 1.918, m.head);
-        const shoulder = [-58, -102];
-        const poll = [shoulder[0] + Math.cos(neckAngle) * 44, shoulder[1] + Math.sin(neckAngle) * 44];
-        const nose = [poll[0] + Math.cos(headAngle) * 50, poll[1] + Math.sin(headAngle) * 50 + m.chew * 1.2];
-        const body = () => {
-          ctx.beginPath();
-          ctx.moveTo(84, -100);
-          ctx.bezierCurveTo(60, -112, 0, -108, -30, -124);
-          ctx.bezierCurveTo(-48, -132, -66, -124, -72, -104);
-          ctx.bezierCurveTo(-78, -84, -70, -66, -52, -60);
-          ctx.bezierCurveTo(-20, -54, 40, -52, 66, -60);
-          ctx.bezierCurveTo(88, -66, 96, -86, 84, -100);
-          ctx.closePath();
-        };
-        const line = (a, b, width) => {
-          ctx.lineWidth = width;
-          ctx.beginPath();
-          ctx.moveTo(a[0], a[1]);
-          ctx.lineTo(b[0], b[1]);
-          ctx.stroke();
-        };
-        // The antlers turn with the head. The far one first, a little darker.
-        const antler = (dx, dy, color) => {
+        const turn = lerp(2.674, 1.918, m.head) - Math.PI + m.chew * 0.012;
+        const poll = [-58 + Math.cos(neckAngle) * 44, -102 + Math.sin(neckAngle) * 44];
+        // A point on the head, which is drawn nose to the left with the poll at its origin.
+        const onHead = (x, y) => [
+          poll[0] + x * Math.cos(turn) - y * Math.sin(turn),
+          poll[1] + x * Math.sin(turn) + y * Math.cos(turn),
+        ];
+        const headed = (draw) => {
           ctx.save();
           ctx.translate(poll[0], poll[1]);
-          ctx.rotate(headAngle - Math.PI);
-          ctx.translate(dx, dy);
-          ctx.beginPath();
-          ctx.moveTo(4, -8);
-          ctx.lineTo(9, -22);
-          ctx.bezierCurveTo(2, -30, -6, -38, -17, -43);
-          ctx.lineTo(-11, -35);
-          ctx.lineTo(-5, -49);
-          ctx.lineTo(-1, -36);
-          ctx.lineTo(8, -52);
-          ctx.lineTo(9, -37);
-          ctx.lineTo(21, -48);
-          ctx.lineTo(19, -33);
-          ctx.lineTo(32, -37);
-          ctx.bezierCurveTo(27, -25, 20, -18, 12, -15);
-          ctx.closePath();
-          ctx.fillStyle = color;
-          ctx.fill();
-          ctx.strokeStyle = INK;
-          ctx.lineWidth = 2;
-          ctx.stroke();
+          ctx.rotate(turn);
+          draw();
           ctx.restore();
         };
+        const body = () => {
+          ctx.beginPath();
+          ctx.moveTo(86, -96);
+          ctx.bezierCurveTo(70, -108, 40, -105, 10, -108);
+          ctx.bezierCurveTo(-8, -110, -22, -124, -38, -130);
+          ctx.bezierCurveTo(-52, -134, -64, -126, -70, -110);
+          ctx.bezierCurveTo(-76, -96, -76, -80, -66, -68);
+          ctx.bezierCurveTo(-58, -58, -44, -56, -30, -56);
+          ctx.bezierCurveTo(-4, -52, 30, -60, 52, -66);
+          ctx.bezierCurveTo(66, -62, 74, -58, 80, -62);
+          ctx.bezierCurveTo(94, -70, 96, -86, 86, -96);
+          ctx.closePath();
+        };
+        // The neck runs from the hump to the poll along the top, where the mane stands, and from the
+        // throat back down to the chest underneath.
+        const neck = () => {
+          const top = onHead(9, -12);
+          const throat = onHead(-9, 13);
+          ctx.beginPath();
+          ctx.moveTo(-36, -130);
+          ctx.quadraticCurveTo((top[0] - 36) / 2 + 2, (top[1] - 130) / 2 - 5, top[0], top[1]);
+          ctx.lineTo(throat[0], throat[1]);
+          ctx.quadraticCurveTo((throat[0] - 68) / 2 + 5, (throat[1] - 76) / 2 + 7, -68, -76);
+          ctx.closePath();
+        };
+        const head = () => {
+          ctx.beginPath();
+          ctx.moveTo(9, -12);
+          ctx.quadraticCurveTo(-4, -15, -16, -11);
+          ctx.quadraticCurveTo(-30, -7, -42, -9);
+          ctx.quadraticCurveTo(-53, -12, -60, -6);
+          ctx.quadraticCurveTo(-66, 0, -62, 7);
+          ctx.quadraticCurveTo(-60, 12, -53, 10);
+          ctx.lineTo(-46, 7);
+          ctx.quadraticCurveTo(-44, 12, -38, 12);
+          ctx.quadraticCurveTo(-24, 11, -14, 13);
+          ctx.quadraticCurveTo(-2, 15, 6, 10);
+          ctx.closePath();
+        };
+        const bell = () => {
+          ctx.beginPath();
+          ctx.moveTo(-17, 11);
+          ctx.quadraticCurveTo(-21, 24, -13, 32);
+          ctx.quadraticCurveTo(-8, 24, -6, 12);
+          ctx.closePath();
+        };
+        const tail = () => {
+          ctx.beginPath();
+          ctx.moveTo(86, -96);
+          ctx.quadraticCurveTo(96, -92, 93, -80);
+          ctx.quadraticCurveTo(89, -86, 84, -90);
+          ctx.closePath();
+        };
+        const antler = (dx, dy, color) =>
+          headed(() => {
+            ctx.translate(dx, dy);
+            ctx.beginPath();
+            ctx.moveTo(3, -9);
+            ctx.lineTo(9, -22);
+            ctx.bezierCurveTo(2, -30, -6, -38, -17, -43);
+            ctx.lineTo(-11, -35);
+            ctx.lineTo(-5, -50);
+            ctx.lineTo(-1, -36);
+            ctx.lineTo(8, -53);
+            ctx.lineTo(9, -37);
+            ctx.lineTo(21, -49);
+            ctx.lineTo(19, -33);
+            ctx.lineTo(33, -38);
+            ctx.bezierCurveTo(27, -25, 20, -18, 11, -14);
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = INK;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          });
         antler(9, 3, "#b3a27c");
-        // All the outlines first, then the coat over them, so the neck grows out of the body with no
-        // line across it.
+        // Every outline first, then the coat over them: so the neck, the head and the near legs grow out
+        // of the body with no line across the join.
+        near.forEach(inkLeg);
         ctx.strokeStyle = INK;
-        body();
         ctx.lineWidth = 5;
-        ctx.stroke();
-        // A stub of a tail, and the bell under the chin.
-        line([88, -92], [93, -82], 7);
-        const bell = [lerp(poll[0], nose[0], 0.25) + 3, lerp(poll[1], nose[1], 0.25) + 12];
-        line(bell, [bell[0] + 2, bell[1] + 13], 9);
-        line(shoulder, poll, 35);
-        line(poll, nose, 25);
-        ctx.fillStyle = INK;
-        ctx.beginPath();
-        ctx.arc(nose[0], nose[1], 14, 0, TAU);
-        ctx.fill();
+        for (const part of [body, neck, tail]) {
+          part();
+          ctx.stroke();
+        }
+        headed(() => {
+          for (const part of [bell, head]) {
+            part();
+            ctx.stroke();
+          }
+        });
         ctx.fillStyle = coat;
-        ctx.strokeStyle = coat;
-        body();
-        ctx.fill();
-        line([88, -92], [93, -82], 3);
-        line(bell, [bell[0] + 2, bell[1] + 13], 5);
-        line(shoulder, poll, 30);
-        line(poll, nose, 20);
-        ctx.fillStyle = "#5e4735";
-        ctx.beginPath();
-        ctx.arc(nose[0], nose[1], 11.5, 0, TAU);
-        ctx.fill();
-        // The ear, the eye and a nostril.
-        ctx.save();
-        ctx.translate(poll[0], poll[1]);
-        ctx.rotate(headAngle - Math.PI);
+        headed(() => {
+          bell();
+          ctx.fill();
+        });
+        for (const l of near) paintLeg(l, coat, "#8a7863");
         ctx.fillStyle = coat;
-        ctx.strokeStyle = INK;
-        ctx.lineWidth = 2;
+        for (const part of [tail, body, neck]) {
+          part();
+          ctx.fill();
+        }
+        headed(() => {
+          head();
+          ctx.fill();
+          // The nose is a little paler than the rest of the face.
+          ctx.save();
+          ctx.clip();
+          ctx.fillStyle = "rgba(150, 126, 100, 0.35)";
+          ctx.beginPath();
+          ctx.ellipse(-56, 2, 12, 11, 0, 0, TAU);
+          ctx.fill();
+          ctx.restore();
+          // The ear, the eye and a nostril.
+          ctx.fillStyle = coat;
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(4, -10);
+          ctx.quadraticCurveTo(3, -25, 14, -30);
+          ctx.quadraticCurveTo(17, -18, 11, -8);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = INK;
+          ctx.beginPath();
+          ctx.arc(-15, -5, 1.8, 0, TAU);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.ellipse(-58, -2, 1.8, 1.1, 0.5, 0, TAU);
+          ctx.fill();
+        });
+        // Where the shoulder and the haunch stand out under the coat.
+        ctx.strokeStyle = "rgba(22, 19, 14, 0.4)";
+        ctx.lineWidth = 1.8;
         ctx.beginPath();
-        ctx.ellipse(9, -13, 4.5, 10, 0.5, 0, TAU);
-        ctx.fill();
+        ctx.moveTo(-40, -114);
+        ctx.quadraticCurveTo(-29, -88, -45, -68);
+        ctx.moveTo(57, -101);
+        ctx.quadraticCurveTo(45, -84, 60, -70);
         ctx.stroke();
-        ctx.fillStyle = INK;
-        ctx.beginPath();
-        ctx.arc(-13, -4, 1.9, 0, TAU);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(-56, -3, 1.6, 0, TAU);
-        ctx.fill();
-        ctx.restore();
         antler(0, 0, "#d2c19a");
         ctx.restore();
       }
@@ -4137,8 +4240,9 @@ loopway setup</pre>
         if (MOTH.start !== null && clock - MOTH.start >= MOTH.seconds) MOTH.start = null;
         if (MOOSE.start !== null && clock - MOOSE.start >= MOOSE.seconds) MOOSE.start = null;
       }
-      // The bunch is there to be eaten, and the sun is at the horizon: dawn or dusk.
-      const mooseReady = () => !mooseAte && MOOSE.start === null && daylight(dayNow()).twilight > 0.05;
+      // The bunch is there to be eaten, and it is the first half of the day or of the night: from just
+      // before sunrise until midday, or from just before sunset until midnight.
+      const mooseReady = () => !mooseAte && MOOSE.start === null && mod(daylight(dayNow()).sunU + 0.06, 0.5) < 0.31;
       const MOOSE_SPOT = { x0: 1304, y0: 836, x1: 1364, y1: 930 };
       // What a click at this point in the picture would set off, if anything.
       function clickable(x, y) {
