@@ -1710,11 +1710,7 @@ loopway setup</pre>
           ctx.textBaseline = "alphabetic";
           ctx.font = tagline(size);
           ctx.fillText(line, left, top + markHeight + size * 0.88);
-          // The scroll hint, at the bottom middle of the sign's face.
-          ctx.font = `20px "Courier Prime", Courier, ui-monospace, monospace`;
-          ctx.textAlign = "center";
-          ctx.fillText("SCROLL \u2193", w / 2, h - 28);
-          ctx.textAlign = "left";
+          // The scroll hint is not painted here: it blinks, so drawBoard puts it on over this still face.
           HITS = [
             {
               kind: "scroll",
@@ -1741,6 +1737,26 @@ loopway setup</pre>
         shade.addColorStop(1, "rgba(22, 19, 14, 0.1)");
         ctx.fillStyle = shade;
         ctx.fillRect(0, 0, w, h);
+      }
+
+      // The scroll hint wiggles now and then so people notice it: still for most of a 3.5s round, then a
+      // second of gentle bobbing and sway that swells and settles. It is drawn live, since the face is painted once.
+      function drawScrollHint(ctx, cx, baseline, fade) {
+        const t = clockNow() % 3.5;
+        const swell = t < 1 ? Math.sin(t * Math.PI) : 0;
+        const wave = Math.sin(t * TAU * 2.5);
+        ctx.save();
+        ctx.globalAlpha = fade;
+        ctx.translate(cx, baseline - 7);
+        ctx.rotate(wave * swell * 0.05);
+        ctx.translate(0, -Math.abs(wave) * swell * 5 + 7);
+        ctx.globalCompositeOperation = "multiply";
+        ctx.fillStyle = "#2a211a";
+        ctx.font = `20px "Courier Prime", Courier, ui-monospace, monospace`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "alphabetic";
+        ctx.fillText("SCROLL \u2193", 0, 0);
+        ctx.restore();
       }
 
       function drawBoard(ctx) {
@@ -1802,6 +1818,7 @@ loopway setup</pre>
         ctx.globalAlpha = fade;
         ctx.drawImage(boardCanvas, x, y, w, h);
         ctx.globalAlpha = 1;
+        if (shown === 0) drawScrollHint(ctx, x + w / 2, y + h - 28, fade);
         ctx.strokeStyle = "#6b5440";
         ctx.lineWidth = 10;
         ctx.strokeRect(x, y, w, h);
@@ -1827,25 +1844,71 @@ loopway setup</pre>
       }
 
       // ---- The flowers ----
-      function drawVine(ctx, pts) {
+      // The leaves are the real shape: a heart with a pointed tip, a notch where the stalk joins, and a
+      // midrib with veins curving out to the lobes. Morning glory leaves are narrower and lean to a point;
+      // moonflower leaves are bigger and rounder in the shoulder, a touch bluer. The leaf hangs off a short
+      // stalk from (x, y), pointing along `ang`, and no two are quite alike (`k` is their own variation).
+      const LEAF_KINDS = {
+        glory: { len: 15, wide: 0.62, point: 0.9, fill: "#6f8f5e" },
+        moon: { len: 20, wide: 0.78, point: 0.7, fill: "#5f8a63" },
+      };
+      function heartLeaf(ctx, x, y, ang, kind, k) {
+        const len = kind.len * (0.8 + k * 0.4);
+        const w = len * kind.wide;
+        const stalk = len * 0.28;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(ang);
+        ctx.strokeStyle = "#4f6b46";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(stalk, 0);
+        ctx.stroke();
+        ctx.translate(stalk, 0);
+        ctx.fillStyle = kind.fill;
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(len * 0.06, 0);
+        for (const m of [-1, 1]) {
+          // The lobe swings back past the stalk, then the edge runs out to the tip.
+          ctx.bezierCurveTo(-len * 0.08, m * w * 0.18, -len * 0.2, m * w * 0.72, len * 0.14, m * w * 0.78);
+          ctx.bezierCurveTo(len * 0.5, m * w * 0.8, len * 0.72 * kind.point, m * w * 0.3, len, 0);
+          if (m === -1) ctx.moveTo(len * 0.06, 0);
+        }
+        ctx.fill();
+        ctx.stroke();
+        // The midrib and the veins off it.
+        ctx.strokeStyle = "rgba(34, 52, 30, 0.55)";
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(len * 0.04, 0);
+        ctx.lineTo(len * 0.9, 0);
+        for (const m of [-1, 1]) {
+          ctx.moveTo(len * 0.12, 0);
+          ctx.quadraticCurveTo(len * 0.02, m * w * 0.3, -len * 0.04, m * w * 0.55);
+          ctx.moveTo(len * 0.3, 0);
+          ctx.quadraticCurveTo(len * 0.42, m * w * 0.3, len * 0.55, m * w * 0.5);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+      function drawVine(ctx, pts, kind) {
         ctx.strokeStyle = "#4f6b46";
         ctx.lineWidth = 3;
         ctx.beginPath();
         pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
         ctx.stroke();
-        ctx.fillStyle = "#6f8f5e";
-        ctx.strokeStyle = INK;
-        ctx.lineWidth = 1;
         for (let i = 3; i < pts.length - 1; i += 5) {
           const [x, y] = pts[i];
           const dx = pts[i + 1][0] - x;
           const dy = pts[i + 1][1] - y;
           const side = i % 2 ? 1 : -1;
-          const len = Math.hypot(dx, dy) || 1;
-          ctx.beginPath();
-          ctx.ellipse(x + (-dy / len) * side * 9, y + (dx / len) * side * 9 - 2, 9, 4.5, side * -0.5, 0, TAU);
-          ctx.fill();
-          ctx.stroke();
+          // Out from the vine and a little up, each at its own angle.
+          const out = Math.atan2(side * dx, -side * dy);
+          const own = Math.abs(Math.sin(i * 12.9898)); // 0..1, the same every frame
+          heartLeaf(ctx, x, y, out - side * 0.4 + (own - 0.5) * 0.7, kind, own);
         }
       }
       function stem(ctx, fromX, fromY, toX, toY) {
@@ -1973,16 +2036,11 @@ loopway setup</pre>
           [GLORY, gloryOpen, TRUMPETS.glory],
           [MOON, moonflowerOpen, TRUMPETS.moon],
         ]) {
-          for (const pts of plant.vines) drawVine(ctx, pts);
-          ctx.fillStyle = "#6f8f5e";
-          ctx.strokeStyle = INK;
-          ctx.lineWidth = 1;
-          for (const leaf of plant.mound) {
-            ctx.beginPath();
-            ctx.ellipse(leaf.x, leaf.y, 10, 5.5, leaf.rot, 0, TAU);
-            ctx.fill();
-            ctx.stroke();
-          }
+          for (const pts of plant.vines) drawVine(ctx, pts, plant === MOON ? LEAF_KINDS.moon : LEAF_KINDS.glory);
+          const kind = plant === MOON ? LEAF_KINDS.moon : LEAF_KINDS.glory;
+          plant.mound.forEach((leaf, i) =>
+            heartLeaf(ctx, leaf.x, leaf.y, leaf.rot, kind, Math.abs(Math.sin(i * 7.31))),
+          );
           for (const f of plant.flowers) {
             stem(ctx, f.vx, f.vy, f.x, f.fy);
             drawTrumpet(ctx, f, opens(u - f.delay), colours);
