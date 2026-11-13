@@ -1506,16 +1506,15 @@ loopway setup</pre>
           // Where it stands to eat, where it comes in from, off the picture, and the way it goes on out.
           stand: [1456, 950],
           edge: [W + 190, 938],
-          out: [
-            [1456, 950],
-            [1380, 957],
-            [1300, 976],
-            [1220, 1006],
-            [1140, 1050],
-            [1060, 1104],
-            [990, 1170],
-            [930, 1262],
-          ],
+          // The way out is one smooth bend: level at first, then down the bank toward us.
+          out: Array.from({ length: 41 }, (_, i) => {
+            const t = i / 40;
+            const q = 1 - t;
+            return [q * q * 1456 + 2 * q * t * 1236 + t * t * 950, q * q * 950 + 2 * q * t * 952 + t * t * 1268];
+          }),
+          // One full stride covers this much ground, and each foot is down for this share of it.
+          stride: 66,
+          planted: 0.65,
           arrive: 4.2,
           down: [4.2, 4.9],
           firstBite,
@@ -1536,6 +1535,41 @@ loopway setup</pre>
           leaves: 1 - smooth(...MOOSE.graze, time),
         };
       }
+      // Where the moose's body is once it has covered this much ground: in along a straight line, then
+      // out along the bend. Also how big it is there, which way it is heading, and how much it is
+      // turned toward us (which shortens it, seen from the side).
+      function mooseBody(ground) {
+        const inLength = Math.hypot(MOOSE.stand[0] - MOOSE.edge[0], MOOSE.stand[1] - MOOSE.edge[1]);
+        const outLength = along(MOOSE.out, 1).total;
+        let x;
+        let y;
+        let heading;
+        if (ground <= inLength) {
+          const p = ground / inLength;
+          x = lerp(MOOSE.edge[0], MOOSE.stand[0], p);
+          y = lerp(MOOSE.edge[1], MOOSE.stand[1], p);
+          heading = [(MOOSE.stand[0] - MOOSE.edge[0]) / inLength, (MOOSE.stand[1] - MOOSE.edge[1]) / inLength];
+        } else {
+          const p = (ground - inLength) / outLength;
+          const here = along(MOOSE.out, p);
+          const ahead = along(MOOSE.out, Math.min(1, p + 0.03));
+          const behind = along(MOOSE.out, Math.max(0, p - 0.03));
+          const length = Math.hypot(ahead.x - behind.x, ahead.y - behind.y) || 1;
+          x = here.x;
+          y = here.y;
+          heading = [(ahead.x - behind.x) / length, (ahead.y - behind.y) / length];
+        }
+        const size = MOOSE.size * (1 + clamp((y - MOOSE.stand[1]) / 240) * 0.3);
+        return { x, y, size, heading, narrow: 1 - 0.34 * clamp(heading[1]), inLength, outLength };
+      }
+      // The four legs: where the hip is along the body, when in the stride the foot comes down, and
+      // which side it is on. Opposite corners step together, the hind foot a moment after the front one.
+      const MOOSE_LEGS = [
+        { hip: -36, beat: 0.5, far: true, hind: false },
+        { hip: 74, beat: 0.06, far: true, hind: true },
+        { hip: -52, beat: 0, far: false, hind: false },
+        { hip: 60, beat: 0.56, far: false, hind: true },
+      ];
       // Where the moose is and what it is doing, or nothing if it is not out.
       function mooseAt(clock) {
         if (MOOSE.start === null) return null;
@@ -1543,27 +1577,62 @@ loopway setup</pre>
         if (time >= MOOSE.seconds) return null;
         const coming = time < MOOSE.arrive;
         const going = time >= MOOSE.leave;
-        const way = going ? along(MOOSE.out, (time - MOOSE.leave) / (MOOSE.seconds - MOOSE.leave)) : null;
-        const p = coming ? time / MOOSE.arrive : 1;
-        const x = way ? way.x : lerp(MOOSE.edge[0], MOOSE.stand[0], p);
-        const y = way ? way.y : lerp(MOOSE.edge[1], MOOSE.stand[1], p);
-        // It is a little bigger as it comes down the bank toward us.
-        const size = MOOSE.size * (1 + clamp((y - MOOSE.stand[1]) / 220) * 0.22);
-        // Its legs come to rest as it stops and pick up as it sets off.
-        const walk = coming ? clamp((MOOSE.arrive - time) / 0.4) : going ? clamp((time - MOOSE.leave) / 0.4) : 0;
+        const { inLength, outLength } = mooseBody(0);
+        // It slows to a stop and gathers way again: the ground it has covered, not the time, drives the legs.
+        const ground = coming
+          ? inLength * (1 - (1 - time / MOOSE.arrive) ** 1.5)
+          : going
+            ? inLength + outLength * ((time - MOOSE.leave) / (MOOSE.seconds - MOOSE.leave)) ** 1.25
+            : inLength;
+        const body = mooseBody(ground);
+        // Every step is a foot put down on one spot of ground, left there while the body goes over it,
+        // and then picked up and swung to the next spot. Nothing on the ground ever slides.
+        const cycle = (ground - inLength) / MOOSE.stride + 0.04;
+        const legs = MOOSE_LEGS.map((leg) => {
+          const at = cycle + leg.beat;
+          const step = Math.floor(at);
+          const part = at - step;
+          const spot = (n) => {
+            const then = mooseBody(inLength + (n - leg.beat - 0.04) * MOOSE.stride);
+            const reach = (MOOSE.planted * MOOSE.stride) / 2;
+            return [
+              then.x + leg.hip * then.size * then.narrow + then.heading[0] * reach,
+              // The far legs stand a little further off, which is a little higher up the picture.
+              then.y + (leg.far ? -6 : 2) * then.size + then.heading[1] * reach,
+            ];
+          };
+          const from = spot(step);
+          let foot = from;
+          let lift = 0;
+          if (part >= MOOSE.planted) {
+            const swing = (part - MOOSE.planted) / (1 - MOOSE.planted);
+            const to = spot(step + 1);
+            const eased = smooth(0, 1, swing);
+            foot = [lerp(from[0], to[0], eased), lerp(from[1], to[1], eased)];
+            lift = Math.sin(Math.PI * swing) * 11;
+          }
+          return {
+            ...leg,
+            x: (foot[0] - body.x) / (body.size * body.narrow),
+            y: (foot[1] - body.y) / body.size,
+            lift,
+          };
+        });
+        const walking = coming ? clamp((MOOSE.arrive - time) / 0.6) : going ? clamp((time - MOOSE.leave) / 0.6) : 0;
         const eating = time >= MOOSE.down[1] && time < MOOSE.up[0];
         const head =
           smooth(...MOOSE.down, time) *
           (1 - smooth(...MOOSE.up, time)) *
           (eating ? 1 - 0.13 * Math.abs(Math.sin((time - MOOSE.down[1]) * 4.5)) : 1);
         return {
-          x,
-          y,
-          size,
-          walk,
-          // The stride runs forward with the ground it covers.
-          stride: ((way ? way.d : x - MOOSE.stand[0]) * (way ? 1 : -1) * Math.PI) / (32 * size),
-          head,
+          x: body.x,
+          y: body.y,
+          size: body.size,
+          narrow: body.narrow,
+          legs,
+          // The body rises and falls twice a stride, and the head nods against it.
+          bob: -1.8 * Math.abs(Math.sin(cycle * TAU)) * walking,
+          head: head + 0.07 * Math.sin(cycle * TAU * 2 + 0.6) * walking,
           chew: time >= MOOSE.down[1] && time < MOOSE.leave + 2 ? Math.sin(time * 13) : 0,
         };
       }
@@ -1664,21 +1733,25 @@ loopway setup</pre>
       function drawMoose(ctx, m) {
         ctx.save();
         ctx.translate(m.x, m.y);
-        ctx.scale(m.size, m.size);
+        ctx.scale(m.size * m.narrow, m.size);
+        // Everything but the feet rides up and down with the body.
+        ctx.translate(0, m.bob);
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
         const coat = "#4f3a29";
-        // A leg: hip, knee (the hock, on a hind leg, which bends back), ankle and hoof. Opposite
-        // corners move together.
-        const leg = (hipX, off, hind) => {
-          const reach = Math.sin(m.stride + off) * 15 * m.walk;
-          const lift = Math.max(0, Math.cos(m.stride + off)) * 9 * m.walk;
-          const hoof = [hipX - reach, -lift];
-          const knee = [lerp(hipX, hoof[0], 0.5) + (hind ? 8 : -2), -37 - lift * 0.6];
+        // A leg: hip, knee (the hock, on a hind leg, which bends back), ankle and hoof. The hoof is
+        // where the walk put it; the knee folds as the foot is lifted.
+        const leg = ({ hip: hipX, hind, x, y, lift }) => {
+          const hoof = [x, y - m.bob - lift];
+          const top = -76;
+          const knee = [
+            lerp(hipX, hoof[0], 0.5) + (hind ? 8 + lift * 0.5 : -2 - lift * 0.7),
+            lerp(top, hoof[1], 0.51) - lift * 0.25,
+          ];
           return {
             upper: [
-              [hipX + (hind ? 5 : 0), -76, hind ? 14 : 10.5],
-              [lerp(hipX, knee[0], 0.6) + (hind ? 5 : 0), -54, hind ? 8.5 : 7],
+              [hipX + (hind ? 5 : 0), top, hind ? 14 : 10.5],
+              [lerp(hipX, knee[0], 0.6) + (hind ? 5 : 0), lerp(top, knee[1], 0.56), hind ? 8.5 : 7],
               [knee[0], knee[1], 5.2],
             ],
             lower: [
@@ -1719,11 +1792,11 @@ loopway setup</pre>
             ctx.fill();
           }
         };
-        for (const far of [leg(-36, Math.PI, false), leg(74, 0, true)]) {
+        for (const far of m.legs.filter((l) => l.far).map(leg)) {
           inkLeg(far);
           paintLeg(far, "#3c2d21", "#5d5043");
         }
-        const near = [leg(-52, 0, false), leg(60, Math.PI, true)];
+        const near = m.legs.filter((l) => !l.far).map(leg);
         // The neck swings from the shoulder, and the head from the end of the neck.
         const neckAngle = lerp(3.552, 2.292, m.head);
         const turn = lerp(2.674, 1.918, m.head) - Math.PI + m.chew * 0.012;
@@ -1843,6 +1916,18 @@ loopway setup</pre>
           part();
           ctx.fill();
         }
+        // It is round, not flat: the light is on its back and its belly is in its own shadow.
+        const round = ctx.createLinearGradient(0, -134, 0, -52);
+        round.addColorStop(0, "rgba(214, 180, 140, 0.26)");
+        round.addColorStop(0.32, "rgba(214, 180, 140, 0)");
+        round.addColorStop(0.6, "rgba(18, 12, 8, 0)");
+        round.addColorStop(1, "rgba(18, 12, 8, 0.42)");
+        ctx.fillStyle = round;
+        for (const part of [body, neck]) {
+          part();
+          ctx.fill();
+        }
+        ctx.fillStyle = coat;
         headed(() => {
           head();
           ctx.fill();
