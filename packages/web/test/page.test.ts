@@ -214,10 +214,15 @@ describe("the marketing page", () => {
     };
     const holds = (box: Box, keep: Box) =>
       box.x0 <= keep.x0 + 1e-6 && box.y0 <= keep.y0 + 1e-6 && box.x1 >= keep.x1 - 1e-6 && box.y1 >= keep.y1 - 1e-6;
-    // Laptops, monitors, a tablet on its side, a square window: all of it picture, no bars.
+    // Laptops, monitors, an ultrawide, a phone or a tablet on its side, a square window: all of it
+    // picture, no bars.
     for (const [w, h] of [
       [1600, 1000],
       [1440, 900],
+      [1920, 1080],
+      [1366, 768],
+      [2560, 1080],
+      [844, 390],
       [1500, 1000],
       [1024, 768],
       [1280, 1024],
@@ -229,12 +234,10 @@ describe("the marketing page", () => {
       expect(bars.x).toBeCloseTo(0);
       expect(bars.y).toBeCloseTo(0);
     }
-    // Wider than the picture: the kept part fills the height, and the bars are at the sides only.
+    // Wider than all that is painted: the kept part fills the height, and the bars are at the sides only.
     for (const [w, h] of [
-      [1920, 1080],
-      [1366, 768],
-      [2560, 1080],
-      [844, 390],
+      [3840, 1080],
+      [5120, 1440],
     ] as [number, number][]) {
       const { box, bars } = shown(w, h);
       expect(holds(box, KEEP)).toBe(true);
@@ -261,6 +264,17 @@ describe("the marketing page", () => {
     const lows = [...html.matchAll(/\[0(?:\.\d+)?, -?\d+, (9\d\d)\],/g)].map((m) => Number(m[1]));
     expect(lows).toContain(965);
     expect(KEEP.y1 - Math.max(...lows)).toBeGreaterThanOrEqual(30);
+    // Whoever comes and goes does so beyond what the window sees, not beyond the old picture.
+    for (const line of [
+      "WALK_IN[0][0] = sides.left - 90;",
+      "const skunkOut = () => [sides.left - 90, 678];",
+      "const mooseEdge = () => [sides.right + 190, 938 - (sides.right - W) * 0.036];",
+      "const away = [sides.right + 150,",
+      "[[0, sides.left - 70, 968]]",
+      "[[1, sides.right + 100, 790 - further * 0.1]]",
+    ]) {
+      expect(html).toContain(line);
+    }
     expect(html).toContain("if (view.tall) drawTurnHint(main);");
     expect(html).toContain('"TURN FOR THE WHOLE SCENE"');
   });
