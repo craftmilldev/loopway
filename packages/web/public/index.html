@@ -1485,6 +1485,74 @@ loopway setup</pre>
         .filter((c) => c.tails.length)
         .sort((a, b) => Math.abs(a.x - 1010) - Math.abs(b.x - 1010))[0];
       PERCH.tails[0].perch = true;
+      // A bull moose. Click the bunch of cattails below the tent at dawn or dusk and it walks in along
+      // the near bank from the right, puts its head down and eats the bunch, heads first and then the
+      // leaves, lifts its head, turns, and walks back out the way it came. The bunch stays eaten, on
+      // this visit and the next, until the moose's box on the last frame is unticked.
+      const MOOSE = (() => {
+        const clumps = MARSH.clumps.filter((c) => c.tails.length && Math.abs(c.x - 1334) < 30);
+        // The heads go one at a time, the nearest to the moose first.
+        const tails = clumps
+          .flatMap((c) => c.tails.map((t) => ({ c, t })))
+          .sort((a, b) => b.c.x + b.t.dx - a.c.x - a.t.dx);
+        const firstBite = 5.3;
+        const graze = firstBite + tails.length * 0.7;
+        return {
+          start: null,
+          size: 1.05,
+          clumps,
+          tails,
+          // Where it stands to eat, and where it comes in and goes out, off the picture.
+          stand: [1456, 950],
+          edge: [W + 190, 938],
+          arrive: 4.2,
+          down: [4.2, 4.9],
+          firstBite,
+          graze: [graze, graze + 1.4],
+          up: [graze + 1.4, graze + 2],
+          turn: graze + 2.3,
+          leave: graze + 2.6,
+          seconds: graze + 2.6 + 4.2,
+        };
+      })();
+      // Whether the bunch has been eaten already. Set from what is kept, once that has been read.
+      let mooseAte = false;
+      // How much of the bunch is left: how many heads are gone, and how tall the leaves still are.
+      function mooseMeal(clock) {
+        if (MOOSE.start === null) return mooseAte ? { gone: Infinity, leaves: 0 } : { gone: 0, leaves: 1 };
+        const time = clock - MOOSE.start;
+        return {
+          gone: Math.max(0, Math.floor((time - MOOSE.firstBite) / 0.7) + 1),
+          leaves: 1 - smooth(...MOOSE.graze, time),
+        };
+      }
+      // Where the moose is and what it is doing, or nothing if it is not out.
+      function mooseAt(clock) {
+        if (MOOSE.start === null) return null;
+        const time = clock - MOOSE.start;
+        if (time >= MOOSE.seconds) return null;
+        const coming = time < MOOSE.arrive;
+        const going = time >= MOOSE.leave;
+        const p = coming ? time / MOOSE.arrive : going ? 1 - (time - MOOSE.leave) / (MOOSE.seconds - MOOSE.leave) : 1;
+        const x = lerp(MOOSE.edge[0], MOOSE.stand[0], p);
+        const y = lerp(MOOSE.edge[1], MOOSE.stand[1], p);
+        // Its legs come to rest as it stops and pick up as it sets off.
+        const walk = coming ? clamp((MOOSE.arrive - time) / 0.4) : going ? clamp((time - MOOSE.leave) / 0.4) : 0;
+        const eating = time >= MOOSE.down[1] && time < MOOSE.up[0];
+        const head =
+          smooth(...MOOSE.down, time) *
+          (1 - smooth(...MOOSE.up, time)) *
+          (eating ? 1 - 0.13 * Math.abs(Math.sin((time - MOOSE.down[1]) * 4.5)) : 1);
+        return {
+          x,
+          y,
+          facing: time < MOOSE.turn ? -1 : 1,
+          walk,
+          stride: ((MOOSE.stand[0] - x) * Math.PI) / (32 * MOOSE.size),
+          head,
+          chew: time >= MOOSE.down[1] && time < MOOSE.leave ? Math.sin(time * 13) : 0,
+        };
+      }
       // How far the bird bends its cattail: 0 not at all, 1 settled under its weight. The stalk dips
       // past that when the bird lands and bounces to rest; when the bird leaves it springs back the
       // other way and shivers still.
@@ -1527,18 +1595,32 @@ loopway setup</pre>
         ctx.restore();
         ctx.globalAlpha = 1;
         ctx.lineCap = "round";
+        const clock = clockNow();
+        const meal = mooseMeal(clock);
+        let moose = mooseAt(clock);
         for (const c of MARSH.clumps) {
+          // The moose stands among the clumps: behind the ones nearer to us than its feet.
+          if (moose && c.y > moose.y) {
+            drawMoose(ctx, moose);
+            moose = null;
+            ctx.lineCap = "round";
+          }
           const air = Math.sin(theta * 2 + c.phase);
+          const eaten = MOOSE.clumps.includes(c);
+          const left = eaten ? meal.leaves : 1;
           ctx.lineWidth = 2;
           for (const b of c.blades) {
-            const tipX = c.x + b.dx + b.lean * b.h * 0.4 + air * b.h * 0.05;
+            if (left <= 0.02) break;
+            const h = b.h * left;
+            const tipX = c.x + b.dx + b.lean * h * 0.4 + air * h * 0.05;
             ctx.strokeStyle = ["#5c7a44", "#6f8c4c", "#869a55"][b.tone];
             ctx.beginPath();
             ctx.moveTo(c.x + b.dx, c.y);
-            ctx.quadraticCurveTo(c.x + b.dx + b.lean * b.h * 0.1, c.y - b.h * 0.65, tipX, c.y - b.h);
+            ctx.quadraticCurveTo(c.x + b.dx + b.lean * h * 0.1, c.y - h * 0.65, tipX, c.y - h);
             ctx.stroke();
           }
           for (const t of c.tails) {
+            if (eaten && MOOSE.tails.findIndex((m) => m.t === t) < meal.gone) continue;
             const { foot, bend, tip } = cattail(c, t, u);
             ctx.strokeStyle = "#5c7a44";
             ctx.lineWidth = 2;
@@ -1558,6 +1640,142 @@ loopway setup</pre>
             ctx.stroke();
           }
         }
+        if (moose) drawMoose(ctx, moose);
+      }
+      // The moose, drawn facing left with its feet at the origin: long pale legs, a dark body with a
+      // hump over the shoulders, a long head with a bulb of a nose, a bell under the chin, and the
+      // flat, fingered antlers of a bull.
+      function drawMoose(ctx, m) {
+        ctx.save();
+        ctx.translate(m.x, m.y);
+        ctx.scale(-m.facing * MOOSE.size, MOOSE.size);
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        const coat = "#4f3a29";
+        // Legs: each a hip, a knee and a hoof. Opposite corners move together.
+        for (const [hipX, off, far] of [
+          [-36, Math.PI, true],
+          [76, 0, true],
+          [-50, 0, false],
+          [62, Math.PI, false],
+        ]) {
+          const reach = Math.sin(m.stride + off) * 15 * m.walk;
+          const lift = Math.max(0, Math.cos(m.stride + off)) * 9 * m.walk;
+          const foot = [hipX - reach, -lift];
+          const knee = [(hipX + foot[0]) / 2 + (hipX < 0 ? -3 : 5), -33 - lift * 0.6];
+          for (const [color, width] of [
+            [INK, 10],
+            [far ? "#57493b" : "#7d6c58", 6],
+          ]) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.beginPath();
+            ctx.moveTo(hipX, -66);
+            ctx.lineTo(knee[0], knee[1]);
+            ctx.lineTo(foot[0], foot[1] - 3);
+            ctx.stroke();
+          }
+        }
+        // The neck swings from the shoulder, and the head from the end of the neck.
+        const neckAngle = lerp(3.552, 2.292, m.head);
+        const headAngle = lerp(2.674, 1.918, m.head);
+        const shoulder = [-58, -102];
+        const poll = [shoulder[0] + Math.cos(neckAngle) * 44, shoulder[1] + Math.sin(neckAngle) * 44];
+        const nose = [poll[0] + Math.cos(headAngle) * 50, poll[1] + Math.sin(headAngle) * 50 + m.chew * 1.2];
+        const body = () => {
+          ctx.beginPath();
+          ctx.moveTo(84, -100);
+          ctx.bezierCurveTo(60, -112, 0, -108, -30, -124);
+          ctx.bezierCurveTo(-48, -132, -66, -124, -72, -104);
+          ctx.bezierCurveTo(-78, -84, -70, -66, -52, -60);
+          ctx.bezierCurveTo(-20, -54, 40, -52, 66, -60);
+          ctx.bezierCurveTo(88, -66, 96, -86, 84, -100);
+          ctx.closePath();
+        };
+        const line = (a, b, width) => {
+          ctx.lineWidth = width;
+          ctx.beginPath();
+          ctx.moveTo(a[0], a[1]);
+          ctx.lineTo(b[0], b[1]);
+          ctx.stroke();
+        };
+        // The antlers turn with the head. The far one first, a little darker.
+        const antler = (dx, dy, color) => {
+          ctx.save();
+          ctx.translate(poll[0], poll[1]);
+          ctx.rotate(headAngle - Math.PI);
+          ctx.translate(dx, dy);
+          ctx.beginPath();
+          ctx.moveTo(4, -8);
+          ctx.lineTo(9, -22);
+          ctx.bezierCurveTo(2, -30, -6, -38, -17, -43);
+          ctx.lineTo(-11, -35);
+          ctx.lineTo(-5, -49);
+          ctx.lineTo(-1, -36);
+          ctx.lineTo(8, -52);
+          ctx.lineTo(9, -37);
+          ctx.lineTo(21, -48);
+          ctx.lineTo(19, -33);
+          ctx.lineTo(32, -37);
+          ctx.bezierCurveTo(27, -25, 20, -18, 12, -15);
+          ctx.closePath();
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.restore();
+        };
+        antler(9, 3, "#b3a27c");
+        // All the outlines first, then the coat over them, so the neck grows out of the body with no
+        // line across it.
+        ctx.strokeStyle = INK;
+        body();
+        ctx.lineWidth = 5;
+        ctx.stroke();
+        // A stub of a tail, and the bell under the chin.
+        line([88, -92], [93, -82], 7);
+        const bell = [lerp(poll[0], nose[0], 0.25) + 3, lerp(poll[1], nose[1], 0.25) + 12];
+        line(bell, [bell[0] + 2, bell[1] + 13], 9);
+        line(shoulder, poll, 35);
+        line(poll, nose, 25);
+        ctx.fillStyle = INK;
+        ctx.beginPath();
+        ctx.arc(nose[0], nose[1], 14, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = coat;
+        ctx.strokeStyle = coat;
+        body();
+        ctx.fill();
+        line([88, -92], [93, -82], 3);
+        line(bell, [bell[0] + 2, bell[1] + 13], 5);
+        line(shoulder, poll, 30);
+        line(poll, nose, 20);
+        ctx.fillStyle = "#5e4735";
+        ctx.beginPath();
+        ctx.arc(nose[0], nose[1], 11.5, 0, TAU);
+        ctx.fill();
+        // The ear, the eye and a nostril.
+        ctx.save();
+        ctx.translate(poll[0], poll[1]);
+        ctx.rotate(headAngle - Math.PI);
+        ctx.fillStyle = coat;
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(9, -13, 4.5, 10, 0.5, 0, TAU);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = INK;
+        ctx.beginPath();
+        ctx.arc(-13, -4, 1.9, 0, TAU);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(-56, -3, 1.6, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+        antler(0, 0, "#d2c19a");
+        ctx.restore();
       }
 
       // Grass grown up along the foot of something, so it stands in the ground and not on a line.
@@ -1846,17 +2064,29 @@ loopway setup</pre>
           ctx.fillRect(left, 226, right - left, 1.2);
           ctx.fillStyle = INKY;
           ctx.font = `15px "Courier Prime", Courier, ui-monospace, monospace`;
-          const yes = (is) => (is ? "yes" : "not yet");
-          ctx.fillText(
-            `found the snake: ${yes(found.snake)}   found the bird: ${yes(found.bird)}   loops completed: ${found.loops}`,
-            left,
-            256,
-          );
-          ctx.fillText(
-            `found the hummingbird: ${yes(found.hummingbird)}   found the moth: ${yes(found.moth)}`,
-            left,
-            278,
-          );
+          // A box for each thing there is to find, ticked once it has been. A tick is only ever earned
+          // out in the picture: no box can be ticked here. The moose's is the one box that can be
+          // unticked, which puts its cattails back.
+          let x = left;
+          ctx.strokeStyle = INKY;
+          ctx.lineWidth = 1.4;
+          for (const name of ["snake", "bird", "hummingbird", "moth", "moose"]) {
+            ctx.strokeRect(x, 251, 12, 12);
+            if (found[name]) {
+              ctx.beginPath();
+              ctx.moveTo(x + 2.5, 257);
+              ctx.lineTo(x + 5.5, 260.5);
+              ctx.lineTo(x + 11, 251.5);
+              ctx.stroke();
+            }
+            ctx.fillText(name, x + 19, 262);
+            const width = 19 + ctx.measureText(name).width;
+            if (name === "moose" && found.moose && MOOSE.start === null) hit("moose", x - 6, 240, x + width + 6, 272);
+            x += width + 24;
+          }
+          ctx.textAlign = "right";
+          ctx.fillText(`loops completed: ${found.loops}`, right, 262);
+          ctx.textAlign = "left";
         }
         ctx.globalCompositeOperation = "source-over";
       }
@@ -3905,10 +4135,15 @@ loopway setup</pre>
         if (BIRD.start !== null && clock - BIRD.start >= BIRD.seconds) BIRD.start = null;
         if (HUMMER.start !== null && clock - HUMMER.start >= HUMMER.seconds) HUMMER.start = null;
         if (MOTH.start !== null && clock - MOTH.start >= MOTH.seconds) MOTH.start = null;
+        if (MOOSE.start !== null && clock - MOOSE.start >= MOOSE.seconds) MOOSE.start = null;
       }
+      // The bunch is there to be eaten, and the sun is at the horizon: dawn or dusk.
+      const mooseReady = () => !mooseAte && MOOSE.start === null && daylight(dayNow()).twilight > 0.05;
+      const MOOSE_SPOT = { x0: 1304, y0: 836, x1: 1364, y1: 930 };
       // What a click at this point in the picture would set off, if anything.
       function clickable(x, y) {
         settle(clockNow());
+        if (within(x, y, MOOSE_SPOT) && mooseReady()) return "moose";
         // The moth's flower is half over the snake's rock, so it is asked first.
         if (MOTH.start === null && Math.hypot(x - MOTH_FLOWER.x, y - MOTH_FLOWER.fy) < MOTH_FLOWER.r + 4 && mothReady())
           return "moth";
@@ -4473,7 +4708,12 @@ loopway setup</pre>
       // With the loop frozen (?u=) nothing redraws by itself, so a click keeps frames coming for
       // as long as the snake or the bird is out, or the face is changing.
       const changing = () =>
-        SNAKE.start !== null || BIRD.start !== null || HUMMER.start !== null || MOTH.start !== null || faceFade() < 1;
+        SNAKE.start !== null ||
+        BIRD.start !== null ||
+        HUMMER.start !== null ||
+        MOTH.start !== null ||
+        MOOSE.start !== null ||
+        faceFade() < 1;
       let awake = false;
       function wake() {
         if (freeze === null || awake) return;
@@ -4490,7 +4730,7 @@ loopway setup</pre>
       // What has been found is kept in localStorage, so the first time is only ever the first time.
       const KEPT = "loopway.found";
       // Also held in memory, so with storage off the count still goes up and a find is a first only once.
-      let memory = { snake: false, bird: false, hummingbird: false, moth: false, loops: 0 };
+      let memory = { snake: false, bird: false, hummingbird: false, moth: false, moose: false, loops: 0 };
       const kept = () => {
         try {
           return { ...memory, ...JSON.parse(localStorage.getItem(KEPT) || "{}") };
@@ -4498,8 +4738,10 @@ loopway setup</pre>
           return memory;
         }
       };
+      mooseAte = !!kept().moose;
       function keep(change) {
         memory = { ...kept(), ...change };
+        mooseAte = !!memory.moose;
         try {
           localStorage.setItem(KEPT, JSON.stringify(memory));
         } catch {
@@ -4638,7 +4880,10 @@ loopway setup</pre>
           track("github_clicked", { href: `https://github.com/${REPO}` });
           window.open(`https://github.com/${REPO}`, "_blank", "noopener");
         } else if (hit.kind === "bots") location.href = "/bots";
-        else if (await copy(INSTALL)) {
+        else if (hit.kind === "moose") {
+          // Unticking the moose puts the cattails back, and the moose can come again.
+          if (MOOSE.start === null) keep({ moose: false });
+        } else if (await copy(INSTALL)) {
           // Only a copy that happened counts, and only then does the button say so.
           track("install_copied", { frame: shown + 1 });
           copied = true;
@@ -4663,6 +4908,7 @@ loopway setup</pre>
         if (what === "bird") BIRD.start = clockNow();
         if (what === "hummingbird") HUMMER.start = clockNow();
         if (what === "moth") MOTH.start = clockNow();
+        if (what === "moose") MOOSE.start = clockNow();
         if (what) {
           found(what);
           wake();

@@ -81,10 +81,23 @@ describe("the marketing page", () => {
     expect(html).toContain("if (kept()[what]) return;");
     // The tracker is painted on the last frame only.
     const last = html.slice(html.indexOf("Small print under the main content"));
-    expect(last).toContain("found the snake:");
-    expect(last).toContain("found the hummingbird:");
-    expect(last).toContain("found the moth:");
-    expect(html.match(/found the snake:/g)).toHaveLength(1);
+    expect(last).toContain('for (const name of ["snake", "bird", "hummingbird", "moth", "moose"]) {');
+    expect(last).toContain("loops completed:");
+    expect(html.match(/loops completed:/g)).toHaveLength(1);
+  });
+
+  it("sends a moose to eat the cattails at dawn or dusk, and only its box unticks", () => {
+    expect(html).toContain(
+      "const mooseReady = () => !mooseAte && MOOSE.start === null && daylight(dayNow()).twilight > 0.05;",
+    );
+    expect(html).toContain('if (what === "moose") MOOSE.start = clockNow();');
+    // The bunch stays eaten: what is kept decides it, on this visit and the next.
+    expect(html).toContain("mooseAte = !!kept().moose;");
+    // Only a ticked moose box is a button, and all it does is untick.
+    expect(html.match(/hit\("moose"/g)).toHaveLength(1);
+    expect(html).toContain('if (name === "moose" && found.moose && MOOSE.start === null) hit("moose"');
+    expect(html).toContain("if (MOOSE.start === null) keep({ moose: false });");
+    expect(html).not.toMatch(/keep\(\{ (snake|bird|hummingbird|moth): false \}\)/);
   });
 
   it("sends a hummingbird to the freshly opened morning glory, and only then", () => {
