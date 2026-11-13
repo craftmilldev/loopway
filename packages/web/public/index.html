@@ -452,7 +452,10 @@ loopway setup</pre>
       ];
       const leafRng = rng(303);
       // A birch crown: branches fan out from the trunk, thin twigs hang from them, and the leaves
-      // are small and separate, so the sky shows through.
+      // are small and separate, so the sky shows through. A paper birch leaf is egg-shaped: round at
+      // the stalk, widest a third of the way along, and drawn out to a point. It hangs from its stalk,
+      // so most of them point down, each at its own slant.
+      const hang = () => Math.PI / 2 + (leafRng() - 0.5) * 2.6;
       for (const tree of TREES) {
         if (!tree.crownAt) continue;
         const [cx, cy, rx, ry] = tree.crownAt;
@@ -462,7 +465,7 @@ loopway setup</pre>
         tree.haze = [];
         tree.leaves = [];
         const leaf = (x, y, rot) =>
-          tree.leaves.push({ x, y, rot, tone: Math.floor(leafRng() * 3), size: 5 + leafRng() * 2.5 });
+          tree.leaves.push({ x, y, rot, tone: Math.floor(leafRng() * 3), size: 4.5 + leafRng() * 4 });
         for (let i = 0; i < 11; i++) {
           const a = lerp(-Math.PI - 0.35, 0.35, (i + 0.5) / 11) + (leafRng() - 0.5) * 0.2;
           const end = [cx + Math.cos(a) * rx * 0.9, cy + Math.sin(a) * ry * 0.9];
@@ -516,7 +519,7 @@ loopway setup</pre>
               }
             }
             // Leaves above the branch as well, so the top of the crown is full.
-            for (let k = 0; k < 10; k++) leaf(x + (leafRng() - 0.5) * 40, y - 2 - leafRng() * 24, leafRng() * TAU);
+            for (let k = 0; k < 10; k++) leaf(x + (leafRng() - 0.5) * 40, y - 2 - leafRng() * 24, hang());
           }
         }
       }
@@ -531,7 +534,7 @@ loopway setup</pre>
           const near = k % 3 === 0;
           const x = tree.x + Math.cos(a) * d * rx * (near ? 0.16 : 0.62);
           const y = cy - ry * 0.12 + Math.sin(a) * d * ry * (near ? 0.86 : 0.8);
-          tree.leaves.push({ x, y, rot: leafRng() * TAU, tone: Math.floor(leafRng() * 3), size: 5 + leafRng() * 2.5 });
+          tree.leaves.push({ x, y, rot: hang(), tone: Math.floor(leafRng() * 3), size: 4.5 + leafRng() * 4 });
         }
       }
       // An uneven closed outline round a middle, for moss, shade and anything else with a ragged edge.
@@ -1693,19 +1696,42 @@ loopway setup</pre>
             ctx.arc(h.x, h.y, h.r, 0, TAU);
             ctx.fill();
           }
-          ctx.strokeStyle = "rgba(22, 19, 14, 0.45)";
+          ctx.strokeStyle = "rgba(22, 19, 14, 0.38)";
           ctx.lineWidth = 0.8;
           ["#9fb262", "#bccb7e", "#86a04f"].forEach((color, tone) => {
             ctx.fillStyle = color;
             ctx.beginPath();
             for (const l of t.leaves) {
               if (l.tone !== tone) continue;
-              ctx.moveTo(l.x + Math.cos(l.rot) * l.size, l.y + Math.sin(l.rot) * l.size);
-              ctx.ellipse(l.x, l.y, l.size, l.size * 0.55, l.rot, 0, TAU);
+              // Along the leaf and across it, from the stalk end to the tip.
+              const ax = Math.cos(l.rot) * l.size;
+              const ay = Math.sin(l.rot) * l.size;
+              const at = (u, v) => [l.x + ax * u - ay * v, l.y + ay * u + ax * v];
+              const stalk = at(-1, 0);
+              const tip = at(1.2, 0);
+              ctx.moveTo(stalk[0], stalk[1]);
+              for (const side of [-1, 1]) {
+                const round = at(-1.02, side);
+                const taper = at(0.1, side * 0.74);
+                if (side < 0) ctx.bezierCurveTo(round[0], round[1], taper[0], taper[1], tip[0], tip[1]);
+                else ctx.bezierCurveTo(taper[0], taper[1], round[0], round[1], stalk[0], stalk[1]);
+              }
             }
             ctx.fill();
             ctx.stroke();
           });
+          // The midrib on the bigger leaves, from the stalk most of the way to the tip.
+          ctx.strokeStyle = "rgba(22, 19, 14, 0.16)";
+          ctx.lineWidth = 0.6;
+          ctx.beginPath();
+          for (const l of t.leaves) {
+            if (l.size < 6.5) continue;
+            const ax = Math.cos(l.rot) * l.size;
+            const ay = Math.sin(l.rot) * l.size;
+            ctx.moveTo(l.x - ax, l.y - ay);
+            ctx.lineTo(l.x + ax * 0.8, l.y + ay * 0.8);
+          }
+          ctx.stroke();
         });
       }
 
