@@ -4299,7 +4299,8 @@ loopway setup</pre>
       // flying at its usual speed from the tree to there.
       //   within half a second of perfect: it takes the trout out of the air (it hurries or dawdles a
       //     little on the way, so that it is there at the top of the jump);
-      //   up to a second earlier or later than that: it flies out, stoops, and misses;
+      //   up to a second later than that: it flies out, stoops at the water, and misses;
+      //   up to a second earlier than that: there is no trout yet, so it only flies over, high;
       //   any other time: it stays where it is.
       const NEST = [58, 452];
       const EAGLE = {
@@ -4308,6 +4309,7 @@ loopway setup</pre>
         speed: 430,
         flight: null,
         strike: 0,
+        stoops: true,
         hit: false,
         told: true,
         taken: null,
@@ -4325,7 +4327,7 @@ loopway setup</pre>
           const late = usual - untilTop;
           if (Math.abs(late) > 1.5) continue;
           const hit = Math.abs(late) <= 0.5;
-          return { jump, top, hit, out: hit ? untilTop : usual };
+          return { jump, top, hit, early: late < -0.5, out: hit ? untilTop : usual };
         }
         return null;
       }
@@ -4335,8 +4337,10 @@ loopway setup</pre>
         const { top, out } = chance;
         const now = clockNow();
         // Hit or miss, it does not come back: it flies on, left to right, up and out of the picture.
-        const over = [top[0], top[1] - 9];
-        const away = [W + 150, over[1] - 230];
+        // Too early and there is nothing there yet to stoop at: it only passes high over the place.
+        const over = chance.early ? [top[0], top[1] - 150] : [top[0], top[1] - 9];
+        EAGLE.stoops = !chance.early;
+        const away = [W + 150, top[1] - 240];
         const on = Math.max(1.2, Math.hypot(away[0] - over[0], away[1] - over[1]) / EAGLE.speed);
         EAGLE.start = now;
         EAGLE.strike = out;
@@ -4347,9 +4351,9 @@ loopway setup</pre>
         EAGLE.taken = chance.hit ? { jump: chance.jump, at: now + out } : null;
         EAGLE.flight = [
           [0, ...NEST],
-          [out * 0.45, lerp(NEST[0], over[0], 0.42), lerp(NEST[1], over[1], 0.3) - 24],
+          [out * 0.45, lerp(NEST[0], over[0], 0.42), lerp(NEST[1], over[1], chance.early ? 0.45 : 0.3) - 24],
           [out, ...over],
-          [out + on * 0.45, lerp(over[0], away[0], 0.45), over[1] - 70],
+          [out + on * 0.45, lerp(over[0], away[0], 0.45), chance.early ? lerp(over[1], away[1], 0.45) : over[1] - 70],
           [out + on, ...away],
         ];
       }
@@ -4825,7 +4829,7 @@ loopway setup</pre>
         const [nx, ny] = flightAt(EAGLE.flight, time + 0.03);
         // It comes out of the leaves small. It leaves by flying out of the picture.
         const size = smooth(0, 0.3, time);
-        const stoop = 1 - clamp(Math.abs(time - EAGLE.strike) / 0.4);
+        const stoop = EAGLE.stoops ? 1 - clamp(Math.abs(time - EAGLE.strike) / 0.4) : 0;
         const carrying = EAGLE.hit && time >= EAGLE.strike;
         const beat = Math.sin(clock * TAU * 2.7);
         ctx.save();
