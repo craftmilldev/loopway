@@ -152,6 +152,22 @@ describe("the marketing page", () => {
     expect(html).toContain('found("deadfish");');
   });
 
+  it("forgets everything on three quick clicks on the loop count", () => {
+    expect(html).toContain('hit("reset", right - ctx.measureText(loops).width - 6, 266, right + 6, 296);');
+    expect(html).toContain("resetClicks = [...resetClicks.filter((at) => now - at < 1), now];");
+    expect(html).toContain("if (resetClicks.length < 3) return;");
+    expect(html).toContain(
+      'keep(Object.fromEntries(Object.keys(memory).map((key) => [key, key === "loops" ? 0 : false])));',
+    );
+    expect(html).toContain('track("tracker_reset");');
+  });
+
+  it("puts the log on the fire: let go, dropped in, and left there to burn", () => {
+    expect(html).toContain("carry: u < LOG.let ? 1 : 0");
+    expect(html).toContain("const flying = u >= LOG.let && u < LOG.lands;");
+    expect(html).not.toContain("carry: 1 - smooth(0.25, 0.5, s)");
+  });
+
   it("steps one frame per flick, and ignores only Space on a button or link", () => {
     expect(html).toContain("now - lastWheel > 120");
     expect(html).toContain("Math.abs(wheelSum) >= 10");

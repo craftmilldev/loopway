@@ -2343,8 +2343,12 @@ loopway setup</pre>
             hit("deadfish", fishAt - 6, row - 22, x - 2, row + 10);
           }
           ctx.textAlign = "right";
-          ctx.fillText(`loops completed: ${found.loops}`, right, 286);
+          const loops = `loops completed: ${found.loops}`;
+          ctx.fillText(loops, right, 286);
           ctx.textAlign = "left";
+          // Three quick clicks on the count wipe everything that has been kept. It does not look like
+          // a button, and is not one for a single click.
+          hit("reset", right - ctx.measureText(loops).width - 6, 266, right + 6, 296);
         }
         ctx.globalCompositeOperation = "source-over";
       }
@@ -3215,9 +3219,17 @@ loopway setup</pre>
           ctx.restore();
         });
       }
+      // The log that is put on the fire at night. It leaves the hands as they lean in, drops in a short
+      // arc onto the fire, and lands across the two logs already there with a jolt, a burst of sparks
+      // and a flare. It lies there burning, blacker and thinner, until it is gone by mid-morning.
+      const LOG = { let: 0.9618, lands: 0.9652, from: [19, -26], to: [1, -7] };
       function drawFire(ctx, u, night) {
         const theta = TAU * u;
-        const size = (0.8 + 0.25 * night) * (1 + 0.22 * fireFed(u));
+        // How long since the log landed, as a share of the loop; and how much of it is left.
+        const since = u >= LOG.lands ? u - LOG.lands : u + 1 - LOG.lands;
+        const left = u >= LOG.lands ? 1 : 1 - smooth(0, 0.22, u);
+        const flare = u >= LOG.lands ? Math.exp(-since / 0.004) : 0;
+        const size = (0.8 + 0.25 * night) * (1 + 0.22 * fireFed(u) + 0.3 * flare);
         ctx.save();
         ctx.translate(FIRE.x, FIRE.y);
         ctx.scale(CAMP_SCALE * 1.18, CAMP_SCALE * 1.18);
@@ -3233,6 +3245,32 @@ loopway setup</pre>
         ctx.strokeStyle = "#7b5a3c";
         ctx.lineWidth = 3;
         ctx.stroke();
+        // The new log: in the air, or lying on the fire. It is drawn under the flames, so as it comes
+        // down the flames close over it.
+        const flying = u >= LOG.let && u < LOG.lands;
+        if (flying || left > 0.03) {
+          const t = flying ? seg(u, LOG.let, LOG.lands) : 1;
+          // It falls faster as it goes, and bounces once where it lands.
+          const fall = t * t;
+          const jolt = flying ? 0 : Math.exp(-since / 0.0012) * Math.sin(since / 0.0005) * 2.2;
+          const x = lerp(LOG.from[0], LOG.to[0], t);
+          const y = lerp(LOG.from[1], LOG.to[1], fall) - 7 * Math.sin(Math.PI * t) * (1 - t) - Math.abs(jolt);
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.rotate(lerp(-0.12, 0.14, t) + jolt * 0.03);
+          for (const [color, width] of [
+            [INK, 8.5],
+            [mix("#3a2a20", "#7b5a3c", left * (1 - 0.5 * smooth(0, 0.04, flying ? 0 : since))), 5.5],
+          ]) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width * (0.45 + 0.55 * left);
+            ctx.beginPath();
+            ctx.moveTo(-13 * (0.5 + 0.5 * left), 1.5);
+            ctx.lineTo(13 * (0.5 + 0.5 * left), -1.5);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
         ctx.scale(size, size);
         // Embers under the flames.
         ctx.fillStyle = "#f08a24";
@@ -3263,6 +3301,19 @@ loopway setup</pre>
           ctx.quadraticCurveTo(lx - size * 0.2, -46 - t * 22 - size, lx + size * 0.5, -40 - t * 22 - size * 2.1);
           ctx.quadraticCurveTo(lx + size * 0.75, -42 - t * 22 - size * 0.4, lx - size * 0.55, -40 - t * 22);
           ctx.fill();
+        }
+        // The sparks the log knocks out of the fire as it lands: up and out, and falling back.
+        if (u >= LOG.lands && since < 0.011) {
+          const age = since / 0.011;
+          ctx.fillStyle = "#f9d15a";
+          for (let i = 0; i < 11; i++) {
+            const out = Math.sin(i * 2.3) * (9 + age * (18 + (i % 4) * 7));
+            const up = -8 - age * (46 + (i % 3) * 18) + 44 * age * age;
+            ctx.globalAlpha = 1 - age * age;
+            ctx.beginPath();
+            ctx.arc(out, up, 2 * (1 - age * 0.6), 0, TAU);
+            ctx.fill();
+          }
         }
         ctx.globalAlpha = 1;
         ctx.fillStyle = "#f9b54a";
@@ -3562,14 +3613,14 @@ loopway setup</pre>
           return here({ ...step, carry: 1 });
         }
         if (u < 0.968) {
-          // They lean in and the log goes into the fire and is gone.
+          // They lean in and let the log go: from then on it is the fire's to draw (see LOG).
           const s = seg(u, 0.958, 0.968);
           const lean = Math.sin(Math.PI * s);
           const beside = [FIRESIDE[0] + SIDE_FEET * depth(FIRESIDE[1]), FIRESIDE[1]];
           const pose = mirror(sitSide(0.22 * lean));
           pose.hl = [pose.hip[0] - 9 - 12 * lean, lerp(pose.sh[1] + 16, pose.sh[1] + 30, lean)];
           pose.hr = [pose.hip[0] - 12 - 12 * lean, lerp(pose.sh[1] + 18, pose.sh[1] + 32, lean)];
-          return here(at(beside, pose, { carry: 1 - smooth(0.25, 0.5, s) }));
+          return here(at(beside, pose, { carry: u < LOG.let ? 1 : 0 }));
         }
         if (u < 0.978) return here(walking(WALK_TO_BLUE, seg(u, 0.968, 0.978), 0.5));
         if (u < 0.996) return here(at(SEAT3, mirror(sitSide(ease(u, 0.978, 0.996)))));
@@ -5459,9 +5510,23 @@ loopway setup</pre>
       }
       // The snake and the bird answer to the press itself. Copy and the links answer to the click, which
       // is what a phone counts as a tap (and lets a popup open), and which a swipe never makes.
+      // Three clicks on the loop count inside a second forget everything: every tick, the dead fish,
+      // the eaten cattails and the count itself.
+      let resetClicks = [];
+      function forgetAll() {
+        keep(Object.fromEntries(Object.keys(memory).map((key) => [key, key === "loops" ? 0 : false])));
+        for (const key of Object.keys(SEEN)) delete SEEN[key];
+        track("tracker_reset");
+      }
       canvas.addEventListener("click", (event) => {
         const hit = hitAt(...toScene(event));
-        if (hit) press(hit);
+        if (!hit) return;
+        if (hit.kind !== "reset") return press(hit);
+        const now = clockNow();
+        resetClicks = [...resetClicks.filter((at) => now - at < 1), now];
+        if (resetClicks.length < 3) return;
+        resetClicks = [];
+        forgetAll();
       });
       canvas.addEventListener("pointerdown", (event) => {
         const at = toScene(event);
@@ -5480,7 +5545,9 @@ loopway setup</pre>
       });
       canvas.addEventListener("pointermove", (event) => {
         const at = toScene(event);
-        canvas.style.cursor = hitAt(...at) || clickable(...at) ? "pointer" : "default";
+        const hit = hitAt(...at);
+        // The loop count gives no sign that it can be clicked.
+        canvas.style.cursor = (hit && hit.kind !== "reset") || clickable(...at) ? "pointer" : "default";
       });
       addEventListener("resize", resize);
       const start = () => {
