@@ -225,24 +225,24 @@ loopway setup</pre>
       // The picture is painted bigger than W by H: there is more sky above it, more river and near
       // bank below it, and more of the woods and the river to each side, so a window of another
       // shape has something to show there.
-      const FULL = { x0: -400, y0: -600, x1: W + 400, y1: H + 250 };
+      const FULL = { x0: -400, y0: -1000, x1: W + 400, y1: H + 250 };
       // A place to one side of the old picture or the other, for what is scattered there.
       const beside = (roll) => (roll() < 0.5 ? FULL.x0 + roll() * -FULL.x0 : W + roll() * (FULL.x1 - W));
-      // What a window always shows, whatever its shape. The rest of the picture is margin: a wide
-      // window loses some sky, and a tall one gets more sky and more river. It goes down to the old
-      // bottom of the picture, so the blackbird, which comes in low over the water, and the trout
-      // nearest to us are always well inside it.
-      const KEEP = { x0: 40, y0: 92, x1: W, y1: H };
-      // A window taller than it is wide is too narrow for all that, so it keeps the sign and the
-      // ground under it, and the page asks for the phone to be turned to see the rest.
-      const KEEP_TALL = { x0: 150, y0: 92, x1: 1095, y1: 912 };
+      // What a window always shows, whatever its shape: the desk and its computer at one end, the
+      // camp and the people at the fire at the other, and the sign between them, all together. The
+      // rest of the picture is margin: a wide window gets more of the sides and loses some sky, and
+      // a tall one gets more sky and more river. It goes down to the old bottom of the picture, so
+      // the blackbird, which comes in low over the water, and the trout nearest to us are always
+      // well inside it.
+      const KEEP = { x0: 40, y0: 92, x1: W + 60, y1: H };
       // Where the picture sits in a window w by h: its scale, where its origin lands, and whether
-      // it is the tall one. The kept part is as big as the window lets it be and in the middle; the
-      // window then slides so that it shows picture and not what is beyond the picture's edge.
-      // Only a window too long for the whole painted picture gets bars.
+      // the window is taller than it is wide. The kept part is as big as the window lets it be and
+      // in the middle; the window then slides so that it shows picture and not what is beyond the
+      // picture's edge. Only a window too long for the whole painted picture gets bars. In a tall
+      // window the kept part is small, so the page asks for the phone to be turned.
       function fit(w, h) {
         const tall = h > w;
-        const keep = tall ? KEEP_TALL : KEEP;
+        const keep = KEEP;
         const s = Math.min(w / (keep.x1 - keep.x0), h / (keep.y1 - keep.y0));
         const place = (size, k0, k1, f0, f1) => {
           const span = size / s;
@@ -1704,8 +1704,8 @@ loopway setup</pre>
       PERCH.tails[0].perch = true;
       // A bull moose. Click the bunch of cattails below the tent in the morning or the evening and it walks in along
       // the near bank from the right, puts its head down and eats the bunch, heads first and then the
-      // leaves, lifts its head, and walks on: along the bank and down toward us, out under the bottom
-      // of the picture. It never turns round. The bunch stays eaten, on this visit and the next, until
+      // leaves, lifts its head, and walks on down the river: along the water's edge on the near bank,
+      // side on to us all the way, until the window has lost sight of it. It never turns round. The bunch stays eaten, on this visit and the next, until
       // the moose's box on the last frame is unticked.
       const MOOSE = (() => {
         const clumps = MARSH.clumps.filter((c) => c.tails.length && Math.abs(c.x - 1334) < 30);
@@ -1722,19 +1722,15 @@ loopway setup</pre>
           tails,
           // Where it stands to eat, where it comes in from, off the picture, and the way it goes on out.
           stand: [1456, 950],
-          // The way out is one smooth bend: level at first, then down the bank toward us, and on until
-          // all of it is under the bottom of the painted picture, which is lower than the old one.
-          out: Array.from({ length: 41 }, (_, i) => {
-            const t = i / 40;
-            const q = 1 - t;
-            return [
-              q * q * 1456 + 2 * q * t * 1236 + t * t * 950,
-              q * q * 950 + 2 * q * t * 952 + t * t * (FULL.y1 + 220),
-            ];
-          }),
-          // One full stride covers this much ground, and each foot is down for this share of it.
-          stride: 66,
-          planted: 0.65,
+          // The way out, laid by mooseRoute() for the window there is.
+          out: [
+            [1456, 950],
+            [1400, 950],
+          ],
+          // One full stride covers this much ground, and each foot is down for this share of it. It is
+          // a slow, heavy walk: three feet are on the ground nearly all the time.
+          stride: 78,
+          planted: 0.78,
           arrive: 4.2,
           down: [4.2, 4.9],
           firstBite,
@@ -1744,6 +1740,25 @@ loopway setup</pre>
           seconds: graze + 2.5 + 9.6,
         };
       })();
+      // The way out follows the water's edge downstream, as far below it as the moose stood to eat.
+      // The near bank comes toward us as it goes left, so the moose gets nearer and bigger and goes
+      // out under the bottom of the window, or off its left side in a window that sees a long way
+      // down. The way ends where the window has lost sight of it, and it walks it at one pace, so a
+      // longer way takes longer.
+      function mooseRoute() {
+        const [x0, y0] = MOOSE.stand;
+        const below = y0 - nearBank(x0);
+        const bottom = clamp((canvas.height - view.y) / view.s, H, FULL.y1);
+        // Out of sight under the bottom of the window, or beyond its left side, whichever is sooner.
+        const under = 880 - (bottom + 190 - below - H) / 0.17 - 40;
+        const end = Math.max(under, sides.left - 220);
+        MOOSE.out = [];
+        for (let x = x0; x > end - 40; x -= 40) {
+          // It sets off level, the way it was standing, and comes round to the line of the bank.
+          MOOSE.out.push([x, y0 + (nearBank(x) + below - y0) * smooth(0, 1, (x0 - x) / 240)]);
+        }
+        MOOSE.seconds = MOOSE.leave + along(MOOSE.out, 1).total / 78;
+      }
       // Where the moose comes in from: off the picture, beyond what the window sees to the right, on
       // the same line it always walked. And how much longer the walk in takes for being longer.
       const mooseEdge = () => [sides.right + 190, 938 - (sides.right - W) * 0.036];
@@ -1788,13 +1803,17 @@ loopway setup</pre>
         return { x, y, size, heading, narrow: 1 - 0.34 * clamp(heading[1]), inLength, outLength };
       }
       // The four legs: where the hip is along the body, when in the stride the foot comes down, and
-      // which side it is on. Opposite corners step together, the hind foot a moment after the front one.
+      // which side it is on. It is a walk, one foot at a time and a quarter of a stride apart: near
+      // hind, near front, far hind, far front. So each hind foot comes down just as the front foot
+      // on its own side is about to leave the ground ahead of it.
       const MOOSE_LEGS = [
-        { hip: -36, beat: 0.5, far: true, hind: false },
-        { hip: 74, beat: 0.06, far: true, hind: true },
-        { hip: -52, beat: 0, far: false, hind: false },
-        { hip: 60, beat: 0.56, far: false, hind: true },
+        { hip: -36, beat: 0.75, far: true, hind: false },
+        { hip: 74, beat: 0, far: true, hind: true },
+        { hip: -52, beat: 0.25, far: false, hind: false },
+        { hip: 60, beat: 0.5, far: false, hind: true },
       ];
+      // Where in the stride it stands still to eat: all four feet are down there.
+      const MOOSE_HALT = 0.01;
       // Where the moose is and what it is doing, or nothing if it is not out.
       function mooseAt(clock) {
         if (MOOSE.start === null) return null;
@@ -1814,13 +1833,13 @@ loopway setup</pre>
         const body = mooseBody(ground);
         // Every step is a foot put down on one spot of ground, left there while the body goes over it,
         // and then picked up and swung to the next spot. Nothing on the ground ever slides.
-        const cycle = (ground - inLength) / MOOSE.stride + 0.04;
+        const cycle = (ground - inLength) / MOOSE.stride + MOOSE_HALT;
         const legs = MOOSE_LEGS.map((leg) => {
           const at = cycle + leg.beat;
           const step = Math.floor(at);
           const part = at - step;
           const spot = (n) => {
-            const then = mooseBody(inLength + (n - leg.beat - 0.04) * MOOSE.stride);
+            const then = mooseBody(inLength + (n - leg.beat - MOOSE_HALT) * MOOSE.stride);
             const reach = (MOOSE.planted * MOOSE.stride) / 2;
             return [
               then.x + leg.hip * then.size * then.narrow + then.heading[0] * reach,
@@ -1831,18 +1850,23 @@ loopway setup</pre>
           const from = spot(step);
           let foot = from;
           let lift = 0;
+          // How far through its swing the foot is, or null while it is on the ground.
+          let swing = null;
           if (part >= MOOSE.planted) {
-            const swing = (part - MOOSE.planted) / (1 - MOOSE.planted);
+            swing = (part - MOOSE.planted) / (1 - MOOSE.planted);
             const to = spot(step + 1);
-            const eased = smooth(0, 1, swing);
+            // The foot is picked up before it goes anywhere, and is nearly there before it is put down.
+            const eased = smooth(0.06, 0.94, swing);
             foot = [lerp(from[0], to[0], eased), lerp(from[1], to[1], eased)];
-            lift = Math.sin(Math.PI * swing) * 7;
+            // A moose steps high: the front foot most, and soonest.
+            lift = (leg.hind ? 11 : 14) * Math.sin(Math.PI * swing ** (leg.hind ? 0.9 : 0.75));
           }
           return {
             ...leg,
             x: (foot[0] - body.x) / (body.size * body.narrow),
             y: (foot[1] - body.y) / body.size,
             lift,
+            swing,
           };
         });
         const walking = coming ? clamp((MOOSE.arrive - time) / 0.6) : going ? clamp((time - MOOSE.leave) / 0.6) : 0;
@@ -1857,8 +1881,8 @@ loopway setup</pre>
           size: body.size,
           narrow: body.narrow,
           legs,
-          // The body rises and falls twice a stride, and the head nods against it.
-          bob: -0.6 * Math.abs(Math.sin(cycle * TAU)) * walking,
+          // The body rises and falls as each pair of legs passes under it, and the head nods against it.
+          bob: -1.3 * (0.5 + 0.5 * Math.cos(cycle * TAU * 2 + 0.9)) * walking,
           head: head + 0.025 * Math.sin(cycle * TAU * 2 + 0.6) * walking,
           chew: time >= MOOSE.down[1] && time < MOOSE.leave + 2 ? Math.sin(time * 13) : 0,
         };
@@ -1966,38 +1990,89 @@ loopway setup</pre>
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
         const coat = "#4f3a29";
-        // A leg: hip, knee (the hock, on a hind leg, which bends back), ankle and hoof. The hoof is
-        // where the walk put it; the knee folds as the foot is lifted.
-        const leg = ({ hip: hipX, hind, x, y, lift }) => {
-          const hoof = [x, y - m.bob - lift];
-          const top = -76;
-          const knee = [
-            lerp(hipX, hoof[0], 0.5) + (hind ? 8 + lift * 0.5 : -2 - lift * 0.7),
-            lerp(top, hoof[1], 0.51) - lift * 0.25,
+        // The legs are rigged: bones of fixed length, joined where a moose's are and bending only
+        // the way a moose's do. Nothing stretches. Each leg hangs from a joint high inside the body,
+        // the shoulder or the hip, which the coat hides, so the leg swings from up there and not from
+        // the belly line.
+        //   A front leg is the forearm, down to the knee, and the cannon bone, down to the fetlock.
+        //   The knee bends forward only. With the foot on the ground it is locked straight, and the
+        //   shoulder rides up over it as the body passes: that is what carries the weight. When the
+        //   foot is picked up the knee folds, the forearm comes forward and the cannon tucks back
+        //   under it.
+        //   A hind leg is the thigh, down to the hock, and the cannon bone. The hock bends backward
+        //   only and is never straight: most bent as the foot lands, opening out as the leg pushes
+        //   off behind, and folding right up to bring the foot forward.
+        //   The hoof hangs from the fetlock. On the ground it is flat; in the air the toe drops and
+        //   trails behind, and comes up level again to land.
+        // The foot is where the walk put it. Everything above it is worked out from there.
+        const RIG = {
+          front: { upper: 73, lower: 25, pivot: -104, bend: -1 },
+          hind: { upper: 55, lower: 31, pivot: -94, bend: 1 },
+        };
+        const leg = ({ hip: hipX, hind, x, y, lift, swing }) => {
+          const rig = hind ? RIG.hind : RIG.front;
+          const floor = y - m.bob;
+          // The fetlock, above and a little behind the toe.
+          const fetlock = [x + 3, floor - 11 - lift];
+          const px = hipX + (hind ? 4 : 2);
+          const dx = fetlock[0] - px;
+          // How far it is from the joint to the fetlock with the foot down. A front leg is straight;
+          // a hind leg is straighter the further behind the foot is.
+          const whole = rig.upper + rig.lower;
+          const reach = hind ? whole - 4.5 + 2.5 * clamp(dx / 30, -1, 1) : whole - 0.05;
+          // The joint rides up and down inside the body to keep that so, a little way.
+          const py = clamp(floor - 11 - Math.sqrt(Math.max(1, reach * reach - dx * dx)), rig.pivot - 7, rig.pivot + 9);
+          // Two bones from the joint to the fetlock: where they meet is the knee, or the hock.
+          const span = Math.hypot(dx, fetlock[1] - py);
+          const d = Math.min(span, whole - 0.01);
+          const e = [dx / span, (fetlock[1] - py) / span];
+          const a = (d * d + rig.upper ** 2 - rig.lower ** 2) / (2 * d);
+          const h = Math.sqrt(Math.max(0, rig.upper ** 2 - a * a));
+          // The bend is to the one side only: forward for a knee, back for a hock. (The moose is
+          // drawn facing left, so forward is to the left.)
+          const knee = [px + e[0] * a + e[1] * h * rig.bend, py + e[1] * a - e[0] * h * rig.bend];
+          const ankle = fetlock;
+          // The hoof, turned about the fetlock.
+          const hang = swing === null ? 0 : Math.sin(Math.PI * swing ** 0.6) * (hind ? 0.8 : 1.1);
+          const turned = (vx, vy) => [
+            ankle[0] + vx * Math.cos(hang) + vy * Math.sin(hang),
+            ankle[1] - vx * Math.sin(hang) + vy * Math.cos(hang),
           ];
+          const top = [px + (knee[0] - px) * 0.34, py + (knee[1] - py) * 0.34];
+          const along = (from, to, k) => [lerp(from[0], to[0], k), lerp(from[1], to[1], k)];
           return {
             upper: [
-              [hipX + (hind ? 5 : 0), top, hind ? 14 : 10.5],
-              [lerp(hipX, knee[0], 0.6) + (hind ? 5 : 0), lerp(top, knee[1], 0.56), hind ? 8.5 : 7],
-              [knee[0], knee[1], 5.2],
+              [top[0] + (hind ? 4 : 0), top[1], hind ? 14 : 10.5],
+              [...along(top, knee, 0.55), hind ? 8.5 : 7],
+              [knee[0], knee[1], hind ? 5.6 : 5.2],
             ],
             lower: [
-              [knee[0], knee[1], 5.2],
-              [lerp(knee[0], hoof[0], 0.45), lerp(knee[1], hoof[1], 0.45), 3.3],
-              [lerp(knee[0], hoof[0], 0.84), lerp(knee[1], hoof[1], 0.84), 3.5],
-              [hoof[0] - 0.5, hoof[1] - 5, 4.6],
+              [knee[0], knee[1], hind ? 5.6 : 5.2],
+              [...along(knee, ankle, 0.45), 3.4],
+              [...along(knee, ankle, 0.85), 3.5],
+              [ankle[0], ankle[1], 4.2],
             ],
             hoof: [
-              [hoof[0] - 0.5, hoof[1] - 5, 4.6],
-              [hoof[0] - 1.5, hoof[1], 5.6],
+              [ankle[0], ankle[1], 4.2],
+              [...turned(-3.2, 6), 4.6],
+              [...turned(-4.2, 11), 5.6],
             ],
           };
         };
-        // A run of points down the middle of a limb, each with half the limb's width there.
+        // A run of points down the middle of a limb, each with half the limb's width there. The
+        // width is across the limb, whichever way the limb is pointing.
         const limb = (pts) => {
+          const edge = pts.map(([x, y, w], i) => {
+            const before = pts[Math.max(0, i - 1)];
+            const after = pts[Math.min(pts.length - 1, i + 1)];
+            const len = Math.hypot(after[0] - before[0], after[1] - before[1]) || 1;
+            const nx = ((after[1] - before[1]) / len) * w;
+            const ny = (-(after[0] - before[0]) / len) * w;
+            return [x - nx, y - ny, x + nx, y + ny];
+          });
           ctx.beginPath();
-          pts.forEach(([x, y, w], i) => (i ? ctx.lineTo(x - w, y) : ctx.moveTo(x - w, y)));
-          for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i][0] + pts[i][2], pts[i][1]);
+          edge.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+          for (let i = edge.length - 1; i >= 0; i--) ctx.lineTo(edge[i][2], edge[i][3]);
           ctx.closePath();
         };
         const inkLeg = (l) => {
@@ -5482,8 +5557,8 @@ loopway setup</pre>
         drawEagle(ctx, clock);
       }
 
-      // In a tall window only the sign is in view. A line at the foot of the window says so: a small
-      // phone that tips over onto its side now and then, and the words. It is drawn in the window's
+      // In a tall window the whole scene is in view but small. A line at the foot of the window asks
+      // for the phone to be turned: a small phone that tips over onto its side now and then, and the words. It is drawn in the window's
       // own pixels, not the picture's, so it is the same size on every phone.
       function drawTurnHint(ctx) {
         const px = canvas.width / innerWidth;
@@ -5493,7 +5568,7 @@ loopway setup</pre>
         ctx.save();
         ctx.setTransform(px, 0, 0, px, canvas.width / 2, canvas.height - 30 * px);
         ctx.font = `13px ${MONO}`;
-        const words = "TURN FOR THE WHOLE SCENE";
+        const words = "TURN FOR A CLOSER LOOK";
         const wide = ctx.measureText(words).width;
         const half = (wide + 58) / 2;
         ctx.fillStyle = "rgba(22, 19, 14, 0.78)";
@@ -5579,6 +5654,7 @@ loopway setup</pre>
           right: clamp((canvas.width - view.x) / view.s, W, FULL.x1),
         };
         WALK_IN[0][0] = sides.left - 90;
+        mooseRoute();
         for (const c of [landCanvas, darkCanvas]) {
           c.width = canvas.width;
           c.height = canvas.height;

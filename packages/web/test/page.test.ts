@@ -193,15 +193,15 @@ describe("the marketing page", () => {
     expect(bots).toContain(".loopway/review.md");
   });
 
-  it("fits the picture to the window: the kept part is always in view, and a tall window keeps the sign", () => {
+  it("fits the picture to the window: the desk, the sign and the camp are always in view together", () => {
     const source = html.match(/const FULL = [\s\S]*?return \{ s, x: -left \* s, y: -top \* s, tall \};\n {6}\}/)?.[0];
     expect(source).toBeDefined();
     type Box = { x0: number; y0: number; x1: number; y1: number };
     type View = { s: number; x: number; y: number; tall: boolean };
-    const { FULL, KEEP, KEEP_TALL, fit } = runInNewContext(`${source}; ({ FULL, KEEP, KEEP_TALL, fit })`, {
+    const { FULL, KEEP, fit } = runInNewContext(`${source}; ({ FULL, KEEP, fit })`, {
       W: 1600,
       H: 1000,
-    }) as { FULL: Box; KEEP: Box; KEEP_TALL: Box; fit: (w: number, h: number) => View };
+    }) as { FULL: Box; KEEP: Box; fit: (w: number, h: number) => View };
     // What a window w by h shows of the picture, and how much of the window is bars.
     const shown = (w: number, h: number) => {
       const view = fit(w, h);
@@ -246,7 +246,7 @@ describe("the marketing page", () => {
       expect(bars.y).toBeCloseTo(0);
       expect(bars.x).toBeGreaterThan(0);
     }
-    // Held upright: the sign fills the width, and a phone in its browser has no bars.
+    // Held upright: the desk and the camp are still both in view, with the sign between them.
     for (const [w, h] of [
       [390, 664],
       [412, 780],
@@ -254,12 +254,13 @@ describe("the marketing page", () => {
     ] as [number, number][]) {
       const { view, box, bars } = shown(w, h);
       expect(view.tall).toBe(true);
-      expect(holds(box, KEEP_TALL)).toBe(true);
-      expect(box.x0).toBeCloseTo(KEEP_TALL.x0);
-      expect(box.x1).toBeCloseTo(KEEP_TALL.x1);
+      expect(holds(box, KEEP)).toBe(true);
       expect(bars.x).toBeCloseTo(0);
-      expect(bars.y).toBeCloseTo(0);
     }
+    // The desk and its computer, and the three seats at the fire, are inside the kept part.
+    expect(KEEP.x0).toBeLessThan(60);
+    expect(KEEP.x1).toBeGreaterThan(1420);
+    expect(html).not.toContain("KEEP_TALL");
     // The blackbird comes in low over the water: its whole flight is well inside the kept part.
     const lows = [...html.matchAll(/\[0(?:\.\d+)?, -?\d+, (9\d\d)\],/g)].map((m) => Number(m[1]));
     expect(lows).toContain(965);
@@ -276,7 +277,7 @@ describe("the marketing page", () => {
       expect(html).toContain(line);
     }
     expect(html).toContain("if (view.tall) drawTurnHint(main);");
-    expect(html).toContain('"TURN FOR THE WHOLE SCENE"');
+    expect(html).toContain('"TURN FOR A CLOSER LOOK"');
   });
 
   it("is what vercel.json serves, with no build step", () => {
