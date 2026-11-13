@@ -46,6 +46,7 @@ async function setup(opts: { max?: number; bots?: Bot[]; owner?: string } = {}) 
   /** Set `refuses` to make GitHub turn comments, issues and pull requests down with that message. */
   const github = fakeOpening();
   const created: [string, string][] = [];
+  const subscribed: boolean[] = [];
   const clock = { t: Date.parse("2026-11-10T15:00:00Z") };
   const sessions = new Sessions({
     dir,
@@ -65,7 +66,8 @@ async function setup(opts: { max?: number; bots?: Bot[]; owner?: string } = {}) 
         return `https://github.com/${subject}#issuecomment-1`;
       },
     },
-    created: async (thread, subject) => void created.push([thread, subject.key]),
+    created: async (thread, subject, subscribe) =>
+      void (created.push([thread, subject.key]), subscribed.push(subscribe)),
     emit: (e) => events.push(e),
     now: () => clock.t,
     newSessionId: () => "session-1",
@@ -73,7 +75,7 @@ async function setup(opts: { max?: number; bots?: Bot[]; owner?: string } = {}) 
   const add = (thread: Thread) => (threads.all.push(thread), thread);
   const files = () => loadThreads(dir);
   const log = (id: string) => readFile(threadLogPath(dir, id), "utf8");
-  return { dir, threads, agent, events, posted, github, created, clock, sessions, add, files, log };
+  return { dir, threads, agent, events, posted, github, created, subscribed, clock, sessions, add, files, log };
 }
 
 describe("delivery", () => {
@@ -373,14 +375,16 @@ describe("issues and pull requests a session opens", () => {
     const s = await setup();
     s.add(aThread("t1", "dev", ["o/r#12"]));
     s.github.dropsAssignees = true;
-    await expect(s.sessions.createIssue("t1", "o/r", "Do it", "Now.", true)).rejects.toThrow(/did not assign it/);
+    await expect(
+      s.sessions.createIssue("t1", "o/r", "Do it", "Now.", { subscribe: true, assign: true }),
+    ).rejects.toThrow(/did not assign it/);
   });
 
   it("assigns an issue to you only when the thread asks, and says so", async () => {
     const s = await setup();
     s.add(aThread("t1", "dev", ["o/r#12"]));
-    const filed = await s.sessions.createIssue("t1", "o/r", "Idea", "Later.");
-    const started = await s.sessions.createIssue("t1", "o/r", "Do it", "Now.", true);
+    const filed = await s.sessions.createIssue("t1", "o/r", "Idea", "Later.", { subscribe: true });
+    const started = await s.sessions.createIssue("t1", "o/r", "Do it", "Now.", { subscribe: true, assign: true });
     expect(filed.subject.assignees).toEqual([]);
     expect(started.subject.assignees).toEqual(["me"]);
     expect(s.github.opened[1]).toContain("issue o/r Do it for me");
@@ -389,7 +393,7 @@ describe("issues and pull requests a session opens", () => {
   it("are opened with the thread's marker, recorded as sent, logged, and told to the rest of loopway", async () => {
     const s = await setup();
     const thread = s.add(aThread("t1", "dev", ["o/r#12"]));
-    const issue = await s.sessions.createIssue("t1", "o/r", "Follow up", "Details.");
+    const issue = await s.sessions.createIssue("t1", "o/r", "Follow up", "Details.", { subscribe: true });
     const pr = await s.sessions.createPr("t1", "o/r", "fix-it", "main", "Fix it", "Closes #12.");
     expect(issue).toMatchObject({
       url: "https://github.com/o/r/issues/101",
@@ -417,11 +421,21 @@ describe("issues and pull requests a session opens", () => {
     ]);
   });
 
+  it("with subscribe: false carry no marker and are told to loopway as not subscribed; true is the other way", async () => {
+    const s = await setup();
+    const thread = s.add(aThread("t1", "dev", ["o/r#12"]));
+    await s.sessions.createIssue("t1", "o/r", "Spun out", "Later.", { subscribe: false });
+    await s.sessions.createIssue("t1", "o/r", "Watched", "Now.", { subscribe: true });
+    expect(s.github.opened).toEqual(["issue o/r Spun out: Later.", `issue o/r Watched: Now.\n\n${markerOf("t1")}`]);
+    expect(s.subscribed).toEqual([false, true]);
+    expect(thread.sent?.map((m) => m.subject)).toEqual(["o/r#101", "o/r#102"]);
+  });
+
   it("count as the turn's message, so the turn is not silent", async () => {
     const s = await setup();
     s.add(queued(aThread("t1", "dev", ["o/r#12"]), ["c:1", "2026-11-10T14:05:00Z"]));
     s.agent.behave = async () => {
-      await s.sessions.createIssue("t1", "o/r", "Follow up", "Details.");
+      await s.sessions.createIssue("t1", "o/r", "Follow up", "Details.", { subscribe: true });
       return ok;
     };
     s.sessions.kick();
@@ -433,7 +447,7 @@ describe("issues and pull requests a session opens", () => {
     const s = await setup();
     const thread = s.add(aThread("t1", "dev", ["o/r#12"]));
     s.github.refuses = "GitHub 422 Validation Failed";
-    await expect(s.sessions.createIssue("t1", "o/r", "x", "y")).rejects.toThrow("422");
+    await expect(s.sessions.createIssue("t1", "o/r", "x", "y", { subscribe: true })).rejects.toThrow("422");
     await expect(s.sessions.createPr("t1", "o/r", "a", "main", "x", "y")).rejects.toThrow("422");
     expect(thread.sent).toBeUndefined();
     expect(s.created).toEqual([]);
@@ -445,9 +459,13 @@ describe("issues and pull requests a session opens", () => {
   it("only go in a repo the bot reads, for a thread that exists", async () => {
     const s = await setup();
     s.add(aThread("t1", "dev", ["o/r#12"]));
-    await expect(s.sessions.createIssue("t1", "other/repo", "x", "y")).rejects.toThrow("dev does not read other/repo");
+    await expect(s.sessions.createIssue("t1", "other/repo", "x", "y", { subscribe: true })).rejects.toThrow(
+      "dev does not read other/repo",
+    );
     await expect(s.sessions.createPr("t1", "other/repo", "a", "main", "x", "y")).rejects.toThrow("dev does not read");
-    await expect(s.sessions.createIssue("nope", "o/r", "x", "y")).rejects.toThrow("there is no thread nope");
+    await expect(s.sessions.createIssue("nope", "o/r", "x", "y", { subscribe: true })).rejects.toThrow(
+      "there is no thread nope",
+    );
     expect(s.github.opened).toEqual([]);
   });
 });

@@ -108,7 +108,7 @@ async function main(): Promise<number> {
     log,
     stop: stop.signal,
     owner: me,
-    created: (thread, subject) => created(thread, subject),
+    created: (thread, subject, subscribe) => created(thread, subject, subscribe),
   });
   // A thread's lines follow the line of the event that caused them.
   const emit = async (event: LoopwayEvent) => {
@@ -130,9 +130,9 @@ async function main(): Promise<number> {
   });
 
   // A subject a thread opened: the poller knows it now, so discovery won't call it new, and the rules give it threads.
-  const created = async (thread: string, subject: Subject) => {
+  const created = async (thread: string, subject: Subject, subscribe: boolean) => {
     await poller.know(subject);
-    await emit({ type: "created", thread, subject });
+    await emit({ type: "created", thread, subject, subscribe });
   };
 
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => stop.abort());
@@ -167,7 +167,7 @@ interface SessionsSetup {
   log: (message: string) => void;
   stop: AbortSignal;
   owner: string;
-  created: (thread: string, subject: Subject) => Promise<void>;
+  created: (thread: string, subject: Subject, subscribe: boolean) => Promise<void>;
 }
 
 interface StartedSessions {
@@ -193,7 +193,7 @@ async function startSessions(s: SessionsSetup): Promise<StartedSessions | undefi
     comment: (thread, subject, body) => sessions.comment(thread, subject, body),
     ask: (thread, subject, question) => sessions.ask(thread, subject, question),
     permission: (thread, tool, input) => sessions.permission(thread, tool, input),
-    createIssue: (thread, repo, title, body, assign) => sessions.createIssue(thread, repo, title, body, assign),
+    createIssue: (thread, repo, title, body, options) => sessions.createIssue(thread, repo, title, body, options),
     createPr: (thread, repo, head, base, title, body) => sessions.createPr(thread, repo, head, base, title, body),
   });
   const sessions = new Sessions({
