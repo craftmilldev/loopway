@@ -1609,7 +1609,7 @@ loopway setup</pre>
             const to = spot(step + 1);
             const eased = smooth(0, 1, swing);
             foot = [lerp(from[0], to[0], eased), lerp(from[1], to[1], eased)];
-            lift = Math.sin(Math.PI * swing) * 11;
+            lift = Math.sin(Math.PI * swing) * 7;
           }
           return {
             ...leg,
@@ -1631,8 +1631,8 @@ loopway setup</pre>
           narrow: body.narrow,
           legs,
           // The body rises and falls twice a stride, and the head nods against it.
-          bob: -1.8 * Math.abs(Math.sin(cycle * TAU)) * walking,
-          head: head + 0.07 * Math.sin(cycle * TAU * 2 + 0.6) * walking,
+          bob: -0.6 * Math.abs(Math.sin(cycle * TAU)) * walking,
+          head: head + 0.025 * Math.sin(cycle * TAU * 2 + 0.6) * walking,
           chew: time >= MOOSE.down[1] && time < MOOSE.leave + 2 ? Math.sin(time * 13) : 0,
         };
       }
