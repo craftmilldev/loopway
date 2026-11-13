@@ -1889,6 +1889,9 @@ loopway setup</pre>
           // they do not patter. As it slows to a stand each foot stays down longer ("halted"), until
           // all four are down together.
           stride: 96,
+          // How much ground it covers in a second on the way out: a brisk walk, quicker than it
+          // came in, so it is not a long time crossing a wide window.
+          pace: 125,
           planted: 0.62,
           halted: 0.8,
           arrive: 4.2,
@@ -1903,7 +1906,7 @@ loopway setup</pre>
       // The way out follows the water's edge downstream, as far below it as the moose stood to eat.
       // The near bank comes toward us as it goes left, so the moose gets nearer and bigger and goes
       // out under the bottom of the window, or off its left side in a window that sees a long way
-      // down. The way ends where the window has lost sight of it, and it walks it at one pace, so a
+      // down. The way ends where the window has lost sight of it, and it walks it at one pace (MOOSE.pace), so a
       // longer way takes longer.
       function mooseRoute() {
         const [x0, y0] = MOOSE.stand;
@@ -1917,7 +1920,9 @@ loopway setup</pre>
           // It sets off level, the way it was standing, and comes round to the line of the bank.
           MOOSE.out.push([x, y0 + (nearBank(x) + below - y0) * smooth(0, 1, (x0 - x) / 240)]);
         }
-        MOOSE.seconds = MOOSE.leave + along(MOOSE.out, 1).total / 78;
+        // A window with no size yet gives no way at all: leave it a short one.
+        if (MOOSE.out.length < 2) MOOSE.out = [MOOSE.stand, [x0 - 56, y0]];
+        MOOSE.seconds = MOOSE.leave + along(MOOSE.out, 1).total / MOOSE.pace;
       }
       // Where the moose comes in from: off the picture, beyond what the window sees to the right, on
       // the same line it always walked. And how much longer the walk in takes for being longer.
