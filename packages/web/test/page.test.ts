@@ -85,6 +85,12 @@ describe("the marketing page", () => {
     expect(html.match(/found the snake:/g)).toHaveLength(1);
   });
 
+  it("sends a hummingbird to the freshly opened morning glory, and only then", () => {
+    expect(html).toContain("return u >= 0.13 && u <= 0.16 + (5 * speed) / T;");
+    expect(html).toContain('if (what === "hummingbird") HUMMER.start = clockNow();');
+    expect(html).toContain('drawHummer(ctx, clock, "behind");\n        drawBoard(ctx);');
+  });
+
   it("steps one frame per flick, and ignores only Space on a button or link", () => {
     expect(html).toContain("now - lastWheel > 120");
     expect(html).toContain("Math.abs(wheelSum) >= 10");

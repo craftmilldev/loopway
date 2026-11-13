@@ -3769,7 +3769,49 @@ loopway setup</pre>
           [5.3, 1166, 236],
         ],
       };
+      // A hummingbird comes to one morning glory, the one out to the right of the post, but only if
+      // that flower is clicked while it is freshly open: from when it is half open until five seconds
+      // after it is fully open. It darts out from behind the billboard, hovers and drinks, and leaves
+      // by going up under the billboard and behind it.
+      const NECTAR = GLORY.flowers.reduce((a, b) =>
+        Math.hypot(a.x - 430, a.fy - 708) < Math.hypot(b.x - 430, b.fy - 708) ? a : b,
+      );
+      const HUMMER = (() => {
+        // Where its middle is while its bill is in the flower's mouth.
+        const at = [NECTAR.x + 14.5, NECTAR.fy + 1.3];
+        return {
+          start: null,
+          seconds: 5.6,
+          at,
+          hover: [1.6, 3.9],
+          // Behind the billboard until it has dropped clear of it, and again once it is back under it.
+          frontFrom: 0.42,
+          behindFrom: 5.08,
+          arrive: [
+            [0, 505, 436],
+            [0.4, 498, 502],
+            [0.9, 478, 610],
+            [1.3, at[0] + 12, at[1] - 9],
+            [1.6, at[0], at[1]],
+            [1.9, at[0], at[1]],
+          ],
+          leave: [
+            [3.6, at[0], at[1]],
+            [3.9, at[0], at[1]],
+            [4.2, at[0] + 20, at[1] - 28],
+            [4.7, 522, 566],
+            [5.08, 566, 502],
+            [5.4, 600, 440],
+            [5.6, 612, 420],
+          ],
+        };
+      })();
       const clockNow = () => performance.now() / 1000;
+      const dayNow = () => freeze ?? mod((clockNow() * speed) / T, 1);
+      const nectarFresh = () => {
+        const u = dayNow() - NECTAR.delay;
+        return u >= 0.13 && u <= 0.16 + (5 * speed) / T;
+      };
       const within = (x, y, spot) => x > spot.x0 && x < spot.x1 && y > spot.y0 && y < spot.y1;
       const inSpruce = (x, y) => {
         const c = TREES[1].crown;
@@ -3784,11 +3826,14 @@ loopway setup</pre>
           SNAKE.start = null;
         }
         if (BIRD.start !== null && clock - BIRD.start >= BIRD.seconds) BIRD.start = null;
+        if (HUMMER.start !== null && clock - HUMMER.start >= HUMMER.seconds) HUMMER.start = null;
       }
       // What a click at this point in the picture would set off, if anything.
       function clickable(x, y) {
         settle(clockNow());
         if (SNAKE.start === null && within(x, y, SNAKE.at === "bush" ? BUSH_SPOT : ROCK_SPOT)) return "snake";
+        if (HUMMER.start === null && Math.hypot(x - NECTAR.x, y - NECTAR.fy) < NECTAR.r + 5 && nectarFresh())
+          return "hummingbird";
         if (BIRD.start === null && inSpruce(x, y)) return "bird";
         return null;
       }
@@ -4077,6 +4122,98 @@ loopway setup</pre>
         ctx.stroke();
         ctx.restore();
       }
+      // A ruby-throated hummingbird, the one hummingbird that nests in New Hampshire and Maine, and a
+      // male: green above, white below, a ruby throat, a dark forked tail and a long straight bill.
+      function drawHummer(ctx, clock, layer) {
+        settle(clock);
+        if (HUMMER.start === null) return;
+        const time = clock - HUMMER.start;
+        if ((time < HUMMER.frontFrom || time >= HUMMER.behindFrom ? "behind" : "front") !== layer) return;
+        const [from, to] = HUMMER.hover;
+        const where = (at) => flightAt(at < to ? HUMMER.arrive : HUMMER.leave, at);
+        const hovering = time >= from && time < to;
+        let [x, y] = hovering ? HUMMER.at : where(time);
+        const [nx] = where(time + 0.02);
+        // At the flower it drinks in sips: in, back a little, and in again, never quite still.
+        if (hovering) {
+          x += 1.6 * (1 - Math.cos(((time - from) * TAU) / 1.15));
+          y += 0.8 * Math.sin(clock * 11);
+        }
+        // It hangs nearly upright to drink and levels out to fly.
+        const upright = smooth(from - 0.4, from, time) * (1 - smooth(to, to + 0.3, time));
+        const tilt = lerp(-0.2, -0.7, upright);
+        const facing = time < to ? -1 : nx < x ? -1 : 1;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(facing * 0.85, 0.85);
+        ctx.lineJoin = "round";
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.1;
+        // The wings are a blur: a faint fan where they sweep, and one blade caught somewhere in it.
+        const beat = Math.sin(clock * TAU * 23);
+        const wing = (angle, length) => [1 + Math.cos(angle) * length, -2 + Math.sin(angle) * length];
+        const back = -Math.PI / 2 - 0.45;
+        ctx.fillStyle = "rgba(70, 74, 70, 0.2)";
+        ctx.beginPath();
+        ctx.moveTo(1, -2);
+        ctx.arc(1, -2, 12, back - 1.05, back + 1.05);
+        ctx.closePath();
+        ctx.fill();
+        ctx.save();
+        ctx.rotate(tilt);
+        ctx.fillStyle = "#2c2b28";
+        ctx.beginPath();
+        ctx.moveTo(-4.5, -1.6);
+        ctx.lineTo(-13.5, -2.6);
+        ctx.lineTo(-11, 0.2);
+        ctx.lineTo(-13.5, 2.8);
+        ctx.lineTo(-4.5, 1.8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#ece6d3";
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 6.6, 3.7, 0, 0, TAU);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#3f7d4f";
+        ctx.beginPath();
+        ctx.ellipse(-0.4, -0.6, 6.2, 3.1, 0, Math.PI, TAU);
+        ctx.fill();
+        ctx.restore();
+        // The head keeps level whatever the body does, so the bill stays in the flower.
+        const hx = 6.5 * Math.cos(tilt) + 2 * Math.sin(tilt);
+        const hy = 6.5 * Math.sin(tilt) - 2 * Math.cos(tilt);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(hx + 2.6, hy + 0.1);
+        ctx.lineTo(hx + 11, hy + 0.7);
+        ctx.stroke();
+        ctx.lineWidth = 1.1;
+        ctx.fillStyle = "#3f7d4f";
+        ctx.beginPath();
+        ctx.arc(hx, hy, 3.2, 0, TAU);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#b3122b";
+        ctx.beginPath();
+        ctx.ellipse(hx + 0.9, hy + 2, 2.5, 1.5, 0.35, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = INK;
+        ctx.beginPath();
+        ctx.arc(hx + 1.2, hy - 0.7, 0.75, 0, TAU);
+        ctx.fill();
+        const [wx, wy] = wing(back + beat * 1.05, 12);
+        const [vx, vy] = wing(back + beat * 1.05 + 0.32, 6);
+        ctx.fillStyle = "rgba(60, 64, 60, 0.75)";
+        ctx.beginPath();
+        ctx.moveTo(1, -2);
+        ctx.lineTo(wx, wy);
+        ctx.lineTo(vx, vy);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
 
       // ---- One frame ----
       function drawLand(ctx, u, light, clock) {
@@ -4104,6 +4241,7 @@ loopway setup</pre>
         const dev = worker(u);
         const behindBoard = u > 0.315 && u < 0.455 && dev.x > 700 && dev.x < 1000;
         if (behindBoard) drawPerson(ctx, dev, u, 1);
+        drawHummer(ctx, clock, "behind");
         drawBoard(ctx);
         drawFlowers(ctx, u);
         drawDesk(ctx, u);
@@ -4127,6 +4265,7 @@ loopway setup</pre>
           drawPerson(ctx, dev, u, 1);
         }
         drawBird(ctx, clock, "front");
+        drawHummer(ctx, clock, "front");
       }
 
       function frame(now) {
@@ -4192,7 +4331,7 @@ loopway setup</pre>
       };
       // With the loop frozen (?u=) nothing redraws by itself, so a click keeps frames coming for
       // as long as the snake or the bird is out, or the face is changing.
-      const changing = () => SNAKE.start !== null || BIRD.start !== null || faceFade() < 1;
+      const changing = () => SNAKE.start !== null || BIRD.start !== null || HUMMER.start !== null || faceFade() < 1;
       let awake = false;
       function wake() {
         if (freeze === null || awake) return;
@@ -4209,7 +4348,7 @@ loopway setup</pre>
       // What has been found is kept in localStorage, so the first time is only ever the first time.
       const KEPT = "loopway.found";
       // Also held in memory, so with storage off the count still goes up and a find is a first only once.
-      let memory = { snake: false, bird: false, loops: 0 };
+      let memory = { snake: false, bird: false, hummingbird: false, loops: 0 };
       const kept = () => {
         try {
           return { ...memory, ...JSON.parse(localStorage.getItem(KEPT) || "{}") };
@@ -4380,6 +4519,7 @@ loopway setup</pre>
         const what = clickable(...at);
         if (what === "snake") SNAKE.start = clockNow();
         if (what === "bird") BIRD.start = clockNow();
+        if (what === "hummingbird") HUMMER.start = clockNow();
         if (what) {
           found(what);
           wake();
