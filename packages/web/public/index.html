@@ -2268,12 +2268,25 @@ loopway setup</pre>
             const before = middle[Math.max(0, i - 1)];
             const after = middle[Math.min(middle.length - 1, i + 1)];
             const len = Math.hypot(after.x - before.x, after.y - before.y) || 1;
-            const nx = (after.y - before.y) / len;
-            const ny = -(after.x - before.x) / len;
+            // Where the leg leaves the body it is cut level, whichever way the bone below is
+            // leaning, and it turns to lie across the bone a little way down. If it were cut
+            // across the bone all the way up, its top corners would swing up out of the rump
+            // with every stride.
+            const across = i < 10 ? smooth(0, 0.8, i / 10) : 1;
+            const lx = lerp(1, (after.y - before.y) / len, across);
+            const ly = lerp(0, -(after.x - before.x) / len, across);
+            const nx = lx / Math.hypot(lx, ly);
+            const ny = ly / Math.hypot(lx, ly);
             back.push([p.x + nx * (p.w + (hind ? p.knob : 0)), p.y + ny * (p.w + (hind ? p.knob : 0))]);
             front.push([p.x - nx * (p.w + (hind ? 0 : p.knob)), p.y - ny * (p.w + (hind ? 0 : p.knob))]);
           });
-          return { back, front, knee, ankle, root, hind, bendAt: 10, hoofAt: last * 10 + 5 };
+          // The top is round, a dome up inside the body, so no corner of it can show.
+          const cap = [];
+          for (let n = 1; n < 12; n++) {
+            const turn = (Math.PI * n) / 12;
+            cap.push([top[0] + Math.cos(turn) * wide[0], top[1] - Math.sin(turn) * (hind ? 13 : 10)]);
+          }
+          return { back, front, cap, knee, ankle, root, hind, bendAt: 10, hoofAt: last * 10 + 5 };
         };
         // The outline of a leg from one place down it to its foot: down the front and back up the back.
         const trace = (l, from = 0) => {
@@ -2283,6 +2296,7 @@ loopway setup</pre>
             else ctx.lineTo(l.front[i][0], l.front[i][1]);
           }
           for (let i = l.back.length - 1; i >= from; i--) ctx.lineTo(l.back[i][0], l.back[i][1]);
+          if (from === 0) for (const [x, y] of l.cap) ctx.lineTo(x, y);
           ctx.closePath();
         };
         const inkLeg = (l) => {
