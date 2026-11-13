@@ -384,11 +384,14 @@ loopway setup</pre>
         }
         const skirt = tip(s.left, -1, s.tiers);
         if (s.hem) {
-          // The lowest boughs hang at their own heights, so the foot of the tree is a ragged hem, not a line.
-          const stops = [...s.hem.map((h) => [lerp(from[0], skirt[0], h.at), s.bottom + step * h.drop]), skirt];
+          // The lowest boughs hang at their own heights and widths, so the foot of the tree is a ragged
+          // hem, not a line. Each tip points out from the trunk, like the boughs up the sides.
+          const start = from;
+          const stops = [...s.hem.map((h) => [lerp(start[0], skirt[0], h.at), s.bottom + step * h.drop]), skirt];
           stops.forEach((q, k) => {
-            const lift = step * (s.hem[k] ? s.hem[k].lift : 0.12);
-            ctx.quadraticCurveTo((from[0] + q[0]) / 2, (from[1] + q[1]) / 2 - lift, q[0], q[1]);
+            const h = s.hem[k] || { at: 1, lift: 0.1 };
+            const lean = lerp(0.22, 0.78, h.at);
+            ctx.quadraticCurveTo(lerp(from[0], q[0], lean), Math.min(from[1], q[1]) - step * h.lift, q[0], q[1]);
             from = q;
           });
         } else ctx.quadraticCurveTo(mid(s.bottom), s.bottom + step * 0.1, skirt[0], skirt[1]);
@@ -410,12 +413,19 @@ loopway setup</pre>
           side.forEach((b, i) => {
             if (i > 1 && r() < 0.55) b.twig = 0.3 + r() * 0.2;
           });
-        const count = 5;
-        crown.hem = Array.from({ length: count }, (_, k) => ({
-          at: (k + 0.6 + (r() - 0.5) * 0.5) / (count + 0.6),
-          drop: 0.1 + 0.22 * Math.sin((Math.PI * (k + 1)) / (count + 1)) + (r() - 0.5) * 0.16,
-          lift: 0.1 + r() * 0.16,
-        }));
+        // Uneven gaps between the tips: some boughs are broad, some are slivers.
+        const count = 5 + Math.floor(r() * 3);
+        const gaps = Array.from({ length: count + 1 }, () => 0.35 + r() * r() * 2);
+        const total = gaps.reduce((a, b) => a + b, 0);
+        let run = 0;
+        crown.hem = gaps.slice(0, count).map((gap) => {
+          run += gap / total;
+          return {
+            at: run,
+            drop: 0.06 + 0.3 * Math.sin(Math.PI * run) + (r() - 0.5) * 0.6,
+            lift: 0.06 + r() * r() * 0.55,
+          };
+        });
         return crown;
       }
       const TREES = [
