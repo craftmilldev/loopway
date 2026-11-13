@@ -54,6 +54,8 @@ Do everything from there, and give every command its path. If the worktree alrea
 - Follow the code around you: plain TypeScript, small functions, comments that say why. Keep the README and
   `docs/developing.md` true: if you change what loopway prints, does or reads, change the docs in the same PR. Add a
   line to `CHANGELOG.md` when the change is one a user would notice.
+- If you change code in `packages/cli` (not tests or markdown), raise `version` in `packages/cli/package.json` by at least
+  a patch in the same PR. CI fails the PR without it. Docs-only PRs don't bump it.
 - Tests never touch the network. Fake GitHub with `packages/cli/test/fake.ts` or a fake `fetch`, and Claude Code with
   `packages/cli/test/fake-claude.mjs`. Cover every item in **Done when** with a test.
 
