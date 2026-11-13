@@ -2277,8 +2277,10 @@ loopway setup</pre>
                 ctx.lineTo(x + 11, row - 10.5);
                 ctx.stroke();
               }
-              ctx.fillText(name, x + 19, row);
-              const width = 19 + ctx.measureText(name).width;
+              // The bird in the spruce is kept as "bird", as it always has been, and named for what it is.
+              const label = name === "bird" ? "chickadee" : name;
+              ctx.fillText(label, x + 19, row);
+              const width = 19 + ctx.measureText(label).width;
               if (name === "moose" && found.moose && MOOSE.start === null)
                 hit("moose", x - 6, row - 22, x + width + 6, row + 10);
               x += width + 24;

@@ -83,6 +83,7 @@ describe("the marketing page", () => {
     const last = html.slice(html.indexOf("Small print under the main content"));
     expect(last).toContain('[262, ["snake", "bird", "hummingbird", "moth", "moose"]],');
     expect(last).toContain('[286, ["squirrel", "blackbird", "skunk", "trout"]],');
+    expect(last).toContain('const label = name === "bird" ? "chickadee" : name;');
     expect(last).toContain("loops completed:");
     expect(html.match(/loops completed:/g)).toHaveLength(1);
   });
