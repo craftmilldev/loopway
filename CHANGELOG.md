@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.0-alpha
+## 2.0.0
 
 loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and it polls GitHub, printing every new issue and pull request by you or your bot and every update to the ones it knows. See [#486](https://github.com/craftmilldev/loopway/issues/486).
 
