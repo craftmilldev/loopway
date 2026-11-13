@@ -4325,29 +4325,32 @@ loopway setup</pre>
           const late = usual - untilTop;
           if (Math.abs(late) > 1.5) continue;
           const hit = Math.abs(late) <= 0.5;
-          return { jump, top, hit, out: hit ? untilTop : usual, back: Math.max(1.8, usual * 0.9) };
+          return { jump, top, hit, out: hit ? untilTop : usual };
         }
         return null;
       }
       function launchEagle() {
         const chance = eagleChance();
         if (!chance) return;
-        const { top, out, back } = chance;
+        const { top, out } = chance;
         const now = clockNow();
+        // Hit or miss, it does not come back: it flies on, left to right, up and out of the picture.
+        const over = [top[0], top[1] - 9];
+        const away = [W + 150, over[1] - 230];
+        const on = Math.max(1.2, Math.hypot(away[0] - over[0], away[1] - over[1]) / EAGLE.speed);
         EAGLE.start = now;
         EAGLE.strike = out;
-        EAGLE.seconds = out + back;
+        EAGLE.seconds = out + on;
         EAGLE.hit = chance.hit;
         EAGLE.told = !chance.hit;
         // From then on that trout is the eagle's: it does not come down, and makes no splash going in.
         EAGLE.taken = chance.hit ? { jump: chance.jump, at: now + out } : null;
-        const over = [top[0], top[1] - 9];
         EAGLE.flight = [
           [0, ...NEST],
           [out * 0.45, lerp(NEST[0], over[0], 0.42), lerp(NEST[1], over[1], 0.3) - 24],
           [out, ...over],
-          [out + back * 0.5, lerp(over[0], NEST[0], 0.45), lerp(over[1], NEST[1], 0.5) - 80],
-          [out + back, ...NEST],
+          [out + on * 0.45, lerp(over[0], away[0], 0.45), over[1] - 70],
+          [out + on, ...away],
         ];
       }
       const BIRCH_SPOT = { x: 42, y: 478, rx: 100, ry: 166 };
@@ -4820,8 +4823,8 @@ loopway setup</pre>
         const time = clock - EAGLE.start;
         const [x, y] = flightAt(EAGLE.flight, time);
         const [nx, ny] = flightAt(EAGLE.flight, time + 0.03);
-        // It comes out of the leaves small and goes back into them the same way.
-        const size = smooth(0, 0.3, time) * (1 - smooth(EAGLE.seconds - 0.3, EAGLE.seconds, time));
+        // It comes out of the leaves small. It leaves by flying out of the picture.
+        const size = smooth(0, 0.3, time);
         const stoop = 1 - clamp(Math.abs(time - EAGLE.strike) / 0.4);
         const carrying = EAGLE.hit && time >= EAGLE.strike;
         const beat = Math.sin(clock * TAU * 2.7);
