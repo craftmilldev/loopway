@@ -226,8 +226,10 @@ loopway setup</pre>
       // near bank below it, so a window of another shape has something to show there.
       const FULL = { x0: 0, y0: -600, x1: W, y1: H + 250 };
       // What a window always shows, whatever its shape. The rest of the picture is margin: a wide
-      // window loses some sky and some river, and a tall one gets more of both.
-      const KEEP = { x0: 40, y0: 92, x1: W, y1: 912 };
+      // window loses some sky, and a tall one gets more sky and more river. It goes down to the old
+      // bottom of the picture, so the blackbird, which comes in low over the water, and the trout
+      // nearest to us are always well inside it.
+      const KEEP = { x0: 40, y0: 92, x1: W, y1: H };
       // A window taller than it is wide is too narrow for all that, so it keeps the sign and the
       // ground under it, and the page asks for the phone to be turned to see the rest.
       const KEEP_TALL = { x0: 150, y0: 92, x1: 1095, y1: 912 };

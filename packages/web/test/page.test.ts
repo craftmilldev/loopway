@@ -218,8 +218,6 @@ describe("the marketing page", () => {
     for (const [w, h] of [
       [1600, 1000],
       [1440, 900],
-      [1920, 1080],
-      [1366, 768],
       [1500, 1000],
       [1024, 768],
       [1280, 1024],
@@ -233,6 +231,8 @@ describe("the marketing page", () => {
     }
     // Wider than the picture: the kept part fills the height, and the bars are at the sides only.
     for (const [w, h] of [
+      [1920, 1080],
+      [1366, 768],
       [2560, 1080],
       [844, 390],
     ] as [number, number][]) {
@@ -257,6 +257,10 @@ describe("the marketing page", () => {
       expect(bars.x).toBeCloseTo(0);
       expect(bars.y).toBeCloseTo(0);
     }
+    // The blackbird comes in low over the water: its whole flight is well inside the kept part.
+    const lows = [...html.matchAll(/\[0(?:\.\d+)?, -?\d+, (9\d\d)\],/g)].map((m) => Number(m[1]));
+    expect(lows).toContain(965);
+    expect(KEEP.y1 - Math.max(...lows)).toBeGreaterThanOrEqual(30);
     expect(html).toContain("if (view.tall) drawTurnHint(main);");
     expect(html).toContain('"TURN FOR THE WHOLE SCENE"');
   });
