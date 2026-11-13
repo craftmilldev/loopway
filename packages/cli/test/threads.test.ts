@@ -201,9 +201,19 @@ describe("subjects a thread created", () => {
     h.source.add("o/r#12", "me", "2026-11-10T12:01:00Z");
     await h.poller.discover();
     h.events.length = 0;
-    for (const e of await h.threads.handle({ type: "created", thread: "t1", subject: sub("o/r#13", "issue") }))
+    for (const e of await h.threads.handle({
+      type: "created",
+      thread: "t1",
+      subject: sub("o/r#13", "issue"),
+      subscribe: true,
+    }))
       h.events.push(e);
-    for (const e of await h.threads.handle({ type: "created", thread: "t1", subject: sub("o/r#14", "pull_request") }))
+    for (const e of await h.threads.handle({
+      type: "created",
+      thread: "t1",
+      subject: sub("o/r#14", "pull_request"),
+      subscribe: true,
+    }))
       h.events.push(e);
 
     const [t1, t2, t3] = h.threads.all;
@@ -254,7 +264,7 @@ describe("subjects a thread created", () => {
     await h.poller.discover();
     const made = sub("o/r#13", "issue");
     await h.poller.know({ ...made, body: markerOf("t1") });
-    await h.threads.handle({ type: "created", thread: "t1", subject: made });
+    await h.threads.handle({ type: "created", thread: "t1", subject: made, subscribe: true });
     h.source.add("o/r#13", "loopway-bot", made.createdAt, "issue", markerOf("t1"));
     await h.poller.discover();
     expect(h.threads.all.map((t) => t.id)).toEqual(["t1", "t2"]);
@@ -266,7 +276,7 @@ describe("subjects a thread created", () => {
     await h.poller.discover();
     h.source.add("o/r#12", "me", "2026-11-10T12:01:00Z");
     await h.poller.discover();
-    await h.threads.handle({ type: "created", thread: "t1", subject: sub("o/r#13", "issue") });
+    await h.threads.handle({ type: "created", thread: "t1", subject: sub("o/r#13", "issue"), subscribe: true });
     const close = (key: string, id: string) =>
       h.threads.handle({
         type: "update",

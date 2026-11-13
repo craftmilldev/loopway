@@ -147,15 +147,22 @@ describe("a subject a thread created", () => {
 
   it("joins the thread that made it, and starts a dev thread for an issue, even for the dev bot that made it", () => {
     const threads = [aThread("t1", "dev", ["o/r#1"])];
-    expect(decide({ type: "created", thread: "t1", subject: issue }, threads, bots)).toEqual([
+    expect(decide({ type: "created", thread: "t1", subject: issue, subscribe: true }, threads, bots)).toEqual([
       { type: "track", thread: "t1", subject: issue },
+      { type: "open", bot: "dev", subject: issue, pending: [creation(issue)] },
+    ]);
+  });
+
+  it("is not tracked by the thread that made it with subscribe: false, but still starts its threads", () => {
+    const threads = [aThread("t1", "dev", ["o/r#1"])];
+    expect(decide({ type: "created", thread: "t1", subject: issue, subscribe: false }, threads, bots)).toEqual([
       { type: "open", bot: "dev", subject: issue, pending: [creation(issue)] },
     ]);
   });
 
   it("joins the thread that made it, and starts a review thread for a pull request", () => {
     const threads = [aThread("t1", "dev", ["o/r#1"])];
-    expect(decide({ type: "created", thread: "t1", subject: pr }, threads, bots)).toEqual([
+    expect(decide({ type: "created", thread: "t1", subject: pr, subscribe: true }, threads, bots)).toEqual([
       { type: "track", thread: "t1", subject: pr },
       { type: "open", bot: "review", subject: pr, pending: [creation(pr)] },
     ]);
@@ -163,13 +170,13 @@ describe("a subject a thread created", () => {
 
   it("changes nothing when the thread already tracks it, or there is no such thread", () => {
     const threads = [aThread("t1", "dev", ["o/r#1", "o/r#5"])];
-    expect(decide({ type: "created", thread: "t1", subject: issue }, threads, bots)).toEqual([]);
-    expect(decide({ type: "created", thread: "gone", subject: issue }, threads, bots)).toEqual([]);
+    expect(decide({ type: "created", thread: "t1", subject: issue, subscribe: true }, threads, bots)).toEqual([]);
+    expect(decide({ type: "created", thread: "gone", subject: issue, subscribe: true }, threads, bots)).toEqual([]);
   });
 
   it("starts its threads but is not tracked by a thread that has since closed", () => {
     const threads = [aThread("t1", "dev", ["o/r#1"], "closed")];
-    expect(decide({ type: "created", thread: "t1", subject: issue }, threads, bots)).toEqual([
+    expect(decide({ type: "created", thread: "t1", subject: issue, subscribe: true }, threads, bots)).toEqual([
       { type: "open", bot: "dev", subject: issue, pending: [creation(issue)] },
     ]);
   });
@@ -265,11 +272,17 @@ describe("who the bots listen to, and what starts work", () => {
   it("opens threads on a pull request a thread created without an assignment, and on an issue only if assigned", () => {
     const maker = [aThread("t1", "dev", ["o/r#1"])];
     const pr = { ...aSubject(5, "pull_request"), author: "loopway-bot" };
-    expect(opened(decide({ type: "created", thread: "t1", subject: pr }, maker, bots, trust))).toEqual(["review"]);
+    expect(opened(decide({ type: "created", thread: "t1", subject: pr, subscribe: true }, maker, bots, trust))).toEqual(
+      ["review"],
+    );
     const filed = { ...aSubject(6), author: "loopway-bot", assignees: [] };
-    expect(opened(decide({ type: "created", thread: "t1", subject: filed }, maker, bots, trust))).toEqual([]);
+    expect(
+      opened(decide({ type: "created", thread: "t1", subject: filed, subscribe: true }, maker, bots, trust)),
+    ).toEqual([]);
     const started = { ...filed, assignees: ["me"] };
-    expect(opened(decide({ type: "created", thread: "t1", subject: started }, maker, bots, trust))).toEqual(["dev"]);
+    expect(
+      opened(decide({ type: "created", thread: "t1", subject: started, subscribe: true }, maker, bots, trust)),
+    ).toEqual(["dev"]);
   });
 
   it("starts a dev thread for an issue a dev thread only filed, once it is assigned to you", () => {

@@ -6,7 +6,7 @@ import { holds, markerOf, repoOf, type Thread } from "./thread.js";
 export type RuleEvent =
   | { type: "new"; subject: Subject }
   | { type: "update"; subject: Subject; update: Update }
-  | { type: "created"; thread: string; subject: Subject };
+  | { type: "created"; thread: string; subject: Subject; subscribe: boolean };
 
 /** What the rules decide. Applying them is `Threads`' job. */
 export type Action =
@@ -41,7 +41,8 @@ export interface Trust {
  *   between, the next ones are recorded (`guard`) but not queued. A person's comment starts the count again.
  * - An update goes on the queue of every open thread holding the subject, except a comment that thread sent itself. A subject closing or merging is marked on
  *   the thread, and the thread closes when none of its subjects is open. A subject reopening is marked open again.
- * - A subject a thread created (told by the tool, or found by the marker in its text) joins that thread, and starts a
+ * - A subject a thread created (told by the tool, or found by the marker in its text) joins that thread, unless the
+ *   thread created it with `subscribe: false` (it then has no marker and the thread never holds it), and starts a
  *   thread for every bot that wants its kind, the creator's own included, with its creation as their first update. A
  *   pull request needs no assignment, since its creator is already watching it; an issue does, so that the thread can
  *   choose between filing it and starting work.
@@ -49,7 +50,7 @@ export interface Trust {
  *   never had one for a subject it already knew.
  */
 export function decide(event: RuleEvent, threads: Thread[], bots: Bot[], trust?: Trust): Action[] {
-  if (event.type === "created") return created(event.thread, event.subject, threads, bots, trust);
+  if (event.type === "created") return created(event.thread, event.subject, threads, bots, trust, event.subscribe);
   if (event.type === "new") {
     const maker = threads.find((t) => t.status === "open" && event.subject.body?.includes(markerOf(t.id)));
     if (maker) return created(maker.id, event.subject, threads, bots, trust);
@@ -68,8 +69,15 @@ export function decide(event: RuleEvent, threads: Thread[], bots: Bot[], trust?:
   return [...following, ...startThreadsForUpdate(subject, update, threads, bots, trust)];
 }
 
-/** A thread created the subject: it tracks it, and every bot that wants the kind gets a thread. Told twice changes nothing. */
-function created(threadId: string, subject: Subject, threads: Thread[], bots: Bot[], trust?: Trust): Action[] {
+/** A thread created the subject: it tracks it (unless it chose not to subscribe), and every bot that wants the kind gets a thread. Told twice changes nothing. */
+function created(
+  threadId: string,
+  subject: Subject,
+  threads: Thread[],
+  bots: Bot[],
+  trust?: Trust,
+  subscribe = true,
+): Action[] {
   const maker = threads.find((t) => t.id === threadId);
   if (!maker || holds(maker, subject.key)) return [];
   const creation: Update = {
@@ -78,7 +86,7 @@ function created(threadId: string, subject: Subject, threads: Thread[], bots: Bo
     actor: subject.author,
     at: subject.createdAt,
   };
-  const track: Action[] = maker.status === "open" ? [{ type: "track", thread: maker.id, subject }] : [];
+  const track: Action[] = subscribe && maker.status === "open" ? [{ type: "track", thread: maker.id, subject }] : [];
   const assigned = subject.kind === "pull_request" || assignedToOwner(subject, trust);
   return [...track, ...startThreads(subject, bots, [creation], trust, assigned)];
 }

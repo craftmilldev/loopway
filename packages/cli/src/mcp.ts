@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { askedMessage, deny, type PermissionResult } from "./asks.js";
-import type { Made } from "./source.js";
+import type { IssueOptions, Made } from "./source.js";
 
 /** What the session may ask loopway to do. Every message a session sends goes through one of these. */
 export interface Tools {
@@ -12,7 +12,7 @@ export interface Tools {
   /** Decides a call Claude Code would prompt for: the rules, then a reaction from the owner. */
   permission(threadId: string, tool: string, input: unknown): Promise<PermissionResult>;
   /** Opens an issue in `repo` (`owner/name`) for thread `threadId`, and has the thread track it. */
-  createIssue(threadId: string, repo: string, title: string, body: string, assign: boolean): Promise<Made>;
+  createIssue(threadId: string, repo: string, title: string, body: string, options: IssueOptions): Promise<Made>;
   /** Opens a pull request from branch `head` into `base` for thread `threadId`, and has the thread track it. */
   createPr(threadId: string, repo: string, head: string, base: string, title: string, body: string): Promise<Made>;
 }
@@ -71,8 +71,9 @@ const PERMISSION_TOOL = {
 const CREATE_ISSUE_TOOL = {
   name: "create_issue",
   description:
-    "Open a GitHub issue as loopway-bot. This is the only way to open one: never use gh for it. The thread then tracks " +
-    "the new issue. Set assign to assign it to the person running loopway, which starts a thread to work it; without " +
+    "Open a GitHub issue as loopway-bot. This is the only way to open one: never use gh for it. subscribe is required: " +
+    "true makes this thread track the new issue, so its comments come back to you; false only files it, as when you " +
+    "spin work out of this issue into its own, and nothing on it comes back here. Set assign to assign it to the person running loopway, which starts a thread to work it; without " +
     "assign the issue is only filed, and nobody starts on it.",
   inputSchema: {
     type: "object",
@@ -80,12 +81,16 @@ const CREATE_ISSUE_TOOL = {
       repo: { type: "string", description: "The repository, like owner/name." },
       title: { type: "string", description: "The issue's title." },
       body: { type: "string", description: "The issue's text, in Markdown." },
+      subscribe: {
+        type: "boolean",
+        description: "Whether this thread tracks the new issue. Required: say true or false.",
+      },
       assign: {
         type: "boolean",
         description: "Assign the issue to the person running loopway, so work starts on it. Default false.",
       },
     },
-    required: ["repo", "title", "body"],
+    required: ["repo", "title", "body", "subscribe"],
   },
 };
 
@@ -211,19 +216,20 @@ async function permission(tools: Tools, threadId: string, args: Record<string, u
 }
 
 async function createIssue(tools: Tools, threadId: string, args: Record<string, unknown> | undefined) {
-  const { repo, title, body, assign } = args ?? {};
+  const { repo, title, body, assign, subscribe } = args ?? {};
   if (
     !isText(repo) ||
     !isText(title) ||
     typeof body !== "string" ||
+    typeof subscribe !== "boolean" ||
     (assign !== undefined && typeof assign !== "boolean")
   )
     return text(
-      "create_issue needs a repo (owner/name), a title, a body and, optionally, assign (true or false)",
+      "create_issue needs a repo (owner/name), a title, a body, subscribe (true or false) and, optionally, assign (true or false)",
       true,
     );
   try {
-    return text(created(await tools.createIssue(threadId, repo, title, body, assign === true)));
+    return text(created(await tools.createIssue(threadId, repo, title, body, { subscribe, assign: assign === true })));
   } catch (err) {
     return text(`could not create the issue: ${(err as Error).message}`, true);
   }

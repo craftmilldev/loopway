@@ -49,7 +49,8 @@ if (mode === "permission") {
 
 if (mode === "open" && message.includes(`tracks: ${process.env.FAKE_SUBJECT}`)) {
   const repo = process.env.FAKE_SUBJECT.split("#")[0];
-  await callTool("create_issue", { repo, title: "Follow up", body: "Do the rest." });
+  const subscribe = process.env.FAKE_SUBSCRIBE !== "false";
+  await callTool("create_issue", { repo, title: "Follow up", body: "Do the rest.", subscribe });
   await callTool("create_pr", { repo, head: "fix-it", base: "main", title: "Fix it", body: "The fix." });
 }
 
