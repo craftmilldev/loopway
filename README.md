@@ -11,6 +11,8 @@ This is 2.0, an alpha. It started as a poller; threads are the second slice, and
 
 ## Getting started
 
+To just use it, run `curl -fsSL https://loopway.craftmill.dev/install.sh | sh` (needs git, Node 22+ and npm). loopway isn't on npm yet, so the script clones the repo into `~/.loopway/src` (`LOOPWAY_HOME` changes that), builds it and puts `loopway` on your PATH through `npm install -g`. Run it again to update to the latest `main`. To work on loopway, use the checkout:
+
 ```bash
 npm install && npm run build         # Node 22+
 gh auth login                        # loopway acts as whoever gh is logged in as
