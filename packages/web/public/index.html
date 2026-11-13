@@ -1732,10 +1732,13 @@ loopway setup</pre>
             [1456, 950],
             [1400, 950],
           ],
-          // One full stride covers this much ground, and each foot is down for this share of it. It is
-          // a slow, heavy walk: three feet are on the ground nearly all the time.
-          stride: 78,
-          planted: 0.78,
+          // One full stride covers this much ground, and at a walk each foot is down for this share
+          // of it. The stride is long and the feet are a long time in the air: a moose's legs swing,
+          // they do not patter. As it slows to a stand each foot stays down longer ("halted"), until
+          // all four are down together.
+          stride: 96,
+          planted: 0.62,
+          halted: 0.8,
           arrive: 4.2,
           down: [4.2, 4.9],
           firstBite,
@@ -1839,13 +1842,19 @@ loopway setup</pre>
         // Every step is a foot put down on one spot of ground, left there while the body goes over it,
         // and then picked up and swung to the next spot. Nothing on the ground ever slides.
         const cycle = (ground - inLength) / MOOSE.stride + MOOSE_HALT;
+        // How long a foot stays down depends on where the moose is, not when: within a stride and
+        // a half of where it stands to eat, it is slowing down or getting going.
+        const plantedAt = (where) =>
+          lerp(MOOSE.halted, MOOSE.planted, smooth(0, 1, Math.abs(where - inLength) / (MOOSE.stride * 1.5)));
+        const planted = plantedAt(ground);
         const legs = MOOSE_LEGS.map((leg) => {
           const at = cycle + leg.beat;
           const step = Math.floor(at);
           const part = at - step;
           const spot = (n) => {
-            const then = mooseBody(inLength + (n - leg.beat - MOOSE_HALT) * MOOSE.stride);
-            const reach = (MOOSE.planted * MOOSE.stride) / 2;
+            const landed = inLength + (n - leg.beat - MOOSE_HALT) * MOOSE.stride;
+            const then = mooseBody(landed);
+            const reach = (plantedAt(landed) * MOOSE.stride) / 2;
             return [
               then.x + leg.hip * then.size * then.narrow + then.heading[0] * reach,
               // The far legs stand a little further off, which is a little higher up the picture.
@@ -1857,14 +1866,15 @@ loopway setup</pre>
           let lift = 0;
           // How far through its swing the foot is, or null while it is on the ground.
           let swing = null;
-          if (part >= MOOSE.planted) {
-            swing = (part - MOOSE.planted) / (1 - MOOSE.planted);
+          if (part >= planted) {
+            swing = (part - planted) / (1 - planted);
             const to = spot(step + 1);
-            // The foot is picked up before it goes anywhere, and is nearly there before it is put down.
-            const eased = smooth(0.06, 0.94, swing);
+            // Nothing in the swing starts or stops all at once. The foot eases off the ground and
+            // eases forward, and eases down onto the next spot.
+            const eased = smooth(0, 1, swing);
             foot = [lerp(from[0], to[0], eased), lerp(from[1], to[1], eased)];
-            // A moose steps high: the front foot most, and soonest.
-            lift = (leg.hind ? 11 : 14) * Math.sin(Math.PI * swing ** (leg.hind ? 0.9 : 0.75));
+            // A moose steps high: the front foot most, and a little sooner.
+            lift = (leg.hind ? 12 : 15) * Math.sin(Math.PI * swing ** (leg.hind ? 0.95 : 0.85)) ** 1.5;
           }
           return {
             ...leg,
@@ -2004,53 +2014,78 @@ loopway setup</pre>
         //   shoulder rides up over it as the body passes: that is what carries the weight. When the
         //   foot is picked up the knee folds, the forearm comes forward and the cannon tucks back
         //   under it.
-        //   A hind leg is the thigh, down to the hock, and the cannon bone. The hock bends backward
-        //   only and is never straight: most bent as the foot lands, opening out as the leg pushes
-        //   off behind, and folding right up to bring the foot forward.
+        //   A hind leg is the thigh, from the hip forward to the stifle at the flank; the gaskin, from
+        //   there back and down to the hock; and the cannon bone. The hock bends backward only and
+        //   is never straight: it opens out as the leg pushes off behind, and folds right up to
+        //   bring the foot forward.
         //   The hoof hangs from the fetlock. On the ground it is flat; in the air the toe drops and
         //   trails behind, and comes up level again to land.
         // The foot is where the walk put it. Everything above it is worked out from there.
         const RIG = {
           front: { upper: 73, lower: 25, pivot: -104, bend: -1 },
-          hind: { upper: 55, lower: 31, pivot: -94, bend: 1 },
+          hind: { thigh: 28, upper: 35, lower: 32, hip: -92, bend: 1 },
         };
         const leg = ({ hip: hipX, hind, x, y, lift, swing }) => {
           const rig = hind ? RIG.hind : RIG.front;
           const floor = y - m.bob;
           // The fetlock, above and a little behind the toe.
           const fetlock = [x + 3, floor - 11 - lift];
-          const px = hipX + (hind ? 4 : 2);
-          const dx = fetlock[0] - px;
-          // How far it is from the joint to the fetlock with the foot down. A front leg is straight;
-          // a hind leg is straighter the further behind the foot is.
           const whole = rig.upper + rig.lower;
-          const reach = hind ? whole - 4.5 + 2.5 * clamp(dx / 30, -1, 1) : whole - 0.05;
-          // The joint rides up and down inside the body to keep that so, a little way.
-          const py = clamp(floor - 11 - Math.sqrt(Math.max(1, reach * reach - dx * dx)), rig.pivot - 7, rig.pivot + 9);
-          // Two bones from the joint to the fetlock: where they meet is the knee, or the hock.
-          const span = Math.hypot(dx, fetlock[1] - py);
+          // The joint the two lower bones hang from, and what is above it.
+          let root;
+          let haunch = null;
+          if (hind) {
+            // A hind leg has a third bone, the thigh, from the hip forward and down to the stifle
+            // at the flank. It is under the coat and it swings with the foot: back as the foot
+            // goes back, forward as the foot comes forward. The leg below hangs from the stifle,
+            // so it comes out from under the haunch and not out of the rump.
+            haunch = [hipX - 2, rig.hip];
+            const swung = clamp(0.45 - 0.012 * (fetlock[0] - hipX - 3), -0.1, 0.95);
+            root = [haunch[0] - Math.sin(swung) * rig.thigh, haunch[1] + Math.cos(swung) * rig.thigh];
+          } else {
+            // A front leg is straight with the foot down, so the shoulder rides up and down inside
+            // the body, a little way, to keep it so.
+            const px = hipX + 2;
+            const dx = fetlock[0] - px;
+            const reach = whole - 0.05;
+            root = [
+              px,
+              clamp(floor - 11 - Math.sqrt(Math.max(1, reach * reach - dx * dx)), rig.pivot - 7, rig.pivot + 9),
+            ];
+          }
+          // Two bones from there to the fetlock: where they meet is the knee, or the hock.
+          const span = Math.hypot(fetlock[0] - root[0], fetlock[1] - root[1]);
           const d = Math.min(span, whole - 0.01);
-          const e = [dx / span, (fetlock[1] - py) / span];
+          const e = [(fetlock[0] - root[0]) / span, (fetlock[1] - root[1]) / span];
           const a = (d * d + rig.upper ** 2 - rig.lower ** 2) / (2 * d);
           const h = Math.sqrt(Math.max(0, rig.upper ** 2 - a * a));
           // The bend is to the one side only: forward for a knee, back for a hock. (The moose is
           // drawn facing left, so forward is to the left.)
-          const knee = [px + e[0] * a + e[1] * h * rig.bend, py + e[1] * a - e[0] * h * rig.bend];
+          const knee = [root[0] + e[0] * a + e[1] * h * rig.bend, root[1] + e[1] * a - e[0] * h * rig.bend];
           const ankle = fetlock;
           // The hoof, turned about the fetlock.
-          const hang = swing === null ? 0 : Math.sin(Math.PI * swing ** 0.6) * (hind ? 0.8 : 1.1);
+          const hang = swing === null ? 0 : Math.sin(Math.PI * swing ** 0.8) ** 1.3 * (hind ? 0.7 : 0.95);
           const turned = (vx, vy) => [
             ankle[0] + vx * Math.cos(hang) + vy * Math.sin(hang),
             ankle[1] - vx * Math.sin(hang) + vy * Math.cos(hang),
           ];
-          const top = [px + (knee[0] - px) * 0.34, py + (knee[1] - py) * 0.34];
+          // The top of the leg is drawn from the joint itself, which is well inside the body, so
+          // however the leg swings it comes out from under the coat and never shows its top end.
           const along = (from, to, k) => [lerp(from[0], to[0], k), lerp(from[1], to[1], k)];
           return {
-            upper: [
-              [top[0] + (hind ? 4 : 0), top[1], hind ? 14 : 10.5],
-              [...along(top, knee, 0.55), hind ? 8.5 : 7],
-              [knee[0], knee[1], hind ? 5.6 : 5.2],
-            ],
+            upper: hind
+              ? [
+                  [haunch[0], haunch[1], 13],
+                  [root[0] + 2, root[1], 12],
+                  [...along(root, knee, 0.5), 8.6],
+                  [knee[0], knee[1], 5.6],
+                ]
+              : [
+                  [root[0], root[1], 10.5],
+                  [...along(root, knee, 0.4), 9.5],
+                  [...along(root, knee, 0.72), 6.8],
+                  [knee[0], knee[1], 5.2],
+                ],
             lower: [
               [knee[0], knee[1], hind ? 5.6 : 5.2],
               [...along(knee, ankle, 0.45), 3.4],
