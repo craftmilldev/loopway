@@ -245,9 +245,151 @@ loopway setup</pre>
         }
         ctx.closePath();
       }
+      // The foreground spruces follow a traced silhouette of a real spruce, loosened so no one tree's quirks
+      // stand out: x, y pairs across a unit box, clockwise from the tip. The tiers and the sweep of each bough are
+      // in the outline, so the tree is drawn as one body of paint with that edge, and it reads as a spruce and
+      // then sits back into the woods.
+      const PINE = {
+        aspect: 0.5655487804878049,
+        pts: [
+          0.456, 0, 0.477, 0.035, 0.512, 0.023, 0.469, 0.076, 0.544, 0.049, 0.531, 0.064, 0.561, 0.073, 0.501, 0.076,
+          0.539, 0.096, 0.474, 0.098, 0.48, 0.143, 0.598, 0.09, 0.585, 0.11, 0.617, 0.114, 0.588, 0.133, 0.617, 0.143,
+          0.561, 0.155, 0.598, 0.171, 0.558, 0.191, 0.606, 0.186, 0.671, 0.215, 0.601, 0.235, 0.569, 0.215, 0.558, 0.23,
+          0.523, 0.215, 0.509, 0.229, 0.488, 0.2, 0.493, 0.226, 0.558, 0.252, 0.615, 0.236, 0.65, 0.258, 0.741, 0.258,
+          0.695, 0.285, 0.65, 0.274, 0.668, 0.293, 0.631, 0.28, 0.62, 0.297, 0.547, 0.291, 0.633, 0.316, 0.69, 0.297,
+          0.69, 0.314, 0.765, 0.313, 0.73, 0.332, 0.695, 0.325, 0.698, 0.345, 0.66, 0.36, 0.531, 0.351, 0.615, 0.377,
+          0.69, 0.369, 0.685, 0.386, 0.747, 0.378, 0.795, 0.392, 0.741, 0.431, 0.598, 0.433, 0.647, 0.456, 0.739, 0.444,
+          0.739, 0.463, 0.825, 0.471, 0.776, 0.5, 0.725, 0.498, 0.752, 0.514, 0.671, 0.524, 0.817, 0.527, 0.782, 0.546,
+          0.798, 0.558, 0.76, 0.556, 0.782, 0.57, 0.879, 0.559, 0.852, 0.598, 0.757, 0.608, 0.941, 0.619, 0.879, 0.643,
+          0.903, 0.651, 0.868, 0.652, 0.881, 0.662, 0.809, 0.668, 1, 0.683, 0.951, 0.695, 0.978, 0.712, 0.881, 0.724,
+          0.863, 0.741, 0.698, 0.735, 0.992, 0.785, 0.925, 0.785, 0.962, 0.802, 0.881, 0.802, 0.86, 0.809, 0.876, 0.826,
+          0.765, 0.816, 0.765, 0.831, 0.704, 0.814, 0.846, 0.857, 0.935, 0.841, 0.927, 0.857, 0.992, 0.851, 0.922,
+          0.867, 0.981, 0.875, 0.943, 0.88, 0.976, 0.889, 0.933, 0.887, 0.941, 0.907, 0.86, 0.925, 0.987, 0.944, 0.943,
+          0.95, 0.957, 0.959, 0.903, 0.947, 0.911, 0.974, 0.819, 0.956, 0.814, 0.98, 0.701, 0.965, 0.704, 0.982, 0.639,
+          0.983, 0.539, 0.953, 0.544, 1, 0.437, 1, 0.461, 0.954, 0.437, 0.93, 0.429, 0.948, 0.321, 0.985, 0.291, 0.986,
+          0.283, 0.97, 0.253, 0.985, 0.245, 0.97, 0.183, 0.982, 0.173, 0.96, 0.124, 0.97, 0.148, 0.954, 0.108, 0.954,
+          0.17, 0.938, 0.054, 0.941, 0.054, 0.919, 0, 0.925, 0.054, 0.892, 0.194, 0.883, 0.17, 0.883, 0.181, 0.864,
+          0.129, 0.887, 0.132, 0.87, 0.097, 0.881, 0.089, 0.864, 0.057, 0.869, 0.073, 0.851, 0.008, 0.852, 0.054, 0.846,
+          0.043, 0.832, 0.17, 0.828, 0.078, 0.813, 0.105, 0.799, 0.054, 0.791, 0.121, 0.776, 0.062, 0.768, 0.04, 0.756,
+          0.062, 0.741, 0.005, 0.73, 0.062, 0.733, 0.051, 0.72, 0.1, 0.715, 0.17, 0.723, 0.253, 0.695, 0.213, 0.703,
+          0.189, 0.681, 0.129, 0.681, 0.105, 0.666, 0.132, 0.662, 0.081, 0.646, 0.221, 0.654, 0.326, 0.634, 0.097,
+          0.602, 0.124, 0.59, 0.089, 0.579, 0.286, 0.569, 0.259, 0.552, 0.358, 0.532, 0.224, 0.541, 0.132, 0.508, 0.302,
+          0.477, 0.294, 0.46, 0.318, 0.459, 0.24, 0.465, 0.17, 0.434, 0.283, 0.427, 0.194, 0.384, 0.342, 0.373, 0.181,
+          0.311, 0.235, 0.302, 0.267, 0.314, 0.259, 0.291, 0.313, 0.293, 0.243, 0.25, 0.329, 0.25, 0.326, 0.238, 0.38,
+          0.25, 0.461, 0.218, 0.369, 0.238, 0.342, 0.233, 0.369, 0.213, 0.315, 0.229, 0.323, 0.206, 0.275, 0.218, 0.286,
+          0.203, 0.226, 0.195, 0.278, 0.177, 0.34, 0.197, 0.34, 0.184, 0.461, 0.194, 0.45, 0.178, 0.394, 0.181, 0.404,
+          0.168, 0.332, 0.168, 0.364, 0.155, 0.321, 0.136, 0.345, 0.128, 0.323, 0.11, 0.383, 0.128, 0.41, 0.12, 0.385,
+          0.101, 0.415, 0.107, 0.418, 0.093, 0.391, 0.095, 0.38, 0.053, 0.423, 0.052, 0.453, 0.082, 0.418, 0.026, 0.456,
+          0.043, 0.456, 0,
+        ],
+      };
+      // Where the tree's box sits: as tall as the crown, a little wider than the silhouette's own shape.
+      const pineBox = (c) => {
+        const h = c.bottom - c.top + 4;
+        return { w: h * PINE.aspect * 1.35, h };
+      };
+      // The traced crown's top is the busiest part, so it is swapped for a plain spire: everything above the
+      // first tier is dropped and a smooth tapering tip put in its place.
+      const XY = (() => {
+        const keep = [];
+        for (let i = 0; i < PINE.pts.length; i += 2)
+          if (PINE.pts[i + 1] >= 0.2) keep.push(PINE.pts[i], PINE.pts[i + 1]);
+        return [...keep, 0.425, 0.15, 0.462, 0.075, 0.5, 0, 0.538, 0.075, 0.575, 0.15];
+      })();
+      function pinePath(ctx, c, dx = 0, dy = 0) {
+        const { w, h } = pineBox(c);
+        const flip = c.flip ? -1 : 1;
+        const at = (i) => {
+          const k = ((i % (XY.length / 2)) + XY.length / 2) % (XY.length / 2);
+          const u = XY[k * 2];
+          // The traced tree ends in the stub of its trunk; ours has its own, so the skirt lifts into an arch round
+          // it and the trunk climbs up into the foliage.
+          const d = Math.abs(u - 0.5);
+          const arch = lerp(0.86, 1, smooth(0.05, 0.12, d)) + 0.012 * Math.sin(u * 140);
+          const v = Math.min(XY[k * 2 + 1], arch);
+          return [c.x + dx + flip * (u - 0.5) * w, c.top + dy + v * h];
+        };
+        const count = XY.length / 2;
+        // Curves through the midpoints of the traced corners, so the edge is soft rather than faceted.
+        ctx.beginPath();
+        const first = at(0);
+        const second = at(1);
+        ctx.moveTo((first[0] + second[0]) / 2, (first[1] + second[1]) / 2);
+        for (let i = 1; i <= count; i++) {
+          const p = at(i);
+          const q = at(i + 1);
+          ctx.quadraticCurveTo(p[0], p[1], (p[0] + q[0]) / 2, (p[1] + q[1]) / 2);
+        }
+        ctx.closePath();
+      }
+      function paintPine(ctx, c) {
+        ctx.lineJoin = "round";
+        // Dark underneath; the same shape nudged up and left in the tree's own colour, so every bough keeps a
+        // shadowed belly; and once more, higher still and paler, so the tops of the boughs catch the light.
+        pinePath(ctx, c);
+        ctx.fillStyle = mixHex(c.fill, "#0b2016", 0.28);
+        ctx.fill();
+        ctx.save();
+        ctx.clip();
+        pinePath(ctx, c, -4, -7);
+        ctx.fillStyle = c.fill;
+        ctx.fill();
+        pinePath(ctx, c, -8, -15);
+        ctx.fillStyle = mixHex(c.fill, "#a8c37a", 0.14);
+        ctx.fill();
+        ctx.restore();
+        pinePath(ctx, c);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = mixHex(INK, c.fill, 0.35);
+        ctx.stroke();
+      }
+      // The picture is made at the current scale and kept until the scale changes.
+      function drawPine(ctx, c, trunkW) {
+        const box = pineBox(c);
+        const x0 = c.x - box.w / 2 - 20;
+        const y0 = c.top - 20;
+        const w = box.w + 40;
+        const h = box.h + 70;
+        if (!c.cache || c.cache.scale !== scale) {
+          const cv = document.createElement("canvas");
+          cv.width = Math.ceil(w * scale);
+          cv.height = Math.ceil(h * scale);
+          const g = cv.getContext("2d");
+          g.setTransform(scale, 0, 0, scale, -x0 * scale, -y0 * scale);
+          paintPine(g, c);
+          c.cache = { scale, cv };
+        }
+        ctx.drawImage(c.cache.cv, x0, y0, w, h);
+        // The trunk climbs on up in front of the foliage and fades into it, so it goes into the green rather
+        // than stopping under it.
+        const foot = c.top + box.h * 0.86;
+        const rise = ctx.createLinearGradient(0, foot - 46, 0, foot + 10);
+        rise.addColorStop(0, "rgba(91, 70, 54, 0)");
+        rise.addColorStop(1, "rgba(91, 70, 54, 1)");
+        ctx.fillStyle = rise;
+        ctx.fillRect(c.x - trunkW / 2, foot - 46, trunkW, 56);
+        const edge = ctx.createLinearGradient(0, foot - 46, 0, foot + 10);
+        edge.addColorStop(0, "rgba(22, 19, 14, 0)");
+        edge.addColorStop(1, "rgba(22, 19, 14, 1)");
+        ctx.strokeStyle = edge;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(c.x - trunkW / 2, foot - 46);
+        ctx.lineTo(c.x - trunkW / 2, foot + 10);
+        ctx.moveTo(c.x + trunkW / 2, foot - 46);
+        ctx.lineTo(c.x + trunkW / 2, foot + 10);
+        ctx.stroke();
+      }
       const TREES = [
         { kind: "spruce", x: 253, w: 30, base: 712, top: 500, crown: spruce(253, 156, 575, 215, 7, 11, "#3f6449") },
-        { kind: "spruce", x: 1180, w: 30, base: 730, top: 440, crown: spruce(1180, 40, 580, 215, 8, 23, "#456b4e") },
+        {
+          kind: "spruce",
+          x: 1180,
+          w: 30,
+          base: 730,
+          top: 440,
+          crown: { ...spruce(1180, 40, 580, 215, 8, 23, "#456b4e"), flip: true },
+        },
         { kind: "birch", x: 1538, w: 18, base: 705, top: 300, crownAt: [1545, 360, 125, 170] },
         { kind: "birch", x: 30, w: 16, base: 742, top: 400, crownAt: [42, 478, 104, 172] },
         { kind: "birch", x: 655, w: 15, base: 688, top: 480 },
@@ -1412,32 +1554,7 @@ loopway setup</pre>
           ctx.strokeStyle = INK;
           ctx.lineWidth = 2.5;
           if (t.crown) {
-            sprucePath(ctx, t.crown);
-            ctx.fillStyle = t.crown.fill;
-            ctx.fill();
-            ctx.stroke();
-            // A few drooping strokes inside, one to a bough, none matching its neighbour.
-            const c = t.crown;
-            const step = (c.bottom - c.top) / c.tiers;
-            ctx.lineWidth = 1.5;
-            ctx.globalAlpha = 0.45;
-            ctx.beginPath();
-            for (let k = 2; k <= c.tiers; k++) {
-              const w = c.half * Math.pow(k / c.tiers, 0.85);
-              for (const [side, sign] of [
-                [c.left, -1],
-                [c.right, 1],
-              ]) {
-                const b = side[k - 1];
-                const x0 = c.x + sign * w * (0.1 + b.rise * 0.5);
-                const y0 = c.top + step * (k - 0.72 + b.dy * 0.4);
-                const x1 = c.x + sign * w * (0.42 + b.sag);
-                const y1 = c.top + step * (k - 0.3 + b.dy * 0.5);
-                ctx.moveTo(x0, y0);
-                ctx.quadraticCurveTo((x0 + x1) / 2, y0 + step * (0.05 + b.sag * 0.5), x1, y1);
-              }
-            }
-            ctx.stroke();
+            drawPine(ctx, t.crown, t.w);
             ctx.globalAlpha = 1;
             return;
           }
