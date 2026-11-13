@@ -26,3 +26,27 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run format:check
+
+  # Every merge that changes the CLI is released (release-cli.yml), so the PR must raise the version.
+  cli-version:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fail if the CLI changed and its version did not
+        run: |
+          set -f # the pathspecs are globs for git, not the shell
+          base=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+          # Same files release-cli.yml counts as shipped, minus package.json itself, which is where the bump goes.
+          if git diff --quiet "$base" HEAD -- packages/cli ':(exclude,glob)packages/*/test/**' ':(exclude,glob)**/*.md' ':(exclude)packages/cli/package.json'; then
+            echo "No CLI code changed; no version bump needed."
+            exit 0
+          fi
+          if git diff "$base" HEAD -- packages/cli/package.json | grep -q '^[+-]  "version"'; then
+            echo "CLI changed and its version was raised."
+            exit 0
+          fi
+          echo "::error file=packages/cli/package.json::packages/cli changed, so raise \"version\" by at least a patch."
+          exit 1

@@ -28,7 +28,7 @@ npm run lint
 npm run format:check # `npm run format` fixes it
 ```
 
-CI runs `npm run build` and these four.
+CI runs `npm run build` and these four. On a pull request it also runs `cli-version`: when the PR changes what the CLI ships (`packages/cli`, without tests and markdown) it fails unless `packages/cli/package.json`'s `version` line changed too, so bump it by at least a patch.
 
 When CI passes on a push to `main` and `packages/cli` changed since the last `cli-v*` release (tests and markdown don't count), `.github/workflows/release-cli.yml` cuts a GitHub release `cli-v<version>` with the CLI as `loopway-cli.tgz`. The version is the next patch after the last tag, or `packages/cli/package.json`'s version when that is a plain `x.y.z` and higher (a pre-release such as `2.0.0-alpha` is ignored), so raise it there for a minor or major. The release is the record: the tag, not a commit, holds the version, and nothing is published to npm. Run it by hand from the Actions tab to retry.
 
