@@ -222,6 +222,32 @@ loopway setup</pre>
       // ?u=0.3 freezes the loop at that fraction of the day; ?speed=4 runs it faster.
       const W = 1600;
       const H = 1000;
+      // The picture is painted bigger than W by H: there is more sky above it and more river and
+      // near bank below it, so a window of another shape has something to show there.
+      const FULL = { x0: 0, y0: -600, x1: W, y1: H + 250 };
+      // What a window always shows, whatever its shape. The rest of the picture is margin: a wide
+      // window loses some sky and some river, and a tall one gets more of both.
+      const KEEP = { x0: 40, y0: 92, x1: W, y1: 912 };
+      // A window taller than it is wide is too narrow for all that, so it keeps the sign and the
+      // ground under it, and the page asks for the phone to be turned to see the rest.
+      const KEEP_TALL = { x0: 150, y0: 92, x1: 1095, y1: 912 };
+      // Where the picture sits in a window w by h: its scale, where its origin lands, and whether
+      // it is the tall one. The kept part is as big as the window lets it be and in the middle; the
+      // window then slides so that it shows picture and not what is beyond the picture's edge.
+      // Only a window too long for the whole painted picture gets bars.
+      function fit(w, h) {
+        const tall = h > w;
+        const keep = tall ? KEEP_TALL : KEEP;
+        const s = Math.min(w / (keep.x1 - keep.x0), h / (keep.y1 - keep.y0));
+        const place = (size, k0, k1, f0, f1) => {
+          const span = size / s;
+          if (span >= f1 - f0) return (f0 + f1 - span) / 2;
+          return Math.max(f0, Math.min(f1 - span, (k0 + k1 - span) / 2));
+        };
+        const left = place(w, keep.x0, keep.x1, FULL.x0, FULL.x1);
+        const top = place(h, keep.y0, keep.y1, FULL.y0, FULL.y1);
+        return { s, x: -left * s, y: -top * s, tall };
+      }
       const T = 60;
       const query = new URLSearchParams(location.search);
       const still = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0.3 : null;
@@ -268,8 +294,8 @@ loopway setup</pre>
       const groundCanvas = document.createElement("canvas");
       let scale = 1;
       // Where the picture sits in the window, in screen pixels per unit of the picture and where its
-      // origin is. All of it is always in view.
-      let view = { s: 1, x: 0, y: 0 };
+      // origin is: what fit() says for this window.
+      let view = { s: 1, x: 0, y: 0, tall: false };
 
       // The wordmark is in the page, so there is nothing to fetch. Its cream layer is dropped: the boards
       // are the cream. Nothing is drawn until it has decoded, so the sign never appears without it.
@@ -810,6 +836,20 @@ loopway setup</pre>
         k: 3 + Math.floor(seeded() * 9),
         p: seeded() * TAU,
       }));
+      // The sky above the old top of the picture has stars as thick as the rest. They are rolled on
+      // their own, so everything rolled above is where it was.
+      {
+        const r = rng(4242);
+        for (let i = 0; i < Math.round((90 * -FULL.y0) / 560); i++) {
+          STARS.push({
+            x: r() * W,
+            y: FULL.y0 + r() * -FULL.y0,
+            r: 0.7 + r() * 1.3,
+            k: 3 + Math.floor(r() * 9),
+            p: r() * TAU,
+          });
+        }
+      }
       // Wisps of high cloud. Each is three thin strands, long and tapered to nothing at both ends.
       // They cross the whole sky and go off the left-hand edge, one sky's width (and a margin each
       // side to be out of sight in) every loop, so each comes round again exactly as the loop does.
@@ -893,11 +933,13 @@ loopway setup</pre>
         const { sunU, day, twilight } = light;
         const top = mix("#121831", "#b9d2d6", day);
         const low = mix(mix("#2b3454", "#ebe4ce", day), "#e79a72", twilight * 0.85);
-        const sky = ctx.createLinearGradient(0, 0, 0, 640);
-        sky.addColorStop(0, top);
+        // Above the old top of the picture the sky goes on deepening, a little.
+        const sky = ctx.createLinearGradient(0, FULL.y0, 0, 640);
+        sky.addColorStop(0, mix("#0b0f22", "#9cc0cb", day));
+        sky.addColorStop(-FULL.y0 / (640 - FULL.y0), top);
         sky.addColorStop(1, low);
         ctx.fillStyle = sky;
-        ctx.fillRect(0, 0, W, H);
+        ctx.fillRect(FULL.x0, FULL.y0, FULL.x1 - FULL.x0, FULL.y1 - FULL.y0);
 
         const night = 1 - day;
         if (night > 0.02) {
@@ -1102,8 +1144,8 @@ loopway setup</pre>
         ctx.save();
         ctx.beginPath();
         edgePath(ctx, bank, 0, W);
-        ctx.lineTo(W, H);
-        ctx.lineTo(0, H);
+        ctx.lineTo(W, FULL.y1);
+        ctx.lineTo(0, FULL.y1);
         ctx.closePath();
         ctx.fillStyle = "#6f95a0";
         ctx.fill();
@@ -1198,13 +1240,13 @@ loopway setup</pre>
 
         ctx.fillStyle = "#a9a67f";
         ctx.beginPath();
-        edgePath(ctx, nearBank, 880, W);
-        ctx.lineTo(W, H);
-        ctx.lineTo(880, H);
+        edgePath(ctx, nearBank, 0, W);
+        ctx.lineTo(W, FULL.y1);
+        ctx.lineTo(0, FULL.y1);
         ctx.closePath();
         ctx.fill();
         ctx.beginPath();
-        edgePath(ctx, nearBank, 880, W);
+        edgePath(ctx, nearBank, 0, W);
         ctx.stroke();
       }
 
@@ -1475,6 +1517,44 @@ loopway setup</pre>
           }
           MARSH.clumps.push(clump);
         }
+        // Below the old bottom of the picture the near bank widens toward us, and the marsh goes
+        // on over it: cattails along the water as it runs off to the left, moss and sedge behind.
+        // These are rolled on their own, so the marsh above is where it was.
+        const more = rng(1717);
+        const blades = (clump, tall) => {
+          for (let b = 0; b < 8 + Math.floor(more() * 6); b++) {
+            clump.blades.push({
+              dx: (more() - 0.5) * 22 * tall,
+              h: (26 + more() * 40) * tall,
+              lean: (more() - 0.5) * 2,
+              tone: Math.floor(more() * 3),
+            });
+          }
+          return clump;
+        };
+        for (let x = 20; x < 880; x += 26 + more() * 22) {
+          const clump = blades(
+            { x, y: nearBank(x) + 2 + more() * 12, phase: more() * TAU, blades: [], tails: [] },
+            1.15,
+          );
+          for (let t = 0; t < 1 + Math.floor(more() * 3); t++)
+            clump.tails.push({ dx: (more() - 0.5) * 18, h: 66 + more() * 34, lean: (more() - 0.5) * 0.8 });
+          MARSH.clumps.push(clump);
+        }
+        for (let i = 0; i < 46; i++) {
+          const x = more() * W;
+          const y = lerp(Math.max(H, nearBank(x) + 30), FULL.y1, more());
+          MARSH.moss.push({
+            pts: raggedWith(more, x, y, 80 + more() * 110, 14 + more() * 18),
+            tone: Math.floor(more() * 3),
+          });
+        }
+        for (let i = 0; i < 44; i++) {
+          const x = more() * W;
+          const y = lerp(Math.max(H + 10, nearBank(x) + 36), FULL.y1 + 20, more());
+          // Nearer to us is bigger.
+          MARSH.clumps.push(blades({ x, y, phase: more() * TAU, blades: [], tails: [] }, 1.1 + ((y - H) / 250) * 0.5));
+        }
         MARSH.clumps.sort((a, b) => a.y - b.y);
       }
       // A red-winged blackbird comes in low over the river from the left around dusk, lands on a
@@ -1508,11 +1588,15 @@ loopway setup</pre>
           // Where it stands to eat, where it comes in from, off the picture, and the way it goes on out.
           stand: [1456, 950],
           edge: [W + 190, 938],
-          // The way out is one smooth bend: level at first, then down the bank toward us.
+          // The way out is one smooth bend: level at first, then down the bank toward us, and on until
+          // all of it is under the bottom of the painted picture, which is lower than the old one.
           out: Array.from({ length: 41 }, (_, i) => {
             const t = i / 40;
             const q = 1 - t;
-            return [q * q * 1456 + 2 * q * t * 1236 + t * t * 950, q * q * 950 + 2 * q * t * 952 + t * t * 1268];
+            return [
+              q * q * 1456 + 2 * q * t * 1236 + t * t * 950,
+              q * q * 950 + 2 * q * t * 952 + t * t * (FULL.y1 + 220),
+            ];
           }),
           // One full stride covers this much ground, and each foot is down for this share of it.
           stride: 66,
@@ -1523,7 +1607,7 @@ loopway setup</pre>
           graze: [graze, graze + 1.4],
           up: [graze + 1.4, graze + 2],
           leave: graze + 2.5,
-          seconds: graze + 2.5 + 7.8,
+          seconds: graze + 2.5 + 9.6,
         };
       })();
       // Whether the bunch has been eaten already. Set from what is kept, once that has been read.
@@ -1666,9 +1750,9 @@ loopway setup</pre>
         const theta = TAU * u;
         ctx.save();
         ctx.beginPath();
-        edgePath(ctx, nearBank, 880, W);
-        ctx.lineTo(W, H);
-        ctx.lineTo(880, H);
+        edgePath(ctx, nearBank, 0, W);
+        ctx.lineTo(W, FULL.y1);
+        ctx.lineTo(0, FULL.y1);
         ctx.closePath();
         ctx.clip();
         ctx.globalAlpha = 0.6;
@@ -4078,7 +4162,7 @@ loopway setup</pre>
       function drawDarkness(ctx, u, light) {
         const night = 1 - light.day;
         ctx.fillStyle = `rgba(20, 26, 60, ${night * 0.82})`;
-        ctx.fillRect(0, 0, W, H);
+        ctx.fillRect(FULL.x0, FULL.y0, FULL.x1 - FULL.x0, FULL.y1 - FULL.y0);
         ctx.globalCompositeOperation = "destination-out";
         firelight(ctx, u, (radius, strength) => hole(ctx, 0, 0, radius, strength));
         const lamps = ctx.createLinearGradient(0, BOARD.y, 0, BOARD.y + BOARD.h);
@@ -5225,6 +5309,41 @@ loopway setup</pre>
         drawEagle(ctx, clock);
       }
 
+      // In a tall window only the sign is in view. A line at the foot of the window says so: a small
+      // phone that tips over onto its side now and then, and the words. It is drawn in the window's
+      // own pixels, not the picture's, so it is the same size on every phone.
+      function drawTurnHint(ctx) {
+        const px = canvas.width / innerWidth;
+        // A frozen day (?u=, reduced motion) is not redrawn, so the phone is left lying on its side.
+        const t = freeze === null ? clockNow() % 4 : 2;
+        const tip = smooth(0.6, 1.3, t) * (1 - smooth(3, 3.6, t));
+        ctx.save();
+        ctx.setTransform(px, 0, 0, px, canvas.width / 2, canvas.height - 30 * px);
+        ctx.font = `13px ${MONO}`;
+        const words = "TURN FOR THE WHOLE SCENE";
+        const wide = ctx.measureText(words).width;
+        const half = (wide + 58) / 2;
+        ctx.fillStyle = "rgba(22, 19, 14, 0.78)";
+        ctx.beginPath();
+        ctx.roundRect(-half, -15, half * 2, 30, 15);
+        ctx.fill();
+        ctx.fillStyle = CREAM;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(words, -half + 42, 1);
+        ctx.translate(-half + 24, 0);
+        ctx.rotate((-Math.PI / 2) * tip);
+        ctx.strokeStyle = CREAM;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(-5.5, -9.5, 11, 19, 2.5);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, 6.2, 0.9, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+
       function frame(now) {
         countLoops(now);
         const u = freeze ?? mod(((now / 1000) * speed) / T, 1);
@@ -5235,14 +5354,16 @@ loopway setup</pre>
         if (skunk(u)) see("skunk");
         if (JUMPS.some((j) => u >= j.at && u <= j.at + JUMP_LENGTH)) see("trout");
 
+        // The land and the dark are each painted the size of the window, through the same view as
+        // the sky, so only what the window shows is ever painted.
         L.setTransform(1, 0, 0, 1, 0, 0);
         L.clearRect(0, 0, landCanvas.width, landCanvas.height);
-        L.setTransform(scale, 0, 0, scale, 0, 0);
+        L.setTransform(view.s, 0, 0, view.s, view.x, view.y);
         drawLand(L, u, light, clockNow());
 
         D.setTransform(1, 0, 0, 1, 0, 0);
         D.clearRect(0, 0, darkCanvas.width, darkCanvas.height);
-        D.setTransform(scale, 0, 0, scale, 0, 0);
+        D.setTransform(view.s, 0, 0, view.s, view.x, view.y);
         drawDarkness(D, u, light);
         D.setTransform(1, 0, 0, 1, 0, 0);
         D.globalCompositeOperation = "destination-in";
@@ -5255,15 +5376,18 @@ loopway setup</pre>
         main.save();
         main.setTransform(view.s, 0, 0, view.s, view.x, view.y);
         main.beginPath();
-        main.rect(0, 0, W, H);
+        main.rect(FULL.x0, FULL.y0, FULL.x1 - FULL.x0, FULL.y1 - FULL.y0);
         main.clip();
         drawSky(main, u, light);
-        main.drawImage(landCanvas, 0, 0, landCanvas.width / scale, landCanvas.height / scale);
+        main.setTransform(1, 0, 0, 1, 0, 0);
+        main.drawImage(landCanvas, 0, 0);
         main.globalCompositeOperation = "multiply";
-        main.drawImage(darkCanvas, 0, 0, darkCanvas.width / scale, darkCanvas.height / scale);
+        main.drawImage(darkCanvas, 0, 0);
         main.globalCompositeOperation = "source-over";
+        main.setTransform(view.s, 0, 0, view.s, view.x, view.y);
         drawGlows(main, u, light);
         main.restore();
+        if (view.tall) drawTurnHint(main);
 
         if (freeze === null) requestAnimationFrame(frame);
       }
@@ -5272,11 +5396,14 @@ loopway setup</pre>
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         canvas.width = Math.round(innerWidth * dpr);
         canvas.height = Math.round(innerHeight * dpr);
-        scale = Math.min(canvas.width / W, canvas.height / H);
-        view = { s: scale, x: (canvas.width - W * scale) / 2, y: (canvas.height - H * scale) / 2 };
+        view = fit(canvas.width, canvas.height);
+        // Whole pixels, so the layers land on the window's own pixels.
+        view.x = Math.round(view.x);
+        view.y = Math.round(view.y);
+        scale = view.s;
         for (const c of [landCanvas, darkCanvas]) {
-          c.width = Math.ceil(W * scale);
-          c.height = Math.ceil(H * scale);
+          c.width = canvas.width;
+          c.height = canvas.height;
         }
         drawBoardFace();
         buildGround();

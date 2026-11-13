@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 
 describe("the marketing page", () => {
@@ -190,6 +191,74 @@ describe("the marketing page", () => {
     }
     expect(bots).toContain(".loopway/dev.md");
     expect(bots).toContain(".loopway/review.md");
+  });
+
+  it("fits the picture to the window: the kept part is always in view, and a tall window keeps the sign", () => {
+    const source = html.match(/const FULL = [\s\S]*?return \{ s, x: -left \* s, y: -top \* s, tall \};\n {6}\}/)?.[0];
+    expect(source).toBeDefined();
+    type Box = { x0: number; y0: number; x1: number; y1: number };
+    type View = { s: number; x: number; y: number; tall: boolean };
+    const { FULL, KEEP, KEEP_TALL, fit } = runInNewContext(`${source}; ({ FULL, KEEP, KEEP_TALL, fit })`, {
+      W: 1600,
+      H: 1000,
+    }) as { FULL: Box; KEEP: Box; KEEP_TALL: Box; fit: (w: number, h: number) => View };
+    // What a window w by h shows of the picture, and how much of the window is bars.
+    const shown = (w: number, h: number) => {
+      const view = fit(w, h);
+      const box = { x0: -view.x / view.s, y0: -view.y / view.s, x1: (w - view.x) / view.s, y1: (h - view.y) / view.s };
+      const bars = {
+        x: Math.max(0, FULL.x0 - box.x0) + Math.max(0, box.x1 - FULL.x1),
+        y: Math.max(0, FULL.y0 - box.y0) + Math.max(0, box.y1 - FULL.y1),
+      };
+      return { view, box, bars };
+    };
+    const holds = (box: Box, keep: Box) =>
+      box.x0 <= keep.x0 + 1e-6 && box.y0 <= keep.y0 + 1e-6 && box.x1 >= keep.x1 - 1e-6 && box.y1 >= keep.y1 - 1e-6;
+    // Laptops, monitors, a tablet on its side, a square window: all of it picture, no bars.
+    for (const [w, h] of [
+      [1600, 1000],
+      [1440, 900],
+      [1920, 1080],
+      [1366, 768],
+      [1500, 1000],
+      [1024, 768],
+      [1280, 1024],
+      [1000, 1000],
+    ] as [number, number][]) {
+      const { view, box, bars } = shown(w, h);
+      expect(view.tall).toBe(false);
+      expect(holds(box, KEEP)).toBe(true);
+      expect(bars.x).toBeCloseTo(0);
+      expect(bars.y).toBeCloseTo(0);
+    }
+    // Wider than the picture: the kept part fills the height, and the bars are at the sides only.
+    for (const [w, h] of [
+      [2560, 1080],
+      [844, 390],
+    ] as [number, number][]) {
+      const { box, bars } = shown(w, h);
+      expect(holds(box, KEEP)).toBe(true);
+      expect(box.y0).toBeCloseTo(KEEP.y0);
+      expect(box.y1).toBeCloseTo(KEEP.y1);
+      expect(bars.y).toBeCloseTo(0);
+      expect(bars.x).toBeGreaterThan(0);
+    }
+    // Held upright: the sign fills the width, and a phone in its browser has no bars.
+    for (const [w, h] of [
+      [390, 664],
+      [412, 780],
+      [768, 1024],
+    ] as [number, number][]) {
+      const { view, box, bars } = shown(w, h);
+      expect(view.tall).toBe(true);
+      expect(holds(box, KEEP_TALL)).toBe(true);
+      expect(box.x0).toBeCloseTo(KEEP_TALL.x0);
+      expect(box.x1).toBeCloseTo(KEEP_TALL.x1);
+      expect(bars.x).toBeCloseTo(0);
+      expect(bars.y).toBeCloseTo(0);
+    }
+    expect(html).toContain("if (view.tall) drawTurnHint(main);");
+    expect(html).toContain('"TURN FOR THE WHOLE SCENE"');
   });
 
   it("is what vercel.json serves, with no build step", () => {
