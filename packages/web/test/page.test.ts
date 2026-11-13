@@ -193,7 +193,7 @@ describe("the marketing page", () => {
     expect(bots).toContain(".loopway/review.md");
   });
 
-  it("fits the picture to the window: the desk, the sign and the camp are always in view together", () => {
+  it("fits the picture to the window: a wide window keeps the desk, the sign and the camp together, and a tall one is a camera", () => {
     const source = html.match(/const FULL = [\s\S]*?return \{ s, x: -left \* s, y: -top \* s, tall \};\n {6}\}/)?.[0];
     expect(source).toBeDefined();
     type Box = { x0: number; y0: number; x1: number; y1: number };
@@ -246,21 +246,41 @@ describe("the marketing page", () => {
       expect(bars.y).toBeCloseTo(0);
       expect(bars.x).toBeGreaterThan(0);
     }
-    // Held upright: the desk and the camp are still both in view, with the sign between them.
+    // Held upright it is a camera: wherever it looks, that part fills the width, with no bars
+    // in a phone's browser. On the desk it holds the desk and its computer, on the sign the whole
+    // sign, and on the camp the three seats at the fire and the tent.
+    const fitAt = fit as unknown as (w: number, h: number, look: number) => View;
     for (const [w, h] of [
       [390, 664],
       [412, 780],
       [768, 1024],
     ] as [number, number][]) {
-      const { view, box, bars } = shown(w, h);
-      expect(view.tall).toBe(true);
-      expect(holds(box, KEEP)).toBe(true);
-      expect(bars.x).toBeCloseTo(0);
+      for (const [look, x0, x1] of [
+        [322, 60, 300],
+        [622, 184, 1062],
+        [1236, 1150, 1660],
+      ] as [number, number, number][]) {
+        const view = fitAt(w, h, look);
+        expect(view.tall).toBe(true);
+        const left = -view.x / view.s;
+        const right = (w - view.x) / view.s;
+        expect(left).toBeLessThanOrEqual(x0);
+        expect(right).toBeGreaterThanOrEqual(x1);
+        expect(left).toBeGreaterThanOrEqual(FULL.x0);
+        expect(right).toBeLessThanOrEqual(FULL.x1);
+        expect(-view.y / view.s).toBeGreaterThanOrEqual(FULL.y0 - 1e-6);
+        expect((h - view.y) / view.s).toBeLessThanOrEqual(FULL.y1 + 1e-6);
+      }
+      expect(fit(w, h)).toEqual(fitAt(w, h, 622));
     }
-    // The desk and its computer, and the three seats at the fire, are inside the kept part.
-    expect(KEEP.x0).toBeLessThan(60);
-    expect(KEEP.x1).toBeGreaterThan(1420);
-    expect(html).not.toContain("KEEP_TALL");
+    // The camera's round: on the worker until they have sat down at the fire, then the sign, then
+    // back to the desk; and on the sign whenever a face other than the first is showing.
+    expect(html).toContain(
+      "const CAMERA = { x: null, at: 0, from: 322, to: 1236, leaves: 0.56, onSign: [0.64, 0.93] };",
+    );
+    expect(html).toContain("if (shown > 0) return SIGN_MIDDLE;");
+    expect(html).toContain("if (u < CAMERA.leaves) return clamp(worker(u).x, CAMERA.from, CAMERA.to);");
+    expect(html).toContain("if (view.tall) moveCamera(u);");
     // The blackbird comes in low over the water: its whole flight is well inside the kept part.
     const lows = [...html.matchAll(/\[0(?:\.\d+)?, -?\d+, (9\d\d)\],/g)].map((m) => Number(m[1]));
     expect(lows).toContain(965);
@@ -277,7 +297,7 @@ describe("the marketing page", () => {
       expect(html).toContain(line);
     }
     expect(html).toContain("if (view.tall) drawTurnHint(main);");
-    expect(html).toContain('"TURN FOR A CLOSER LOOK"');
+    expect(html).toContain('"TURN FOR THE WHOLE SCENE"');
   });
 
   it("is what vercel.json serves, with no build step", () => {

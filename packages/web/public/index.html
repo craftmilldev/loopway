@@ -228,21 +228,26 @@ loopway setup</pre>
       const FULL = { x0: -400, y0: -1000, x1: W + 400, y1: H + 250 };
       // A place to one side of the old picture or the other, for what is scattered there.
       const beside = (roll) => (roll() < 0.5 ? FULL.x0 + roll() * -FULL.x0 : W + roll() * (FULL.x1 - W));
-      // What a window always shows, whatever its shape: the desk and its computer at one end, the
+      // What a wide window always shows, whatever its shape: the desk and its computer at one end, the
       // camp and the people at the fire at the other, and the sign between them, all together. The
       // rest of the picture is margin: a wide window gets more of the sides and loses some sky, and
       // a tall one gets more sky and more river. It goes down to the old bottom of the picture, so
       // the blackbird, which comes in low over the water, and the trout nearest to us are always
       // well inside it.
       const KEEP = { x0: 40, y0: 92, x1: W + 60, y1: H };
+      // A window taller than it is wide is too narrow for all of that at a size worth looking at.
+      // It is a camera instead: it shows this much of the picture's width, enough for the whole
+      // sign, and looks where it is told to (see cameraGoal).
+      const TALL_SPAN = 945;
+      const SIGN_MIDDLE = 622;
       // Where the picture sits in a window w by h: its scale, where its origin lands, and whether
-      // the window is taller than it is wide. The kept part is as big as the window lets it be and
-      // in the middle; the window then slides so that it shows picture and not what is beyond the
-      // picture's edge. Only a window too long for the whole painted picture gets bars. In a tall
-      // window the kept part is small, so the page asks for the phone to be turned.
-      function fit(w, h) {
+      // the window is taller than it is wide. In a wide window the kept part is as big as the window
+      // lets it be and in the middle; the window then slides so that it shows picture and not what
+      // is beyond the picture's edge. Only a window too long for the whole painted picture gets
+      // bars. In a tall window "look" is the place across the picture that the camera is on.
+      function fit(w, h, look = SIGN_MIDDLE) {
         const tall = h > w;
-        const keep = KEEP;
+        const keep = tall ? { ...KEEP, x0: look - TALL_SPAN / 2, x1: look + TALL_SPAN / 2 } : KEEP;
         const s = Math.min(w / (keep.x1 - keep.x0), h / (keep.y1 - keep.y0));
         const place = (size, k0, k1, f0, f1) => {
           const span = size / s;
@@ -5557,8 +5562,40 @@ loopway setup</pre>
         drawEagle(ctx, clock);
       }
 
-      // In a tall window the whole scene is in view but small. A line at the foot of the window asks
-      // for the phone to be turned: a small phone that tips over onto its side now and then, and the words. It is drawn in the window's
+      // The camera of a tall window. Through the day it stays on the one who works the terminal: at
+      // the desk while they work, along with them when they get up and walk to the fire, passing
+      // the sign on the way, and at the camp while they settle in the red chair. Then it leaves
+      // them and goes back to the sign, stays on it into the night, and goes on to the desk in time
+      // for the next one to walk in. It is one round a day, so it loops as the day does.
+      //   It keeps between "from" and "to", so the desk is never further left in the window than
+      //   it should be, nor the tent further right.
+      //   While the sign is showing any face but its first, somebody is reading it: the camera goes
+      //   to the sign and stays there until they are back at the first face.
+      const CAMERA = { x: null, at: 0, from: 322, to: 1236, leaves: 0.56, onSign: [0.64, 0.93] };
+      function cameraGoal(u) {
+        if (shown > 0) return SIGN_MIDDLE;
+        const desk = CAMERA.from;
+        if (u < CAMERA.leaves) return clamp(worker(u).x, CAMERA.from, CAMERA.to);
+        const camp = clamp(worker(CAMERA.leaves).x, CAMERA.from, CAMERA.to);
+        if (u < CAMERA.onSign[0]) return lerp(camp, SIGN_MIDDLE, smooth(CAMERA.leaves, CAMERA.onSign[0], u));
+        return lerp(SIGN_MIDDLE, desk, smooth(CAMERA.onSign[1], 1, u));
+      }
+      // The camera does not jump to where it should be; it swings there, quickly at first and
+      // settling. With the day frozen (?u=, reduced motion) there is no swing to watch, so it is
+      // simply there, unless a face of the sign has just been turned, when frames are coming anyway.
+      function moveCamera(u) {
+        const goal = cameraGoal(u);
+        const now = clockNow();
+        const since = now - CAMERA.at;
+        CAMERA.at = now;
+        // A tab that was in the background has nothing to swing from either.
+        if (CAMERA.x === null || (freeze !== null ? !awake : since > 1)) CAMERA.x = goal;
+        else CAMERA.x += (goal - CAMERA.x) * (1 - Math.exp(-Math.min(since, 0.05) * 3.2));
+        view.x = Math.round(fit(canvas.width, canvas.height, CAMERA.x).x);
+      }
+      const cameraMoving = () => view.tall && CAMERA.x !== null && Math.abs(cameraGoal(dayNow()) - CAMERA.x) > 0.5;
+      // In a tall window only part of the scene is in view at once. A line at the foot of the window
+      // says so: a small phone that tips over onto its side now and then, and the words. It is drawn in the window's
       // own pixels, not the picture's, so it is the same size on every phone.
       function drawTurnHint(ctx) {
         const px = canvas.width / innerWidth;
@@ -5568,7 +5605,7 @@ loopway setup</pre>
         ctx.save();
         ctx.setTransform(px, 0, 0, px, canvas.width / 2, canvas.height - 30 * px);
         ctx.font = `13px ${MONO}`;
-        const words = "TURN FOR A CLOSER LOOK";
+        const words = "TURN FOR THE WHOLE SCENE";
         const wide = ctx.measureText(words).width;
         const half = (wide + 58) / 2;
         ctx.fillStyle = "rgba(22, 19, 14, 0.78)";
@@ -5596,6 +5633,7 @@ loopway setup</pre>
         countLoops(now);
         const u = freeze ?? mod(((now / 1000) * speed) / T, 1);
         const light = daylight(u);
+        if (view.tall) moveCamera(u);
         // The ones that come by on their own are ticked off the first time they are on the picture.
         if (squirrel(u)) see("squirrel");
         if (u > BLACKBIRD.in[0] + 0.006 && u < BLACKBIRD.off[1] - 0.006) see("blackbird");
@@ -5644,15 +5682,20 @@ loopway setup</pre>
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         canvas.width = Math.round(innerWidth * dpr);
         canvas.height = Math.round(innerHeight * dpr);
-        view = fit(canvas.width, canvas.height);
+        view = fit(canvas.width, canvas.height, CAMERA.x ?? SIGN_MIDDLE);
         // Whole pixels, so the layers land on the window's own pixels.
         view.x = Math.round(view.x);
         view.y = Math.round(view.y);
         scale = view.s;
-        sides = {
-          left: clamp(-view.x / view.s, FULL.x0, 0),
-          right: clamp((canvas.width - view.x) / view.s, W, FULL.x1),
-        };
+        // A tall window's camera moves, so its sides are as far as the camera ever sees.
+        const half = canvas.width / view.s / 2;
+        sides = view.tall
+          ? { left: clamp(CAMERA.from - half, FULL.x0, 0), right: clamp(CAMERA.to + half, W, FULL.x1) }
+          : {
+              left: clamp(-view.x / view.s, FULL.x0, 0),
+              right: clamp((canvas.width - view.x) / view.s, W, FULL.x1),
+            };
+        CAMERA.x = null;
         WALK_IN[0][0] = sides.left - 90;
         mooseRoute();
         for (const c of [landCanvas, darkCanvas]) {
@@ -5681,7 +5724,8 @@ loopway setup</pre>
         MOTH.start !== null ||
         MOOSE.start !== null ||
         EAGLE.start !== null ||
-        faceFade() < 1;
+        faceFade() < 1 ||
+        cameraMoving();
       let awake = false;
       function wake() {
         if (freeze === null || awake) return;
