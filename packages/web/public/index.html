@@ -302,6 +302,7 @@ loopway setup</pre>
       const D = darkCanvas.getContext("2d");
       const boardCanvas = document.createElement("canvas");
       const groundCanvas = document.createElement("canvas");
+      const nearCanvas = document.createElement("canvas");
       let scale = 1;
       // Where the picture sits in the window, in screen pixels per unit of the picture and where its
       // origin is: what fit() says for this window.
@@ -1312,13 +1313,8 @@ loopway setup</pre>
         ctx.strokeStyle = INK;
         ctx.lineWidth = 2.5;
 
-        ctx.fillStyle = "#a9a67f";
-        ctx.beginPath();
-        edgePath(ctx, nearBank, FULL.x0, FULL.x1);
-        ctx.lineTo(FULL.x1, FULL.y1);
-        ctx.lineTo(FULL.x0, FULL.y1);
-        ctx.closePath();
-        ctx.fill();
+        // The near bank does not move either, so it too is drawn once and kept.
+        ctx.drawImage(nearCanvas, FULL.x0, NEAR_TOP, nearCanvas.width / scale, nearCanvas.height / scale);
         ctx.beginPath();
         edgePath(ctx, nearBank, FULL.x0, FULL.x1);
         ctx.stroke();
@@ -1419,6 +1415,137 @@ loopway setup</pre>
       // be walked through. Each route therefore keeps a strip clear: a little behind it and as far
       // in front of it as the tallest plant is high. The same goes for the ground under the desk,
       // the camp, the posts and the bramble.
+      // ---- The near bank ----
+      // The bank on our side of the river is the same woods floor as the far one, seen closer: moss
+      // in ragged patches, stones and a fringe of grass along the water, ferns in colonies, tussocks,
+      // low shrubs and a few boulders, all bigger the nearer they are to us. Only the water's edge
+      // toward the right is marsh, and that is drawn live (drawMarsh), over this.
+      //
+      // The moose walks this bank, and is drawn after it, so its way in and its way out are kept
+      // clear: a little behind them and as far in front as the tallest plant is high. So is the wet
+      // edge where the cattails stand.
+      const NEAR_TOP = 760;
+      // Two at the water's edge and one further off, with the moose's way between them.
+      const NEAR_BOULDERS = [
+        rock(300, 1116, 118, 50, 61),
+        rock(560, 1068, 84, 38, 67),
+        rock(-250, 1206, 96, 42, 71),
+        rock(1150, 1150, 104, 46, 73),
+      ];
+      function buildNear() {
+        nearCanvas.width = Math.ceil((FULL.x1 - FULL.x0) * scale);
+        nearCanvas.height = Math.ceil((FULL.y1 - NEAR_TOP) * scale);
+        const ctx = nearCanvas.getContext("2d");
+        ctx.setTransform(scale, 0, 0, scale, -FULL.x0 * scale, -NEAR_TOP * scale);
+        const r = rng(2323);
+        const anywhere = () => FULL.x0 + r() * (FULL.x1 - FULL.x0);
+        // Nearer to us is bigger.
+        const near = (y) => 1.3 + clamp((y - 900) / 350) * 0.55;
+        ctx.fillStyle = "#a9a67f";
+        ctx.beginPath();
+        edgePath(ctx, nearBank, FULL.x0, FULL.x1);
+        ctx.lineTo(FULL.x1, FULL.y1);
+        ctx.lineTo(FULL.x0, FULL.y1);
+        ctx.closePath();
+        ctx.fill();
+        ctx.save();
+        ctx.clip();
+        for (let i = 0; i < 64; i++) {
+          const x = anywhere();
+          const y = lerp(nearBank(x) + 14, FULL.y1 + 10, r());
+          const k = near(y);
+          ctx.fillStyle = ["#869a5c", "#7f975a", "#8fa163"][Math.floor(r() * 3)];
+          ctx.globalAlpha = 0.5;
+          blobPath(ctx, raggedWith(r, x, y, (100 + r() * 120) * k, (11 + r() * 13) * k));
+          ctx.fill();
+        }
+        // Bare, trodden earth shows through here and there.
+        for (let i = 0; i < 14; i++) {
+          const x = anywhere();
+          const y = lerp(nearBank(x) + 30, FULL.y1, r());
+          ctx.fillStyle = i % 2 ? "#a07f58" : "#93744f";
+          ctx.globalAlpha = 0.22;
+          blobPath(ctx, raggedWith(r, x, y, (50 + r() * 70) * near(y), (7 + r() * 8) * near(y)));
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        ctx.restore();
+        ctx.lineCap = "round";
+        // Stones at the water's edge, each outlined only over its top.
+        for (let i = 0; i < 44; i++) {
+          const x = anywhere();
+          const y = nearBank(x) + 3 + r() * 9;
+          const rx = (6 + r() * 11) * 1.2;
+          const ry = (3.5 + r() * 4.5) * 1.2;
+          ctx.fillStyle = "#b9b5aa";
+          ctx.beginPath();
+          ctx.ellipse(x, y, rx, ry, 0, 0, TAU);
+          ctx.fill();
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.ellipse(x, y, rx, ry, 0, Math.PI * 0.97, Math.PI * 2.03);
+          ctx.stroke();
+        }
+        const TALLEST = 62;
+        const routes = [[mooseEdge(), MOOSE.stand], MOOSE.out];
+        const inTheWay = (x, y) => {
+          // The wet edge, where the cattails are.
+          if (x > 860 && y < nearBank(x) + 70) return true;
+          if (NEAR_BOULDERS.some((b) => Math.abs(x - b.x) < b.w * 0.55 && y > b.y - b.h && y < b.y + 6)) return true;
+          return routes.some((route) =>
+            route.some((from, i) => {
+              const to = route[i + 1];
+              if (!to) return false;
+              if (x < Math.min(from[0], to[0]) - 30 || x > Math.max(from[0], to[0]) + 30) return false;
+              const t = to[0] === from[0] ? 0.5 : clamp((x - from[0]) / (to[0] - from[0]));
+              const routeY = lerp(from[1], to[1], t);
+              return y > routeY - 18 && y < routeY + TALLEST;
+            }),
+          );
+        };
+        const plants = [];
+        const plant = (kind, x, y) => {
+          if (y < nearBank(x) + 5 || y > FULL.y1 + 30 || inTheWay(x, y)) return;
+          plants.push([kind, x, y]);
+        };
+        const colony = (kind, cx, cy, count, spreadX, spreadY) => {
+          for (let i = 0; i < count; i++) plant(kind, cx + (r() - 0.5) * 2 * spreadX, cy + (r() - 0.5) * 2 * spreadY);
+        };
+        const inland = (x) => lerp(nearBank(x) + 40, FULL.y1 + 10, r());
+        // A fringe of grass along the water, where there are no cattails.
+        for (let x = FULL.x0 + 8; x < 900; x += 18 + r() * 22) {
+          if (r() < 0.25) continue;
+          plant("grass", x, nearBank(x) + 8 + r() * 12);
+        }
+        // Tussocks, in groups.
+        for (let i = 0; i < 26; i++) {
+          const x = anywhere();
+          colony("grass", x, inland(x), 3 + Math.floor(r() * 4), 70, 14);
+        }
+        // Ferns, in colonies, and beside the boulders.
+        for (let i = 0; i < 16; i++) {
+          const x = anywhere();
+          colony("fern", x, inland(x), 4 + Math.floor(r() * 3), 80, 16);
+        }
+        for (const b of NEAR_BOULDERS) colony("fern", b.x, b.y + 10, 5, b.w * 0.8, 10);
+        // Low shrubs.
+        for (let i = 0; i < 14; i++) {
+          const x = anywhere();
+          plant("shrub", x, inland(x));
+        }
+        // The boulders stand among the plants, each in front of whatever is behind it.
+        for (const b of NEAR_BOULDERS) plants.push(["boulder", b.x, b.y, b]);
+        plants.sort((a, b) => a[2] - b[2]);
+        for (const [kind, x, y, boulder] of plants) {
+          const k = near(y);
+          if (kind === "boulder") drawRock(ctx, boulder, false);
+          else if (kind === "fern") drawFern(ctx, r, x, y, (19 + r() * 9) * k);
+          else if (kind === "grass") drawGrass(ctx, r, x, y, (16 + r() * 10) * k);
+          else drawLowShrub(ctx, r, x, y, (20 + r() * 9) * k);
+        }
+      }
+
       function buildGround() {
         groundCanvas.width = Math.ceil((FULL.x1 - FULL.x0) * scale);
         groundCanvas.height = Math.ceil(H * scale);
@@ -1675,26 +1802,23 @@ loopway setup</pre>
         };
         for (let x = 300; x < 880; x += 26 + more() * 22) if (more() < wet(x)) atEdge(x);
         for (let x = W + 14; x < FULL.x1 + 20; x += 26 + more() * 22) atEdge(x);
-        // Behind the water's edge: moss, and sedge with no heads.
-        const inland = (x, low) => {
-          const y = lerp(nearBank(x) + 34, low, more());
+        // Just behind the water's edge: moss, and sedge with no heads. The marsh is a strip along
+        // the water; behind it the bank is dry ground (buildNear).
+        const behind = (x) => {
+          const y = nearBank(x) + 34 + more() * 70;
           if (more() < 0.5) {
             MARSH.moss.push({
-              pts: raggedWith(more, x, y, 80 + more() * 110, 14 + more() * 18),
+              pts: raggedWith(more, x, y, 70 + more() * 90, 12 + more() * 14),
               tone: Math.floor(more() * 3),
             });
           }
-          // Nearer to us is bigger.
-          MARSH.clumps.push(
-            blades({ x, y: y + 6, phase: more() * TAU, blades: [], tails: [] }, 1.1 + clamp((y - H) / 250) * 0.5),
-          );
+          MARSH.clumps.push(blades({ x, y: y + 6, phase: more() * TAU, blades: [], tails: [] }, 1.15));
         };
-        for (let i = 0; i < 90; i++) {
-          const x = more() * W;
-          const keep = more() < wet(x);
-          if (nearBank(x) + 34 < FULL.y1 && keep) inland(x, FULL.y1 + 20);
+        for (let i = 0; i < 26; i++) {
+          const x = 500 + more() * (W - 500);
+          if (more() < wet(x)) behind(x);
         }
-        for (let i = 0; i < 26; i++) inland(W + more() * (FULL.x1 - W), H + 60);
+        for (let i = 0; i < 12; i++) behind(W + more() * (FULL.x1 - W));
         MARSH.clumps.sort((a, b) => a.y - b.y);
       }
       // A red-winged blackbird comes in low over the river from the left around dusk, lands on a
@@ -5739,6 +5863,7 @@ loopway setup</pre>
         }
         drawBoardFace();
         buildGround();
+        buildNear();
         if (freeze !== null) frame(0);
       }
       // Clicks. A point on the page is turned into a point in the picture first.
