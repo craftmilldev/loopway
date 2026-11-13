@@ -347,9 +347,34 @@ loopway setup</pre>
         ctx.beginPath();
         ctx.moveTo(apex[0], apex[1]);
         let from = apex;
+        // A bough's top edge, from the trunk end to the tip or back. A foreground tree has a smaller
+        // tip part-way down some of them, so no two boughs are the same one curve.
+        const bough = (inner, end, b, sign, outward) => {
+          const sag = step * b.sag;
+          if (!b.twig) {
+            const to = outward ? end : inner;
+            ctx.quadraticCurveTo((inner[0] + end[0]) / 2, (inner[1] + end[1]) / 2 + sag, to[0], to[1]);
+            return;
+          }
+          const at = (f, dx, dy) => [lerp(inner[0], end[0], f) + sign * dx, lerp(inner[1], end[1], f) + dy];
+          const reach = Math.abs(end[0] - inner[0]);
+          const point = at(b.twig, reach * 0.07, sag * 0.5);
+          const tuck = at(b.twig, -reach * 0.02, sag * 0.5 + step * 0.1);
+          const legs = [
+            [at(b.twig / 2, 0, sag * 0.75), point],
+            [[(point[0] + tuck[0]) / 2, tuck[1] - step * 0.02], tuck],
+            [at((1 + b.twig) / 2, 0, sag * 0.8 + step * 0.06), end],
+          ];
+          if (outward) for (const [c, to] of legs) ctx.quadraticCurveTo(c[0], c[1], to[0], to[1]);
+          else {
+            const stops = [end, tuck, point, inner];
+            for (let k = 2; k >= 0; k--)
+              ctx.quadraticCurveTo(legs[k][0][0], legs[k][0][1], stops[3 - k][0], stops[3 - k][1]);
+          }
+        };
         for (let i = 1; i <= s.tiers; i++) {
           const p = tip(s.right, 1, i);
-          ctx.quadraticCurveTo((from[0] + p[0]) / 2, (from[1] + p[1]) / 2 + step * s.right[i - 1].sag, p[0], p[1]);
+          bough(from, p, s.right[i - 1], 1, true);
           from = p;
           if (i < s.tiers) {
             const q = notch(s.right, 1, i);
@@ -358,19 +383,58 @@ loopway setup</pre>
           }
         }
         const skirt = tip(s.left, -1, s.tiers);
-        ctx.quadraticCurveTo(mid(s.bottom), s.bottom + step * 0.1, skirt[0], skirt[1]);
+        if (s.hem) {
+          // The lowest boughs hang at their own heights, so the foot of the tree is a ragged hem, not a line.
+          const stops = [...s.hem.map((h) => [lerp(from[0], skirt[0], h.at), s.bottom + step * h.drop]), skirt];
+          stops.forEach((q, k) => {
+            const lift = step * (s.hem[k] ? s.hem[k].lift : 0.12);
+            ctx.quadraticCurveTo((from[0] + q[0]) / 2, (from[1] + q[1]) / 2 - lift, q[0], q[1]);
+            from = q;
+          });
+        } else ctx.quadraticCurveTo(mid(s.bottom), s.bottom + step * 0.1, skirt[0], skirt[1]);
+        from = skirt;
         for (let i = s.tiers; i >= 1; i--) {
           const p = tip(s.left, -1, i);
           const to = i > 1 ? notch(s.left, -1, i - 1) : apex;
           if (i < s.tiers) ctx.quadraticCurveTo((from[0] + p[0]) / 2, p[1] + step * 0.06, p[0], p[1]);
-          ctx.quadraticCurveTo((p[0] + to[0]) / 2, (p[1] + to[1]) / 2 + step * s.left[i - 1].sag, to[0], to[1]);
+          bough(to, p, s.left[i - 1], -1, false);
           from = to;
         }
         ctx.closePath();
       }
+      // What only a tree close enough to see has: a ragged hem and the odd smaller tip on a bough. It is
+      // rolled apart from the tree's own shape, so the silhouette under it stays the one it was.
+      function closeUp(crown, seed) {
+        const r = rng(seed);
+        for (const side of [crown.left, crown.right])
+          side.forEach((b, i) => {
+            if (i > 1 && r() < 0.55) b.twig = 0.3 + r() * 0.2;
+          });
+        const count = 5;
+        crown.hem = Array.from({ length: count }, (_, k) => ({
+          at: (k + 0.6 + (r() - 0.5) * 0.5) / (count + 0.6),
+          drop: 0.1 + 0.22 * Math.sin((Math.PI * (k + 1)) / (count + 1)) + (r() - 0.5) * 0.16,
+          lift: 0.1 + r() * 0.16,
+        }));
+        return crown;
+      }
       const TREES = [
-        { kind: "spruce", x: 253, w: 30, base: 712, top: 500, crown: spruce(253, 156, 575, 215, 7, 11, "#3f6449") },
-        { kind: "spruce", x: 1180, w: 30, base: 730, top: 440, crown: spruce(1180, 40, 580, 215, 8, 23, "#456b4e") },
+        {
+          kind: "spruce",
+          x: 253,
+          w: 30,
+          base: 712,
+          top: 500,
+          crown: closeUp(spruce(253, 156, 575, 215, 7, 11, "#3f6449"), 5),
+        },
+        {
+          kind: "spruce",
+          x: 1180,
+          w: 30,
+          base: 730,
+          top: 440,
+          crown: closeUp(spruce(1180, 40, 580, 215, 8, 23, "#456b4e"), 9),
+        },
         { kind: "birch", x: 1538, w: 18, base: 705, top: 300, crownAt: [1545, 360, 125, 170] },
         { kind: "birch", x: 30, w: 16, base: 742, top: 400, crownAt: [42, 478, 104, 172] },
         { kind: "birch", x: 655, w: 15, base: 688, top: 480 },
@@ -1539,8 +1603,11 @@ loopway setup</pre>
             ctx.fillStyle = t.crown.fill;
             ctx.fill();
             ctx.stroke();
-            // A few drooping strokes inside, one to a bough, none matching its neighbour.
+            // A few drooping strokes inside, one to a bough, none matching its neighbour. They are kept
+            // inside the tree: none runs out over its edge.
             const c = t.crown;
+            ctx.save();
+            ctx.clip();
             const step = (c.bottom - c.top) / c.tiers;
             ctx.lineWidth = 1.5;
             ctx.globalAlpha = 0.45;
@@ -1554,13 +1621,14 @@ loopway setup</pre>
                 const b = side[k - 1];
                 const x0 = c.x + sign * w * (0.1 + b.rise * 0.5);
                 const y0 = c.top + step * (k - 0.72 + b.dy * 0.4);
-                const x1 = c.x + sign * w * (0.42 + b.sag);
+                const x1 = c.x + sign * w * Math.min(0.3 + b.sag, b.notch * 0.8);
                 const y1 = c.top + step * (k - 0.3 + b.dy * 0.5);
                 ctx.moveTo(x0, y0);
-                ctx.quadraticCurveTo((x0 + x1) / 2, y0 + step * (0.05 + b.sag * 0.5), x1, y1);
+                ctx.quadraticCurveTo(lerp(x0, x1, 0.55), lerp(y0, y1, 0.8) + step * 0.05, x1, y1);
               }
             }
             ctx.stroke();
+            ctx.restore();
             ctx.globalAlpha = 1;
             return;
           }
