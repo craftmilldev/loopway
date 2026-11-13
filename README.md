@@ -11,12 +11,14 @@ This is 2.0, an alpha. It started as a poller; threads are the second slice, and
 
 ## Getting started
 
-To just use it, run `curl -fsSL https://loopway.craftmill.dev/install.sh | sh` (needs Node 22+ and npm). It installs the latest GitHub release with `npm install -g`; `LOOPWAY_VERSION=2.0.0-alpha` picks another. Run it again to update. To work on loopway, use the checkout:
+To just use it, run `curl -fsSL https://loopway.craftmill.dev/install.sh | sh` (needs Node 22+ and npm). It installs the latest GitHub release with `npm install -g`; `LOOPWAY_VERSION=2.0.0` picks another. Run it again to update. To work on loopway, use the checkout:
 
 ```bash
 npm install && npm run build         # Node 22+
 gh auth login                        # loopway acts as whoever gh is logged in as
 ```
+
+Or install the latest release: `npm install -g https://github.com/craftmilldev/loopway/releases/latest/download/loopway-cli.tgz`.
 
 Make a directory to run it from, with a `.loopway/` folder holding one file per bot (`scratch/` inside the checkout is git-ignored):
 

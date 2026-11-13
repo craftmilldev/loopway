@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installs the loopway CLI from a GitHub release:  curl -fsSL https://loopway.craftmill.dev/install.sh | sh
-# LOOPWAY_VERSION=0.3.0 installs that release instead of the latest.
-# The release lists its own tarballs in manifest.txt, so this script doesn't change when the package list does.
+# LOOPWAY_VERSION=2.0.0 installs that release instead of the latest.
+# The release carries the CLI as loopway-cli.tgz (see .github/workflows/release-cli.yml).
 # Needs Node 22+ and npm. Uses npm's global prefix, so it may need the same permissions as `npm i -g`.
 set -eu
 
@@ -29,22 +29,8 @@ fi
 DIR=$(mktemp -d)
 trap 'rm -rf "$DIR"' EXIT
 
-# manifest.txt lists the release's tarballs, one file name per line. Releases before 0.3.0 have none
-# and can't be installed with this script.
-curl -fsSL "$URL/manifest.txt" -o "$DIR/manifest.txt" || fail "could not download $URL/manifest.txt (releases before 0.3.0 have none)."
-FILES=$(cat "$DIR/manifest.txt")
-[ -n "$FILES" ] || fail "the release lists no packages."
-
-PACKAGES=""
-for file in $FILES; do
-  case "$file" in
-    */*) fail "unexpected file in the release manifest: $file" ;;
-    loopway-*.tgz) ;;
-    *) fail "unexpected file in the release manifest: $file" ;;
-  esac
-  curl -fsSL "$URL/$file" -o "$DIR/$file" || fail "could not download $URL/$file"
-  PACKAGES="$PACKAGES $DIR/$file"
-done
+curl -fsSL "$URL/loopway-cli.tgz" -o "$DIR/loopway-cli.tgz" || fail "could not download $URL/loopway-cli.tgz"
+PACKAGES="$DIR/loopway-cli.tgz"
 
 # shellcheck disable=SC2086
 npm install -g $PACKAGES || fail "npm install failed."

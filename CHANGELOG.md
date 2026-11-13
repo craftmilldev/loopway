@@ -1,12 +1,10 @@
 # Changelog
 
-## 2.0.0-alpha
+## 2.0.0
 
 loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and it polls GitHub, printing every new issue and pull request by you or your bot and every update to the ones it knows. See [#486](https://github.com/craftmilldev/loopway/issues/486).
 
 ### Added
-
-- Releases are back: CI on `main` publishes a GitHub release `cli-v<version>` when the CLI changes, and `curl -fsSL https://loopway.craftmill.dev/install.sh | sh` installs the latest one (run it again to update).
 
 - Bare `loopway`, with `--json`. Bots are `.loopway/<bot>.md` files; state is JSON per project, in `~/.loopway/state/<slug>`.
 
@@ -21,6 +19,8 @@ loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and i
 - Chat in the TUI: `c` in a thread view talks to its session live. The session knows it is in a chat block, and when `Esc` ends it, comments on the ticket with an overview if it acted on the conversation or the ticket was unclear.
 
 - A `/bots` page on the site: what goes in a `.loopway/<bot>.md` file. The get-started frame links to it.
+
+- Releases come back: when CI passes on `main` and `packages/cli` changed since the last `cli-v*` tag, `release-cli.yml` cuts a GitHub release `cli-v<version>` (the next patch, or `packages/cli/package.json`'s version when it is a plain, higher `x.y.z`) with `loopway-cli.tgz`. Nothing goes to npm. `curl -fsSL https://loopway.craftmill.dev/install.sh | sh` installs the latest one (run it again to update).
 
 - Bots say who they listen to: `trusted: [alice, acme/devs]` in a bot file (logins and `org/team` slugs; loopway won't run if a team can't be read). A new issue or pull request starts a thread only when its author is trusted and it is assigned to you; assigning it later starts one. Comments and reviews from anyone else are ignored, with a log line. `create_issue` takes `assign` to start work on what it files, and a pull request a thread opens still gets its review thread at once. See [#530](https://github.com/craftmilldev/loopway/issues/530).
 

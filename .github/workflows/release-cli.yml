@@ -1,10 +1,10 @@
 name: Release CLI
 
-# Releases the CLI once CI passes on main, if the CLI or a workspace package it ships with has changed since the last
-# release. The version is the next patch after the last `cli-v*` tag, or packages/cli/package.json's version when
-# its major.minor.patch is higher (a prerelease suffix like `-alpha` is kept for that first release), so a minor or
-# major bump is made by raising it there. The release carries the CLI as an npm tarball, plus a manifest.txt listing
-# it, which packages/web/public/install.sh (served at /install.sh) installs. Run it by hand from the Actions tab to retry; it releases nothing when nothing changed.
+# Releases the CLI once CI passes on main, if the CLI has changed since the last release. The version is the next
+# patch after the last `cli-v*` tag, or packages/cli/package.json's version when that is a plain x.y.z and higher, so
+# a minor or major bump is made by raising it there. The release is a GitHub release tagged `cli-v<version>` carrying
+# the CLI as an npm tarball (`loopway-cli.tgz`); nothing goes to npm. Run it by hand from the Actions tab to retry; it
+# releases nothing when nothing changed.
 on:
   workflow_run:
     workflows: [CI]
@@ -31,8 +31,9 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
       - name: List what the CLI ships
-        # Just the CLI package; tests and markdown don't change a release.
-        run: echo "CLI_PATHS=packages/cli :(exclude,glob)packages/*/test/** :(exclude,glob)**/*.md" >> "$GITHUB_ENV"
+        # Tests and markdown don't change a release.
+        run: |
+          echo "CLI_PATHS=packages/cli :(exclude,glob)packages/*/test/** :(exclude,glob)**/*.md" >> "$GITHUB_ENV"
       - name: Decide whether to release, and the version
         id: plan
         run: |
@@ -49,11 +50,12 @@ jobs:
             exit 0
           fi
           version=$(node -e '
-            const [last, pkg] = process.argv.slice(1);
-            const core = (v) => v.split("-")[0].split(".").map(Number);
-            const [l, p] = [core(last), core(pkg)];
-            const higher = p.findIndex((n, i) => n !== l[i]);
-            console.log(higher !== -1 && p[higher] > l[higher] ? pkg : `${l[0]}.${l[1]}.${l[2] + 1}`);
+            const [lastV, pkgV] = process.argv.slice(1);
+            const last = lastV.split(".").map(Number);
+            // A pre-release such as 2.0.0-alpha is not a version to release; the next patch is.
+            const pkg = /^\d+\.\d+\.\d+$/.test(pkgV) ? pkgV.split(".").map(Number) : last;
+            const higher = pkg.findIndex((n, i) => n !== last[i]);
+            console.log(higher !== -1 && pkg[higher] > last[higher] ? pkg.join(".") : `${last[0]}.${last[1]}.${last[2] + 1}`);
           ' "${last#cli-v}" "$(node -p 'require("./packages/cli/package.json").version')")
           echo "Releasing $version (last release $last)" >&2
           {
@@ -85,16 +87,15 @@ jobs:
         run: |
           mkdir dist-release
           npm pack -w @loopway/cli --pack-destination dist-release
-          # Fixed names, so the manifest and install.sh don't need to know versions
+          # A fixed name, so the release asset does not change with the version
           mv dist-release/loopway-cli-*.tgz dist-release/loopway-cli.tgz
-          # install.sh installs whatever this lists
-          (cd dist-release && ls loopway-*.tgz > manifest.txt)
-      - name: Install with the hosted install.sh and run it
+      - name: Install the tarball and run it
         if: steps.plan.outputs.release == 'true'
         run: |
-          LOOPWAY_DOWNLOAD_URL="file://$PWD/dist-release" sh packages/web/public/install.sh
-          test "$(command -v loopway)" = "$(npm prefix -g)/bin/loopway"
-          test "$(loopway --version)" = "${{ steps.plan.outputs.version }}"
+          mkdir smoke && cd smoke
+          npm init -y >/dev/null
+          npm install ../dist-release/loopway-cli.tgz
+          test "$(npx loopway --version)" = "${{ steps.plan.outputs.version }}"
       - name: Publish the release
         if: steps.plan.outputs.release == 'true'
         env:
@@ -105,5 +106,5 @@ jobs:
           set -f
           # Only the commits that changed what the CLI ships, not every merge since the last release
           git log --format='- %s (%h)' "$LAST..HEAD" -- $CLI_PATHS > notes.md
-          gh release create "cli-v$VERSION" dist-release/*.tgz dist-release/manifest.txt \
+          gh release create "cli-v$VERSION" dist-release/loopway-cli.tgz \
             --target "$(git rev-parse HEAD)" --title "CLI $VERSION" --notes-file notes.md

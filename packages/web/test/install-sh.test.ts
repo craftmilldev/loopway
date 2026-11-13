@@ -27,7 +27,6 @@ describe("install.sh", () => {
     mkdirSync(fakeBin);
     const release = join(dir, "release");
     mkdirSync(release);
-    writeFileSync(join(release, "manifest.txt"), "loopway-cli.tgz\n");
     writeFileSync(join(release, "loopway-cli.tgz"), "");
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
