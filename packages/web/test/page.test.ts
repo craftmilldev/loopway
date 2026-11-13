@@ -8,16 +8,25 @@ describe("the marketing page", () => {
     expect(html).toContain("<title>loopway</title>");
   });
 
-  it("is the billboard itself: one canvas, no iframe, no other file to load but the wordmark", () => {
+  it("is the billboard itself: one canvas, no iframe, and no other file to load", () => {
     expect(html).toContain('<canvas id="scene"');
     expect(html).not.toContain("<iframe");
-    expect(html).toContain('fetch("wordmark.svg")');
+    expect(html).not.toContain("fetch(");
     const scripts = [...html.matchAll(/<script\b[^>]*>/g)].map((m) => m[0]);
     expect(scripts).toEqual([
       '<script src="https://a.craftmill.dev/api/ingest/static/array.js">',
       "<script>",
+      '<script type="image/svg+xml" id="wordmark-svg">',
       "<script>",
     ]);
+  });
+
+  it("carries the wordmark in the page, the same as wordmark.svg", () => {
+    const file = readFileSync(new URL("../public/wordmark.svg", import.meta.url), "utf8");
+    const inline = html.match(/<script type="image\/svg\+xml" id="wordmark-svg">([\s\S]*?)<\/script>/)?.[1];
+    // The formatter re-indents the copy, so the two are compared without their white space.
+    const bare = (text: string | undefined) => text?.replace(/\s+/g, "");
+    expect(bare(inline)).toBe(bare(file));
   });
 
   it("sends only the events the funnel needs, through the shared proxy", () => {
@@ -37,7 +46,7 @@ describe("the marketing page", () => {
     // It wiggles, so it is drawn live over the still face rather than painted into it.
     expect(html).toContain("function drawScrollHint(ctx, cx, baseline, fade)");
     expect(html).toContain("scroll &darr;");
-    expect(html).toContain("Keep your agents and team in same loop");
+    expect(html).toContain("Keep your agents and team in the same loop");
     // The content is drawn on the board's face, not laid over the page.
     expect(html).toContain("function drawFaceContent(ctx, w, h)");
     expect(html).toContain("} else drawFaceContent(ctx, w, h);");
