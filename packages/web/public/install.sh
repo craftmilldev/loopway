@@ -1,45 +1,56 @@
 #!/bin/sh
-# Installs loopway:  curl -fsSL https://loopway.craftmill.dev/install.sh | sh
-# loopway 2.0 isn't on npm and has no releases yet, so this clones the repo, builds it and links the `loopway` command.
-# Run it again to update: it moves the clone to the latest main and rebuilds.
-#   LOOPWAY_HOME      where the clone goes (default ~/.loopway/src)
-#   LOOPWAY_REPO_URL  where to clone from (default https://github.com/craftmilldev/loopway.git; CI points it at a local repo)
-# Needs git, Node 22+ and npm. The link uses npm's global prefix, so it may need the same permissions as `npm i -g`.
+# Installs the loopway CLI from a GitHub release:  curl -fsSL https://loopway.craftmill.dev/install.sh | sh
+# LOOPWAY_VERSION=0.3.0 installs that release instead of the latest.
+# The release lists its own tarballs in manifest.txt, so this script doesn't change when the package list does.
+# Needs Node 22+ and npm. Uses npm's global prefix, so it may need the same permissions as `npm i -g`.
 set -eu
 
-REPO_URL="${LOOPWAY_REPO_URL:-https://github.com/craftmilldev/loopway.git}"
-SRC="${LOOPWAY_HOME:-$HOME/.loopway/src}"
+REPO="craftmilldev/loopway"
+BASE="https://github.com/$REPO/releases"
 
 fail() {
   echo "loopway install: $*" >&2
   exit 1
 }
 
-command -v git >/dev/null 2>&1 || fail "git is required."
 command -v node >/dev/null 2>&1 || fail "Node 22 or newer is required (https://nodejs.org)."
 command -v npm >/dev/null 2>&1 || fail "npm is required (it comes with Node)."
+command -v curl >/dev/null 2>&1 || fail "curl is required."
 [ "$(node -p 'process.versions.node.split(".")[0]')" -ge 22 ] || fail "Node 22 or newer is required, found $(node -v)."
 
-if [ -d "$SRC/.git" ]; then
-  echo "Updating $SRC"
-  git -C "$SRC" fetch --quiet origin main || fail "could not fetch $REPO_URL."
-  git -C "$SRC" checkout --quiet --force -B main FETCH_HEAD || fail "could not update $SRC."
-elif [ -e "$SRC" ] && [ -n "$(ls -A "$SRC")" ]; then
-  fail "$SRC exists and isn't a loopway clone. Move it, or set LOOPWAY_HOME."
+if [ -n "${LOOPWAY_DOWNLOAD_URL:-}" ]; then
+  URL="$LOOPWAY_DOWNLOAD_URL" # for CI: a directory of release assets
+elif [ -n "${LOOPWAY_VERSION:-}" ]; then
+  URL="$BASE/download/cli-v${LOOPWAY_VERSION#v}"
 else
-  echo "Cloning $REPO_URL into $SRC"
-  mkdir -p "$SRC"
-  git clone --quiet --depth 1 --branch main "$REPO_URL" "$SRC" || fail "could not clone $REPO_URL."
+  URL="$BASE/latest/download"
 fi
 
-echo "Building"
-(cd "$SRC" && npm install --no-audit --no-fund && npm run build) || fail "the build failed."
+DIR=$(mktemp -d)
+trap 'rm -rf "$DIR"' EXIT
 
-# Installing a directory makes npm symlink it into the global prefix, so the command runs the clone's build.
-npm install -g --no-audit --no-fund "$SRC/packages/cli" || fail "npm install -g failed."
+# manifest.txt lists the release's tarballs, one file name per line. Releases before 0.3.0 have none
+# and can't be installed with this script.
+curl -fsSL "$URL/manifest.txt" -o "$DIR/manifest.txt" || fail "could not download $URL/manifest.txt (releases before 0.3.0 have none)."
+FILES=$(cat "$DIR/manifest.txt")
+[ -n "$FILES" ] || fail "the release lists no packages."
 
-# npm can exit 0 without linking the command, so check it's where npm puts global commands and run that file, not
-# whichever loopway is first on PATH.
+PACKAGES=""
+for file in $FILES; do
+  case "$file" in
+    */*) fail "unexpected file in the release manifest: $file" ;;
+    loopway-*.tgz) ;;
+    *) fail "unexpected file in the release manifest: $file" ;;
+  esac
+  curl -fsSL "$URL/$file" -o "$DIR/$file" || fail "could not download $URL/$file"
+  PACKAGES="$PACKAGES $DIR/$file"
+done
+
+# shellcheck disable=SC2086
+npm install -g $PACKAGES || fail "npm install failed."
+
+# npm can exit 0 without linking the command (seen replacing an `npm link` of the repo), so check it's where npm puts
+# global commands and run that file, not whichever loopway is first on PATH.
 PREFIX=$(npm prefix -g) || fail "npm prefix -g failed."
 if [ -n "${VOLTA_HOME:-}" ] && [ "$(command -v npm)" = "$VOLTA_HOME/bin/npm" ]; then
   BIN_DIR="$VOLTA_HOME/bin" # Volta installs global packages itself and puts a shim here
@@ -54,7 +65,8 @@ else
   esac
 fi
 BIN="$BIN_DIR/loopway"
-[ -x "$BIN" ] || fail "npm installed the package but didn't create $BIN. Run: npm install -g $SRC/packages/cli"
+[ -x "$BIN" ] || fail "npm installed the packages but didn't create $BIN. Run: npm rebuild -g @loopway/cli"
+VERSION=$("$BIN" --version) || fail "$BIN --version failed."
 
 FOUND=$(command -v loopway || true)
 if [ -z "$FOUND" ]; then
@@ -63,4 +75,4 @@ elif [ "$FOUND" != "$BIN" ] && ! [ "$FOUND" -ef "$BIN" ]; then
   echo "loopway install: warning: the loopway on your PATH is $FOUND, not the $BIN just installed. Remove it or put $BIN_DIR earlier on PATH." >&2
 fi
 
-echo "Installed loopway from $SRC. Next: gh auth login, then make a .loopway/ folder (see the README) and run loopway."
+echo "Installed loopway $VERSION. Next: gh auth login, then make a .loopway/ folder (see the README) and run loopway."

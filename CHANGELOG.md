@@ -6,7 +6,7 @@ loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and i
 
 ### Added
 
-- `https://loopway.craftmill.dev/install.sh`: `curl -fsSL … | sh` clones loopway, builds it and installs the `loopway` command; run it again to update.
+- Releases are back: CI on `main` publishes a GitHub release `cli-v<version>` when the CLI changes, and `curl -fsSL https://loopway.craftmill.dev/install.sh | sh` installs the latest one (run it again to update).
 
 - Bare `loopway`, with `--json`. Bots are `.loopway/<bot>.md` files; state is JSON per project, in `~/.loopway/state/<slug>`.
 
