@@ -2264,8 +2264,9 @@ loopway setup</pre>
           ctx.strokeStyle = INKY;
           ctx.lineWidth = 1.4;
           for (const [row, names] of [
-            [262, ["snake", "bird", "hummingbird", "moth", "moose"]],
-            [286, ["squirrel", "blackbird", "skunk", "trout"]],
+            [262, ["snake", "bird", "hummingbird", "moth", "moose", "eagle"]],
+            // The dead fish is a secret: its box is not there at all until it has been earned.
+            [286, ["squirrel", "blackbird", "skunk", "trout", ...(found.deadfish ? ["deadfish"] : [])]],
           ]) {
             let x = left;
             for (const name of names) {
@@ -2278,7 +2279,7 @@ loopway setup</pre>
                 ctx.stroke();
               }
               // The bird in the spruce is kept as "bird", as it always has been, and named for what it is.
-              const label = name === "bird" ? "chickadee" : name;
+              const label = { bird: "chickadee", deadfish: "dead fish" }[name] || name;
               ctx.fillText(label, x + 19, row);
               const width = 19 + ctx.measureText(label).width;
               if (name === "moose" && found.moose && MOOSE.start === null)
@@ -2287,7 +2288,7 @@ loopway setup</pre>
             }
           }
           ctx.textAlign = "right";
-          ctx.fillText(`loops completed: ${found.loops}`, right, 262);
+          ctx.fillText(`loops completed: ${found.loops}`, right, 286);
           ctx.textAlign = "left";
         }
         ctx.globalCompositeOperation = "source-over";
@@ -4026,9 +4027,11 @@ loopway setup</pre>
           const exitX = j.x;
           const entryX = j.x + j.dir * span;
           ctx.lineCap = "round";
+          // Taken by the eagle at the top of its jump: it does not come down, and nothing goes in.
+          const taken = EAGLE.taken && EAGLE.taken.jump === j && clockNow() >= EAGLE.taken.at;
           for (const [x, age] of [
             [exitX, p],
-            [entryX, p - 1],
+            [entryX, taken ? -1 : p - 1],
           ]) {
             // Rings spreading where it left the water and where it went back in.
             // A ring does not fade. Its line gets thinner as it spreads, until there is no line.
@@ -4058,7 +4061,7 @@ loopway setup</pre>
             }
           }
           ctx.globalAlpha = 1;
-          if (p > 1) continue;
+          if (p > 1 || taken) continue;
           const x = lerp(exitX, entryX, p);
           const y = j.y - 4 * rise * p * (1 - p);
           const climb = Math.atan2(-4 * rise * (1 - 2 * p), span);
@@ -4290,6 +4293,64 @@ loopway setup</pre>
       })();
       const clockNow = () => performance.now() / 1000;
       const dayNow = () => freeze ?? mod((clockNow() * speed) / T, 1);
+      // A bald eagle sits out of sight in the birch at the left. Click that birch as a trout is about to
+      // jump and the eagle comes out after it. How it goes depends on when the click came, set against
+      // the perfect moment: the one that would put the eagle over the trout at the top of its jump,
+      // flying at its usual speed from the tree to there.
+      //   within half a second of perfect: it takes the trout out of the air (it hurries or dawdles a
+      //     little on the way, so that it is there at the top of the jump);
+      //   up to a second earlier or later than that: it flies out, stoops, and misses;
+      //   any other time: it stays where it is.
+      const NEST = [58, 452];
+      const EAGLE = {
+        start: null,
+        seconds: 0,
+        speed: 430,
+        flight: null,
+        strike: 0,
+        hit: false,
+        told: true,
+        taken: null,
+      };
+      const jumpTop = (j) => [j.x + j.dir * 40, j.y - 60];
+      function eagleChance() {
+        // The day has to be running for there to be a moment to catch.
+        if (freeze !== null) return null;
+        for (const jump of JUMPS) {
+          const top = jumpTop(jump);
+          const usual = Math.hypot(top[0] - NEST[0], top[1] - NEST[1]) / EAGLE.speed;
+          let ahead = jump.at + JUMP_LENGTH / 2 - dayNow();
+          ahead -= Math.round(ahead);
+          const untilTop = (ahead * T) / speed;
+          const late = usual - untilTop;
+          if (Math.abs(late) > 1.5) continue;
+          const hit = Math.abs(late) <= 0.5;
+          return { jump, top, hit, out: hit ? untilTop : usual, back: Math.max(1.8, usual * 0.9) };
+        }
+        return null;
+      }
+      function launchEagle() {
+        const chance = eagleChance();
+        if (!chance) return;
+        const { top, out, back } = chance;
+        const now = clockNow();
+        EAGLE.start = now;
+        EAGLE.strike = out;
+        EAGLE.seconds = out + back;
+        EAGLE.hit = chance.hit;
+        EAGLE.told = !chance.hit;
+        // From then on that trout is the eagle's: it does not come down, and makes no splash going in.
+        EAGLE.taken = chance.hit ? { jump: chance.jump, at: now + out } : null;
+        const over = [top[0], top[1] - 9];
+        EAGLE.flight = [
+          [0, ...NEST],
+          [out * 0.45, lerp(NEST[0], over[0], 0.42), lerp(NEST[1], over[1], 0.3) - 24],
+          [out, ...over],
+          [out + back * 0.5, lerp(over[0], NEST[0], 0.45), lerp(over[1], NEST[1], 0.5) - 80],
+          [out + back, ...NEST],
+        ];
+      }
+      const BIRCH_SPOT = { x: 42, y: 478, rx: 100, ry: 166 };
       const nectarFresh = () => {
         const u = dayNow() - NECTAR.delay;
         return u >= 0.13 && u <= 0.16 + (5 * speed) / T;
@@ -4338,6 +4399,16 @@ loopway setup</pre>
         if (HUMMER.start !== null && clock - HUMMER.start >= HUMMER.seconds) HUMMER.start = null;
         if (MOTH.start !== null && clock - MOTH.start >= MOTH.seconds) MOTH.start = null;
         if (MOOSE.start !== null && clock - MOOSE.start >= MOOSE.seconds) MOOSE.start = null;
+        if (EAGLE.start !== null) {
+          // The catch counts at the moment it is made.
+          if (!EAGLE.told && clock - EAGLE.start >= EAGLE.strike) {
+            EAGLE.told = true;
+            found("deadfish");
+          }
+          if (clock - EAGLE.start >= EAGLE.seconds) EAGLE.start = null;
+        }
+        // Once the rings of that jump have gone, the trout is back for its next one.
+        if (EAGLE.taken && clock > EAGLE.taken.at + 8) EAGLE.taken = null;
       }
       // The bunch is there to be eaten, and it is the first half of the day or of the night: from just
       // before sunrise until midday, or from just before sunset until midnight.
@@ -4347,6 +4418,12 @@ loopway setup</pre>
       function clickable(x, y) {
         settle(clockNow());
         if (within(x, y, MOOSE_SPOT) && mooseReady()) return "moose";
+        if (
+          EAGLE.start === null &&
+          ((x - BIRCH_SPOT.x) / BIRCH_SPOT.rx) ** 2 + ((y - BIRCH_SPOT.y) / BIRCH_SPOT.ry) ** 2 < 1 &&
+          eagleChance()
+        )
+          return "eagle";
         // The moth's flower is half over the snake's rock, so it is asked first.
         if (MOTH.start === null && Math.hypot(x - MOTH_FLOWER.x, y - MOTH_FLOWER.fy) < MOTH_FLOWER.r + 4 && mothReady())
           return "moth";
@@ -4735,6 +4812,111 @@ loopway setup</pre>
       }
       // A pale moth of the kind that comes to moonflowers at night: a short furry body and two pairs
       // of wings that never stop. It does not fly straight anywhere.
+      // A bald eagle: dark brown, with a white head and tail and a yellow hooked bill and feet. Its
+      // wings are long and beat slowly. It puts its feet down as it comes over the water.
+      function drawEagle(ctx, clock) {
+        settle(clock);
+        if (EAGLE.start === null) return;
+        const time = clock - EAGLE.start;
+        const [x, y] = flightAt(EAGLE.flight, time);
+        const [nx, ny] = flightAt(EAGLE.flight, time + 0.03);
+        // It comes out of the leaves small and goes back into them the same way.
+        const size = smooth(0, 0.3, time) * (1 - smooth(EAGLE.seconds - 0.3, EAGLE.seconds, time));
+        const stoop = 1 - clamp(Math.abs(time - EAGLE.strike) / 0.4);
+        const carrying = EAGLE.hit && time >= EAGLE.strike;
+        const beat = Math.sin(clock * TAU * 2.7);
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale((nx < x ? -1 : 1) * size * 1.25, size * 1.25);
+        ctx.rotate(clamp(Math.atan2(ny - y, Math.abs(nx - x)), -0.5, 0.5) * (1 - stoop));
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.5;
+        const wing = (color, lag) => {
+          const lift = Math.sin(clock * TAU * 2.7 - lag);
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.moveTo(9, -3);
+          ctx.quadraticCurveTo(4, -9 - 20 * lift, -11, -5 - 33 * lift);
+          ctx.quadraticCurveTo(-15, -4 - 22 * lift, -19, -2 - 24 * lift);
+          ctx.quadraticCurveTo(-15, -2 - 9 * lift, -9, 2);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        };
+        wing("#2f2016", 0.5);
+        // The trout hangs from its feet, dead weight.
+        if (carrying) {
+          ctx.save();
+          ctx.translate(5, 21);
+          ctx.rotate(0.22);
+          ctx.scale(0.85, 0.85);
+          troutBody(ctx, 0.5);
+          ctx.restore();
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 1.5;
+        }
+        const reach = carrying ? 1 : stoop;
+        if (reach > 0.02) {
+          for (const [color, width] of [
+            [INK, 4],
+            ["#e0a92e", 2],
+          ]) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.beginPath();
+            for (const foot of [-1, 5]) {
+              ctx.moveTo(foot, 5);
+              ctx.lineTo(foot + 2, 5 + 11 * reach);
+              ctx.lineTo(foot + 5, 5 + 13 * reach);
+            }
+            ctx.stroke();
+          }
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 1.5;
+        }
+        ctx.fillStyle = "#f1ede0";
+        ctx.beginPath();
+        ctx.moveTo(-12, -3);
+        ctx.lineTo(-28, -6);
+        ctx.lineTo(-29, 4);
+        ctx.lineTo(-12, 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#3d2a1c";
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 16, 7.6, 0, 0, TAU);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#e0a92e";
+        ctx.beginPath();
+        ctx.moveTo(20.5, -6.5);
+        ctx.quadraticCurveTo(28, -6.5, 28.5, 0.5);
+        ctx.quadraticCurveTo(25.5, -2, 20.5, -1.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#f4efdd";
+        ctx.beginPath();
+        ctx.ellipse(15.5, -4, 7.2, 6, -0.2, 0, TAU);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = INK;
+        ctx.beginPath();
+        ctx.arc(18.5, -5.2, 1, 0, TAU);
+        ctx.fill();
+        wing("#4a3323", 0);
+        // A lighter bar where the wing folds, so the near wing is not one flat shape.
+        ctx.strokeStyle = "rgba(22, 19, 14, 0.4)";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(5, -4);
+        ctx.quadraticCurveTo(0, -7 - 12 * beat, -9, -4 - 20 * beat);
+        ctx.stroke();
+        ctx.restore();
+      }
       function mothAt(clock) {
         settle(clock);
         if (MOTH.start === null) return null;
@@ -4845,6 +5027,7 @@ loopway setup</pre>
         drawBird(ctx, clock, "front");
         drawHummer(ctx, clock, "front");
         drawMoth(ctx, clock);
+        drawEagle(ctx, clock);
       }
 
       function frame(now) {
@@ -4921,6 +5104,7 @@ loopway setup</pre>
         HUMMER.start !== null ||
         MOTH.start !== null ||
         MOOSE.start !== null ||
+        EAGLE.start !== null ||
         faceFade() < 1;
       let awake = false;
       function wake() {
@@ -4948,6 +5132,8 @@ loopway setup</pre>
         blackbird: false,
         skunk: false,
         trout: false,
+        eagle: false,
+        deadfish: false,
         loops: 0,
       };
       const kept = () => {
@@ -5139,6 +5325,7 @@ loopway setup</pre>
         if (what === "hummingbird") HUMMER.start = clockNow();
         if (what === "moth") MOTH.start = clockNow();
         if (what === "moose") MOOSE.start = clockNow();
+        if (what === "eagle") launchEagle();
         if (what) {
           found(what);
           wake();

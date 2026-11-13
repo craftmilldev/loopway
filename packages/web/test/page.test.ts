@@ -81,9 +81,11 @@ describe("the marketing page", () => {
     expect(html).toContain("if (kept()[what]) return;");
     // The tracker is painted on the last frame only.
     const last = html.slice(html.indexOf("Small print under the main content"));
-    expect(last).toContain('[262, ["snake", "bird", "hummingbird", "moth", "moose"]],');
-    expect(last).toContain('[286, ["squirrel", "blackbird", "skunk", "trout"]],');
-    expect(last).toContain('const label = name === "bird" ? "chickadee" : name;');
+    expect(last).toContain('[262, ["snake", "bird", "hummingbird", "moth", "moose", "eagle"]],');
+    expect(last).toContain(
+      '[286, ["squirrel", "blackbird", "skunk", "trout", ...(found.deadfish ? ["deadfish"] : [])]],',
+    );
+    expect(last).toContain('const label = { bird: "chickadee", deadfish: "dead fish" }[name] || name;');
     expect(last).toContain("loops completed:");
     expect(html.match(/loops completed:/g)).toHaveLength(1);
   });
@@ -126,6 +128,18 @@ describe("the marketing page", () => {
     expect(html).toContain("sits(sleeper(u), SEAT3)");
     expect(html).toContain("const dev = swatting(worker(u), clock);");
     expect(html).toContain('if (what === "moth") MOTH.start = clockNow();');
+  });
+
+  it("sends an eagle after a jumping trout: a catch in the middle second, a miss either side", () => {
+    // Too far from the perfect moment and it does not fly; within half a second of it, it catches.
+    expect(html).toContain("if (Math.abs(late) > 1.5) continue;");
+    expect(html).toContain("const hit = Math.abs(late) <= 0.5;");
+    expect(html).toContain('if (what === "eagle") launchEagle();');
+    // A trout that is taken does not come down, and makes no splash going in.
+    expect(html).toContain("[entryX, taken ? -1 : p - 1],");
+    expect(html).toContain("if (p > 1 || taken) continue;");
+    // The catch is what earns the secret box.
+    expect(html).toContain('found("deadfish");');
   });
 
   it("steps one frame per flick, and ignores only Space on a button or link", () => {
