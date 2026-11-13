@@ -45,6 +45,8 @@ describe("the marketing page", () => {
     expect(html).toContain('kind: "scroll"');
     // It wiggles, so it is drawn live over the still face rather than painted into it.
     expect(html).toContain("function drawScrollHint(ctx, cx, baseline, fade)");
+    // A frozen day is never redrawn, so the hint rests instead of being caught part-way through a wiggle.
+    expect(html).toContain("freeze === null ? clockNow() % 3.5 : 1.5");
     expect(html).toContain("scroll &darr;");
     expect(html).toContain("Keep your agents and team in the same loop");
     // The content is drawn on the board's face, not laid over the page.
@@ -199,5 +201,24 @@ describe("the marketing page", () => {
     expect(config.buildCommand).toBeNull();
     expect(config.cleanUrls).toBe(true);
     expect(config.crons).toBeUndefined();
+  });
+
+  it("asks for the hummingbird's flower before the snake's rock, which it half covers", () => {
+    expect(html.indexOf('return "hummingbird"')).toBeLessThan(html.indexOf('return "snake"'));
+  });
+
+  it("repaints the tracker whenever what is kept changes, and the docs name every event it sends", () => {
+    expect(html).toContain("if (shown === FRAMES.length - 1) redrawFace();");
+    const docs = readFileSync(new URL("../../../docs/developing.md", import.meta.url), "utf8");
+    for (const name of [
+      "deadfish_dawn_found",
+      "deadfish_dusk_found",
+      "deadfish_night_found",
+      "deadfish_unchecked",
+      "moose_unchecked",
+      "tracker_reset",
+    ]) {
+      expect(docs).toContain(name);
+    }
   });
 });

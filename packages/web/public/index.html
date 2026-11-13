@@ -2472,7 +2472,8 @@ loopway setup</pre>
       // The scroll hint wiggles now and then so people notice it: still for most of a 3.5s round, then a
       // second of gentle bobbing and sway that swells and settles. It is drawn live, since the face is painted once.
       function drawScrollHint(ctx, cx, baseline, fade) {
-        const t = clockNow() % 3.5;
+        // A frozen day (?u=, reduced motion) is not redrawn, so the hint must not be left caught mid-wiggle.
+        const t = freeze === null ? clockNow() % 3.5 : 1.5;
         const swell = t < 1 ? Math.sin(t * Math.PI) : 0;
         const wave = Math.sin(t * TAU * 2.5);
         ctx.save();
@@ -4551,9 +4552,10 @@ loopway setup</pre>
         // The moth's flower is half over the snake's rock, so it is asked first.
         if (MOTH.start === null && Math.hypot(x - MOTH_FLOWER.x, y - MOTH_FLOWER.fy) < MOTH_FLOWER.r + 4 && mothReady())
           return "moth";
-        if (SNAKE.start === null && within(x, y, SNAKE.at === "bush" ? BUSH_SPOT : ROCK_SPOT)) return "snake";
+        // The hummingbird's flower is half over the snake's rock too, and a freshly opened flower is the rarer thing.
         if (HUMMER.start === null && Math.hypot(x - NECTAR.x, y - NECTAR.fy) < NECTAR.r + 5 && nectarFresh())
           return "hummingbird";
+        if (SNAKE.start === null && within(x, y, SNAKE.at === "bush" ? BUSH_SPOT : ROCK_SPOT)) return "snake";
         if (BIRD.start === null && inSpruce(x, y)) return "bird";
         return null;
       }
