@@ -85,8 +85,17 @@ describe("the marketing page", () => {
     const order = ["snake", "bird", "moose", "trout", "eagle", "hummingbird", "squirrel", "blackbird", "moth", "skunk"];
     const listed = last.slice(last.indexOf("const names = ["), last.indexOf("];", last.indexOf("const names = [")));
     expect([...listed.matchAll(/^\s+"(\w+)",$/gm)].map((m) => m[1])).toEqual(order);
-    expect(listed.trimEnd().endsWith('...(found.deadfish ? ["deadfish"] : []),')).toBe(true);
-    expect(last).toContain('const label = { bird: "chickadee", deadfish: "dead fish" }[name] || name;');
+    expect(last).toContain('const label = name === "bird" ? "chickadee" : name;');
+    // The dead fish are not a box: three fish, one for each trout, and nothing at all until one is caught.
+    expect(last).toContain("if (found.deadfish) {");
+    expect(last).toContain("for (const when of FISH) {");
+    expect(html).toContain('const FISH = ["dawn", "dusk", "night"];');
+    expect(html).toContain("found(`deadfish_${EAGLE.fish}`);");
+    // They can be given up with a click, all three at once.
+    expect(html).toContain(
+      "keep({ deadfish: false, deadfish_dawn: false, deadfish_dusk: false, deadfish_night: false });",
+    );
+    expect(html).toContain('track("deadfish_unchecked");');
     expect(last).toContain("loops completed:");
     expect(html.match(/loops completed:/g)).toHaveLength(1);
   });

@@ -2278,14 +2278,13 @@ loopway setup</pre>
             "blackbird",
             "moth",
             "skunk",
-            ...(found.deadfish ? ["deadfish"] : []),
           ];
           // They run on to a second row, which is shorter: the loop count is at its right-hand end.
           let x = left;
           let row = 262;
           for (const name of names) {
             // The bird in the spruce is kept as "bird", as it always has been, and named for what it is.
-            const label = { bird: "chickadee", deadfish: "dead fish" }[name] || name;
+            const label = name === "bird" ? "chickadee" : name;
             const width = 19 + ctx.measureText(label).width;
             if (row === 262 && x + width > right) {
               x = left;
@@ -2303,6 +2302,45 @@ loopway setup</pre>
             if (name === "moose" && found.moose && MOOSE.start === null)
               hit("moose", x - 6, row - 22, x + width + 6, row + 10);
             x += width + 24;
+          }
+          // The dead fish are a secret: nothing is here until one has been caught. Then there are three
+          // places, for the trout of dawn, dusk and night in that order: a fish with a cross for an eye
+          // for each one caught, and a faint outline for each one still to get. Like the moose's box,
+          // they can be given up with a click, all three at once.
+          if (found.deadfish) {
+            const fishAt = x;
+            for (const when of FISH) {
+              const caught = found[`deadfish_${when}`];
+              ctx.save();
+              ctx.translate(x + 15, row - 5);
+              ctx.globalAlpha = caught ? 1 : 0.28;
+              ctx.lineWidth = 1.4;
+              ctx.beginPath();
+              ctx.moveTo(-14, 0);
+              ctx.quadraticCurveTo(-7, -7.5, 4, -3);
+              ctx.lineTo(13, -7);
+              ctx.lineTo(10.5, 0);
+              ctx.lineTo(13, 7);
+              ctx.lineTo(4, 3);
+              ctx.quadraticCurveTo(-7, 7.5, -14, 0);
+              ctx.closePath();
+              ctx.stroke();
+              if (caught) {
+                // The cross for an eye, and the line of the gill.
+                ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                ctx.moveTo(-10.5, -3);
+                ctx.lineTo(-6.5, 1);
+                ctx.moveTo(-6.5, -3);
+                ctx.lineTo(-10.5, 1);
+                ctx.moveTo(-3.5, -4);
+                ctx.quadraticCurveTo(-5, 0, -3.5, 4);
+                ctx.stroke();
+              }
+              ctx.restore();
+              x += 38;
+            }
+            hit("deadfish", fishAt - 6, row - 22, x - 2, row + 10);
           }
           ctx.textAlign = "right";
           ctx.fillText(`loops completed: ${found.loops}`, right, 286);
@@ -4319,6 +4357,8 @@ loopway setup</pre>
       //   up to a second later than that: it flies out, stoops at the water, and misses;
       //   up to a second earlier than that: there is no trout yet, so it only flies over, high;
       //   any other time: it stays where it is.
+      // The three trout, by when they jump. Each one caught is kept on its own.
+      const FISH = ["dawn", "dusk", "night"];
       const NEST = [58, 452];
       const EAGLE = {
         start: null,
@@ -4367,6 +4407,7 @@ loopway setup</pre>
         EAGLE.told = !chance.hit;
         // From then on that trout is the eagle's: it does not come down, and makes no splash going in.
         EAGLE.taken = chance.hit ? { jump: chance.jump, at: now + out } : null;
+        EAGLE.fish = FISH[JUMPS.indexOf(chance.jump)];
         // Two plain legs, each a single shallow curve: very nearly straight from the tree to the trout,
         // coming in a touch from above, and then level for a moment before the climb away.
         const reach = Math.hypot(over[0] - NEST[0], over[1] - NEST[1]);
@@ -4433,6 +4474,7 @@ loopway setup</pre>
           if (!EAGLE.told && clock - EAGLE.start >= EAGLE.strike) {
             EAGLE.told = true;
             found("deadfish");
+            found(`deadfish_${EAGLE.fish}`);
           }
           if (clock - EAGLE.start >= EAGLE.seconds) EAGLE.start = null;
         }
@@ -4863,9 +4905,14 @@ loopway setup</pre>
         const size = smooth(0, 0.3, time);
         const stoop = EAGLE.stoops ? 1 - clamp(Math.abs(time - EAGLE.strike) / 0.4) : 0;
         const carrying = EAGLE.hit && time >= EAGLE.strike;
-        const beat = Math.sin(clock * TAU * 2.7);
+        // A wingbeat is not a seesaw. The stroke down is quicker than the stroke up; the outer half of
+        // the wing trails the inner half, so the wing bends at the wrist; it is spread on the way down
+        // and half folded on the way up; and the body lifts a little as the wings push down. Over the
+        // water it holds them up and back, braking.
+        const stroke = clock * TAU * 2.3;
+        const eased = stroke + 0.45 * Math.cos(stroke);
         ctx.save();
-        ctx.translate(x, y);
+        ctx.translate(x, y + 1.6 * Math.sin(eased) * (1 - stoop));
         ctx.scale((nx < x ? -1 : 1) * size * 1.25, size * 1.25);
         ctx.rotate(clamp(Math.atan2(ny - y, Math.abs(nx - x)), -0.5, 0.5) * (1 - stoop));
         ctx.lineJoin = "round";
@@ -4873,16 +4920,33 @@ loopway setup</pre>
         ctx.strokeStyle = INK;
         ctx.lineWidth = 1.5;
         const wing = (color, lag) => {
-          const lift = Math.sin(clock * TAU * 2.7 - lag);
+          const at = eased - lag;
+          const rising = Math.max(0, Math.cos(at));
+          // How far up the inner wing is, and the outer wing after it, from flat.
+          const inner = lerp(0.95 * Math.sin(at), 1.05, stoop);
+          const outer = lerp(0.95 * Math.sin(at - 0.85) - 0.45 * rising, 1.25, stoop);
+          const span = lerp(1, 0.78, rising * (1 - stoop));
+          const wrist = [-2 - 2 * Math.cos(inner), -4 - 15 * Math.sin(inner)];
+          const tip = [wrist[0] - 9 * span - 2 * Math.cos(outer), wrist[1] - 21 * span * Math.sin(outer)];
+          // The trailing edge runs back from the tip in three feathered steps to the body.
+          const back = [wrist[0] - 11, lerp(wrist[1], tip[1], 0.22) + 3];
+          const along = (k, dx, dy) => [lerp(tip[0], back[0], k) + dx, lerp(tip[1], back[1], k) + dy];
           ctx.fillStyle = color;
           ctx.beginPath();
           ctx.moveTo(9, -3);
-          ctx.quadraticCurveTo(4, -9 - 20 * lift, -11, -5 - 33 * lift);
-          ctx.quadraticCurveTo(-15, -4 - 22 * lift, -19, -2 - 24 * lift);
-          ctx.quadraticCurveTo(-15, -2 - 9 * lift, -9, 2);
+          ctx.quadraticCurveTo(wrist[0] + 7, wrist[1] + 1, wrist[0], wrist[1]);
+          ctx.quadraticCurveTo(lerp(wrist[0], tip[0], 0.5) + 2, lerp(wrist[1], tip[1], 0.5), tip[0], tip[1]);
+          for (const k of [0.2, 0.42, 0.66]) {
+            const notch = along(k, 2.2, 0);
+            const feather = along(k + 0.1, -2.6, 1.5);
+            ctx.lineTo(notch[0], notch[1]);
+            ctx.lineTo(feather[0], feather[1]);
+          }
+          ctx.quadraticCurveTo(back[0], back[1] + 4, -10, 2);
           ctx.closePath();
           ctx.fill();
           ctx.stroke();
+          return { wrist, tip };
         };
         wing("#2f2016", 0.5);
         // The trout hangs from its feet, dead weight.
@@ -4915,44 +4979,81 @@ loopway setup</pre>
           ctx.strokeStyle = INK;
           ctx.lineWidth = 1.5;
         }
+        // The tail: a white fan, its feathers ending unevenly.
         ctx.fillStyle = "#f1ede0";
         ctx.beginPath();
-        ctx.moveTo(-12, -3);
-        ctx.lineTo(-28, -6);
-        ctx.lineTo(-29, 4);
-        ctx.lineTo(-12, 4);
+        ctx.moveTo(-11, -4);
+        ctx.lineTo(-26.5, -8);
+        ctx.lineTo(-28.5, -4.5);
+        ctx.lineTo(-27, -3.6);
+        ctx.lineTo(-30, -0.5);
+        ctx.lineTo(-28, 0.6);
+        ctx.lineTo(-29, 4.6);
+        ctx.lineTo(-25.5, 4);
+        ctx.lineTo(-12, 3.5);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
+        // The body: deep in the chest and tapering to the tail, with the feathers of its legs hanging
+        // under it, further down when the feet are.
         ctx.fillStyle = "#3d2a1c";
         ctx.beginPath();
-        ctx.ellipse(0, 0, 16, 7.6, 0, 0, TAU);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = "#e0a92e";
-        ctx.beginPath();
-        ctx.moveTo(20.5, -6.5);
-        ctx.quadraticCurveTo(28, -6.5, 28.5, 0.5);
-        ctx.quadraticCurveTo(25.5, -2, 20.5, -1.5);
+        ctx.moveTo(13, -6.5);
+        ctx.bezierCurveTo(5, -9.5, -5, -8, -13, -4.5);
+        ctx.lineTo(-14, 3);
+        ctx.bezierCurveTo(-9, 5.5, -5, 6.5, -2, 6.5);
+        ctx.lineTo(-1, 9 + 3 * reach);
+        ctx.lineTo(2.5, 7);
+        ctx.lineTo(5, 9.5 + 3 * reach);
+        ctx.lineTo(7.5, 6.5);
+        ctx.bezierCurveTo(12, 5.5, 15.5, 2, 14, -2);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
-        ctx.fillStyle = "#f4efdd";
+        // The bill: heavy, and hooked down over its own tip.
+        ctx.fillStyle = "#e0a92e";
         ctx.beginPath();
-        ctx.ellipse(15.5, -4, 7.2, 6, -0.2, 0, TAU);
+        ctx.moveTo(21.5, -8.5);
+        ctx.bezierCurveTo(26.5, -9.5, 30.5, -6, 29.5, 1);
+        ctx.bezierCurveTo(28.5, -1.5, 26.5, -2.3, 22.5, -1.8);
+        ctx.closePath();
         ctx.fill();
         ctx.stroke();
+        // The head: white, flat across the crown, with a ragged edge where the white meets the brown.
+        ctx.fillStyle = "#f4efdd";
+        ctx.beginPath();
+        ctx.moveTo(10, -6.5);
+        ctx.bezierCurveTo(12, -11.5, 18.5, -12, 22.5, -9);
+        ctx.lineTo(23.5, -5.5);
+        ctx.bezierCurveTo(23, -1, 19, 1.5, 14.5, 2);
+        ctx.lineTo(13, -0.5);
+        ctx.lineTo(11, 1);
+        ctx.lineTo(10.5, -2.5);
+        ctx.lineTo(8.5, -2.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // The eye, under a brow that gives it its glare, and the line of the mouth.
         ctx.fillStyle = INK;
         ctx.beginPath();
-        ctx.arc(18.5, -5.2, 1, 0, TAU);
+        ctx.arc(19.3, -6, 1, 0, TAU);
         ctx.fill();
-        wing("#4a3323", 0);
-        // A lighter bar where the wing folds, so the near wing is not one flat shape.
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        ctx.moveTo(16.3, -8.3);
+        ctx.lineTo(21.8, -7.4);
+        ctx.moveTo(23, -3.6);
+        ctx.quadraticCurveTo(26, -3.6, 28, -2.6);
+        ctx.stroke();
+        ctx.lineWidth = 1.5;
+        const near = wing("#4a3323", 0);
+        // A line along the wing's bone, from the shoulder to the wrist and on, so the bend shows.
         ctx.strokeStyle = "rgba(22, 19, 14, 0.4)";
         ctx.lineWidth = 1.2;
         ctx.beginPath();
-        ctx.moveTo(5, -4);
-        ctx.quadraticCurveTo(0, -7 - 12 * beat, -9, -4 - 20 * beat);
+        ctx.moveTo(5, -3);
+        ctx.quadraticCurveTo(near.wrist[0] + 3, near.wrist[1] + 3, near.wrist[0] - 3, near.wrist[1] + 3);
+        ctx.lineTo(lerp(near.wrist[0], near.tip[0], 0.7) - 2, lerp(near.wrist[1], near.tip[1], 0.7) + 2);
         ctx.stroke();
         ctx.restore();
       }
@@ -5173,6 +5274,9 @@ loopway setup</pre>
         trout: false,
         eagle: false,
         deadfish: false,
+        deadfish_dawn: false,
+        deadfish_dusk: false,
+        deadfish_night: false,
         loops: 0,
       };
       const kept = () => {
@@ -5332,7 +5436,11 @@ loopway setup</pre>
           track("github_clicked", { href: `https://github.com/${REPO}` });
           window.open(`https://github.com/${REPO}`, "_blank", "noopener");
         } else if (hit.kind === "bots") location.href = "/bots";
-        else if (hit.kind === "moose") {
+        else if (hit.kind === "deadfish") {
+          // The dead fish can be given up too: all three go, and the secret is a secret again.
+          keep({ deadfish: false, deadfish_dawn: false, deadfish_dusk: false, deadfish_night: false });
+          track("deadfish_unchecked");
+        } else if (hit.kind === "moose") {
           // Unticking the moose puts the cattails back, and the moose can come again.
           if (MOOSE.start === null) {
             keep({ moose: false });
