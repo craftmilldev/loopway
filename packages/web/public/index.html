@@ -1480,7 +1480,9 @@ loopway setup</pre>
       // A red-winged blackbird comes in low over the river from the left around dusk, lands on a
       // cattail, sits there while the trout jumps, and goes off to the right. The times are parts
       // of the loop: flying in, and flying off.
-      const BLACKBIRD = { in: [0.46, 0.495], off: [0.54, 0.566] };
+      // It stays half a second after the trout's jump has been and gone, so an eagle taking that trout is
+      // well clear before the blackbird leaves the same way.
+      const BLACKBIRD = { in: [0.46, 0.495], off: [0.5483, 0.5743] };
       const PERCH = MARSH.clumps
         .filter((c) => c.tails.length)
         .sort((a, b) => Math.abs(a.x - 1010) - Math.abs(b.x - 1010))[0];
@@ -3229,7 +3231,7 @@ loopway setup</pre>
         const since = u >= LOG.lands ? u - LOG.lands : u + 1 - LOG.lands;
         const left = u >= LOG.lands ? 1 : 1 - smooth(0, 0.22, u);
         const flare = u >= LOG.lands ? Math.exp(-since / 0.004) : 0;
-        const size = (0.8 + 0.25 * night) * (1 + 0.22 * fireFed(u) + 0.3 * flare);
+        const size = (0.8 + 0.25 * night) * (1 + 0.22 * fireFed(u) + 0.08 * flare);
         ctx.save();
         ctx.translate(FIRE.x, FIRE.y);
         ctx.scale(CAMP_SCALE * 1.18, CAMP_SCALE * 1.18);
@@ -3252,7 +3254,7 @@ loopway setup</pre>
           const t = flying ? seg(u, LOG.let, LOG.lands) : 1;
           // It falls faster as it goes, and bounces once where it lands.
           const fall = t * t;
-          const jolt = flying ? 0 : Math.exp(-since / 0.0012) * Math.sin(since / 0.0005) * 2.2;
+          const jolt = flying ? 0 : Math.exp(-since / 0.0012) * Math.sin(since / 0.0005) * 1.2;
           const x = lerp(LOG.from[0], LOG.to[0], t);
           const y = lerp(LOG.from[1], LOG.to[1], fall) - 7 * Math.sin(Math.PI * t) * (1 - t) - Math.abs(jolt);
           ctx.save();
@@ -3306,12 +3308,12 @@ loopway setup</pre>
         if (u >= LOG.lands && since < 0.011) {
           const age = since / 0.011;
           ctx.fillStyle = "#f9d15a";
-          for (let i = 0; i < 11; i++) {
-            const out = Math.sin(i * 2.3) * (9 + age * (18 + (i % 4) * 7));
-            const up = -8 - age * (46 + (i % 3) * 18) + 44 * age * age;
+          for (let i = 0; i < 5; i++) {
+            const out = Math.sin(i * 2.3) * (7 + age * (10 + (i % 4) * 4));
+            const up = -8 - age * (30 + (i % 3) * 10) + 30 * age * age;
             ctx.globalAlpha = 1 - age * age;
             ctx.beginPath();
-            ctx.arc(out, up, 2 * (1 - age * 0.6), 0, TAU);
+            ctx.arc(out, up, 1.5 * (1 - age * 0.6), 0, TAU);
             ctx.fill();
           }
         }
@@ -4680,7 +4682,7 @@ loopway setup</pre>
         // On the cattail it faces the way it came, then turns its head to look at the trout, then back.
         // Its head is never still for long: a glance back, a glance forward, a longer look at the
         // trout when it jumps, and another glance before it goes.
-        const glances = [0.501, 0.505, 0.512, 0.524, 0.529, 0.532, 0.536, 0.538];
+        const glances = [0.501, 0.505, 0.512, 0.524, 0.529, 0.532, 0.536, 0.538, 0.543, 0.5455];
         const looking = glances.filter((when) => u >= when).length % 2 ? -1 : 1;
         // And it tips up and down a little as it looks.
         const nod = Math.sin(TAU * u * T * 0.9) * 0.22;
