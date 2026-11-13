@@ -1848,11 +1848,15 @@ loopway setup</pre>
           ctx.font = `15px "Courier Prime", Courier, ui-monospace, monospace`;
           const yes = (is) => (is ? "yes" : "not yet");
           ctx.fillText(
-            `found the snake: ${yes(found.snake)}   found the bird: ${yes(found.bird)}   found the hummingbird: ${yes(found.hummingbird)}`,
+            `found the snake: ${yes(found.snake)}   found the bird: ${yes(found.bird)}   loops completed: ${found.loops}`,
             left,
             256,
           );
-          ctx.fillText(`loops completed: ${found.loops}`, left, 278);
+          ctx.fillText(
+            `found the hummingbird: ${yes(found.hummingbird)}   found the moth: ${yes(found.moth)}`,
+            left,
+            278,
+          );
         }
         ctx.globalCompositeOperation = "source-over";
       }
@@ -3550,6 +3554,11 @@ loopway setup</pre>
           ctx.fill();
           ctx.restore();
         }
+        // The moth is as pale as the flower it came from, and shows in the dark the same way.
+        // Its own shape is taken out of the dark, so there is no lit patch round it.
+        ctx.globalAlpha = 0.6;
+        drawMoth(ctx, clockNow());
+        ctx.globalAlpha = 1;
         ctx.globalCompositeOperation = "source-over";
       }
       function drawGlows(ctx, u, light) {
@@ -3808,12 +3817,78 @@ loopway setup</pre>
           ],
         };
       })();
+      // A moth comes out of one moonflower, the one on the right of the post two up from the ground, if
+      // that flower is clicked while it is open and all three people are in their chairs at the fire. It
+      // flutters over to the one in the red chair and round their head, they swat at it, and it goes off
+      // low over the river to the right, the way the blackbird leaves.
+      const MOTH_FLOWER = MOONFLOWERS.reduce((a, b) =>
+        Math.hypot(a.x - 911, a.fy - 683) < Math.hypot(b.x - 911, b.fy - 683) ? a : b,
+      );
+      const MOTH = (() => {
+        const from = [MOTH_FLOWER.x, MOTH_FLOWER.fy - 3];
+        // The head of whoever is in the red chair.
+        const head = [SEAT1[0], SEAT1[1] - 64.5 * depth(SEAT1[1])];
+        const round = [1.7, 3.4];
+        const orbit = (time) => {
+          const a = Math.PI + (time - round[0]) * TAU * 1.25;
+          return [head[0] + 22 * Math.cos(a), head[1] - 10 + 12 * Math.sin(a)];
+        };
+        return {
+          start: null,
+          seconds: 5.4,
+          round,
+          orbit,
+          swat: [1.75, 3.6],
+          arrive: [
+            [0, ...from],
+            [0.5, from[0] + 52, from[1] - 44],
+            [1.1, 1084, 642],
+            [1.7, ...orbit(round[0])],
+            [2, ...orbit(round[0])],
+          ],
+          leave: [
+            [3.1, ...orbit(round[1])],
+            [3.4, ...orbit(round[1])],
+            [3.8, 1228, 704],
+            [4.3, 1304, 802],
+            [4.8, 1470, 822],
+            [5.4, 1700, 790],
+          ],
+        };
+      })();
       const clockNow = () => performance.now() / 1000;
       const dayNow = () => freeze ?? mod((clockNow() * speed) / T, 1);
       const nectarFresh = () => {
         const u = dayNow() - NECTAR.delay;
         return u >= 0.13 && u <= 0.16 + (5 * speed) / T;
       };
+      // Open, and the worker in the red chair, the one in the middle in the green and the sleeper in the blue.
+      const mothReady = () => {
+        const u = dayNow();
+        const sits = (person, seat) => !!person && person.x === seat[0] && person.y === seat[1];
+        return (
+          moonflowerOpen(u - MOTH_FLOWER.delay) > 0.9 &&
+          sits(worker(u), SEAT1) &&
+          sits(middle(u), SEAT2) &&
+          sits(sleeper(u), SEAT3)
+        );
+      };
+      // The one in the red chair swats at the moth while it is round their head: one arm up, swinging.
+      function swatting(person, clock) {
+        if (MOTH.start === null || !person || person.x !== SEAT1[0] || person.y !== SEAT1[1]) return person;
+        const time = clock - MOTH.start;
+        const [from, to] = MOTH.swat;
+        const up = smooth(from, from + 0.3, time) * (1 - smooth(to - 0.35, to, time));
+        if (up <= 0) return person;
+        const pose = { ...person.pose };
+        const neck = [pose.sh[0], pose.sh[1] + 5];
+        const swing = 0.1 + Math.sin((time - from) * TAU * 1.7);
+        const hand = [neck[0] + Math.sin(swing) * ARM, neck[1] - Math.cos(swing) * ARM];
+        pose.hr = [lerp(pose.hr[0], hand[0], up), lerp(pose.hr[1], hand[1], up)];
+        // They duck away from it a little.
+        pose.head = [pose.head[0] + 1.5 * up, pose.head[1] + 1.5 * up];
+        return { ...person, pose };
+      }
       const within = (x, y, spot) => x > spot.x0 && x < spot.x1 && y > spot.y0 && y < spot.y1;
       const inSpruce = (x, y) => {
         const c = TREES[1].crown;
@@ -3829,10 +3904,14 @@ loopway setup</pre>
         }
         if (BIRD.start !== null && clock - BIRD.start >= BIRD.seconds) BIRD.start = null;
         if (HUMMER.start !== null && clock - HUMMER.start >= HUMMER.seconds) HUMMER.start = null;
+        if (MOTH.start !== null && clock - MOTH.start >= MOTH.seconds) MOTH.start = null;
       }
       // What a click at this point in the picture would set off, if anything.
       function clickable(x, y) {
         settle(clockNow());
+        // The moth's flower is half over the snake's rock, so it is asked first.
+        if (MOTH.start === null && Math.hypot(x - MOTH_FLOWER.x, y - MOTH_FLOWER.fy) < MOTH_FLOWER.r + 4 && mothReady())
+          return "moth";
         if (SNAKE.start === null && within(x, y, SNAKE.at === "bush" ? BUSH_SPOT : ROCK_SPOT)) return "snake";
         if (HUMMER.start === null && Math.hypot(x - NECTAR.x, y - NECTAR.fy) < NECTAR.r + 5 && nectarFresh())
           return "hummingbird";
@@ -4216,6 +4295,65 @@ loopway setup</pre>
         ctx.fill();
         ctx.restore();
       }
+      // A pale moth of the kind that comes to moonflowers at night: a short furry body and two pairs
+      // of wings that never stop. It does not fly straight anywhere.
+      function mothAt(clock) {
+        settle(clock);
+        if (MOTH.start === null) return null;
+        const time = clock - MOTH.start;
+        const [from, to] = MOTH.round;
+        const where = (at) =>
+          at >= from && at < to ? MOTH.orbit(at) : flightAt(at < from ? MOTH.arrive : MOTH.leave, at);
+        const [x, y] = where(time);
+        const [nx] = where(time + 0.03);
+        // It comes out of the flower small, and wavers all the way.
+        const size = smooth(0, 0.3, time);
+        const waver = [4 * Math.sin(clock * 13) + 2.5 * Math.sin(clock * 29), 4 * Math.cos(clock * 17)];
+        return { x: x + waver[0] * size, y: y + waver[1] * size, size, facing: nx < x ? -1 : 1 };
+      }
+      function drawMoth(ctx, clock) {
+        const moth = mothAt(clock);
+        if (!moth) return;
+        const beat = Math.sin(clock * TAU * 11);
+        ctx.save();
+        ctx.translate(moth.x, moth.y);
+        ctx.scale(moth.facing * moth.size * 1.35, moth.size * 1.35);
+        ctx.rotate(-0.25);
+        ctx.lineJoin = "round";
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 0.8;
+        // The wings on the far side, then the body, then the near ones: up on one beat, down on the next.
+        for (const [shade, lift] of [
+          ["#b9ae93", beat * 0.8 + 0.25],
+          ["#e2d9c0", beat],
+        ]) {
+          ctx.fillStyle = shade;
+          ctx.beginPath();
+          ctx.moveTo(1.5, 0);
+          ctx.quadraticCurveTo(2, -7 * lift, -4.5, -9.5 * lift);
+          ctx.quadraticCurveTo(-7, -4 * lift, -2.5, 0);
+          ctx.quadraticCurveTo(-7.5, -1.5 * lift, -7, -5 * lift);
+          ctx.quadraticCurveTo(-3, -3 * lift, 1.5, 0);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          if (shade === "#b9ae93") {
+            ctx.fillStyle = "#8d7f66";
+            ctx.beginPath();
+            ctx.ellipse(-0.5, 0.4, 4.6, 1.7, 0, 0, TAU);
+            ctx.fill();
+            ctx.stroke();
+            // Two feathery feelers.
+            ctx.beginPath();
+            ctx.moveTo(3.6, -0.2);
+            ctx.lineTo(6.4, -2.6);
+            ctx.moveTo(3.8, 0.2);
+            ctx.lineTo(7, -0.8);
+            ctx.stroke();
+          }
+        }
+        ctx.restore();
+      }
 
       // ---- One frame ----
       function drawLand(ctx, u, light, clock) {
@@ -4240,7 +4378,7 @@ loopway setup</pre>
         for (const b of BOULDERS) drawRock(ctx, b, false);
         if (critter && critter.layer === "front") drawSquirrel(ctx, critter);
         // On the walk to camp the worker passes behind the right-hand post and its moonflowers.
-        const dev = worker(u);
+        const dev = swatting(worker(u), clock);
         const behindBoard = u > 0.315 && u < 0.455 && dev.x > 700 && dev.x < 1000;
         if (behindBoard) drawPerson(ctx, dev, u, 1);
         drawHummer(ctx, clock, "behind");
@@ -4268,6 +4406,7 @@ loopway setup</pre>
         }
         drawBird(ctx, clock, "front");
         drawHummer(ctx, clock, "front");
+        drawMoth(ctx, clock);
       }
 
       function frame(now) {
@@ -4333,7 +4472,8 @@ loopway setup</pre>
       };
       // With the loop frozen (?u=) nothing redraws by itself, so a click keeps frames coming for
       // as long as the snake or the bird is out, or the face is changing.
-      const changing = () => SNAKE.start !== null || BIRD.start !== null || HUMMER.start !== null || faceFade() < 1;
+      const changing = () =>
+        SNAKE.start !== null || BIRD.start !== null || HUMMER.start !== null || MOTH.start !== null || faceFade() < 1;
       let awake = false;
       function wake() {
         if (freeze === null || awake) return;
@@ -4350,7 +4490,7 @@ loopway setup</pre>
       // What has been found is kept in localStorage, so the first time is only ever the first time.
       const KEPT = "loopway.found";
       // Also held in memory, so with storage off the count still goes up and a find is a first only once.
-      let memory = { snake: false, bird: false, hummingbird: false, loops: 0 };
+      let memory = { snake: false, bird: false, hummingbird: false, moth: false, loops: 0 };
       const kept = () => {
         try {
           return { ...memory, ...JSON.parse(localStorage.getItem(KEPT) || "{}") };
@@ -4522,6 +4662,7 @@ loopway setup</pre>
         if (what === "snake") SNAKE.start = clockNow();
         if (what === "bird") BIRD.start = clockNow();
         if (what === "hummingbird") HUMMER.start = clockNow();
+        if (what === "moth") MOTH.start = clockNow();
         if (what) {
           found(what);
           wake();

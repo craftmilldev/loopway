@@ -83,6 +83,7 @@ describe("the marketing page", () => {
     const last = html.slice(html.indexOf("Small print under the main content"));
     expect(last).toContain("found the snake:");
     expect(last).toContain("found the hummingbird:");
+    expect(last).toContain("found the moth:");
     expect(html.match(/found the snake:/g)).toHaveLength(1);
   });
 
@@ -90,6 +91,15 @@ describe("the marketing page", () => {
     expect(html).toContain("return u >= 0.13 && u <= 0.16 + (5 * speed) / T;");
     expect(html).toContain('if (what === "hummingbird") HUMMER.start = clockNow();');
     expect(html).toContain('drawHummer(ctx, clock, "behind");\n        drawBoard(ctx);');
+  });
+
+  it("sends a moth from the open moonflower to the red chair when all three are at the fire", () => {
+    expect(html).toContain("moonflowerOpen(u - MOTH_FLOWER.delay) > 0.9 &&");
+    expect(html).toContain("sits(worker(u), SEAT1) &&");
+    expect(html).toContain("sits(middle(u), SEAT2) &&");
+    expect(html).toContain("sits(sleeper(u), SEAT3)");
+    expect(html).toContain("const dev = swatting(worker(u), clock);");
+    expect(html).toContain('if (what === "moth") MOTH.start = clockNow();');
   });
 
   it("steps one frame per flick, and ignores only Space on a button or link", () => {
