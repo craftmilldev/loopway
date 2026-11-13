@@ -1313,11 +1313,8 @@ loopway setup</pre>
         ctx.strokeStyle = INK;
         ctx.lineWidth = 2.5;
 
-        // The near bank does not move either, so it too is drawn once and kept.
+        // The near bank does not move either, so it too is drawn once and kept, its shore line with it.
         ctx.drawImage(nearCanvas, FULL.x0, NEAR_TOP, nearCanvas.width / scale, nearCanvas.height / scale);
-        ctx.beginPath();
-        edgePath(ctx, nearBank, FULL.x0, FULL.x1);
-        ctx.stroke();
       }
 
       // ---- The forest floor ----
@@ -1471,21 +1468,52 @@ loopway setup</pre>
         ctx.globalAlpha = 1;
         ctx.restore();
         ctx.lineCap = "round";
-        // Stones at the water's edge, each outlined only over its top.
-        for (let i = 0; i < 44; i++) {
-          const x = anywhere();
-          const y = nearBank(x) + 3 + r() * 9;
-          const rx = (6 + r() * 11) * 1.2;
-          const ry = (3.5 + r() * 4.5) * 1.2;
+        // The shore is not one drawn line with stones dropped on it. It is drawn in pieces: the
+        // line runs along the bank and stops at each stone and each boulder that stands in the
+        // edge, and the stone's own outline carries the shore on over its top to where the line
+        // takes up again. The water laps at the foot of each one on the river side.
+        const SHORE = [];
+        for (let x = FULL.x0 + 30 + r() * 60; x < FULL.x1; x += 34 + r() * r() * 150) {
+          SHORE.push({ x, y: nearBank(x) + 1 + r() * 3, rx: (7 + r() * 12) * 1.25, ry: (4 + r() * 5) * 1.25 });
+        }
+        const inStone = (x) =>
+          SHORE.some((st) => Math.abs(x - st.x) < st.rx - 1) ||
+          NEAR_BOULDERS.some((b) => b.y - nearBank(b.x) < 24 && Math.abs(x - b.x) < b.w * 0.46);
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        let drawing = false;
+        for (let x = FULL.x0; x <= FULL.x1; x += 4) {
+          if (inStone(x)) drawing = false;
+          else if (drawing) ctx.lineTo(x, nearBank(x));
+          else {
+            ctx.moveTo(x, nearBank(x));
+            drawing = true;
+          }
+        }
+        ctx.stroke();
+        for (const st of SHORE) {
+          // The water round its far side, then the stone, then a lapping line.
+          ctx.fillStyle = "#6f95a0";
+          ctx.beginPath();
+          ctx.ellipse(st.x, st.y - st.ry * 0.5, st.rx * 1.25, st.ry * 0.9, 0, Math.PI, TAU);
+          ctx.fill();
           ctx.fillStyle = "#b9b5aa";
           ctx.beginPath();
-          ctx.ellipse(x, y, rx, ry, 0, 0, TAU);
+          ctx.ellipse(st.x, st.y, st.rx, st.ry, 0, 0, TAU);
           ctx.fill();
           ctx.strokeStyle = INK;
-          ctx.lineWidth = 1.5;
+          ctx.lineWidth = 1.6;
           ctx.beginPath();
-          ctx.ellipse(x, y, rx, ry, 0, Math.PI * 0.97, Math.PI * 2.03);
+          ctx.ellipse(st.x, st.y, st.rx, st.ry, 0, Math.PI * 0.98, Math.PI * 2.02);
           ctx.stroke();
+          ctx.strokeStyle = "#d6e6e3";
+          ctx.globalAlpha = 0.7;
+          ctx.lineWidth = 1.3;
+          ctx.beginPath();
+          ctx.ellipse(st.x, st.y - st.ry * 0.75, st.rx * 1.15, st.ry * 0.7, 0, Math.PI * 1.15, Math.PI * 1.85);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
         }
         const TALLEST = 62;
         const routes = [[mooseEdge(), MOOSE.stand], MOOSE.out];
@@ -2024,6 +2052,8 @@ loopway setup</pre>
           bob: -1.3 * (0.5 + 0.5 * Math.cos(cycle * TAU * 2 + 0.9)) * walking,
           head: head + 0.025 * Math.sin(cycle * TAU * 2 + 0.6) * walking,
           chew: time >= MOOSE.down[1] && time < MOOSE.leave + 2 ? Math.sin(time * 13) : 0,
+          time,
+          walking,
         };
       }
       // How far the bird bends its cattail: 0 not at all, 1 settled under its weight. The stalk dips
@@ -2193,76 +2223,107 @@ loopway setup</pre>
             ankle[0] + vx * Math.cos(hang) + vy * Math.sin(hang),
             ankle[1] - vx * Math.sin(hang) + vy * Math.cos(hang),
           ];
-          // The top of the leg is drawn from the joint itself, which is well inside the body, so
-          // however the leg swings it comes out from under the coat and never shows its top end.
-          const along = (from, to, k) => [lerp(from[0], to[0], k), lerp(from[1], to[1], k)];
-          return {
-            upper: hind
-              ? [
-                  [haunch[0], haunch[1], 13],
-                  [root[0] + 2, root[1], 12],
-                  [...along(root, knee, 0.5), 8.6],
-                  [knee[0], knee[1], 5.6],
-                ]
-              : [
-                  [root[0], root[1], 10.5],
-                  [...along(root, knee, 0.4), 9.5],
-                  [...along(root, knee, 0.72), 6.8],
-                  [knee[0], knee[1], 5.2],
-                ],
-            lower: [
-              [knee[0], knee[1], hind ? 5.6 : 5.2],
-              [...along(knee, ankle, 0.45), 3.4],
-              [...along(knee, ankle, 0.85), 3.5],
-              [ankle[0], ankle[1], 4.2],
-            ],
-            hoof: [
-              [ankle[0], ankle[1], 4.2],
-              [...turned(-3.2, 6), 4.6],
-              [...turned(-4.2, 11), 5.6],
-            ],
-          };
-        };
-        // A run of points down the middle of a limb, each with half the limb's width there. The
-        // width is across the limb, whichever way the limb is pointing.
-        const limb = (pts) => {
-          const edge = pts.map(([x, y, w], i) => {
-            const before = pts[Math.max(0, i - 1)];
-            const after = pts[Math.min(pts.length - 1, i + 1)];
-            const len = Math.hypot(after[0] - before[0], after[1] - before[1]) || 1;
-            const nx = ((after[1] - before[1]) / len) * w;
-            const ny = (-(after[0] - before[0]) / len) * w;
-            return [x - nx, y - ny, x + nx, y + ny];
+          // The leg is drawn as one shape, not as bones laid end to end. A single line runs down
+          // its middle through every joint and bends as it passes each one, the way a leg's own
+          // line does, so no joint is a corner. The leg is as wide across that line as a moose's is
+          // there: heavy at the top, narrowing to the joint, thinner still along the bone below it,
+          // a knob at the fetlock, and spreading into the hoof. The hock has its point at the back
+          // and the knee its cap at the front.
+          // It starts at the joint high inside the body, so however the leg swings it comes out
+          // from under the coat and never shows its top end.
+          const joints = hind ? [haunch, root, knee, ankle, turned(-4.2, 11)] : [root, knee, ankle, turned(-4.2, 11)];
+          const wide = hind ? [13, 12, 5.9, 4.5, 5.7] : [10.5, 5.5, 4.4, 5.6];
+          const waist = hind ? [0, 0.8, 1.5, 0.2] : [1, 1.2, 0.2];
+          const bend = hind ? 2 : 1;
+          const last = joints.length - 2;
+          const through = (i) => joints[clamp(i, 0, joints.length - 1)];
+          const middle = [];
+          for (let i = 0; i <= last; i++) {
+            const [p0, p1, p2, p3] = [through(i - 1), through(i), through(i + 1), through(i + 2)];
+            for (let n = 0; n < (i === last ? 11 : 10); n++) {
+              const t = n / 10;
+              const on = (k) =>
+                0.5 *
+                (2 * p1[k] +
+                  (p2[k] - p0[k]) * t +
+                  (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t * t +
+                  (3 * p1[k] - p0[k] - 3 * p2[k] + p3[k]) * t * t * t);
+              middle.push({
+                x: on(0),
+                y: on(1),
+                w: lerp(wide[i], wide[i + 1], smooth(0, 1, t)) - waist[i] * Math.sin(Math.PI * t),
+                // The point of the hock, or the cap of the knee: on one side only.
+                knob: Math.exp(-(((i + t - bend) / 0.24) ** 2)) * (hind ? 2.6 : 1.4),
+              });
+            }
+          }
+          // The two edges: the back of the leg and the front of it.
+          const back = [];
+          const front = [];
+          middle.forEach((p, i) => {
+            const before = middle[Math.max(0, i - 1)];
+            const after = middle[Math.min(middle.length - 1, i + 1)];
+            const len = Math.hypot(after.x - before.x, after.y - before.y) || 1;
+            const nx = (after.y - before.y) / len;
+            const ny = -(after.x - before.x) / len;
+            back.push([p.x + nx * (p.w + (hind ? p.knob : 0)), p.y + ny * (p.w + (hind ? p.knob : 0))]);
+            front.push([p.x - nx * (p.w + (hind ? 0 : p.knob)), p.y - ny * (p.w + (hind ? 0 : p.knob))]);
           });
+          return { back, front, knee, ankle, root, hind, bendAt: bend * 10, hoofAt: last * 10 + 5 };
+        };
+        // The outline of a leg from one place down it to its foot: down the front and back up the back.
+        const trace = (l, from = 0) => {
           ctx.beginPath();
-          edge.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-          for (let i = edge.length - 1; i >= 0; i--) ctx.lineTo(edge[i][2], edge[i][3]);
+          for (let i = from; i < l.front.length; i++) {
+            if (i === from) ctx.moveTo(l.front[i][0], l.front[i][1]);
+            else ctx.lineTo(l.front[i][0], l.front[i][1]);
+          }
+          for (let i = l.back.length - 1; i >= from; i--) ctx.lineTo(l.back[i][0], l.back[i][1]);
           ctx.closePath();
         };
         const inkLeg = (l) => {
           ctx.strokeStyle = INK;
           ctx.lineWidth = 4.6;
-          for (const part of [l.upper, l.lower, l.hoof]) {
-            limb(part);
-            ctx.stroke();
-          }
+          trace(l);
+          ctx.stroke();
         };
+        // The coat goes pale below the knee, a little at a time and not at a line, and the hoof is dark.
         const paintLeg = (l, upper, lower) => {
-          for (const [part, color] of [
-            [l.upper, upper],
-            [l.lower, lower],
-            [l.hoof, "#2a221b"],
-          ]) {
-            limb(part);
-            ctx.fillStyle = color;
-            ctx.fill();
-          }
+          trace(l);
+          ctx.fillStyle = upper;
+          ctx.fill();
+          const fade = ctx.createLinearGradient(
+            l.knee[0],
+            l.knee[1],
+            lerp(l.knee[0], l.ankle[0], 0.5),
+            lerp(l.knee[1], l.ankle[1], 0.5),
+          );
+          fade.addColorStop(0, upper);
+          fade.addColorStop(1, lower);
+          trace(l, l.bendAt);
+          ctx.fillStyle = fade;
+          ctx.fill();
+          trace(l, l.hoofAt);
+          ctx.fillStyle = "#2a221b";
+          ctx.fill();
         };
-        for (const far of m.legs.filter((l) => l.far).map(leg)) {
+        const rigged = m.legs.map((l) => ({ ...leg(l), far: l.far }));
+        // The body is not carried level like a tray. The shoulders ride up over each front leg as
+        // it takes the weight, the rump rides on the hind legs, the belly moves with its breath
+        // when it stands, and the tail and an ear twitch now and then.
+        const mean = (list) => list.reduce((sum, v) => sum + v, 0) / list.length;
+        const fronts = rigged.filter((l) => !l.hind);
+        const hinds = rigged.filter((l) => l.hind);
+        const sh = clamp(mean(fronts.map((l) => l.root[1] - RIG.front.pivot)) * 0.45, -2.6, 2.6);
+        const ru = clamp(mean(hinds.map((l) => l.root[1] + 67)) * 0.5, -2.4, 2.4);
+        const br = 1.1 * Math.sin(m.time * 1.7) * (1 - m.walking);
+        const swish = 0.3 * Math.sin(m.time * 2.3) * Math.max(0, Math.sin(m.time * 0.6)) ** 2;
+        const flick = 0.4 * Math.max(0, Math.sin(m.time * 1.1 + 2)) ** 8 * Math.sin(m.time * 19);
+        for (const far of rigged.filter((l) => l.far)) {
           inkLeg(far);
           paintLeg(far, "#3c2d21", "#5d5043");
         }
-        const near = m.legs.filter((l) => !l.far).map(leg);
+        const near = rigged.filter((l) => !l.far);
         // The neck swings from the shoulder, and the head from the end of the neck.
         const neckAngle = lerp(3.552, 2.292, m.head);
         const turn = lerp(2.674, 1.918, m.head) - Math.PI + m.chew * 0.012;
@@ -2281,15 +2342,15 @@ loopway setup</pre>
         };
         const body = () => {
           ctx.beginPath();
-          ctx.moveTo(86, -96);
-          ctx.bezierCurveTo(70, -108, 40, -105, 10, -108);
-          ctx.bezierCurveTo(-8, -110, -22, -124, -38, -130);
-          ctx.bezierCurveTo(-52, -134, -64, -126, -70, -110);
+          ctx.moveTo(86, -96 + ru);
+          ctx.bezierCurveTo(70, -108 + ru * 0.7, 40, -105 + ru * 0.3, 10, -108);
+          ctx.bezierCurveTo(-8, -110, -22, -124 + sh, -38, -130 + sh);
+          ctx.bezierCurveTo(-52, -134 + sh, -64, -126 + sh, -70, -110 + sh * 0.5);
           ctx.bezierCurveTo(-76, -96, -76, -80, -66, -68);
           ctx.bezierCurveTo(-58, -58, -44, -56, -30, -56);
-          ctx.bezierCurveTo(-4, -52, 30, -60, 52, -66);
+          ctx.bezierCurveTo(-4, -52 + br, 30, -60 + br, 52, -66);
           ctx.bezierCurveTo(66, -62, 74, -58, 80, -62);
-          ctx.bezierCurveTo(94, -70, 96, -86, 86, -96);
+          ctx.bezierCurveTo(94, -70, 96, -86 + ru, 86, -96 + ru);
           ctx.closePath();
         };
         // The neck runs from the hump to the poll along the top, where the mane stands, and from the
@@ -2298,8 +2359,8 @@ loopway setup</pre>
           const top = onHead(9, -12);
           const throat = onHead(-9, 13);
           ctx.beginPath();
-          ctx.moveTo(-36, -130);
-          ctx.quadraticCurveTo((top[0] - 36) / 2 + 2, (top[1] - 130) / 2 - 5, top[0], top[1]);
+          ctx.moveTo(-36, -130 + sh);
+          ctx.quadraticCurveTo((top[0] - 36) / 2 + 2, (top[1] - 130 + sh) / 2 - 5, top[0], top[1]);
           ctx.lineTo(throat[0], throat[1]);
           ctx.quadraticCurveTo((throat[0] - 68) / 2 + 5, (throat[1] - 76) / 2 + 7, -68, -76);
           ctx.closePath();
@@ -2325,11 +2386,16 @@ loopway setup</pre>
           ctx.quadraticCurveTo(-8, 24, -6, 12);
           ctx.closePath();
         };
+        // The tail hangs from the rump and swings from where it joins.
         const tail = () => {
+          const at = (x, y) => [
+            86 + (x - 86) * Math.cos(swish) - (y + 96) * Math.sin(swish),
+            -96 + ru + (x - 86) * Math.sin(swish) + (y + 96) * Math.cos(swish),
+          ];
           ctx.beginPath();
-          ctx.moveTo(86, -96);
-          ctx.quadraticCurveTo(96, -92, 93, -80);
-          ctx.quadraticCurveTo(89, -86, 84, -90);
+          ctx.moveTo(86, -96 + ru);
+          ctx.quadraticCurveTo(...at(96, -92), ...at(93, -80));
+          ctx.quadraticCurveTo(...at(89, -86), 84, -90 + ru);
           ctx.closePath();
         };
         const antler = (dx, dy, color) =>
@@ -2409,6 +2475,10 @@ loopway setup</pre>
           ctx.fillStyle = coat;
           ctx.strokeStyle = INK;
           ctx.lineWidth = 2;
+          ctx.save();
+          ctx.translate(8, -9);
+          ctx.rotate(flick);
+          ctx.translate(-8, 9);
           ctx.beginPath();
           ctx.moveTo(4, -10);
           ctx.quadraticCurveTo(3, -25, 14, -30);
@@ -2416,6 +2486,7 @@ loopway setup</pre>
           ctx.closePath();
           ctx.fill();
           ctx.stroke();
+          ctx.restore();
           ctx.fillStyle = INK;
           ctx.beginPath();
           ctx.arc(-15, -5, 1.8, 0, TAU);
@@ -2427,11 +2498,14 @@ loopway setup</pre>
         // Where the shoulder and the haunch stand out under the coat.
         ctx.strokeStyle = "rgba(22, 19, 14, 0.4)";
         ctx.lineWidth = 1.8;
+        // They are the muscle the near legs hang from, so each follows its leg.
+        const foreleg = near.find((l) => !l.hind);
+        const hindleg = near.find((l) => l.hind);
         ctx.beginPath();
-        ctx.moveTo(-40, -114);
-        ctx.quadraticCurveTo(-29, -88, -45, -68);
-        ctx.moveTo(57, -101);
-        ctx.quadraticCurveTo(45, -84, 60, -70);
+        ctx.moveTo(-40, -114 + sh);
+        ctx.quadraticCurveTo(-29, -90, foreleg.back[4][0] + 1, Math.min(-66, foreleg.back[4][1]));
+        ctx.moveTo(57, -101 + ru);
+        ctx.quadraticCurveTo(46, -86, hindleg.front[11][0] + 3, Math.min(-68, hindleg.front[11][1]));
         ctx.stroke();
         antler(0, 0, "#d2c19a");
         ctx.restore();
