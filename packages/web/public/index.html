@@ -1487,8 +1487,9 @@ loopway setup</pre>
       PERCH.tails[0].perch = true;
       // A bull moose. Click the bunch of cattails below the tent in the morning or the evening and it walks in along
       // the near bank from the right, puts its head down and eats the bunch, heads first and then the
-      // leaves, lifts its head, turns, and walks back out the way it came. The bunch stays eaten, on
-      // this visit and the next, until the moose's box on the last frame is unticked.
+      // leaves, lifts its head, and walks on: along the bank and down toward us, out under the bottom
+      // of the picture. It never turns round. The bunch stays eaten, on this visit and the next, until
+      // the moose's box on the last frame is unticked.
       const MOOSE = (() => {
         const clumps = MARSH.clumps.filter((c) => c.tails.length && Math.abs(c.x - 1334) < 30);
         // The heads go one at a time, the nearest to the moose first.
@@ -1502,17 +1503,26 @@ loopway setup</pre>
           size: 1.05,
           clumps,
           tails,
-          // Where it stands to eat, and where it comes in and goes out, off the picture.
+          // Where it stands to eat, where it comes in from, off the picture, and the way it goes on out.
           stand: [1456, 950],
           edge: [W + 190, 938],
+          out: [
+            [1456, 950],
+            [1380, 957],
+            [1300, 976],
+            [1220, 1006],
+            [1140, 1050],
+            [1060, 1104],
+            [990, 1170],
+            [930, 1262],
+          ],
           arrive: 4.2,
           down: [4.2, 4.9],
           firstBite,
           graze: [graze, graze + 1.4],
           up: [graze + 1.4, graze + 2],
-          turn: graze + 2.3,
-          leave: graze + 2.6,
-          seconds: graze + 2.6 + 4.2,
+          leave: graze + 2.5,
+          seconds: graze + 2.5 + 7.8,
         };
       })();
       // Whether the bunch has been eaten already. Set from what is kept, once that has been read.
@@ -1533,16 +1543,12 @@ loopway setup</pre>
         if (time >= MOOSE.seconds) return null;
         const coming = time < MOOSE.arrive;
         const going = time >= MOOSE.leave;
-        // It turns on its front feet, so its head comes round into the picture and its rump swings out:
-        // 1 is facing left, -1 facing right, and in between it is seen turning.
-        const flip = lerp(1, -1, smooth(MOOSE.turn - 0.16, MOOSE.turn + 0.16, time));
-        const pivot = 40 * MOOSE.size;
-        const turned = [MOOSE.stand[0] - 2 * pivot, MOOSE.stand[1]];
-        const p = coming ? time / MOOSE.arrive : going ? (time - MOOSE.leave) / (MOOSE.seconds - MOOSE.leave) : 0;
-        const from = coming ? MOOSE.edge : going ? turned : MOOSE.stand;
-        const to = coming ? MOOSE.stand : going ? MOOSE.edge : MOOSE.stand;
-        const x = coming || going ? lerp(from[0], to[0], p) : MOOSE.stand[0] - pivot + pivot * flip;
-        const y = lerp(from[1], to[1], p);
+        const way = going ? along(MOOSE.out, (time - MOOSE.leave) / (MOOSE.seconds - MOOSE.leave)) : null;
+        const p = coming ? time / MOOSE.arrive : 1;
+        const x = way ? way.x : lerp(MOOSE.edge[0], MOOSE.stand[0], p);
+        const y = way ? way.y : lerp(MOOSE.edge[1], MOOSE.stand[1], p);
+        // It is a little bigger as it comes down the bank toward us.
+        const size = MOOSE.size * (1 + clamp((y - MOOSE.stand[1]) / 220) * 0.22);
         // Its legs come to rest as it stops and pick up as it sets off.
         const walk = coming ? clamp((MOOSE.arrive - time) / 0.4) : going ? clamp((time - MOOSE.leave) / 0.4) : 0;
         const eating = time >= MOOSE.down[1] && time < MOOSE.up[0];
@@ -1553,13 +1559,12 @@ loopway setup</pre>
         return {
           x,
           y,
-          // Never quite edge-on, which would be no moose at all.
-          flip: Math.abs(flip) < 0.08 ? 0.08 * (flip < 0 ? -1 : 1) : flip,
+          size,
           walk,
-          // The stride always runs forward with the ground it covers, whichever way it is going.
-          stride: (Math.abs(x - (going ? turned[0] : MOOSE.stand[0])) * (going ? 1 : -1) * Math.PI) / (32 * MOOSE.size),
+          // The stride runs forward with the ground it covers.
+          stride: ((way ? way.d : x - MOOSE.stand[0]) * (way ? 1 : -1) * Math.PI) / (32 * size),
           head,
-          chew: time >= MOOSE.down[1] && time < MOOSE.leave ? Math.sin(time * 13) : 0,
+          chew: time >= MOOSE.down[1] && time < MOOSE.leave + 2 ? Math.sin(time * 13) : 0,
         };
       }
       // How far the bird bends its cattail: 0 not at all, 1 settled under its weight. The stalk dips
@@ -1659,7 +1664,7 @@ loopway setup</pre>
       function drawMoose(ctx, m) {
         ctx.save();
         ctx.translate(m.x, m.y);
-        ctx.scale(m.flip * MOOSE.size, MOOSE.size);
+        ctx.scale(m.size, m.size);
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
         const coat = "#4f3a29";
