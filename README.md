@@ -16,6 +16,8 @@ npm install && npm run build         # Node 22+
 gh auth login                        # loopway acts as whoever gh is logged in as
 ```
 
+Or install the latest release: `npm install -g https://github.com/craftmilldev/loopway/releases/latest/download/loopway-cli.tgz`.
+
 Make a directory to run it from, with a `.loopway/` folder holding one file per bot (`scratch/` inside the checkout is git-ignored):
 
 ```bash
