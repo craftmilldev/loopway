@@ -81,10 +81,11 @@ describe("the marketing page", () => {
     expect(html).toContain("if (kept()[what]) return;");
     // The tracker is painted on the last frame only.
     const last = html.slice(html.indexOf("Small print under the main content"));
-    expect(last).toContain('[262, ["snake", "bird", "hummingbird", "moth", "moose", "eagle"]],');
-    expect(last).toContain(
-      '[286, ["squirrel", "blackbird", "skunk", "trout", ...(found.deadfish ? ["deadfish"] : [])]],',
-    );
+    // In the order of the day, with the secret dead fish last and only once it is earned.
+    const order = ["snake", "bird", "moose", "trout", "eagle", "hummingbird", "squirrel", "blackbird", "moth", "skunk"];
+    const listed = last.slice(last.indexOf("const names = ["), last.indexOf("];", last.indexOf("const names = [")));
+    expect([...listed.matchAll(/^\s+"(\w+)",$/gm)].map((m) => m[1])).toEqual(order);
+    expect(listed.trimEnd().endsWith('...(found.deadfish ? ["deadfish"] : []),')).toBe(true);
     expect(last).toContain('const label = { bird: "chickadee", deadfish: "dead fish" }[name] || name;');
     expect(last).toContain("loops completed:");
     expect(html.match(/loops completed:/g)).toHaveLength(1);

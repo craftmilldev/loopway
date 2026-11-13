@@ -2257,35 +2257,52 @@ loopway setup</pre>
           ctx.fillRect(left, 226, right - left, 1.2);
           ctx.fillStyle = INKY;
           ctx.font = `15px "Courier Prime", Courier, ui-monospace, monospace`;
-          // A box for each thing there is to find, ticked once it has been. The top row is what has to
-          // be looked for; the bottom row is what comes by on its own, ticked the first time it is on the
-          // picture. A tick is only ever earned out in the picture: no box can be ticked here. The
-          // moose's is the one box that can be unticked, which puts its cattails back.
+          // A box for each thing there is to find or see, ticked once it has been. They are in the
+          // order of the day: by the earliest moment in the loop each could first be found or seen. The
+          // snake and the chickadee are there from the start; the moose comes from before sunrise; the
+          // trout first jumps just after it, and that is the eagle's first chance; then the hummingbird,
+          // the squirrel, the blackbird at dusk, and the moth and the skunk in the night. The dead fish
+          // is a secret, and goes last: its box is not there at all until it has been earned.
+          // A tick is only ever earned out in the picture: no box can be ticked here. The moose's is
+          // the one box that can be unticked, which puts its cattails back.
           ctx.strokeStyle = INKY;
           ctx.lineWidth = 1.4;
-          for (const [row, names] of [
-            [262, ["snake", "bird", "hummingbird", "moth", "moose", "eagle"]],
-            // The dead fish is a secret: its box is not there at all until it has been earned.
-            [286, ["squirrel", "blackbird", "skunk", "trout", ...(found.deadfish ? ["deadfish"] : [])]],
-          ]) {
-            let x = left;
-            for (const name of names) {
-              ctx.strokeRect(x, row - 11, 12, 12);
-              if (found[name]) {
-                ctx.beginPath();
-                ctx.moveTo(x + 2.5, row - 5);
-                ctx.lineTo(x + 5.5, row - 1.5);
-                ctx.lineTo(x + 11, row - 10.5);
-                ctx.stroke();
-              }
-              // The bird in the spruce is kept as "bird", as it always has been, and named for what it is.
-              const label = { bird: "chickadee", deadfish: "dead fish" }[name] || name;
-              ctx.fillText(label, x + 19, row);
-              const width = 19 + ctx.measureText(label).width;
-              if (name === "moose" && found.moose && MOOSE.start === null)
-                hit("moose", x - 6, row - 22, x + width + 6, row + 10);
-              x += width + 24;
+          const names = [
+            "snake",
+            "bird",
+            "moose",
+            "trout",
+            "eagle",
+            "hummingbird",
+            "squirrel",
+            "blackbird",
+            "moth",
+            "skunk",
+            ...(found.deadfish ? ["deadfish"] : []),
+          ];
+          // They run on to a second row, which is shorter: the loop count is at its right-hand end.
+          let x = left;
+          let row = 262;
+          for (const name of names) {
+            // The bird in the spruce is kept as "bird", as it always has been, and named for what it is.
+            const label = { bird: "chickadee", deadfish: "dead fish" }[name] || name;
+            const width = 19 + ctx.measureText(label).width;
+            if (row === 262 && x + width > right) {
+              x = left;
+              row = 286;
             }
+            ctx.strokeRect(x, row - 11, 12, 12);
+            if (found[name]) {
+              ctx.beginPath();
+              ctx.moveTo(x + 2.5, row - 5);
+              ctx.lineTo(x + 5.5, row - 1.5);
+              ctx.lineTo(x + 11, row - 10.5);
+              ctx.stroke();
+            }
+            ctx.fillText(label, x + 19, row);
+            if (name === "moose" && found.moose && MOOSE.start === null)
+              hit("moose", x - 6, row - 22, x + width + 6, row + 10);
+            x += width + 24;
           }
           ctx.textAlign = "right";
           ctx.fillText(`loops completed: ${found.loops}`, right, 286);
@@ -4340,7 +4357,8 @@ loopway setup</pre>
         // Too early and there is nothing there yet to stoop at: it only passes high over the place.
         const over = chance.early ? [top[0], top[1] - 150] : [top[0], top[1] - 9];
         EAGLE.stoops = !chance.early;
-        const away = [W + 150, top[1] - 240];
+        // It climbs away at a slope it could fly, however near the edge the trout was.
+        const away = [W + 150, over[1] - Math.min(240, (W + 150 - over[0]) * 0.4)];
         const on = Math.max(1.2, Math.hypot(away[0] - over[0], away[1] - over[1]) / EAGLE.speed);
         EAGLE.start = now;
         EAGLE.strike = out;
@@ -4349,13 +4367,17 @@ loopway setup</pre>
         EAGLE.told = !chance.hit;
         // From then on that trout is the eagle's: it does not come down, and makes no splash going in.
         EAGLE.taken = chance.hit ? { jump: chance.jump, at: now + out } : null;
-        EAGLE.flight = [
-          [0, ...NEST],
-          [out * 0.45, lerp(NEST[0], over[0], 0.42), lerp(NEST[1], over[1], chance.early ? 0.45 : 0.3) - 24],
-          [out, ...over],
-          [out + on * 0.45, lerp(over[0], away[0], 0.45), chance.early ? lerp(over[1], away[1], 0.45) : over[1] - 70],
-          [out + on, ...away],
-        ];
+        // Two plain legs, each a single shallow curve: very nearly straight from the tree to the trout,
+        // coming in a touch from above, and then level for a moment before the climb away.
+        const reach = Math.hypot(over[0] - NEST[0], over[1] - NEST[1]);
+        EAGLE.flight = {
+          out,
+          on,
+          legs: [
+            [NEST, [lerp(NEST[0], over[0], 0.5), lerp(NEST[1], over[1], 0.5) - reach * 0.04], over],
+            [over, [lerp(over[0], away[0], 0.5), over[1]], away],
+          ],
+        };
       }
       const BIRCH_SPOT = { x: 42, y: 478, rx: 100, ry: 166 };
       const nectarFresh = () => {
@@ -4821,12 +4843,22 @@ loopway setup</pre>
       // of wings that never stop. It does not fly straight anywhere.
       // A bald eagle: dark brown, with a white head and tail and a yellow hooked bill and feet. Its
       // wings are long and beat slowly. It puts its feet down as it comes over the water.
+      function eagleAt(time) {
+        const { out, on, legs } = EAGLE.flight;
+        const [from, bend, to] = time < out ? legs[0] : legs[1];
+        const t = clamp(time < out ? time / out : (time - out) / on);
+        const q = 1 - t;
+        return [
+          q * q * from[0] + 2 * q * t * bend[0] + t * t * to[0],
+          q * q * from[1] + 2 * q * t * bend[1] + t * t * to[1],
+        ];
+      }
       function drawEagle(ctx, clock) {
         settle(clock);
         if (EAGLE.start === null) return;
         const time = clock - EAGLE.start;
-        const [x, y] = flightAt(EAGLE.flight, time);
-        const [nx, ny] = flightAt(EAGLE.flight, time + 0.03);
+        const [x, y] = eagleAt(time);
+        const [nx, ny] = eagleAt(time + 0.03);
         // It comes out of the leaves small. It leaves by flying out of the picture.
         const size = smooth(0, 0.3, time);
         const stoop = EAGLE.stoops ? 1 - clamp(Math.abs(time - EAGLE.strike) / 0.4) : 0;
