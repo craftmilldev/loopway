@@ -222,6 +222,42 @@ loopway setup</pre>
       // ?u=0.3 freezes the loop at that fraction of the day; ?speed=4 runs it faster.
       const W = 1600;
       const H = 1000;
+      // The picture is painted bigger than W by H: there is more sky above it, more river and near
+      // bank below it, and more of the woods and the river to each side, so a window of another
+      // shape has something to show there.
+      const FULL = { x0: -400, y0: -1000, x1: W + 400, y1: H + 250 };
+      // A place to one side of the old picture or the other, for what is scattered there.
+      const beside = (roll) => (roll() < 0.5 ? FULL.x0 + roll() * -FULL.x0 : W + roll() * (FULL.x1 - W));
+      // What a wide window always shows, whatever its shape: the desk and its computer at one end, the
+      // camp and the people at the fire at the other, and the sign between them, all together. The
+      // rest of the picture is margin: a wide window gets more of the sides and loses some sky, and
+      // a tall one gets more sky and more river. It goes down to the old bottom of the picture, so
+      // the blackbird, which comes in low over the water, and the trout nearest to us are always
+      // well inside it.
+      const KEEP = { x0: 40, y0: 92, x1: W + 60, y1: H };
+      // A window taller than it is wide is too narrow for all of that at a size worth looking at.
+      // It is a camera instead: it shows this much of the picture's width, enough for the whole
+      // sign, and looks where it is told to (see cameraGoal).
+      const TALL_SPAN = 945;
+      const SIGN_MIDDLE = 622;
+      // Where the picture sits in a window w by h: its scale, where its origin lands, and whether
+      // the window is taller than it is wide. In a wide window the kept part is as big as the window
+      // lets it be and in the middle; the window then slides so that it shows picture and not what
+      // is beyond the picture's edge. Only a window too long for the whole painted picture gets
+      // bars. In a tall window "look" is the place across the picture that the camera is on.
+      function fit(w, h, look = SIGN_MIDDLE) {
+        const tall = h > w;
+        const keep = tall ? { ...KEEP, x0: look - TALL_SPAN / 2, x1: look + TALL_SPAN / 2 } : KEEP;
+        const s = Math.min(w / (keep.x1 - keep.x0), h / (keep.y1 - keep.y0));
+        const place = (size, k0, k1, f0, f1) => {
+          const span = size / s;
+          if (span >= f1 - f0) return (f0 + f1 - span) / 2;
+          return Math.max(f0, Math.min(f1 - span, (k0 + k1 - span) / 2));
+        };
+        const left = place(w, keep.x0, keep.x1, FULL.x0, FULL.x1);
+        const top = place(h, keep.y0, keep.y1, FULL.y0, FULL.y1);
+        return { s, x: -left * s, y: -top * s, tall };
+      }
       const T = 60;
       const query = new URLSearchParams(location.search);
       const still = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0.3 : null;
@@ -266,10 +302,16 @@ loopway setup</pre>
       const D = darkCanvas.getContext("2d");
       const boardCanvas = document.createElement("canvas");
       const groundCanvas = document.createElement("canvas");
+      const nearCanvas = document.createElement("canvas");
       let scale = 1;
       // Where the picture sits in the window, in screen pixels per unit of the picture and where its
-      // origin is. All of it is always in view.
-      let view = { s: 1, x: 0, y: 0 };
+      // origin is: what fit() says for this window.
+      let view = { s: 1, x: 0, y: 0, tall: false };
+      // How far the window sees to the left and the right, in the picture's units: never less than the
+      // old picture, never more than is painted. Whoever comes into the picture or leaves it does so
+      // just beyond these, so in a window the shape of the old picture nothing has changed, and in
+      // a wider one nobody appears out of the air.
+      let sides = { left: 0, right: W };
 
       // The wordmark is in the page, so there is nothing to fetch. Its cream layer is dropped: the boards
       // are the cream. Nothing is drawn until it has decoded, so the sign never appears without it.
@@ -450,6 +492,29 @@ loopway setup</pre>
         { kind: "birch", x: 655, w: 15, base: 688, top: 480 },
         { kind: "birch", x: 722, w: 17, base: 706, top: 480 },
       ];
+      // The trees of the old picture come first, and what is rolled for them is rolled as it was.
+      const OLD_TREES = TREES.length;
+      // The woods to each side: a birch and a spruce beyond the desk, a spruce and a birch beyond the tent.
+      TREES.push(
+        { kind: "birch", x: -168, w: 17, base: 750, top: 380, crownAt: [-158, 452, 112, 172] },
+        {
+          kind: "spruce",
+          x: -330,
+          w: 28,
+          base: 722,
+          top: 470,
+          crown: closeUp(spruce(-330, 128, 588, 196, 7, 31, "#3f6449"), 13),
+        },
+        {
+          kind: "spruce",
+          x: 1792,
+          w: 26,
+          base: 688,
+          top: 450,
+          crown: closeUp(spruce(1792, 150, 556, 178, 7, 37, "#456b4e"), 17),
+        },
+        { kind: "birch", x: 1936, w: 16, base: 668, top: 320, crownAt: [1942, 372, 108, 158] },
+      );
       const leafRng = rng(303);
       // A birch crown: branches fan out from the trunk, thin twigs hang from them, and the leaves
       // are small and separate, so the sky shows through. A paper birch leaf is egg-shaped: round at
@@ -644,8 +709,29 @@ loopway setup</pre>
         for (let x = -30; x < W + 40; x += 30 + lineRng() * 34) {
           const h = (near ? 80 : 120) + lineRng() * (near ? 70 : 90);
           const bottom = landTop(x) + (near ? 30 : 14);
-          TREELINE.push(spruce(x, bottom - h, bottom, h * 0.21, 5, Math.floor(lineRng() * 1e6), fill));
+          TREELINE.push({ ...spruce(x, bottom - h, bottom, h * 0.21, 5, Math.floor(lineRng() * 1e6), fill), near });
         }
+      }
+      // The same two rows go on to each side, rolled on their own so the old ones stand where they did.
+      {
+        const r = rng(202);
+        for (const [near, fill] of [
+          [0, "#86a394"],
+          [1, "#5d8064"],
+        ]) {
+          for (const [from, to] of [
+            [FULL.x0 - 40, -30],
+            [W + 40, FULL.x1 + 40],
+          ]) {
+            for (let x = from + r() * 20; x < to - 12; x += 30 + r() * 34) {
+              const h = (near ? 80 : 120) + r() * (near ? 70 : 90);
+              const bottom = landTop(x) + (near ? 30 : 14);
+              TREELINE.push({ ...spruce(x, bottom - h, bottom, h * 0.21, 5, Math.floor(r() * 1e6), fill), near });
+            }
+          }
+        }
+        // The far row is behind the near one all the way across.
+        TREELINE.sort((a, b) => a.near - b.near);
       }
       // A rock is the part of a boulder that shows: an uneven hump on a flat line where the ground
       // or the water covers the rest. x is its middle and y is that line.
@@ -769,11 +855,13 @@ loopway setup</pre>
           };
         });
       });
+      const sideRng = rng(1707);
       const BIRCH_MARKS = TREES.flatMap((tree, t) => {
         if (tree.kind !== "birch") return [];
+        const roll = t < OLD_TREES ? seeded : sideRng;
         const marks = [];
-        for (let y = tree.top + 10; y < tree.base - 8; y += 12 + seeded() * 20) {
-          marks.push({ t, y, side: seeded() < 0.5 ? -1 : 1, len: 0.3 + seeded() * 0.5 });
+        for (let y = tree.top + 10; y < tree.base - 8; y += 12 + roll() * 20) {
+          marks.push({ t, y, side: roll() < 0.5 ? -1 : 1, len: 0.3 + roll() * 0.5 });
         }
         return marks;
       });
@@ -799,6 +887,10 @@ loopway setup</pre>
         const x = seeded() * W;
         return { x, y: bank(x) - 3 + seeded() * 7, rx: 5 + seeded() * 9, ry: 3 + seeded() * 4 };
       });
+      for (let i = 0; i < 18; i++) {
+        const x = beside(sideRng);
+        STONES.push({ x, y: bank(x) - 3 + sideRng() * 7, rx: 5 + sideRng() * 9, ry: 3 + sideRng() * 4 });
+      }
       const REEDS = Array.from({ length: 26 }, () => {
         const x = 900 + seeded() * 700;
         return { x, y: nearBank(x) + 4 + seeded() * 60, h: 16 + seeded() * 26, lean: seeded() * 2 - 1 };
@@ -810,12 +902,25 @@ loopway setup</pre>
         k: 3 + Math.floor(seeded() * 9),
         p: seeded() * TAU,
       }));
+      // The sky above the old picture and to each side of it has stars as thick as the rest. They
+      // are rolled on their own, so everything rolled above is where it was.
+      {
+        const r = rng(4242);
+        const wide = FULL.x1 - FULL.x0;
+        const high = 560 - FULL.y0;
+        for (let i = 0; i < Math.round((90 * wide * high) / (W * 560)); i++) {
+          const x = FULL.x0 + r() * wide;
+          const y = FULL.y0 + r() * high;
+          const star = { x, y, r: 0.7 + r() * 1.3, k: 3 + Math.floor(r() * 9), p: r() * TAU };
+          if (x < 0 || x > W || y < 0) STARS.push(star);
+        }
+      }
       // Wisps of high cloud. Each is three thin strands, long and tapered to nothing at both ends.
       // They cross the whole sky and go off the left-hand edge, one sky's width (and a margin each
       // side to be out of sight in) every loop, so each comes round again exactly as the loop does.
       const wispRng = rng(88);
-      const WISP_SPAN = W + 600;
-      const WISPS = [140, 760, 1330, 1870].map((x) => ({
+      const WISP_SPAN = FULL.x1 - FULL.x0 + 600;
+      const WISPS = [140, 760, 1330, 1870, 2460].map((x) => ({
         x,
         y: 56 + wispRng() * 96,
         strands: Array.from({ length: 3 }, (_, i) => ({
@@ -876,6 +981,17 @@ loopway setup</pre>
         light: i % 3 !== 0,
         p: seeded() * TAU,
       }));
+      // The strokes on the water go the whole painted width, so there are more of them.
+      const FLOW_SPAN = FULL.x1 - FULL.x0 + 700;
+      for (let i = 0; i < 8; i++) {
+        FLOW.push({
+          x: 2300 + sideRng() * (FLOW_SPAN - 2300),
+          v: 16 + sideRng() * 290,
+          len: 110 + sideRng() * 190,
+          light: i % 3 !== 0,
+          p: sideRng() * TAU,
+        });
+      }
 
       // ---- The day ----
       function daylight(u) {
@@ -893,11 +1009,13 @@ loopway setup</pre>
         const { sunU, day, twilight } = light;
         const top = mix("#121831", "#b9d2d6", day);
         const low = mix(mix("#2b3454", "#ebe4ce", day), "#e79a72", twilight * 0.85);
-        const sky = ctx.createLinearGradient(0, 0, 0, 640);
-        sky.addColorStop(0, top);
+        // Above the old top of the picture the sky goes on deepening, a little.
+        const sky = ctx.createLinearGradient(0, FULL.y0, 0, 640);
+        sky.addColorStop(0, mix("#0b0f22", "#9cc0cb", day));
+        sky.addColorStop(-FULL.y0 / (640 - FULL.y0), top);
         sky.addColorStop(1, low);
         ctx.fillStyle = sky;
-        ctx.fillRect(0, 0, W, H);
+        ctx.fillRect(FULL.x0, FULL.y0, FULL.x1 - FULL.x0, FULL.y1 - FULL.y0);
 
         const night = 1 - day;
         if (night > 0.02) {
@@ -958,7 +1076,7 @@ loopway setup</pre>
         ctx.fillStyle = mix("#39425f", "#f7f2e4", day);
         for (const wisp of WISPS) {
           ctx.save();
-          ctx.translate(mod(wisp.x - WISP_SPAN * u, WISP_SPAN) - 300, wisp.y);
+          ctx.translate(mod(wisp.x - WISP_SPAN * u, WISP_SPAN) + FULL.x0 - 300, wisp.y);
           wisp.strands.forEach((a) => {
             const at = (key) => a[key];
             const len = at("len");
@@ -1096,23 +1214,22 @@ loopway setup</pre>
           ctx.stroke();
         }
         // The forest floor does not move, so it is drawn once and kept.
-        ctx.drawImage(groundCanvas, 0, 0, groundCanvas.width / scale, groundCanvas.height / scale);
+        ctx.drawImage(groundCanvas, FULL.x0, 0, groundCanvas.width / scale, groundCanvas.height / scale);
 
         // The river: long strokes that drift once round the loop, and nothing faster.
         ctx.save();
         ctx.beginPath();
-        edgePath(ctx, bank, 0, W);
-        ctx.lineTo(W, H);
-        ctx.lineTo(0, H);
+        edgePath(ctx, bank, FULL.x0, FULL.x1);
+        ctx.lineTo(FULL.x1, FULL.y1);
+        ctx.lineTo(FULL.x0, FULL.y1);
         ctx.closePath();
         ctx.fillStyle = "#6f95a0";
         ctx.fill();
         ctx.clip();
         const theta = TAU * u;
-        const span = 2300;
         ctx.lineCap = "round";
         for (const f of FLOW) {
-          const cx = mod(f.x - span * u, span) - 350;
+          const cx = mod(f.x - FLOW_SPAN * u, FLOW_SPAN) + FULL.x0 - 350;
           ctx.strokeStyle = f.light ? "#d6e6e3" : "#6b949f";
           ctx.globalAlpha = f.light ? 0.75 : 0.55;
           ctx.lineWidth = f.light ? 2.2 : 1.8;
@@ -1167,7 +1284,7 @@ loopway setup</pre>
         ctx.strokeStyle = INK;
         ctx.lineWidth = 2.5;
         ctx.beginPath();
-        edgePath(ctx, bank, 0, W);
+        edgePath(ctx, bank, FULL.x0, FULL.x1);
         ctx.stroke();
 
         // Each stone at the water's edge is outlined only over its top; the water covers its foot.
@@ -1196,16 +1313,8 @@ loopway setup</pre>
         ctx.strokeStyle = INK;
         ctx.lineWidth = 2.5;
 
-        ctx.fillStyle = "#a9a67f";
-        ctx.beginPath();
-        edgePath(ctx, nearBank, 880, W);
-        ctx.lineTo(W, H);
-        ctx.lineTo(880, H);
-        ctx.closePath();
-        ctx.fill();
-        ctx.beginPath();
-        edgePath(ctx, nearBank, 880, W);
-        ctx.stroke();
+        // The near bank does not move either, so it too is drawn once and kept, its shore line with it.
+        ctx.drawImage(nearCanvas, FULL.x0, NEAR_TOP, nearCanvas.width / scale, nearCanvas.height / scale);
       }
 
       // ---- The forest floor ----
@@ -1303,17 +1412,181 @@ loopway setup</pre>
       // be walked through. Each route therefore keeps a strip clear: a little behind it and as far
       // in front of it as the tallest plant is high. The same goes for the ground under the desk,
       // the camp, the posts and the bramble.
+      // ---- The near bank ----
+      // The bank on our side of the river is the same woods floor as the far one, seen closer: moss
+      // in ragged patches, stones and a fringe of grass along the water, ferns in colonies, tussocks,
+      // low shrubs and a few boulders, all bigger the nearer they are to us. Only the water's edge
+      // toward the right is marsh, and that is drawn live (drawMarsh), over this.
+      //
+      // The moose walks this bank, and is drawn after it, so its way in and its way out are kept
+      // clear: a little behind them and as far in front as the tallest plant is high. So is the wet
+      // edge where the cattails stand.
+      const NEAR_TOP = 760;
+      // Two at the water's edge and one further off, with the moose's way between them.
+      const NEAR_BOULDERS = [
+        rock(300, 1116, 118, 50, 61),
+        rock(560, 1068, 84, 38, 67),
+        rock(-250, 1206, 96, 42, 71),
+        rock(1150, 1150, 104, 46, 73),
+      ];
+      function buildNear() {
+        nearCanvas.width = Math.ceil((FULL.x1 - FULL.x0) * scale);
+        nearCanvas.height = Math.ceil((FULL.y1 - NEAR_TOP) * scale);
+        const ctx = nearCanvas.getContext("2d");
+        ctx.setTransform(scale, 0, 0, scale, -FULL.x0 * scale, -NEAR_TOP * scale);
+        const r = rng(2323);
+        const anywhere = () => FULL.x0 + r() * (FULL.x1 - FULL.x0);
+        // Nearer to us is bigger.
+        const near = (y) => 1.3 + clamp((y - 900) / 350) * 0.55;
+        ctx.fillStyle = "#a9a67f";
+        ctx.beginPath();
+        edgePath(ctx, nearBank, FULL.x0, FULL.x1);
+        ctx.lineTo(FULL.x1, FULL.y1);
+        ctx.lineTo(FULL.x0, FULL.y1);
+        ctx.closePath();
+        ctx.fill();
+        ctx.save();
+        ctx.clip();
+        for (let i = 0; i < 64; i++) {
+          const x = anywhere();
+          const y = lerp(nearBank(x) + 14, FULL.y1 + 10, r());
+          const k = near(y);
+          ctx.fillStyle = ["#869a5c", "#7f975a", "#8fa163"][Math.floor(r() * 3)];
+          ctx.globalAlpha = 0.5;
+          blobPath(ctx, raggedWith(r, x, y, (100 + r() * 120) * k, (11 + r() * 13) * k));
+          ctx.fill();
+        }
+        // Bare, trodden earth shows through here and there.
+        for (let i = 0; i < 14; i++) {
+          const x = anywhere();
+          const y = lerp(nearBank(x) + 30, FULL.y1, r());
+          ctx.fillStyle = i % 2 ? "#a07f58" : "#93744f";
+          ctx.globalAlpha = 0.22;
+          blobPath(ctx, raggedWith(r, x, y, (50 + r() * 70) * near(y), (7 + r() * 8) * near(y)));
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        ctx.restore();
+        ctx.lineCap = "round";
+        // The shore is not one drawn line with stones dropped on it. It is drawn in pieces: the
+        // line runs along the bank and stops at each stone and each boulder that stands in the
+        // edge, and the stone's own outline carries the shore on over its top to where the line
+        // takes up again. The water laps at the foot of each one on the river side.
+        const SHORE = [];
+        for (let x = FULL.x0 + 30 + r() * 60; x < FULL.x1; x += 34 + r() * r() * 150) {
+          SHORE.push({ x, y: nearBank(x) + 1 + r() * 3, rx: (7 + r() * 12) * 1.25, ry: (4 + r() * 5) * 1.25 });
+        }
+        const inStone = (x) =>
+          SHORE.some((st) => Math.abs(x - st.x) < st.rx - 1) ||
+          NEAR_BOULDERS.some((b) => b.y - nearBank(b.x) < 24 && Math.abs(x - b.x) < b.w * 0.46);
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        let drawing = false;
+        for (let x = FULL.x0; x <= FULL.x1; x += 4) {
+          if (inStone(x)) drawing = false;
+          else if (drawing) ctx.lineTo(x, nearBank(x));
+          else {
+            ctx.moveTo(x, nearBank(x));
+            drawing = true;
+          }
+        }
+        ctx.stroke();
+        for (const st of SHORE) {
+          // The water round its far side, then the stone, then a lapping line.
+          ctx.fillStyle = "#6f95a0";
+          ctx.beginPath();
+          ctx.ellipse(st.x, st.y - st.ry * 0.5, st.rx * 1.25, st.ry * 0.9, 0, Math.PI, TAU);
+          ctx.fill();
+          ctx.fillStyle = "#b9b5aa";
+          ctx.beginPath();
+          ctx.ellipse(st.x, st.y, st.rx, st.ry, 0, 0, TAU);
+          ctx.fill();
+          ctx.strokeStyle = INK;
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.ellipse(st.x, st.y, st.rx, st.ry, 0, Math.PI * 0.98, Math.PI * 2.02);
+          ctx.stroke();
+          ctx.strokeStyle = "#d6e6e3";
+          ctx.globalAlpha = 0.7;
+          ctx.lineWidth = 1.3;
+          ctx.beginPath();
+          ctx.ellipse(st.x, st.y - st.ry * 0.75, st.rx * 1.15, st.ry * 0.7, 0, Math.PI * 1.15, Math.PI * 1.85);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+        const TALLEST = 62;
+        const routes = [[mooseEdge(), MOOSE.stand], MOOSE.out];
+        const inTheWay = (x, y) => {
+          // The wet edge, where the cattails are.
+          if (x > 860 && y < nearBank(x) + 70) return true;
+          if (NEAR_BOULDERS.some((b) => Math.abs(x - b.x) < b.w * 0.55 && y > b.y - b.h && y < b.y + 6)) return true;
+          return routes.some((route) =>
+            route.some((from, i) => {
+              const to = route[i + 1];
+              if (!to) return false;
+              if (x < Math.min(from[0], to[0]) - 30 || x > Math.max(from[0], to[0]) + 30) return false;
+              const t = to[0] === from[0] ? 0.5 : clamp((x - from[0]) / (to[0] - from[0]));
+              const routeY = lerp(from[1], to[1], t);
+              return y > routeY - 18 && y < routeY + TALLEST;
+            }),
+          );
+        };
+        const plants = [];
+        const plant = (kind, x, y) => {
+          if (y < nearBank(x) + 5 || y > FULL.y1 + 30 || inTheWay(x, y)) return;
+          plants.push([kind, x, y]);
+        };
+        const colony = (kind, cx, cy, count, spreadX, spreadY) => {
+          for (let i = 0; i < count; i++) plant(kind, cx + (r() - 0.5) * 2 * spreadX, cy + (r() - 0.5) * 2 * spreadY);
+        };
+        const inland = (x) => lerp(nearBank(x) + 40, FULL.y1 + 10, r());
+        // A fringe of grass along the water, where there are no cattails.
+        for (let x = FULL.x0 + 8; x < 900; x += 18 + r() * 22) {
+          if (r() < 0.25) continue;
+          plant("grass", x, nearBank(x) + 8 + r() * 12);
+        }
+        // Tussocks, in groups.
+        for (let i = 0; i < 26; i++) {
+          const x = anywhere();
+          colony("grass", x, inland(x), 3 + Math.floor(r() * 4), 70, 14);
+        }
+        // Ferns, in colonies, and beside the boulders.
+        for (let i = 0; i < 16; i++) {
+          const x = anywhere();
+          colony("fern", x, inland(x), 4 + Math.floor(r() * 3), 80, 16);
+        }
+        for (const b of NEAR_BOULDERS) colony("fern", b.x, b.y + 10, 5, b.w * 0.8, 10);
+        // Low shrubs.
+        for (let i = 0; i < 14; i++) {
+          const x = anywhere();
+          plant("shrub", x, inland(x));
+        }
+        // The boulders stand among the plants, each in front of whatever is behind it.
+        for (const b of NEAR_BOULDERS) plants.push(["boulder", b.x, b.y, b]);
+        plants.sort((a, b) => a[2] - b[2]);
+        for (const [kind, x, y, boulder] of plants) {
+          const k = near(y);
+          if (kind === "boulder") drawRock(ctx, boulder, false);
+          else if (kind === "fern") drawFern(ctx, r, x, y, (19 + r() * 9) * k);
+          else if (kind === "grass") drawGrass(ctx, r, x, y, (16 + r() * 10) * k);
+          else drawLowShrub(ctx, r, x, y, (20 + r() * 9) * k);
+        }
+      }
+
       function buildGround() {
-        groundCanvas.width = Math.ceil(W * scale);
+        groundCanvas.width = Math.ceil((FULL.x1 - FULL.x0) * scale);
         groundCanvas.height = Math.ceil(H * scale);
         const ctx = groundCanvas.getContext("2d");
-        ctx.setTransform(scale, 0, 0, scale, 0, 0);
+        ctx.setTransform(scale, 0, 0, scale, -FULL.x0 * scale, 0);
         const r = rng(909);
+        // What is to each side of the old picture is rolled on its own, so the old floor is as it was.
+        const more = rng(1909);
         ctx.fillStyle = LAND;
         ctx.beginPath();
-        edgePath(ctx, landTop, 0, W);
-        ctx.lineTo(W, H);
-        ctx.lineTo(0, H);
+        edgePath(ctx, landTop, FULL.x0, FULL.x1);
+        ctx.lineTo(FULL.x1, H);
+        ctx.lineTo(FULL.x0, H);
         ctx.fill();
         ctx.save();
         ctx.clip();
@@ -1325,6 +1598,15 @@ loopway setup</pre>
           ctx.fillStyle = ["#869a5c", "#7f975a", "#8fa163"][Math.floor(r() * 3)];
           ctx.globalAlpha = 0.5;
           blobPath(ctx, raggedWith(r, x, y, (110 + r() * 130) * k, (12 + r() * 14) * k));
+          ctx.fill();
+        }
+        for (let i = 0; i < 16; i++) {
+          const x = beside(more);
+          const y = lerp(landTop(x) + 10, bank(x), more());
+          const k = near(y);
+          ctx.fillStyle = ["#869a5c", "#7f975a", "#8fa163"][Math.floor(more() * 3)];
+          ctx.globalAlpha = 0.5;
+          blobPath(ctx, raggedWith(more, x, y, (110 + more() * 130) * k, (12 + more() * 14) * k));
           ctx.fill();
         }
         for (const d of DUFF) {
@@ -1362,7 +1644,7 @@ loopway setup</pre>
         ctx.lineWidth = 1.5;
         ctx.globalAlpha = 0.5;
         ctx.beginPath();
-        edgePath(ctx, landTop, 0, W);
+        edgePath(ctx, landTop, FULL.x0, FULL.x1);
         ctx.stroke();
         ctx.globalAlpha = 1;
         ctx.lineCap = "round";
@@ -1378,6 +1660,8 @@ loopway setup</pre>
           WALK_TO_BLUE,
           WALK_TO_TENT,
           SKUNK.path,
+          // The skunk's way on out, when the window sees further left than the old picture did.
+          [SKUNK.path[SKUNK.path.length - 1], skunkOut()],
           ...SQUIRREL.filter((step) => step.mode === "hop" && step.from[1] > 600).map((step) => [step.from, step.to]),
         ];
         const TALLEST = 40;
@@ -1403,16 +1687,24 @@ loopway setup</pre>
             }),
           );
         };
+        // The old picture's plants are planted first and drawn first, with the old dice. Then the
+        // same again to each side, with dice of their own.
         const plants = [];
+        const beyond = [];
+        let bed = plants;
+        let roll = r;
         const plant = (kind, x, y) => {
-          if (x < -20 || x > W + 20 || y < landTop(x) + 8 || y > bank(x) - 3 || inTheWay(x, y)) return;
-          plants.push([kind, x, y]);
+          const out = bed === beyond ? x < FULL.x0 - 20 || x > FULL.x1 + 20 : x < -20 || x > W + 20;
+          if (out || y < landTop(x) + 8 || y > bank(x) - 3 || inTheWay(x, y)) return;
+          bed.push([kind, x, y]);
         };
         const colony = (kind, cx, cy, count, spreadX, spreadY) => {
-          for (let i = 0; i < count; i++) plant(kind, cx + (r() - 0.5) * 2 * spreadX, cy + (r() - 0.5) * 2 * spreadY);
+          for (let i = 0; i < count; i++)
+            plant(kind, cx + (roll() - 0.5) * 2 * spreadX, cy + (roll() - 0.5) * 2 * spreadY);
         };
+        const OLD = TREES.slice(0, OLD_TREES);
         // Ferns, in the shade.
-        for (const t of TREES) colony("fern", t.x, t.base + 4, 5, 70, 12);
+        for (const t of OLD) colony("fern", t.x, t.base + 4, 5, 70, 12);
         for (const b of BOULDERS) colony("fern", b.x, b.y + 6, 4, b.w * 0.75, 8);
         colony("fern", 414, 744, 4, 26, 8);
         colony("fern", 640, 748, 4, 26, 8);
@@ -1429,19 +1721,50 @@ loopway setup</pre>
           const x = r() * W;
           colony("grass", x, lerp(landTop(x) + 30, bank(x) - 30, r()), 4 + Math.floor(r() * 3), 60, 9);
         }
-        for (const t of TREES) colony("grass", t.x, t.base + 2, 2, 40, 5);
+        for (const t of OLD) colony("grass", t.x, t.base + 2, 2, 40, 5);
         // Low shrubs, at the edge of the wood.
         for (let i = 0; i < 8; i++) {
           const x = r() * W;
           plant("shrub", x, landTop(x) + 20 + r() * 34);
         }
-        plants.sort((a, b) => a[2] - b[2]);
-        for (const [kind, x, y] of plants) {
-          const k = near(y);
-          if (kind === "fern") drawFern(ctx, r, x, y, Math.min(TALLEST - 6, (20 + r() * 10) * k));
-          else if (kind === "grass") drawGrass(ctx, r, x, y, Math.min(TALLEST - 8, (17 + r() * 11) * k));
-          else drawLowShrub(ctx, r, x, y, (22 + r() * 10) * k);
+        const grow = (list, dice) => {
+          list.sort((a, b) => a[2] - b[2]);
+          for (const [kind, x, y] of list) {
+            const k = near(y);
+            if (kind === "fern") drawFern(ctx, dice, x, y, Math.min(TALLEST - 6, (20 + dice() * 10) * k));
+            else if (kind === "grass") drawGrass(ctx, dice, x, y, Math.min(TALLEST - 8, (17 + dice() * 11) * k));
+            else drawLowShrub(ctx, dice, x, y, (22 + dice() * 10) * k);
+          }
+        };
+        grow(plants, r);
+        bed = beyond;
+        roll = more;
+        for (const t of TREES.slice(OLD_TREES)) {
+          colony("fern", t.x, t.base + 4, 5, 70, 12);
+          colony("grass", t.x, t.base + 2, 2, 40, 5);
         }
+        for (let i = 0; i < 5; i++) {
+          const x = beside(more);
+          colony("fern", x, landTop(x) + 30 + more() * 20, 5, 80, 10);
+        }
+        for (const [from, to] of [
+          [FULL.x0, -20],
+          [W + 20, FULL.x1],
+        ]) {
+          for (let x = from + 6; x < to; x += 16 + more() * 16) {
+            if (more() < 0.22) continue;
+            plant("grass", x, bank(x) - 5 - more() * 9);
+          }
+        }
+        for (let i = 0; i < 6; i++) {
+          const x = beside(more);
+          colony("grass", x, lerp(landTop(x) + 30, bank(x) - 30, more()), 4 + Math.floor(more() * 3), 60, 9);
+        }
+        for (let i = 0; i < 5; i++) {
+          const x = beside(more);
+          plant("shrub", x, landTop(x) + 20 + more() * 34);
+        }
+        grow(beyond, more);
       }
 
       // ---- The near bank ----
@@ -1475,6 +1798,55 @@ loopway setup</pre>
           }
           MARSH.clumps.push(clump);
         }
+        // Below the old bottom of the picture the near bank widens toward us, and to the right it
+        // runs on past the tent. The marsh goes on to the right. To the left it thins out: fewer
+        // cattails, then only sedge, then nothing, so the bottom left is a plain shore.
+        // These are rolled on their own, so the marsh above is where it was.
+        const more = rng(1717);
+        const blades = (clump, tall) => {
+          for (let b = 0; b < 8 + Math.floor(more() * 6); b++) {
+            clump.blades.push({
+              dx: (more() - 0.5) * 22 * tall,
+              h: (26 + more() * 40) * tall,
+              lean: (more() - 0.5) * 2,
+              tone: Math.floor(more() * 3),
+            });
+          }
+          return clump;
+        };
+        // How much marsh there is at x: all of it from the old marsh's left end on, none by 300.
+        const wet = (x) => smooth(300, 880, x);
+        const atEdge = (x) => {
+          const clump = blades(
+            { x, y: nearBank(x) + 2 + more() * 12, phase: more() * TAU, blades: [], tails: [] },
+            1.1,
+          );
+          // The cattails give out before the sedge does.
+          if (more() < wet(x) * wet(x)) {
+            for (let t = 0; t < 1 + Math.floor(more() * 3); t++)
+              clump.tails.push({ dx: (more() - 0.5) * 18, h: 62 + more() * 32, lean: (more() - 0.5) * 0.8 });
+          }
+          MARSH.clumps.push(clump);
+        };
+        for (let x = 300; x < 880; x += 26 + more() * 22) if (more() < wet(x)) atEdge(x);
+        for (let x = W + 14; x < FULL.x1 + 20; x += 26 + more() * 22) atEdge(x);
+        // Just behind the water's edge: moss, and sedge with no heads. The marsh is a strip along
+        // the water; behind it the bank is dry ground (buildNear).
+        const behind = (x) => {
+          const y = nearBank(x) + 34 + more() * 70;
+          if (more() < 0.5) {
+            MARSH.moss.push({
+              pts: raggedWith(more, x, y, 70 + more() * 90, 12 + more() * 14),
+              tone: Math.floor(more() * 3),
+            });
+          }
+          MARSH.clumps.push(blades({ x, y: y + 6, phase: more() * TAU, blades: [], tails: [] }, 1.15));
+        };
+        for (let i = 0; i < 26; i++) {
+          const x = 500 + more() * (W - 500);
+          if (more() < wet(x)) behind(x);
+        }
+        for (let i = 0; i < 12; i++) behind(W + more() * (FULL.x1 - W));
         MARSH.clumps.sort((a, b) => a.y - b.y);
       }
       // A red-winged blackbird comes in low over the river from the left around dusk, lands on a
@@ -1487,10 +1859,10 @@ loopway setup</pre>
         .filter((c) => c.tails.length)
         .sort((a, b) => Math.abs(a.x - 1010) - Math.abs(b.x - 1010))[0];
       PERCH.tails[0].perch = true;
-      // A bull moose. Click the bunch of cattails below the tent in the morning or the evening and it walks in along
+      // A bull moose. Click the bunch of cattails below the tent, at any hour, and it walks in along
       // the near bank from the right, puts its head down and eats the bunch, heads first and then the
-      // leaves, lifts its head, and walks on: along the bank and down toward us, out under the bottom
-      // of the picture. It never turns round. The bunch stays eaten, on this visit and the next, until
+      // leaves, lifts its head, and walks on down the river: along the water's edge on the near bank,
+      // side on to us all the way, until the window has lost sight of it. It never turns round. The bunch stays eaten, on this visit and the next, until
       // the moose's box on the last frame is unticked.
       const MOOSE = (() => {
         const clumps = MARSH.clumps.filter((c) => c.tails.length && Math.abs(c.x - 1334) < 30);
@@ -1507,31 +1879,112 @@ loopway setup</pre>
           tails,
           // Where it stands to eat, where it comes in from, off the picture, and the way it goes on out.
           stand: [1456, 950],
-          edge: [W + 190, 938],
-          // The way out is one smooth bend: level at first, then down the bank toward us.
-          out: Array.from({ length: 41 }, (_, i) => {
-            const t = i / 40;
-            const q = 1 - t;
-            return [q * q * 1456 + 2 * q * t * 1236 + t * t * 950, q * q * 950 + 2 * q * t * 952 + t * t * 1268];
-          }),
-          // One full stride covers this much ground, and each foot is down for this share of it.
-          stride: 66,
-          planted: 0.65,
+          // The way out, laid by mooseRoute() for the window there is.
+          out: [
+            [1456, 950],
+            [1400, 950],
+          ],
+          // One full stride covers this much ground, and at a walk each foot is down for this share
+          // of it. The stride is long and the feet are a long time in the air: a moose's legs swing,
+          // they do not patter. As it slows to a stand each foot stays down longer ("halted"), until
+          // all four are down together.
+          stride: 96,
+          // How much ground it covers in a second at a walk on the way out.
+          pace: 95,
+          // It does not walk the whole way out: a few strides on it breaks into a trot. That is
+          // another gait and not a quicker walk. The legs go in diagonal pairs, the near front
+          // with the far hind and the far front with the near hind; the stride is half as long
+          // again; each foot is down for less than half of it, so twice a stride all four are off
+          // the ground; and the feet come up higher. It changes over between "from" and "to", which
+          // are how far it has gone from where it stood.
+          trot: { from: 120, to: 380, stride: 150, planted: 0.44, pace: 235 },
+          // How long it has taken, and how many strides, to each place on the way out: mooseRoute().
+          gait: [[0, 0]],
+          planted: 0.62,
+          halted: 0.8,
           arrive: 4.2,
           down: [4.2, 4.9],
           firstBite,
           graze: [graze, graze + 1.4],
           up: [graze + 1.4, graze + 2],
           leave: graze + 2.5,
-          seconds: graze + 2.5 + 7.8,
+          seconds: graze + 2.5 + 9.6,
         };
       })();
+      // The way out follows the water's edge downstream, as far below it as the moose stood to eat.
+      // The near bank comes toward us as it goes left, so the moose gets nearer and bigger and goes
+      // out under the bottom of the window, or off its left side in a window that sees a long way
+      // down. The way ends where the window has lost sight of it, and it walks and then trots it, so a
+      // longer way takes longer.
+      function mooseRoute() {
+        const [x0, y0] = MOOSE.stand;
+        const below = y0 - nearBank(x0);
+        const bottom = clamp((canvas.height - view.y) / view.s, H, FULL.y1);
+        // Out of sight under the bottom of the window, or beyond its left side, whichever is sooner.
+        const under = 880 - (bottom + 190 - below - H) / 0.17 - 40;
+        const end = Math.max(under, sides.left - 220);
+        MOOSE.out = [];
+        for (let x = x0; x > end - 40; x -= 40) {
+          // It sets off level, the way it was standing, and comes round to the line of the bank.
+          MOOSE.out.push([x, y0 + (nearBank(x) + below - y0) * smooth(0, 1, (x0 - x) / 240)]);
+        }
+        // A window with no size yet gives no way at all: leave it a short one.
+        if (MOOSE.out.length < 2) MOOSE.out = [MOOSE.stand, [x0 - 56, y0]];
+        // It gets going from a stand, walks, and gathers into the trot: so how long it has been
+        // going and how many strides it has taken are added up along the way, a little at a time.
+        const total = along(MOOSE.out, 1).total;
+        MOOSE.gait = [];
+        let seconds = 0;
+        let strides = 0;
+        for (let gone = 0; gone <= total + GAIT_STEP; gone += GAIT_STEP) {
+          MOOSE.gait.push([seconds, strides]);
+          const here = gone + GAIT_STEP / 2;
+          const pace = lerp(MOOSE.pace, MOOSE.trot.pace, mooseTrot(here)) * lerp(0.25, 1, smooth(0, 120, here));
+          seconds += GAIT_STEP / pace;
+          strides += GAIT_STEP / mooseStride(here);
+        }
+        const [before, after, between] = mooseGait(total);
+        MOOSE.seconds = MOOSE.leave + lerp(before[0], after[0], between);
+      }
+      const GAIT_STEP = 4;
+      // How much of a trot it is, this far on from where it stood: none on the way in.
+      const mooseTrot = (gone) => smooth(MOOSE.trot.from, MOOSE.trot.to, gone);
+      const mooseStride = (gone) => lerp(MOOSE.stride, MOOSE.trot.stride, mooseTrot(gone));
+      // The two rows of the gait table either side of a place, and how far between them it is.
+      function mooseGait(gone) {
+        const at = clamp(gone / GAIT_STEP, 0, MOOSE.gait.length - 1);
+        const i = Math.min(Math.floor(at), MOOSE.gait.length - 2);
+        return [MOOSE.gait[i], MOOSE.gait[i + 1] ?? MOOSE.gait[i], at - i];
+      }
+      // How many strides it has taken at a place: less than none on the way in.
+      function mooseStrides(gone) {
+        if (gone <= 0) return gone / MOOSE.stride;
+        const [a, b, t] = mooseGait(gone);
+        const end = (MOOSE.gait.length - 1) * GAIT_STEP;
+        return lerp(a[1], b[1], t) + Math.max(0, gone - end) / MOOSE.trot.stride;
+      }
+      // How far it has gone, this long after setting off.
+      function mooseGone(seconds) {
+        let low = 0;
+        let high = MOOSE.gait.length - 1;
+        while (high - low > 1) {
+          const mid = (low + high) >> 1;
+          if (MOOSE.gait[mid][0] <= seconds) low = mid;
+          else high = mid;
+        }
+        const [from, to] = [MOOSE.gait[low][0], MOOSE.gait[high][0]];
+        return (low + (to > from ? clamp((seconds - from) / (to - from)) : 0)) * GAIT_STEP;
+      }
+      // Where the moose comes in from: off the picture, beyond what the window sees to the right, on
+      // the same line it always walked. And how much longer the walk in takes for being longer.
+      const mooseEdge = () => [sides.right + 190, 938 - (sides.right - W) * 0.036];
+      const mooseLate = () => (sides.right - W) / 80;
       // Whether the bunch has been eaten already. Set from what is kept, once that has been read.
       let mooseAte = false;
       // How much of the bunch is left: how many heads are gone, and how tall the leaves still are.
       function mooseMeal(clock) {
         if (MOOSE.start === null) return mooseAte ? { gone: Infinity, leaves: 0 } : { gone: 0, leaves: 1 };
-        const time = clock - MOOSE.start;
+        const time = clock - MOOSE.start - mooseLate();
         return {
           gone: Math.max(0, Math.floor((time - MOOSE.firstBite) / 0.7) + 1),
           leaves: 1 - smooth(...MOOSE.graze, time),
@@ -1541,16 +1994,17 @@ loopway setup</pre>
       // out along the bend. Also how big it is there, which way it is heading, and how much it is
       // turned toward us (which shortens it, seen from the side).
       function mooseBody(ground) {
-        const inLength = Math.hypot(MOOSE.stand[0] - MOOSE.edge[0], MOOSE.stand[1] - MOOSE.edge[1]);
+        const edge = mooseEdge();
+        const inLength = Math.hypot(MOOSE.stand[0] - edge[0], MOOSE.stand[1] - edge[1]);
         const outLength = along(MOOSE.out, 1).total;
         let x;
         let y;
         let heading;
         if (ground <= inLength) {
           const p = ground / inLength;
-          x = lerp(MOOSE.edge[0], MOOSE.stand[0], p);
-          y = lerp(MOOSE.edge[1], MOOSE.stand[1], p);
-          heading = [(MOOSE.stand[0] - MOOSE.edge[0]) / inLength, (MOOSE.stand[1] - MOOSE.edge[1]) / inLength];
+          x = lerp(edge[0], MOOSE.stand[0], p);
+          y = lerp(edge[1], MOOSE.stand[1], p);
+          heading = [(MOOSE.stand[0] - edge[0]) / inLength, (MOOSE.stand[1] - edge[1]) / inLength];
         } else {
           const p = (ground - inLength) / outLength;
           const here = along(MOOSE.out, p);
@@ -1565,38 +2019,68 @@ loopway setup</pre>
         return { x, y, size, heading, narrow: 1 - 0.34 * clamp(heading[1]), inLength, outLength };
       }
       // The four legs: where the hip is along the body, when in the stride the foot comes down, and
-      // which side it is on. Opposite corners step together, the hind foot a moment after the front one.
+      // which side it is on. It is a walk, one foot at a time and a quarter of a stride apart: near
+      // hind, near front, far hind, far front. So each hind foot comes down just as the front foot
+      // on its own side is about to leave the ground ahead of it.
       const MOOSE_LEGS = [
-        { hip: -36, beat: 0.5, far: true, hind: false },
-        { hip: 74, beat: 0.06, far: true, hind: true },
-        { hip: -52, beat: 0, far: false, hind: false },
-        { hip: 60, beat: 0.56, far: false, hind: true },
+        { hip: -36, beat: 0.75, far: true, hind: false },
+        { hip: 74, beat: 0, far: true, hind: true },
+        { hip: -52, beat: 0.25, far: false, hind: false },
+        { hip: 60, beat: 0.5, far: false, hind: true },
       ];
+      // Where in the stride it stands still to eat: all four feet are down there.
+      const MOOSE_HALT = 0.01;
       // Where the moose is and what it is doing, or nothing if it is not out.
       function mooseAt(clock) {
         if (MOOSE.start === null) return null;
-        const time = clock - MOOSE.start;
+        // A longer walk in takes longer; everything after it is as late as that.
+        const late = mooseLate();
+        const time = clock - MOOSE.start - late;
         if (time >= MOOSE.seconds) return null;
         const coming = time < MOOSE.arrive;
         const going = time >= MOOSE.leave;
         const { inLength, outLength } = mooseBody(0);
         // It slows to a stop and gathers way again: the ground it has covered, not the time, drives the legs.
         const ground = coming
-          ? inLength * (1 - (1 - time / MOOSE.arrive) ** 1.5)
+          ? inLength * (1 - (1 - (time + late) / (MOOSE.arrive + late)) ** 1.5)
           : going
-            ? inLength + outLength * ((time - MOOSE.leave) / (MOOSE.seconds - MOOSE.leave)) ** 1.25
+            ? inLength + Math.min(outLength, mooseGone(time - MOOSE.leave))
             : inLength;
         const body = mooseBody(ground);
         // Every step is a foot put down on one spot of ground, left there while the body goes over it,
         // and then picked up and swung to the next spot. Nothing on the ground ever slides.
-        const cycle = (ground - inLength) / MOOSE.stride + 0.04;
+        const cycle = mooseStrides(ground - inLength) + MOOSE_HALT;
+        const trot = mooseTrot(ground - inLength);
+        // Where a leg is in its stride at a place. At a walk the front feet come down a quarter of
+        // a stride after the hind feet on the other side; at a trot, with them.
+        const legAt = (leg, gone) =>
+          mooseStrides(gone) + MOOSE_HALT + leg.beat - (leg.hind ? 0 : 0.25 * mooseTrot(gone));
+        // How long a foot stays down depends on where the moose is, not when: within a stride and
+        // a half of where it stands to eat, it is slowing down or getting going.
+        const plantedAt = (where) =>
+          lerp(
+            lerp(MOOSE.halted, MOOSE.planted, smooth(0, 1, Math.abs(where - inLength) / (MOOSE.stride * 1.5))),
+            MOOSE.trot.planted,
+            mooseTrot(where - inLength),
+          );
+        const planted = plantedAt(ground);
         const legs = MOOSE_LEGS.map((leg) => {
-          const at = cycle + leg.beat;
+          const at = legAt(leg, ground - inLength);
           const step = Math.floor(at);
           const part = at - step;
           const spot = (n) => {
-            const then = mooseBody(inLength + (n - leg.beat - 0.04) * MOOSE.stride);
-            const reach = (MOOSE.planted * MOOSE.stride) / 2;
+            // The place where this leg begins its stride number n. The strides are not all one
+            // length, so it is looked for.
+            let low = -4000;
+            let high = outLength + 4000;
+            for (let i = 0; i < 40; i++) {
+              const mid = (low + high) / 2;
+              if (legAt(leg, mid) < n) low = mid;
+              else high = mid;
+            }
+            const landed = inLength + (low + high) / 2;
+            const then = mooseBody(landed);
+            const reach = (plantedAt(landed) * mooseStride(landed - inLength)) / 2;
             return [
               then.x + leg.hip * then.size * then.narrow + then.heading[0] * reach,
               // The far legs stand a little further off, which is a little higher up the picture.
@@ -1606,18 +2090,25 @@ loopway setup</pre>
           const from = spot(step);
           let foot = from;
           let lift = 0;
-          if (part >= MOOSE.planted) {
-            const swing = (part - MOOSE.planted) / (1 - MOOSE.planted);
+          // How far through its swing the foot is, or null while it is on the ground.
+          let swing = null;
+          if (part >= planted) {
+            swing = (part - planted) / (1 - planted);
             const to = spot(step + 1);
+            // Nothing in the swing starts or stops all at once. The foot eases off the ground and
+            // eases forward, and eases down onto the next spot.
             const eased = smooth(0, 1, swing);
             foot = [lerp(from[0], to[0], eased), lerp(from[1], to[1], eased)];
-            lift = Math.sin(Math.PI * swing) * 7;
+            // A moose steps high: the front foot most, and a little sooner.
+            lift =
+              (leg.hind ? 9 : 12) * (1 + 0.7 * trot) * Math.sin(Math.PI * swing ** (leg.hind ? 0.95 : 0.85)) ** 1.5;
           }
           return {
             ...leg,
             x: (foot[0] - body.x) / (body.size * body.narrow),
             y: (foot[1] - body.y) / body.size,
             lift,
+            swing,
           };
         });
         const walking = coming ? clamp((MOOSE.arrive - time) / 0.6) : going ? clamp((time - MOOSE.leave) / 0.6) : 0;
@@ -1632,10 +2123,13 @@ loopway setup</pre>
           size: body.size,
           narrow: body.narrow,
           legs,
-          // The body rises and falls twice a stride, and the head nods against it.
-          bob: -0.6 * Math.abs(Math.sin(cycle * TAU)) * walking,
+          // The body rises and falls as each pair of legs passes under it, and the head nods against it.
+          // At a trot it is thrown up off each pair of legs, so it rises further.
+          bob: -lerp(1.3, 3.4, trot) * (0.5 + 0.5 * Math.cos(cycle * TAU * 2 + 0.9)) * walking,
           head: head + 0.025 * Math.sin(cycle * TAU * 2 + 0.6) * walking,
           chew: time >= MOOSE.down[1] && time < MOOSE.leave + 2 ? Math.sin(time * 13) : 0,
+          time,
+          walking,
         };
       }
       // How far the bird bends its cattail: 0 not at all, 1 settled under its weight. The stalk dips
@@ -1666,9 +2160,9 @@ loopway setup</pre>
         const theta = TAU * u;
         ctx.save();
         ctx.beginPath();
-        edgePath(ctx, nearBank, 880, W);
-        ctx.lineTo(W, H);
-        ctx.lineTo(880, H);
+        edgePath(ctx, nearBank, FULL.x0, FULL.x1);
+        ctx.lineTo(FULL.x1, FULL.y1);
+        ctx.lineTo(FULL.x0, FULL.y1);
         ctx.closePath();
         ctx.clip();
         ctx.globalAlpha = 0.6;
@@ -1741,64 +2235,189 @@ loopway setup</pre>
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
         const coat = "#4f3a29";
-        // A leg: hip, knee (the hock, on a hind leg, which bends back), ankle and hoof. The hoof is
-        // where the walk put it; the knee folds as the foot is lifted.
-        const leg = ({ hip: hipX, hind, x, y, lift }) => {
-          const hoof = [x, y - m.bob - lift];
-          const top = -76;
-          const knee = [
-            lerp(hipX, hoof[0], 0.5) + (hind ? 8 + lift * 0.5 : -2 - lift * 0.7),
-            lerp(top, hoof[1], 0.51) - lift * 0.25,
-          ];
-          return {
-            upper: [
-              [hipX + (hind ? 5 : 0), top, hind ? 14 : 10.5],
-              [lerp(hipX, knee[0], 0.6) + (hind ? 5 : 0), lerp(top, knee[1], 0.56), hind ? 8.5 : 7],
-              [knee[0], knee[1], 5.2],
-            ],
-            lower: [
-              [knee[0], knee[1], 5.2],
-              [lerp(knee[0], hoof[0], 0.45), lerp(knee[1], hoof[1], 0.45), 3.3],
-              [lerp(knee[0], hoof[0], 0.84), lerp(knee[1], hoof[1], 0.84), 3.5],
-              [hoof[0] - 0.5, hoof[1] - 5, 4.6],
-            ],
-            hoof: [
-              [hoof[0] - 0.5, hoof[1] - 5, 4.6],
-              [hoof[0] - 1.5, hoof[1], 5.6],
-            ],
-          };
+        // The legs are rigged: bones of fixed length, joined where a moose's are and bending only
+        // the way a moose's do. Nothing stretches. Each leg hangs from a joint high inside the body,
+        // the shoulder or the hip, which the coat hides, so the leg swings from up there and not from
+        // the belly line.
+        //   A front leg is the forearm, down to the knee, and the cannon bone, down to the fetlock.
+        //   The knee bends forward only. With the foot on the ground it is locked straight, and the
+        //   shoulder rides up over it as the body passes: that is what carries the weight. When the
+        //   foot is picked up the knee folds, the forearm comes forward and the cannon tucks back
+        //   under it.
+        //   A hind leg is the thigh, from the hip forward to the stifle at the flank; the gaskin, from
+        //   there back and down to the hock; and the cannon bone. The hock bends backward only and
+        //   is never straight: it opens out as the leg pushes off behind, and folds right up to
+        //   bring the foot forward.
+        //   The hoof hangs from the fetlock. On the ground it is flat; in the air the toe drops a
+        //   very little, and comes up level again to land.
+        // The foot is where the walk put it. Everything above it is worked out from there.
+        const RIG = {
+          front: { upper: 73, lower: 25, pivot: -104, bend: -1 },
+          hind: { thigh: 28, upper: 35, lower: 32, hip: -92, bend: 1 },
         };
-        // A run of points down the middle of a limb, each with half the limb's width there.
-        const limb = (pts) => {
+        const leg = ({ hip: hipX, hind, x, y, lift, swing }) => {
+          const rig = hind ? RIG.hind : RIG.front;
+          const floor = y - m.bob;
+          // The fetlock, above and a little behind the toe.
+          const fetlock = [x + 3, floor - 11 - lift];
+          const whole = rig.upper + rig.lower;
+          // The joint the two lower bones hang from, and what is above it.
+          let root;
+          let haunch = null;
+          if (hind) {
+            // A hind leg has a third bone, the thigh, from the hip forward and down to the stifle
+            // at the flank. It is under the coat and it swings with the foot: back as the foot
+            // goes back, forward as the foot comes forward. The leg below hangs from the stifle,
+            // so it comes out from under the haunch and not out of the rump.
+            haunch = [hipX - 2, rig.hip];
+            const swung = clamp(0.45 - 0.012 * (fetlock[0] - hipX - 3), -0.1, 0.95);
+            root = [haunch[0] - Math.sin(swung) * rig.thigh, haunch[1] + Math.cos(swung) * rig.thigh];
+          } else {
+            // A front leg is straight with the foot down, so the shoulder rides up and down inside
+            // the body, a little way, to keep it so.
+            const px = hipX + 2;
+            const dx = fetlock[0] - px;
+            const reach = whole - 0.05;
+            root = [
+              px,
+              clamp(floor - 11 - Math.sqrt(Math.max(1, reach * reach - dx * dx)), rig.pivot - 7, rig.pivot + 9),
+            ];
+          }
+          // Two bones from there to the fetlock: where they meet is the knee, or the hock.
+          const span = Math.hypot(fetlock[0] - root[0], fetlock[1] - root[1]);
+          const d = Math.min(span, whole - 0.01);
+          const e = [(fetlock[0] - root[0]) / span, (fetlock[1] - root[1]) / span];
+          const a = (d * d + rig.upper ** 2 - rig.lower ** 2) / (2 * d);
+          const h = Math.sqrt(Math.max(0, rig.upper ** 2 - a * a));
+          // The bend is to the one side only: forward for a knee, back for a hock. (The moose is
+          // drawn facing left, so forward is to the left.)
+          const knee = [root[0] + e[0] * a + e[1] * h * rig.bend, root[1] + e[1] * a - e[0] * h * rig.bend];
+          const ankle = fetlock;
+          // The hoof, turned about the fetlock.
+          // Only a little: the hoof stays very nearly in line with the bone above it.
+          const hang = swing === null ? 0 : Math.sin(Math.PI * swing ** 0.8) ** 1.3 * (hind ? 0.14 : 0.2);
+          const turned = (vx, vy) => [
+            ankle[0] + vx * Math.cos(hang) + vy * Math.sin(hang),
+            ankle[1] - vx * Math.sin(hang) + vy * Math.cos(hang),
+          ];
+          // The leg is drawn as one shape, not as pieces laid end to end, but its bones are
+          // straight: a line runs down its middle from the top of the leg to the knee or hock, to
+          // the fetlock, to the toe, straight along each bone and turning only at the joint itself,
+          // over a very short way. The leg is as wide across that line as a moose's is there:
+          // heavy at the top, narrowing to the joint, thinner still along the bone below it, a
+          // knob at the fetlock, and spreading into the hoof. The hock has its point at the back
+          // and the knee its cap at the front.
+          //
+          // The top of the leg is not the joint it swings from. It is where the leg leaves the
+          // body: a hind leg is as wide there as the haunch, and its back edge is the back edge of
+          // the rump carried on down to the hock; a front leg's front edge is the breast carried
+          // on down to the knee. So the body's outline runs into the leg's with no step.
+          const top = hind ? [Math.min(hipX + 17, 79), -77] : [hipX - 6, -84];
+          const joints = [top, knee, ankle, turned(-4.2, 11)];
+          const wide = hind ? [16.5, 5.9, 4.5, 5.7] : [11.5, 5.5, 4.4, 5.6];
+          const waist = hind ? [1.2, 1.5, 0.2] : [1.4, 1.2, 0.2];
+          const last = joints.length - 2;
+          let middle = [];
+          for (let i = 0; i <= last; i++) {
+            for (let n = 0; n < (i === last ? 11 : 10); n++) {
+              const t = n / 10;
+              middle.push({
+                x: lerp(joints[i][0], joints[i + 1][0], t),
+                y: lerp(joints[i][1], joints[i + 1][1], t),
+                w: lerp(wide[i], wide[i + 1], smooth(0, 1, t)) - waist[i] * Math.sin(Math.PI * t),
+                // The point of the hock, or the cap of the knee: on one side only.
+                knob: Math.exp(-(((i + t - 1) / 0.2) ** 2)) * (hind ? 2.4 : 1.3),
+              });
+            }
+          }
+          // The corner at each joint is taken off, and only the corner: the bones stay straight.
+          middle = middle.map((p, i) => {
+            const before = middle[i - 1];
+            const after = middle[i + 1];
+            if (!before || !after) return p;
+            return { ...p, x: (before.x + 2 * p.x + after.x) / 4, y: (before.y + 2 * p.y + after.y) / 4 };
+          });
+          // The two edges: the back of the leg and the front of it.
+          const back = [];
+          const front = [];
+          middle.forEach((p, i) => {
+            const before = middle[Math.max(0, i - 1)];
+            const after = middle[Math.min(middle.length - 1, i + 1)];
+            const len = Math.hypot(after.x - before.x, after.y - before.y) || 1;
+            // Where the leg leaves the body it is cut level, whichever way the bone below is
+            // leaning, and it turns to lie across the bone a little way down. If it were cut
+            // across the bone all the way up, its top corners would swing up out of the rump
+            // with every stride.
+            const across = i < 10 ? smooth(0, 0.8, i / 10) : 1;
+            const lx = lerp(1, (after.y - before.y) / len, across);
+            const ly = lerp(0, -(after.x - before.x) / len, across);
+            const nx = lx / Math.hypot(lx, ly);
+            const ny = ly / Math.hypot(lx, ly);
+            back.push([p.x + nx * (p.w + (hind ? p.knob : 0)), p.y + ny * (p.w + (hind ? p.knob : 0))]);
+            front.push([p.x - nx * (p.w + (hind ? 0 : p.knob)), p.y - ny * (p.w + (hind ? 0 : p.knob))]);
+          });
+          // The top is round, a dome up inside the body, so no corner of it can show.
+          const cap = [];
+          for (let n = 1; n < 12; n++) {
+            const turn = (Math.PI * n) / 12;
+            cap.push([top[0] + Math.cos(turn) * wide[0], top[1] - Math.sin(turn) * (hind ? 13 : 10)]);
+          }
+          return { back, front, cap, knee, ankle, root, hind, bendAt: 10, hoofAt: last * 10 + 5 };
+        };
+        // The outline of a leg from one place down it to its foot: down the front and back up the back.
+        const trace = (l, from = 0) => {
           ctx.beginPath();
-          pts.forEach(([x, y, w], i) => (i ? ctx.lineTo(x - w, y) : ctx.moveTo(x - w, y)));
-          for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i][0] + pts[i][2], pts[i][1]);
+          for (let i = from; i < l.front.length; i++) {
+            if (i === from) ctx.moveTo(l.front[i][0], l.front[i][1]);
+            else ctx.lineTo(l.front[i][0], l.front[i][1]);
+          }
+          for (let i = l.back.length - 1; i >= from; i--) ctx.lineTo(l.back[i][0], l.back[i][1]);
+          if (from === 0) for (const [x, y] of l.cap) ctx.lineTo(x, y);
           ctx.closePath();
         };
         const inkLeg = (l) => {
           ctx.strokeStyle = INK;
           ctx.lineWidth = 4.6;
-          for (const part of [l.upper, l.lower, l.hoof]) {
-            limb(part);
-            ctx.stroke();
-          }
+          trace(l);
+          ctx.stroke();
         };
+        // The coat goes pale below the knee, a little at a time and not at a line, and the hoof is dark.
         const paintLeg = (l, upper, lower) => {
-          for (const [part, color] of [
-            [l.upper, upper],
-            [l.lower, lower],
-            [l.hoof, "#2a221b"],
-          ]) {
-            limb(part);
-            ctx.fillStyle = color;
-            ctx.fill();
-          }
+          trace(l);
+          ctx.fillStyle = upper;
+          ctx.fill();
+          const fade = ctx.createLinearGradient(
+            l.knee[0],
+            l.knee[1],
+            lerp(l.knee[0], l.ankle[0], 0.5),
+            lerp(l.knee[1], l.ankle[1], 0.5),
+          );
+          fade.addColorStop(0, upper);
+          fade.addColorStop(1, lower);
+          trace(l, l.bendAt);
+          ctx.fillStyle = fade;
+          ctx.fill();
+          trace(l, l.hoofAt);
+          ctx.fillStyle = "#2a221b";
+          ctx.fill();
         };
-        for (const far of m.legs.filter((l) => l.far).map(leg)) {
+        const rigged = m.legs.map((l) => ({ ...leg(l), far: l.far }));
+        // The body is not carried level like a tray. The shoulders ride up over each front leg as
+        // it takes the weight, the rump rides on the hind legs, the belly moves with its breath
+        // when it stands, and the tail and an ear twitch now and then.
+        const mean = (list) => list.reduce((sum, v) => sum + v, 0) / list.length;
+        const fronts = rigged.filter((l) => !l.hind);
+        const hinds = rigged.filter((l) => l.hind);
+        const sh = clamp(mean(fronts.map((l) => l.root[1] - RIG.front.pivot)) * 0.45, -2.6, 2.6);
+        const ru = clamp(mean(hinds.map((l) => l.root[1] + 67)) * 0.5, -2.4, 2.4);
+        const br = 1.1 * Math.sin(m.time * 1.7) * (1 - m.walking);
+        const swish = 0.3 * Math.sin(m.time * 2.3) * Math.max(0, Math.sin(m.time * 0.6)) ** 2;
+        const flick = 0.4 * Math.max(0, Math.sin(m.time * 1.1 + 2)) ** 8 * Math.sin(m.time * 19);
+        for (const far of rigged.filter((l) => l.far)) {
           inkLeg(far);
           paintLeg(far, "#3c2d21", "#5d5043");
         }
-        const near = m.legs.filter((l) => !l.far).map(leg);
+        const near = rigged.filter((l) => !l.far);
         // The neck swings from the shoulder, and the head from the end of the neck.
         const neckAngle = lerp(3.552, 2.292, m.head);
         const turn = lerp(2.674, 1.918, m.head) - Math.PI + m.chew * 0.012;
@@ -1817,15 +2436,15 @@ loopway setup</pre>
         };
         const body = () => {
           ctx.beginPath();
-          ctx.moveTo(86, -96);
-          ctx.bezierCurveTo(70, -108, 40, -105, 10, -108);
-          ctx.bezierCurveTo(-8, -110, -22, -124, -38, -130);
-          ctx.bezierCurveTo(-52, -134, -64, -126, -70, -110);
+          ctx.moveTo(86, -96 + ru);
+          ctx.bezierCurveTo(70, -108 + ru * 0.7, 40, -105 + ru * 0.3, 10, -108);
+          ctx.bezierCurveTo(-8, -110, -22, -124 + sh, -38, -130 + sh);
+          ctx.bezierCurveTo(-52, -134 + sh, -64, -126 + sh, -70, -110 + sh * 0.5);
           ctx.bezierCurveTo(-76, -96, -76, -80, -66, -68);
           ctx.bezierCurveTo(-58, -58, -44, -56, -30, -56);
-          ctx.bezierCurveTo(-4, -52, 30, -60, 52, -66);
+          ctx.bezierCurveTo(-4, -52 + br, 30, -60 + br, 52, -66);
           ctx.bezierCurveTo(66, -62, 74, -58, 80, -62);
-          ctx.bezierCurveTo(94, -70, 96, -86, 86, -96);
+          ctx.bezierCurveTo(94, -70, 96, -86 + ru, 86, -96 + ru);
           ctx.closePath();
         };
         // The neck runs from the hump to the poll along the top, where the mane stands, and from the
@@ -1834,8 +2453,8 @@ loopway setup</pre>
           const top = onHead(9, -12);
           const throat = onHead(-9, 13);
           ctx.beginPath();
-          ctx.moveTo(-36, -130);
-          ctx.quadraticCurveTo((top[0] - 36) / 2 + 2, (top[1] - 130) / 2 - 5, top[0], top[1]);
+          ctx.moveTo(-36, -130 + sh);
+          ctx.quadraticCurveTo((top[0] - 36) / 2 + 2, (top[1] - 130 + sh) / 2 - 5, top[0], top[1]);
           ctx.lineTo(throat[0], throat[1]);
           ctx.quadraticCurveTo((throat[0] - 68) / 2 + 5, (throat[1] - 76) / 2 + 7, -68, -76);
           ctx.closePath();
@@ -1861,37 +2480,50 @@ loopway setup</pre>
           ctx.quadraticCurveTo(-8, 24, -6, 12);
           ctx.closePath();
         };
+        // The tail hangs from the rump and swings from where it joins.
         const tail = () => {
+          const at = (x, y) => [
+            86 + (x - 86) * Math.cos(swish) - (y + 96) * Math.sin(swish),
+            -96 + ru + (x - 86) * Math.sin(swish) + (y + 96) * Math.cos(swish),
+          ];
           ctx.beginPath();
-          ctx.moveTo(86, -96);
-          ctx.quadraticCurveTo(96, -92, 93, -80);
-          ctx.quadraticCurveTo(89, -86, 84, -90);
+          ctx.moveTo(86, -96 + ru);
+          ctx.quadraticCurveTo(...at(96, -92), ...at(93, -80));
+          ctx.quadraticCurveTo(...at(89, -86), 84, -90 + ru);
           ctx.closePath();
         };
-        const antler = (dx, dy, color) =>
+        // An antler: a short beam up from the head, a brow tine pointing forward, and a broad palm
+        // with four more tines along its top, each a point between two rounded notches. The outline
+        // goes once round and never crosses itself. The far one is behind the near one and is
+        // drawn smaller and fainter, so the two do not read as one tangle of lines.
+        const antler = (dx, dy, color, far) =>
           headed(() => {
             ctx.translate(dx, dy);
+            if (far) ctx.scale(0.9, 0.9);
             ctx.beginPath();
-            ctx.moveTo(3, -9);
-            ctx.lineTo(9, -22);
-            ctx.bezierCurveTo(2, -30, -6, -38, -17, -43);
-            ctx.lineTo(-11, -35);
-            ctx.lineTo(-5, -50);
-            ctx.lineTo(-1, -36);
-            ctx.lineTo(8, -53);
-            ctx.lineTo(9, -37);
-            ctx.lineTo(21, -49);
-            ctx.lineTo(19, -33);
-            ctx.lineTo(33, -38);
-            ctx.bezierCurveTo(27, -25, 20, -18, 11, -14);
+            ctx.moveTo(2, -10);
+            ctx.quadraticCurveTo(4, -17, 1, -23);
+            ctx.quadraticCurveTo(-5, -27, -14, -30);
+            ctx.quadraticCurveTo(-7, -31, -3, -33);
+            ctx.quadraticCurveTo(-6, -41, -9, -50);
+            ctx.quadraticCurveTo(-4, -44, 0, -41);
+            ctx.quadraticCurveTo(2, -49, 4, -56);
+            ctx.quadraticCurveTo(7, -48, 10, -43);
+            ctx.quadraticCurveTo(14, -50, 18, -55);
+            ctx.quadraticCurveTo(19, -47, 21, -42);
+            ctx.quadraticCurveTo(26, -46, 31, -48);
+            ctx.quadraticCurveTo(28, -41, 27, -37);
+            ctx.quadraticCurveTo(32, -37, 37, -36);
+            ctx.quadraticCurveTo(28, -28, 20, -24);
+            ctx.quadraticCurveTo(13, -19, 10, -13);
             ctx.closePath();
             ctx.fillStyle = color;
             ctx.fill();
-            ctx.strokeStyle = INK;
-            ctx.lineWidth = 2;
+            ctx.strokeStyle = far ? "rgba(22, 19, 14, 0.75)" : INK;
+            ctx.lineWidth = far ? 1.6 : 2;
             ctx.stroke();
           });
-        antler(9, 3, "#b3a27c");
+        antler(13, 1, "#a8976f", true);
         // Every outline first, then the coat over them: so the neck, the head and the near legs grow out
         // of the body with no line across the join.
         near.forEach(inkLeg);
@@ -1945,6 +2577,10 @@ loopway setup</pre>
           ctx.fillStyle = coat;
           ctx.strokeStyle = INK;
           ctx.lineWidth = 2;
+          ctx.save();
+          ctx.translate(8, -9);
+          ctx.rotate(flick);
+          ctx.translate(-8, 9);
           ctx.beginPath();
           ctx.moveTo(4, -10);
           ctx.quadraticCurveTo(3, -25, 14, -30);
@@ -1952,6 +2588,7 @@ loopway setup</pre>
           ctx.closePath();
           ctx.fill();
           ctx.stroke();
+          ctx.restore();
           ctx.fillStyle = INK;
           ctx.beginPath();
           ctx.arc(-15, -5, 1.8, 0, TAU);
@@ -1963,11 +2600,14 @@ loopway setup</pre>
         // Where the shoulder and the haunch stand out under the coat.
         ctx.strokeStyle = "rgba(22, 19, 14, 0.4)";
         ctx.lineWidth = 1.8;
+        // They are the muscle the near legs hang from, so each follows its leg.
+        const foreleg = near.find((l) => !l.hind);
+        const hindleg = near.find((l) => l.hind);
         ctx.beginPath();
-        ctx.moveTo(-40, -114);
-        ctx.quadraticCurveTo(-29, -88, -45, -68);
-        ctx.moveTo(57, -101);
-        ctx.quadraticCurveTo(45, -84, 60, -70);
+        ctx.moveTo(-40, -114 + sh);
+        ctx.quadraticCurveTo(-29, -90, foreleg.back[3][0] + 1, Math.min(-66, foreleg.back[3][1]));
+        ctx.moveTo(57, -101 + ru);
+        ctx.quadraticCurveTo(46, -86, hindleg.front[3][0] + 2, Math.min(-66, hindleg.front[3][1]));
         ctx.stroke();
         antler(0, 0, "#d2c19a");
         ctx.restore();
@@ -2260,10 +2900,12 @@ loopway setup</pre>
           ctx.fillStyle = INKY;
           ctx.font = `15px "Courier Prime", Courier, ui-monospace, monospace`;
           // A box for each thing there is to find or see, ticked once it has been. They are in the
-          // order of the day: by the earliest moment in the loop each could first be found or seen. The
-          // snake and the chickadee are there from the start; the moose comes from before sunrise; the
-          // trout first jumps just after it, and that is the eagle's first chance; then the hummingbird,
-          // the squirrel, the blackbird at dusk, and the moth and the skunk in the night. The dead fish
+          // order of the day: by the moment in the loop that each belongs to. The snake and the
+          // chickadee are there from the start; the moose is a thing of first light; the trout first
+          // jumps just after it, and that is the eagle's first chance at one; then the hummingbird,
+          // whose flower opens in the morning, the squirrel, the blackbird at dusk, and the moth and
+          // the skunk in the night. (The moose, the eagle and the hummingbird come whenever they are
+          // called.) The dead fish
           // is a secret, and goes last: its box is not there at all until it has been earned.
           // A tick is only ever earned out in the picture: no box can be ticked here. The moose's is
           // the one box that can be unticked, which puts its cattails back.
@@ -2855,7 +3497,9 @@ loopway setup</pre>
       // Each flower opens and closes well clear of dawn and dusk: the morning glories inside the day,
       // shut again by afternoon, and the moonflowers inside the night. Each one runs a moment behind
       // its neighbours.
-      const gloryOpen = (u) => smooth(0.1, 0.16, u) * (1 - smooth(0.38, 0.44, u));
+      // When in the day the morning glories start to close.
+      const GLORY_CLOSES = 0.38;
+      const gloryOpen = (u) => smooth(0.1, 0.16, u) * (1 - smooth(GLORY_CLOSES, 0.44, u));
       const moonflowerOpen = (u) => smooth(0.585, 0.635, u) * (1 - smooth(0.885, 0.935, u));
 
       function drawFlowers(ctx, u) {
@@ -3061,7 +3705,7 @@ loopway setup</pre>
         const sy = (y) => TENT_DOOR[1] + (y - 702) * CAMP_SCALE;
         tufts(ctx, sx(1410), sx(1528), sy(704), 6);
         for (let i = 0; i <= 5; i++) {
-          const x = lerp(sx(1532), Math.min(W, sx(1596)), i / 5);
+          const x = lerp(sx(1532), sx(1596), i / 5);
           tufts(ctx, x, x + 6, lerp(sy(703), sy(692), i / 5), 6);
         }
       }
@@ -3557,8 +4201,10 @@ loopway setup</pre>
       // loop: in the red chair. So each of these three is one person's day, and a person's days go
       // worker, then middle, then sleeper.
       function worker(u) {
-        if (u < 0.045) return walking(WALK_IN, u / 0.045);
-        if (u < 0.065) return at(DESK_SEAT, turnAndSit(seg(u, 0.045, 0.065), ...DESK));
+        // From further off in a wider window, at the same pace, so they sit down that much later.
+        const late = -sides.left / 97 / T;
+        if (u < 0.045 + late) return walking(WALK_IN, u / (0.045 + late));
+        if (u < 0.065 + late) return at(DESK_SEAT, turnAndSit(seg(u, 0.045 + late, 0.065 + late), ...DESK));
         if (u < 0.265) {
           const pose = blend(SIT_DESK, SIT_DESK, 0);
           pose.hl[1] += Math.sin(TAU * u * 173) * 1.2;
@@ -3947,8 +4593,27 @@ loopway setup</pre>
       // Ground covered in one turn of its legs, in the skunk's own units: a foot on the ground goes
       // back under the body exactly as fast as the body goes forward.
       const SKUNK_STRIDE = (2 * SKUNK_REACH) / SKUNK_STANCE;
+      // Where the skunk is going when the window sees further left than the old picture did, and how
+      // long that last stretch takes, as a part of the day.
+      const skunkOut = () => [sides.left - 90, 678];
+      const skunkLate = () => -sides.left / 70 / T;
       function skunk(u) {
-        if (u < SKUNK.from || u > SKUNK.to) return null;
+        const late = skunkLate();
+        if (u < SKUNK.from || u > SKUNK.to + late) return null;
+        if (u > SKUNK.to) {
+          // One more stretch, from rest to rest like the others.
+          const t = seg(u, SKUNK.to, SKUNK.to + late);
+          const end = SKUNK.path[SKUNK.path.length - 1];
+          const q = along([end, skunkOut()], t - Math.sin(TAU * t) / TAU);
+          return {
+            x: q.x,
+            y: q.y,
+            d: along(SKUNK.path, 1).d + q.d,
+            stopped: 1 - Math.min(1, Math.sin(Math.PI * t) * 4),
+            glance: Math.sin(TAU * t * 2),
+            size: SKUNK_SIZE,
+          };
+        }
         const p = seg(u, SKUNK.from, SKUNK.to);
         const total = SKUNK.stretches.reduce((sum, [a, b]) => sum + b - a, 0);
         let covered = 0;
@@ -4078,7 +4743,7 @@ loopway setup</pre>
       function drawDarkness(ctx, u, light) {
         const night = 1 - light.day;
         ctx.fillStyle = `rgba(20, 26, 60, ${night * 0.82})`;
-        ctx.fillRect(0, 0, W, H);
+        ctx.fillRect(FULL.x0, FULL.y0, FULL.x1 - FULL.x0, FULL.y1 - FULL.y0);
         ctx.globalCompositeOperation = "destination-out";
         firelight(ctx, u, (radius, strength) => hole(ctx, 0, 0, radius, strength));
         const lamps = ctx.createLinearGradient(0, BOARD.y, 0, BOARD.y + BOARD.h);
@@ -4324,10 +4989,12 @@ loopway setup</pre>
           [5.3, 1166, 236],
         ],
       };
-      // A hummingbird comes to one morning glory, the one out to the right of the post, but only if
-      // that flower is clicked while it is freshly open: from when it is half open until five seconds
-      // after it is fully open. It darts out from behind the billboard, hovers and drinks, and leaves
-      // by going up under the billboard and behind it.
+      // A hummingbird comes to one morning glory, the one out to the right of the post, whenever
+      // that flower is clicked. It darts out from behind the billboard and down to the flower. If the
+      // flower is open when it gets there, it hovers and drinks, and it is away before the flower
+      // starts to close, however short that makes the drink. If the flower is shut, or shutting, it
+      // goes from side to side in front of it for a second, looking, and gives up. Either way it
+      // leaves by going up under the billboard and behind it.
       const NECTAR = GLORY.flowers.reduce((a, b) =>
         Math.hypot(a.x - 430, a.fy - 708) < Math.hypot(b.x - 430, b.fy - 708) ? a : b,
       );
@@ -4339,6 +5006,11 @@ loopway setup</pre>
           seconds: 5.6,
           at,
           hover: [1.6, 3.9],
+          // What launchHummer() settles for each visit: when it leaves the flower, how much sooner
+          // that is than a full drink, and whether it only looked.
+          until: 3.9,
+          sooner: 0,
+          looks: false,
           // Behind the billboard until it has dropped clear of it, and again once it is back under it.
           frontFrom: 0.42,
           behindFrom: 5.08,
@@ -4402,15 +5074,16 @@ loopway setup</pre>
       })();
       const clockNow = () => performance.now() / 1000;
       const dayNow = () => freeze ?? mod((clockNow() * speed) / T, 1);
-      // A bald eagle sits out of sight in the birch at the left. Click that birch as a trout is about to
-      // jump and the eagle comes out after it. How it goes depends on when the click came, set against
+      // A bald eagle sits out of sight in the birch at the left. Click that birch and the eagle comes
+      // out, whenever it is. Click it as a trout is about to jump and the eagle goes after the trout.
+      // How it goes depends on when the click came, set against
       // the perfect moment: the one that would put the eagle over the trout at the top of its jump,
       // flying at its usual speed from the tree to there.
       //   within half a second of perfect: it takes the trout out of the air (it hurries or dawdles a
       //     little on the way, so that it is there at the top of the jump);
       //   up to a second later than that: it flies out, stoops at the water, and misses;
       //   up to a second earlier than that: there is no trout yet, so it only flies over, high;
-      //   any other time: it stays where it is.
+      //   any other time: it comes out all the same, and flies over the river, high, and on out.
       // The three trout, by when they jump. Each one caught is kept on its own.
       const FISH = ["dawn", "dusk", "night"];
       const NEST = [58, 452];
@@ -4427,8 +5100,7 @@ loopway setup</pre>
       };
       const jumpTop = (j) => [j.x + j.dir * 40, j.y - 60];
       function eagleChance() {
-        // The day has to be running for there to be a moment to catch.
-        if (freeze !== null) return null;
+        let nearest = null;
         for (const jump of JUMPS) {
           const top = jumpTop(jump);
           const usual = Math.hypot(top[0] - NEST[0], top[1] - NEST[1]) / EAGLE.speed;
@@ -4436,15 +5108,19 @@ loopway setup</pre>
           ahead -= Math.round(ahead);
           const untilTop = (ahead * T) / speed;
           const late = usual - untilTop;
-          if (Math.abs(late) > 1.5) continue;
-          const hit = Math.abs(late) <= 0.5;
-          return { jump, top, hit, early: late < -0.5, out: hit ? untilTop : usual };
+          // The day has to be running for there to be a moment to catch.
+          if (freeze === null && Math.abs(late) <= 1.5) {
+            const hit = Math.abs(late) <= 0.5;
+            return { jump, top, hit, early: late < -0.5, out: hit ? untilTop : usual };
+          }
+          if (!nearest || Math.abs(late) < nearest.off) nearest = { jump, top, off: Math.abs(late), out: usual };
         }
-        return null;
+        // No trout is about to jump. It goes anyway, over the place where the next one will, and
+        // does not stoop: the same flight as when it is called too early.
+        return { jump: nearest.jump, top: nearest.top, hit: false, early: true, out: nearest.out };
       }
       function launchEagle() {
         const chance = eagleChance();
-        if (!chance) return;
         const { top, out } = chance;
         const now = clockNow();
         // Hit or miss, it does not come back: it flies on, left to right, up and out of the picture.
@@ -4452,7 +5128,7 @@ loopway setup</pre>
         const over = chance.early ? [top[0], top[1] - 150] : [top[0], top[1] - 9];
         EAGLE.stoops = !chance.early;
         // It climbs away at a slope it could fly, however near the edge the trout was.
-        const away = [W + 150, over[1] - Math.min(240, (W + 150 - over[0]) * 0.4)];
+        const away = [sides.right + 150, over[1] - Math.min(240, (sides.right + 150 - over[0]) * 0.4)];
         const on = Math.max(1.2, Math.hypot(away[0] - over[0], away[1] - over[1]) / EAGLE.speed);
         EAGLE.start = now;
         EAGLE.strike = out;
@@ -4475,10 +5151,20 @@ loopway setup</pre>
         };
       }
       const BIRCH_SPOT = { x: 42, y: 478, rx: 100, ry: 166 };
-      const nectarFresh = () => {
-        const u = dayNow() - NECTAR.delay;
-        return u >= 0.13 && u <= 0.16 + (5 * speed) / T;
-      };
+      // What the hummingbird finds is settled as it sets off: how open the flower will be when it
+      // gets there, and how long after that the flower starts to close.
+      function launchHummer() {
+        const [from, to] = HUMMER.hover;
+        const running = freeze === null ? speed / T : 0;
+        const there = mod(dayNow() + from * running - NECTAR.delay, 1);
+        // The flower is open enough to drink from once it is half open, and it starts to close at
+        // GLORY_CLOSES. The bird wants to be on its way a little before that.
+        const left = running ? (GLORY_CLOSES - there) / running - 0.25 : Infinity;
+        HUMMER.looks = gloryOpen(there) < 0.5 || there >= GLORY_CLOSES || left < 0.5;
+        HUMMER.until = HUMMER.looks ? from + 1 : Math.min(to, from + left);
+        HUMMER.sooner = to - HUMMER.until;
+        HUMMER.start = clockNow();
+      }
       // Open, and the worker in the red chair, the one in the middle in the green and the sleeper in the blue.
       const mothReady = () => {
         const u = dayNow();
@@ -4520,9 +5206,9 @@ loopway setup</pre>
           SNAKE.start = null;
         }
         if (BIRD.start !== null && clock - BIRD.start >= BIRD.seconds) BIRD.start = null;
-        if (HUMMER.start !== null && clock - HUMMER.start >= HUMMER.seconds) HUMMER.start = null;
+        if (HUMMER.start !== null && clock - HUMMER.start >= HUMMER.seconds - HUMMER.sooner) HUMMER.start = null;
         if (MOTH.start !== null && clock - MOTH.start >= MOTH.seconds) MOTH.start = null;
-        if (MOOSE.start !== null && clock - MOOSE.start >= MOOSE.seconds) MOOSE.start = null;
+        if (MOOSE.start !== null && clock - MOOSE.start >= MOOSE.seconds + mooseLate()) MOOSE.start = null;
         if (EAGLE.start !== null) {
           // The catch counts at the moment it is made.
           if (!EAGLE.told && clock - EAGLE.start >= EAGLE.strike) {
@@ -4535,9 +5221,8 @@ loopway setup</pre>
         // Once the rings of that jump have gone, the trout is back for its next one.
         if (EAGLE.taken && clock > EAGLE.taken.at + 8) EAGLE.taken = null;
       }
-      // The bunch is there to be eaten, and it is the first half of the day or of the night: from just
-      // before sunrise until midday, or from just before sunset until midnight.
-      const mooseReady = () => !mooseAte && MOOSE.start === null && mod(daylight(dayNow()).sunU + 0.06, 0.5) < 0.31;
+      // The bunch is there to be eaten, at any hour of the day or the night.
+      const mooseReady = () => !mooseAte && MOOSE.start === null;
       const MOOSE_SPOT = { x0: 1304, y0: 836, x1: 1364, y1: 930 };
       // What a click at this point in the picture would set off, if anything.
       function clickable(x, y) {
@@ -4545,16 +5230,14 @@ loopway setup</pre>
         if (within(x, y, MOOSE_SPOT) && mooseReady()) return "moose";
         if (
           EAGLE.start === null &&
-          ((x - BIRCH_SPOT.x) / BIRCH_SPOT.rx) ** 2 + ((y - BIRCH_SPOT.y) / BIRCH_SPOT.ry) ** 2 < 1 &&
-          eagleChance()
+          ((x - BIRCH_SPOT.x) / BIRCH_SPOT.rx) ** 2 + ((y - BIRCH_SPOT.y) / BIRCH_SPOT.ry) ** 2 < 1
         )
           return "eagle";
         // The moth's flower is half over the snake's rock, so it is asked first.
         if (MOTH.start === null && Math.hypot(x - MOTH_FLOWER.x, y - MOTH_FLOWER.fy) < MOTH_FLOWER.r + 4 && mothReady())
           return "moth";
-        // The hummingbird's flower is half over the snake's rock too, and a freshly opened flower is the rarer thing.
-        if (HUMMER.start === null && Math.hypot(x - NECTAR.x, y - NECTAR.fy) < NECTAR.r + 5 && nectarFresh())
-          return "hummingbird";
+        // The hummingbird's flower is half over the snake's rock too.
+        if (HUMMER.start === null && Math.hypot(x - NECTAR.x, y - NECTAR.fy) < NECTAR.r + 5) return "hummingbird";
         if (SNAKE.start === null && within(x, y, SNAKE.at === "bush" ? BUSH_SPOT : ROCK_SPOT)) return "snake";
         if (BIRD.start === null && inSpruce(x, y)) return "bird";
         return null;
@@ -4662,19 +5345,30 @@ loopway setup</pre>
         const flying = arriving || leaving;
         // It slows into the landing and gathers speed as it leaves.
         const t = arriving ? 1 - (1 - seg(u, ...BLACKBIRD.in)) ** 1.7 : seg(u, ...BLACKBIRD.off) ** 1.6;
+        // In a wider window it comes from further off and goes further on, in the same time, so the
+        // old flight takes a smaller share of it: all but "lead" at the start, or "tail" at the end.
+        const lead = -sides.left / (1080 - sides.left);
+        const further = sides.right - W;
+        const tail = further / (700 + further);
         const flight = arriving
           ? [
-              [0, -70, 965],
-              [0.3, 300, 946],
-              [0.6, 650, 926],
-              [0.85, 900, 898],
-              [1, ...perch],
+              ...(lead ? [[0, sides.left - 70, 968]] : []),
+              ...[
+                [0, -70, 965],
+                [0.3, 300, 946],
+                [0.6, 650, 926],
+                [0.85, 900, 898],
+                [1, ...perch],
+              ].map(([when, ...where]) => [lead + (1 - lead) * when, ...where]),
             ]
           : [
-              [0, ...perch],
-              [0.3, 1230, 880],
-              [0.65, 1470, 822],
-              [1, 1700, 790],
+              ...[
+                [0, ...perch],
+                [0.3, 1230, 880],
+                [0.65, 1470, 822],
+                [1, 1700, 790],
+              ].map(([when, ...where]) => [when * (1 - tail), ...where]),
+              ...(tail ? [[1, sides.right + 100, 790 - further * 0.1]] : []),
             ];
         const [x, y] = flying ? flightAt(flight, t) : perch;
         const [nx, ny] = flying ? flightAt(flight, Math.min(1, t + 0.02)) : perch;
@@ -4850,19 +5544,30 @@ loopway setup</pre>
         settle(clock);
         if (HUMMER.start === null) return;
         const time = clock - HUMMER.start;
-        if ((time < HUMMER.frontFrom || time >= HUMMER.behindFrom ? "behind" : "front") !== layer) return;
-        const [from, to] = HUMMER.hover;
-        const where = (at) => flightAt(at < to ? HUMMER.arrive : HUMMER.leave, at);
+        // It leaves the flower when this visit says, which can be sooner than a full drink: the way
+        // out is the same flight, begun that much earlier.
+        const { sooner, looks } = HUMMER;
+        if ((time < HUMMER.frontFrom || time >= HUMMER.behindFrom - sooner ? "behind" : "front") !== layer) return;
+        const from = HUMMER.hover[0];
+        const to = HUMMER.until;
+        const where = (at) => (at < to ? flightAt(HUMMER.arrive, at) : flightAt(HUMMER.leave, at + sooner));
         const hovering = time >= from && time < to;
         let [x, y] = hovering ? HUMMER.at : where(time);
         const [nx] = where(time + 0.02);
-        // At the flower it drinks in sips: in, back a little, and in again, never quite still.
-        if (hovering) {
-          x += 1.6 * (1 - Math.cos(((time - from) * TAU) / 1.15));
+        if (hovering && looks) {
+          // The flower is shut. It backs off a little and goes from side to side in front of it,
+          // looking for the way in, and is back where it began when it gives up.
+          const part = (time - from) / (to - from);
+          const out = smooth(0, 0.2, part) * (1 - smooth(0.8, 1, part));
+          x += out * (7 + 9 * Math.sin(part * TAU * 1.5));
+          y += out * -3 + 0.8 * Math.sin(clock * 11);
+        } else if (hovering) {
+          // At the flower it drinks in sips: in, back a little, and in again, never quite still.
+          x += 1.6 * (1 - Math.cos(((time - from) * TAU) / 1.15)) * (1 - smooth(to - 0.2, to, time));
           y += 0.8 * Math.sin(clock * 11);
         }
         // It hangs nearly upright to drink and levels out to fly.
-        const upright = smooth(from - 0.4, from, time) * (1 - smooth(to, to + 0.3, time));
+        const upright = smooth(from - 0.4, from, time) * (1 - smooth(to, to + 0.3, time)) * (looks ? 0.45 : 1);
         const tilt = lerp(-0.2, -0.7, upright);
         const facing = time < to ? -1 : nx < x ? -1 : 1;
         ctx.save();
@@ -5225,24 +5930,94 @@ loopway setup</pre>
         drawEagle(ctx, clock);
       }
 
+      // The camera of a tall window. Through the day it stays on the one who works the terminal: at
+      // the desk while they work, along with them when they get up and walk to the fire, passing
+      // the sign on the way, and at the camp while they settle in the red chair. Then it leaves
+      // them and goes back to the sign, stays on it into the night, and goes on to the desk in time
+      // for the next one to walk in. It is one round a day, so it loops as the day does.
+      //   It keeps between "from" and "to", so the desk is never further left in the window than
+      //   it should be, nor the tent further right.
+      //   While the sign is showing any face but its first, somebody is reading it: the camera goes
+      //   to the sign and stays there until they are back at the first face.
+      const CAMERA = { x: null, at: 0, from: 322, to: 1236, leaves: 0.56, onSign: [0.64, 0.93] };
+      function cameraGoal(u) {
+        if (shown > 0) return SIGN_MIDDLE;
+        const desk = CAMERA.from;
+        if (u < CAMERA.leaves) return clamp(worker(u).x, CAMERA.from, CAMERA.to);
+        const camp = clamp(worker(CAMERA.leaves).x, CAMERA.from, CAMERA.to);
+        if (u < CAMERA.onSign[0]) return lerp(camp, SIGN_MIDDLE, smooth(CAMERA.leaves, CAMERA.onSign[0], u));
+        return lerp(SIGN_MIDDLE, desk, smooth(CAMERA.onSign[1], 1, u));
+      }
+      // The camera does not jump to where it should be; it swings there, quickly at first and
+      // settling. With the day frozen (?u=, reduced motion) there is no swing to watch, so it is
+      // simply there, unless a face of the sign has just been turned, when frames are coming anyway.
+      function moveCamera(u) {
+        const goal = cameraGoal(u);
+        const now = clockNow();
+        const since = now - CAMERA.at;
+        CAMERA.at = now;
+        // A tab that was in the background has nothing to swing from either.
+        if (CAMERA.x === null || (freeze !== null ? !awake : since > 1)) CAMERA.x = goal;
+        else CAMERA.x += (goal - CAMERA.x) * (1 - Math.exp(-Math.min(since, 0.05) * 3.2));
+        view.x = Math.round(fit(canvas.width, canvas.height, CAMERA.x).x);
+      }
+      const cameraMoving = () => view.tall && CAMERA.x !== null && Math.abs(cameraGoal(dayNow()) - CAMERA.x) > 0.5;
+      // In a tall window only part of the scene is in view at once. A line at the foot of the window
+      // says so: a small phone that tips over onto its side now and then, and the words. It is drawn in the window's
+      // own pixels, not the picture's, so it is the same size on every phone.
+      function drawTurnHint(ctx) {
+        const px = canvas.width / innerWidth;
+        // A frozen day (?u=, reduced motion) is not redrawn, so the phone is left lying on its side.
+        const t = freeze === null ? clockNow() % 4 : 2;
+        const tip = smooth(0.6, 1.3, t) * (1 - smooth(3, 3.6, t));
+        ctx.save();
+        ctx.setTransform(px, 0, 0, px, canvas.width / 2, canvas.height - 30 * px);
+        ctx.font = `13px ${MONO}`;
+        const words = "TURN FOR THE WHOLE SCENE";
+        const wide = ctx.measureText(words).width;
+        const half = (wide + 58) / 2;
+        ctx.fillStyle = "rgba(22, 19, 14, 0.78)";
+        ctx.beginPath();
+        ctx.roundRect(-half, -15, half * 2, 30, 15);
+        ctx.fill();
+        ctx.fillStyle = CREAM;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(words, -half + 42, 1);
+        ctx.translate(-half + 24, 0);
+        ctx.rotate((-Math.PI / 2) * tip);
+        ctx.strokeStyle = CREAM;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(-5.5, -9.5, 11, 19, 2.5);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, 6.2, 0.9, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+
       function frame(now) {
         countLoops(now);
         const u = freeze ?? mod(((now / 1000) * speed) / T, 1);
         const light = daylight(u);
+        if (view.tall) moveCamera(u);
         // The ones that come by on their own are ticked off the first time they are on the picture.
         if (squirrel(u)) see("squirrel");
         if (u > BLACKBIRD.in[0] + 0.006 && u < BLACKBIRD.off[1] - 0.006) see("blackbird");
         if (skunk(u)) see("skunk");
         if (JUMPS.some((j) => u >= j.at && u <= j.at + JUMP_LENGTH)) see("trout");
 
+        // The land and the dark are each painted the size of the window, through the same view as
+        // the sky, so only what the window shows is ever painted.
         L.setTransform(1, 0, 0, 1, 0, 0);
         L.clearRect(0, 0, landCanvas.width, landCanvas.height);
-        L.setTransform(scale, 0, 0, scale, 0, 0);
+        L.setTransform(view.s, 0, 0, view.s, view.x, view.y);
         drawLand(L, u, light, clockNow());
 
         D.setTransform(1, 0, 0, 1, 0, 0);
         D.clearRect(0, 0, darkCanvas.width, darkCanvas.height);
-        D.setTransform(scale, 0, 0, scale, 0, 0);
+        D.setTransform(view.s, 0, 0, view.s, view.x, view.y);
         drawDarkness(D, u, light);
         D.setTransform(1, 0, 0, 1, 0, 0);
         D.globalCompositeOperation = "destination-in";
@@ -5255,15 +6030,18 @@ loopway setup</pre>
         main.save();
         main.setTransform(view.s, 0, 0, view.s, view.x, view.y);
         main.beginPath();
-        main.rect(0, 0, W, H);
+        main.rect(FULL.x0, FULL.y0, FULL.x1 - FULL.x0, FULL.y1 - FULL.y0);
         main.clip();
         drawSky(main, u, light);
-        main.drawImage(landCanvas, 0, 0, landCanvas.width / scale, landCanvas.height / scale);
+        main.setTransform(1, 0, 0, 1, 0, 0);
+        main.drawImage(landCanvas, 0, 0);
         main.globalCompositeOperation = "multiply";
-        main.drawImage(darkCanvas, 0, 0, darkCanvas.width / scale, darkCanvas.height / scale);
+        main.drawImage(darkCanvas, 0, 0);
         main.globalCompositeOperation = "source-over";
+        main.setTransform(view.s, 0, 0, view.s, view.x, view.y);
         drawGlows(main, u, light);
         main.restore();
+        if (view.tall) drawTurnHint(main);
 
         if (freeze === null) requestAnimationFrame(frame);
       }
@@ -5272,14 +6050,29 @@ loopway setup</pre>
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         canvas.width = Math.round(innerWidth * dpr);
         canvas.height = Math.round(innerHeight * dpr);
-        scale = Math.min(canvas.width / W, canvas.height / H);
-        view = { s: scale, x: (canvas.width - W * scale) / 2, y: (canvas.height - H * scale) / 2 };
+        view = fit(canvas.width, canvas.height, CAMERA.x ?? SIGN_MIDDLE);
+        // Whole pixels, so the layers land on the window's own pixels.
+        view.x = Math.round(view.x);
+        view.y = Math.round(view.y);
+        scale = view.s;
+        // A tall window's camera moves, so its sides are as far as the camera ever sees.
+        const half = canvas.width / view.s / 2;
+        sides = view.tall
+          ? { left: clamp(CAMERA.from - half, FULL.x0, 0), right: clamp(CAMERA.to + half, W, FULL.x1) }
+          : {
+              left: clamp(-view.x / view.s, FULL.x0, 0),
+              right: clamp((canvas.width - view.x) / view.s, W, FULL.x1),
+            };
+        CAMERA.x = null;
+        WALK_IN[0][0] = sides.left - 90;
+        mooseRoute();
         for (const c of [landCanvas, darkCanvas]) {
-          c.width = Math.ceil(W * scale);
-          c.height = Math.ceil(H * scale);
+          c.width = canvas.width;
+          c.height = canvas.height;
         }
         drawBoardFace();
         buildGround();
+        buildNear();
         if (freeze !== null) frame(0);
       }
       // Clicks. A point on the page is turned into a point in the picture first.
@@ -5300,7 +6093,8 @@ loopway setup</pre>
         MOTH.start !== null ||
         MOOSE.start !== null ||
         EAGLE.start !== null ||
-        faceFade() < 1;
+        faceFade() < 1 ||
+        cameraMoving();
       let awake = false;
       function wake() {
         if (freeze === null || awake) return;
@@ -5538,7 +6332,7 @@ loopway setup</pre>
         const what = clickable(...at);
         if (what === "snake") SNAKE.start = clockNow();
         if (what === "bird") BIRD.start = clockNow();
-        if (what === "hummingbird") HUMMER.start = clockNow();
+        if (what === "hummingbird") launchHummer();
         if (what === "moth") MOTH.start = clockNow();
         if (what === "moose") MOOSE.start = clockNow();
         if (what === "eagle") launchEagle();

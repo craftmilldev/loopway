@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 
 describe("the marketing page", () => {
@@ -102,8 +103,8 @@ describe("the marketing page", () => {
     expect(html.match(/loops completed:/g)).toHaveLength(1);
   });
 
-  it("sends a moose to eat the cattails before midday or midnight, and only its box unticks", () => {
-    expect(html).toContain("!mooseAte && MOOSE.start === null && mod(daylight(dayNow()).sunU + 0.06, 0.5) < 0.31;");
+  it("sends a moose to eat the cattails at any hour, and only its box unticks", () => {
+    expect(html).toContain("const mooseReady = () => !mooseAte && MOOSE.start === null;");
     expect(html).toContain('if (what === "moose") MOOSE.start = clockNow();');
     // The bunch stays eaten: what is kept decides it, on this visit and the next.
     expect(html).toContain("mooseAte = !!kept().moose;");
@@ -120,16 +121,23 @@ describe("the marketing page", () => {
     const see = html.slice(html.indexOf("function see(what) {"), html.indexOf("function found(what) {"));
     expect(see).toContain("if (!kept()[what]) keep({ [what]: true });");
     expect(see).not.toContain("track(");
-    for (const name of ["snake", "bird", "hummingbird", "moth", "moose"])
-      expect(html).toContain(
-        `if (what === "${name}") ${name === "hummingbird" ? "HUMMER" : name.toUpperCase()}.start = clockNow();`,
-      );
+    for (const name of ["snake", "bird", "moth", "moose"])
+      expect(html).toContain(`if (what === "${name}") ${name.toUpperCase()}.start = clockNow();`);
     expect(html).not.toMatch(/keep\(\{ (snake|bird|hummingbird|moth): false \}\)/);
   });
 
-  it("sends a hummingbird to the freshly opened morning glory, and only then", () => {
-    expect(html).toContain("return u >= 0.13 && u <= 0.16 + (5 * speed) / T;");
-    expect(html).toContain('if (what === "hummingbird") HUMMER.start = clockNow();');
+  it("sends a hummingbird to the morning glory whenever it is clicked: to drink if it is open, to look if it is shut", () => {
+    expect(html).toContain('if (what === "hummingbird") launchHummer();');
+    // The click is not refused for the hour.
+    expect(html).toContain(
+      'if (HUMMER.start === null && Math.hypot(x - NECTAR.x, y - NECTAR.fy) < NECTAR.r + 5) return "hummingbird";',
+    );
+    // It only looks, for a second, at a flower that is shut, shutting, or about to start.
+    expect(html).toContain("HUMMER.looks = gloryOpen(there) < 0.5 || there >= GLORY_CLOSES || left < 0.5;");
+    // And it is gone from an open one before it starts to close.
+    expect(html).toContain("const left = running ? (GLORY_CLOSES - there) / running - 0.25 : Infinity;");
+    expect(html).toContain("HUMMER.until = HUMMER.looks ? from + 1 : Math.min(to, from + left);");
+    expect(html).toContain("const gloryOpen = (u) => smooth(0.1, 0.16, u) * (1 - smooth(GLORY_CLOSES, 0.44, u));");
     expect(html).toContain('drawHummer(ctx, clock, "behind");\n        drawBoard(ctx);');
   });
 
@@ -142,10 +150,16 @@ describe("the marketing page", () => {
     expect(html).toContain('if (what === "moth") MOTH.start = clockNow();');
   });
 
-  it("sends an eagle after a jumping trout: a catch in the middle second, a miss either side", () => {
-    // Too far from the perfect moment and it does not fly; within half a second of it, it catches.
-    expect(html).toContain("if (Math.abs(late) > 1.5) continue;");
+  it("sends an eagle out whenever the birch is clicked: a catch in the middle second, a miss either side", () => {
+    // Within a second and a half of the perfect moment it goes for the trout; within half a second, it catches.
+    expect(html).toContain("if (freeze === null && Math.abs(late) <= 1.5) {");
     expect(html).toContain("const hit = Math.abs(late) <= 0.5;");
+    // Any other time it flies all the same, over the river and out, and does not stoop.
+    expect(html).toContain(
+      "return { jump: nearest.jump, top: nearest.top, hit: false, early: true, out: nearest.out };",
+    );
+    const click = html.slice(html.indexOf("function clickable(x, y) {"), html.indexOf("function drawSnake("));
+    expect(click).not.toContain("eagleChance()");
     expect(html).toContain('if (what === "eagle") launchEagle();');
     // A trout that is taken does not come down, and makes no splash going in.
     expect(html).toContain("[entryX, taken ? -1 : p - 1],");
@@ -190,6 +204,113 @@ describe("the marketing page", () => {
     }
     expect(bots).toContain(".loopway/dev.md");
     expect(bots).toContain(".loopway/review.md");
+  });
+
+  it("fits the picture to the window: a wide window keeps the desk, the sign and the camp together, and a tall one is a camera", () => {
+    const source = html.match(/const FULL = [\s\S]*?return \{ s, x: -left \* s, y: -top \* s, tall \};\n {6}\}/)?.[0];
+    expect(source).toBeDefined();
+    type Box = { x0: number; y0: number; x1: number; y1: number };
+    type View = { s: number; x: number; y: number; tall: boolean };
+    const { FULL, KEEP, fit } = runInNewContext(`${source}; ({ FULL, KEEP, fit })`, {
+      W: 1600,
+      H: 1000,
+    }) as { FULL: Box; KEEP: Box; fit: (w: number, h: number) => View };
+    // What a window w by h shows of the picture, and how much of the window is bars.
+    const shown = (w: number, h: number) => {
+      const view = fit(w, h);
+      const box = { x0: -view.x / view.s, y0: -view.y / view.s, x1: (w - view.x) / view.s, y1: (h - view.y) / view.s };
+      const bars = {
+        x: Math.max(0, FULL.x0 - box.x0) + Math.max(0, box.x1 - FULL.x1),
+        y: Math.max(0, FULL.y0 - box.y0) + Math.max(0, box.y1 - FULL.y1),
+      };
+      return { view, box, bars };
+    };
+    const holds = (box: Box, keep: Box) =>
+      box.x0 <= keep.x0 + 1e-6 && box.y0 <= keep.y0 + 1e-6 && box.x1 >= keep.x1 - 1e-6 && box.y1 >= keep.y1 - 1e-6;
+    // Laptops, monitors, an ultrawide, a phone or a tablet on its side, a square window: all of it
+    // picture, no bars.
+    for (const [w, h] of [
+      [1600, 1000],
+      [1440, 900],
+      [1920, 1080],
+      [1366, 768],
+      [2560, 1080],
+      [844, 390],
+      [1500, 1000],
+      [1024, 768],
+      [1280, 1024],
+      [1000, 1000],
+    ] as [number, number][]) {
+      const { view, box, bars } = shown(w, h);
+      expect(view.tall).toBe(false);
+      expect(holds(box, KEEP)).toBe(true);
+      expect(bars.x).toBeCloseTo(0);
+      expect(bars.y).toBeCloseTo(0);
+    }
+    // Wider than all that is painted: the kept part fills the height, and the bars are at the sides only.
+    for (const [w, h] of [
+      [3840, 1080],
+      [5120, 1440],
+    ] as [number, number][]) {
+      const { box, bars } = shown(w, h);
+      expect(holds(box, KEEP)).toBe(true);
+      expect(box.y0).toBeCloseTo(KEEP.y0);
+      expect(box.y1).toBeCloseTo(KEEP.y1);
+      expect(bars.y).toBeCloseTo(0);
+      expect(bars.x).toBeGreaterThan(0);
+    }
+    // Held upright it is a camera: wherever it looks, that part fills the width, with no bars
+    // in a phone's browser. On the desk it holds the desk and its computer, on the sign the whole
+    // sign, and on the camp the three seats at the fire and the tent.
+    const fitAt = fit as unknown as (w: number, h: number, look: number) => View;
+    for (const [w, h] of [
+      [390, 664],
+      [412, 780],
+      [768, 1024],
+    ] as [number, number][]) {
+      for (const [look, x0, x1] of [
+        [322, 60, 300],
+        [622, 184, 1062],
+        [1236, 1150, 1660],
+      ] as [number, number, number][]) {
+        const view = fitAt(w, h, look);
+        expect(view.tall).toBe(true);
+        const left = -view.x / view.s;
+        const right = (w - view.x) / view.s;
+        expect(left).toBeLessThanOrEqual(x0);
+        expect(right).toBeGreaterThanOrEqual(x1);
+        expect(left).toBeGreaterThanOrEqual(FULL.x0);
+        expect(right).toBeLessThanOrEqual(FULL.x1);
+        expect(-view.y / view.s).toBeGreaterThanOrEqual(FULL.y0 - 1e-6);
+        expect((h - view.y) / view.s).toBeLessThanOrEqual(FULL.y1 + 1e-6);
+      }
+      expect(fit(w, h)).toEqual(fitAt(w, h, 622));
+    }
+    // The camera's round: on the worker until they have sat down at the fire, then the sign, then
+    // back to the desk; and on the sign whenever a face other than the first is showing.
+    expect(html).toContain(
+      "const CAMERA = { x: null, at: 0, from: 322, to: 1236, leaves: 0.56, onSign: [0.64, 0.93] };",
+    );
+    expect(html).toContain("if (shown > 0) return SIGN_MIDDLE;");
+    expect(html).toContain("if (u < CAMERA.leaves) return clamp(worker(u).x, CAMERA.from, CAMERA.to);");
+    expect(html).toContain("if (view.tall) moveCamera(u);");
+    // The blackbird comes in low over the water: its whole flight is well inside the kept part.
+    const lows = [...html.matchAll(/\[0(?:\.\d+)?, -?\d+, (9\d\d)\],/g)].map((m) => Number(m[1]));
+    expect(lows).toContain(965);
+    expect(KEEP.y1 - Math.max(...lows)).toBeGreaterThanOrEqual(30);
+    // Whoever comes and goes does so beyond what the window sees, not beyond the old picture.
+    for (const line of [
+      "WALK_IN[0][0] = sides.left - 90;",
+      "const skunkOut = () => [sides.left - 90, 678];",
+      "const mooseEdge = () => [sides.right + 190, 938 - (sides.right - W) * 0.036];",
+      "const away = [sides.right + 150,",
+      "[[0, sides.left - 70, 968]]",
+      "[[1, sides.right + 100, 790 - further * 0.1]]",
+    ]) {
+      expect(html).toContain(line);
+    }
+    expect(html).toContain("if (view.tall) drawTurnHint(main);");
+    expect(html).toContain('"TURN FOR THE WHOLE SCENE"');
   });
 
   it("is what vercel.json serves, with no build step", () => {
