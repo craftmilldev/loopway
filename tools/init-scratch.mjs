@@ -10,9 +10,13 @@ import { parseArgs } from "node:util";
 const SANDBOX = "craftmilldev/loopway-sandbox";
 const CHECKOUT = resolve(fileURLToPath(import.meta.url), "../..");
 
-const bot = (on, prompt) => `---\nrepos: [${SANDBOX}]\non: ${on}\nmodel: sonnet\n---\n\n${prompt}\n`;
+// Calls that always go to a 👍/👎 comment, even when auto mode would allow them. Uncomment to try it.
+const EXAMPLE = '# ask: ["Bash(curl:*)"]\n';
+
+const bot = (on, prompt, extra = "") =>
+  `---\nrepos: [${SANDBOX}]\non: ${on}\nmodel: sonnet\n${extra}---\n\n${prompt}\n`;
 const BOTS = {
-  "dev.md": bot("issue", "Do what the issue asks, then comment with the result."),
+  "dev.md": bot("issue", "Do what the issue asks, then comment with the result.", EXAMPLE),
   "review.md": bot("pull_request", "Review the PR in one comment."),
 };
 

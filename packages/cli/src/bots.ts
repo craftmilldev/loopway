@@ -23,6 +23,8 @@ export interface Bot {
   allow: string[];
   /** Tool patterns that are refused without asking. They win over `allow`. */
   deny: string[];
+  /** Tool patterns that always go to the owner for a 👍/👎, even when auto mode or `allow` would let them through. `deny` wins over them. */
+  ask: string[];
   /** The front matter as written. Keys this version doesn't know are kept and ignored. */
   rules: Record<string, unknown>;
   /** Used from a later slice on, when a bot runs a session. */
@@ -78,6 +80,7 @@ export function parseBot(name: string, text: string, where = `${name}.md`): Bot 
     trusted: parseTrusted(rules.trusted, where),
     allow: parsePatterns(rules.allow, "allow", where),
     deny: parsePatterns(rules.deny, "deny", where),
+    ask: parsePatterns(rules.ask, "ask", where),
     rules,
     prompt: (match ? (match[2] ?? "") : text).trim(),
   };
