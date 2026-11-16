@@ -1889,9 +1889,17 @@ loopway setup</pre>
           // they do not patter. As it slows to a stand each foot stays down longer ("halted"), until
           // all four are down together.
           stride: 96,
-          // How much ground it covers in a second on the way out: a brisk walk, quicker than it
-          // came in, so it is not a long time crossing a wide window.
-          pace: 125,
+          // How much ground it covers in a second at a walk on the way out.
+          pace: 95,
+          // It does not walk the whole way out: a few strides on it breaks into a trot. That is
+          // another gait and not a quicker walk. The legs go in diagonal pairs, the near front
+          // with the far hind and the far front with the near hind; the stride is half as long
+          // again; each foot is down for less than half of it, so twice a stride all four are off
+          // the ground; and the feet come up higher. It changes over between "from" and "to", which
+          // are how far it has gone from where it stood.
+          trot: { from: 120, to: 380, stride: 150, planted: 0.44, pace: 235 },
+          // How long it has taken, and how many strides, to each place on the way out: mooseRoute().
+          gait: [[0, 0]],
           planted: 0.62,
           halted: 0.8,
           arrive: 4.2,
@@ -1906,7 +1914,7 @@ loopway setup</pre>
       // The way out follows the water's edge downstream, as far below it as the moose stood to eat.
       // The near bank comes toward us as it goes left, so the moose gets nearer and bigger and goes
       // out under the bottom of the window, or off its left side in a window that sees a long way
-      // down. The way ends where the window has lost sight of it, and it walks it at one pace (MOOSE.pace), so a
+      // down. The way ends where the window has lost sight of it, and it walks and then trots it, so a
       // longer way takes longer.
       function mooseRoute() {
         const [x0, y0] = MOOSE.stand;
@@ -1922,7 +1930,50 @@ loopway setup</pre>
         }
         // A window with no size yet gives no way at all: leave it a short one.
         if (MOOSE.out.length < 2) MOOSE.out = [MOOSE.stand, [x0 - 56, y0]];
-        MOOSE.seconds = MOOSE.leave + along(MOOSE.out, 1).total / MOOSE.pace;
+        // It gets going from a stand, walks, and gathers into the trot: so how long it has been
+        // going and how many strides it has taken are added up along the way, a little at a time.
+        const total = along(MOOSE.out, 1).total;
+        MOOSE.gait = [];
+        let seconds = 0;
+        let strides = 0;
+        for (let gone = 0; gone <= total + GAIT_STEP; gone += GAIT_STEP) {
+          MOOSE.gait.push([seconds, strides]);
+          const here = gone + GAIT_STEP / 2;
+          const pace = lerp(MOOSE.pace, MOOSE.trot.pace, mooseTrot(here)) * lerp(0.25, 1, smooth(0, 120, here));
+          seconds += GAIT_STEP / pace;
+          strides += GAIT_STEP / mooseStride(here);
+        }
+        const [before, after, between] = mooseGait(total);
+        MOOSE.seconds = MOOSE.leave + lerp(before[0], after[0], between);
+      }
+      const GAIT_STEP = 4;
+      // How much of a trot it is, this far on from where it stood: none on the way in.
+      const mooseTrot = (gone) => smooth(MOOSE.trot.from, MOOSE.trot.to, gone);
+      const mooseStride = (gone) => lerp(MOOSE.stride, MOOSE.trot.stride, mooseTrot(gone));
+      // The two rows of the gait table either side of a place, and how far between them it is.
+      function mooseGait(gone) {
+        const at = clamp(gone / GAIT_STEP, 0, MOOSE.gait.length - 1);
+        const i = Math.min(Math.floor(at), MOOSE.gait.length - 2);
+        return [MOOSE.gait[i], MOOSE.gait[i + 1] ?? MOOSE.gait[i], at - i];
+      }
+      // How many strides it has taken at a place: less than none on the way in.
+      function mooseStrides(gone) {
+        if (gone <= 0) return gone / MOOSE.stride;
+        const [a, b, t] = mooseGait(gone);
+        const end = (MOOSE.gait.length - 1) * GAIT_STEP;
+        return lerp(a[1], b[1], t) + Math.max(0, gone - end) / MOOSE.trot.stride;
+      }
+      // How far it has gone, this long after setting off.
+      function mooseGone(seconds) {
+        let low = 0;
+        let high = MOOSE.gait.length - 1;
+        while (high - low > 1) {
+          const mid = (low + high) >> 1;
+          if (MOOSE.gait[mid][0] <= seconds) low = mid;
+          else high = mid;
+        }
+        const [from, to] = [MOOSE.gait[low][0], MOOSE.gait[high][0]];
+        return (low + (to > from ? clamp((seconds - from) / (to - from)) : 0)) * GAIT_STEP;
       }
       // Where the moose comes in from: off the picture, beyond what the window sees to the right, on
       // the same line it always walked. And how much longer the walk in takes for being longer.
@@ -1993,25 +2044,43 @@ loopway setup</pre>
         const ground = coming
           ? inLength * (1 - (1 - (time + late) / (MOOSE.arrive + late)) ** 1.5)
           : going
-            ? inLength + outLength * ((time - MOOSE.leave) / (MOOSE.seconds - MOOSE.leave)) ** 1.25
+            ? inLength + Math.min(outLength, mooseGone(time - MOOSE.leave))
             : inLength;
         const body = mooseBody(ground);
         // Every step is a foot put down on one spot of ground, left there while the body goes over it,
         // and then picked up and swung to the next spot. Nothing on the ground ever slides.
-        const cycle = (ground - inLength) / MOOSE.stride + MOOSE_HALT;
+        const cycle = mooseStrides(ground - inLength) + MOOSE_HALT;
+        const trot = mooseTrot(ground - inLength);
+        // Where a leg is in its stride at a place. At a walk the front feet come down a quarter of
+        // a stride after the hind feet on the other side; at a trot, with them.
+        const legAt = (leg, gone) =>
+          mooseStrides(gone) + MOOSE_HALT + leg.beat - (leg.hind ? 0 : 0.25 * mooseTrot(gone));
         // How long a foot stays down depends on where the moose is, not when: within a stride and
         // a half of where it stands to eat, it is slowing down or getting going.
         const plantedAt = (where) =>
-          lerp(MOOSE.halted, MOOSE.planted, smooth(0, 1, Math.abs(where - inLength) / (MOOSE.stride * 1.5)));
+          lerp(
+            lerp(MOOSE.halted, MOOSE.planted, smooth(0, 1, Math.abs(where - inLength) / (MOOSE.stride * 1.5))),
+            MOOSE.trot.planted,
+            mooseTrot(where - inLength),
+          );
         const planted = plantedAt(ground);
         const legs = MOOSE_LEGS.map((leg) => {
-          const at = cycle + leg.beat;
+          const at = legAt(leg, ground - inLength);
           const step = Math.floor(at);
           const part = at - step;
           const spot = (n) => {
-            const landed = inLength + (n - leg.beat - MOOSE_HALT) * MOOSE.stride;
+            // The place where this leg begins its stride number n. The strides are not all one
+            // length, so it is looked for.
+            let low = -4000;
+            let high = outLength + 4000;
+            for (let i = 0; i < 40; i++) {
+              const mid = (low + high) / 2;
+              if (legAt(leg, mid) < n) low = mid;
+              else high = mid;
+            }
+            const landed = inLength + (low + high) / 2;
             const then = mooseBody(landed);
-            const reach = (plantedAt(landed) * MOOSE.stride) / 2;
+            const reach = (plantedAt(landed) * mooseStride(landed - inLength)) / 2;
             return [
               then.x + leg.hip * then.size * then.narrow + then.heading[0] * reach,
               // The far legs stand a little further off, which is a little higher up the picture.
@@ -2031,7 +2100,8 @@ loopway setup</pre>
             const eased = smooth(0, 1, swing);
             foot = [lerp(from[0], to[0], eased), lerp(from[1], to[1], eased)];
             // A moose steps high: the front foot most, and a little sooner.
-            lift = (leg.hind ? 9 : 12) * Math.sin(Math.PI * swing ** (leg.hind ? 0.95 : 0.85)) ** 1.5;
+            lift =
+              (leg.hind ? 9 : 12) * (1 + 0.7 * trot) * Math.sin(Math.PI * swing ** (leg.hind ? 0.95 : 0.85)) ** 1.5;
           }
           return {
             ...leg,
@@ -2054,7 +2124,8 @@ loopway setup</pre>
           narrow: body.narrow,
           legs,
           // The body rises and falls as each pair of legs passes under it, and the head nods against it.
-          bob: -1.3 * (0.5 + 0.5 * Math.cos(cycle * TAU * 2 + 0.9)) * walking,
+          // At a trot it is thrown up off each pair of legs, so it rises further.
+          bob: -lerp(1.3, 3.4, trot) * (0.5 + 0.5 * Math.cos(cycle * TAU * 2 + 0.9)) * walking,
           head: head + 0.025 * Math.sin(cycle * TAU * 2 + 0.6) * walking,
           chew: time >= MOOSE.down[1] && time < MOOSE.leave + 2 ? Math.sin(time * 13) : 0,
           time,
