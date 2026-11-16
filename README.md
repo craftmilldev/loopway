@@ -187,7 +187,7 @@ In a terminal, a bare `loopway` opens a full-screen TUI on the same poller. `loo
 
 ## Updates
 
-A `loopway` installed from a release (`install.sh` or `npm i -g`) keeps itself current. It looks at GitHub's latest release (`cli-v<x.y.z>`, the one `install.sh` installs) when it starts, and every 10 minutes while it runs. At start it installs a newer one and runs again at once. While running it stops starting new runs, lets the runs in flight finish their turn (and an open TUI chat end, since chat lives in memory), installs it, and restarts itself in place (the same command, the same directory); the threads and their sessions are on disk, so they carry on. If the download or the install fails, it says so and keeps running this version; it tries again for the next release, not the same one. A copy run from a git checkout never updates itself.
+A `loopway` installed from a release (`install.sh` or `npm i -g`) keeps itself current. It looks at GitHub's latest release (`cli-v<x.y.z>`, the one `install.sh` installs) when it starts, and every 10 minutes while it runs. At start it installs a newer one and runs again at once. While running it stops starting new runs, lets the runs in flight finish their turn (and an open TUI chat end, for up to 5 minutes, since chat lives in memory), installs it, and restarts itself in place (the same command, the same directory); the threads and their sessions are on disk, so they carry on. If the download or the install fails, it says so and keeps running this version; it tries again for the next release, not the same one. A copy run from a git checkout never updates itself.
 
 Turn it off with `"auto_update": false` in `~/.loopway/config.json`, or `LOOPWAY_NO_UPDATE=1`:
 

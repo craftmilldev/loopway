@@ -180,21 +180,30 @@ export class Sessions {
     this.kick();
   }
 
-  /** Whether the owner's chat with this thread has something not yet delivered: messages, or the end of the block. */
+  /**
+   * Whether the owner's chat with this thread has something a run could deliver now: messages (a blocked thread takes
+   * those), or the end of the block (a blocked thread can't, and a closed thread never will, so those are let go).
+   */
   private chatOwes(threadId: string): boolean {
     const chat = this.chats.get(threadId);
-    return !!chat && (chat.inbox.length > 0 || (chat.ended && !chat.active));
+    const thread = this.o.threads.all.find((t) => t.id === threadId);
+    if (!chat || thread?.status !== "open") return false;
+    return chat.inbox.length > 0 || (chat.ended && !chat.active && thread.session?.status !== "blocked");
   }
 
   /**
-   * Starts no new runs, and resolves when the ones in flight have finished their turn and no chat is open or owed
-   * anything. Chat lives in memory only, so a restart before then would lose what the owner typed. Messages typed
-   * meanwhile are still delivered.
+   * Starts no new runs, and resolves when the ones in flight have finished their turn and no chat is owed a delivery.
+   * Chat lives in memory only, so a restart before then would lose what the owner typed. Messages typed meanwhile are
+   * still delivered. A chat the owner leaves open with nothing typed is waited on for `chatWaitMs` at most.
    */
-  async drain(sleep = abortableSleep): Promise<void> {
+  async drain(sleep = abortableSleep, chatWaitMs = 5 * 60_000): Promise<void> {
     this.draining = true;
+    const until = this.now() + chatWaitMs;
     const never = new AbortController().signal;
-    while (this.running.size > 0 || [...this.chats.keys()].some((id) => this.chatting(id) || this.chatOwes(id))) {
+    const waiting = () =>
+      this.running.size > 0 ||
+      [...this.chats.keys()].some((id) => this.chatOwes(id) || (this.chatting(id) && this.now() < until));
+    while (waiting()) {
       await this.idle();
       await sleep(500, never);
     }
