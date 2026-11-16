@@ -112,6 +112,7 @@ export class Sessions {
   private readonly asking = new Map<string, Promise<unknown>>();
   private readonly chats = new Map<string, Chat>();
   private heldUntil = 0;
+  private draining = false;
   /** Aborts when loopway stops, which stops the runs in flight. */
   private stopped?: AbortSignal;
   private readonly now: () => number;
@@ -140,6 +141,8 @@ export class Sessions {
     if (this.now() < this.heldUntil) return;
     for (const thread of this.o.threads.all) {
       if (this.running.size >= this.o.max) return;
+      // Draining: only what the owner said in a chat is still delivered; nothing new starts.
+      if (this.draining && !this.chatOwes(thread.id)) continue;
       if (this.ready(thread)) this.start(thread);
     }
   }
@@ -174,6 +177,41 @@ export class Sessions {
     chat.active = false;
     if (chat.said) chat.ended = true;
     this.log(this.thread(threadId), "── chat ended ──");
+    this.kick();
+  }
+
+  /**
+   * Whether the owner's chat with this thread has something a run could deliver now: messages (a blocked thread takes
+   * those), or the end of the block (a blocked thread can't, and a closed thread never will, so those are let go).
+   */
+  private chatOwes(threadId: string): boolean {
+    const chat = this.chats.get(threadId);
+    const thread = this.o.threads.all.find((t) => t.id === threadId);
+    if (!chat || thread?.status !== "open") return false;
+    return chat.inbox.length > 0 || (chat.ended && !chat.active && thread.session?.status !== "blocked");
+  }
+
+  /**
+   * Starts no new runs, and resolves when the ones in flight have finished their turn and no chat is owed a delivery.
+   * Chat lives in memory only, so a restart before then would lose what the owner typed. Messages typed meanwhile are
+   * still delivered. A chat the owner leaves open with nothing typed is waited on for `chatWaitMs` at most.
+   */
+  async drain(sleep = abortableSleep, chatWaitMs = 5 * 60_000): Promise<void> {
+    this.draining = true;
+    const until = this.now() + chatWaitMs;
+    const never = new AbortController().signal;
+    const waiting = () =>
+      this.running.size > 0 ||
+      [...this.chats.keys()].some((id) => this.chatOwes(id) || (this.chatting(id) && this.now() < until));
+    while (waiting()) {
+      await this.idle();
+      await sleep(500, never);
+    }
+  }
+
+  /** Starts runs again after a `drain` that was not followed by a restart. */
+  resume(): void {
+    this.draining = false;
     this.kick();
   }
 

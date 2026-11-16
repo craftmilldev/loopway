@@ -78,6 +78,90 @@ async function setup(opts: { max?: number; bots?: Bot[]; owner?: string } = {}) 
   return { dir, threads, agent, events, posted, github, created, subscribed, clock, sessions, add, files, log };
 }
 
+describe("drain", () => {
+  it("lets a run in flight finish, starts no new ones, and starts them again on resume", async () => {
+    const s = await setup();
+    s.add(queued(aThread("t1", "dev", ["o/r#1"]), ["c:1", "2026-11-10T14:05:00Z"]));
+    s.add(queued(aThread("t2", "dev", ["o/r#2"]), ["c:2", "2026-11-10T14:05:00Z"]));
+    const finish: (() => void)[] = [];
+    s.agent.behave = () => new Promise((resolve) => finish.push(() => resolve(ok)));
+    s.sessions.kick();
+    await vi.waitFor(() => expect(s.agent.runs).toHaveLength(2));
+    let drained = false;
+    const draining = s.sessions.drain().then(() => (drained = true));
+    await Promise.resolve();
+    expect(drained).toBe(false);
+    finish.forEach((f) => f());
+    await draining;
+    expect(drained).toBe(true);
+    queued(s.threads.all[0]!, ["c:3", "2026-11-10T14:30:00Z"]);
+    s.agent.behave = async () => ok;
+    s.sessions.kick();
+    await s.sessions.idle();
+    expect(s.agent.runs).toHaveLength(2);
+    s.sessions.resume();
+    await s.sessions.idle();
+    expect(s.agent.runs).toHaveLength(3);
+  });
+});
+
+describe("drain with a chat", () => {
+  it("waits for an open chat to end and its messages to be delivered before it is done", async () => {
+    const s = await setup();
+    s.add(aThread("t1", "dev", ["o/r#1"]));
+    s.sessions.chat("t1", "hello");
+    await s.sessions.idle();
+    let drained = false;
+    const draining = s.sessions.drain(() => new Promise((r) => setTimeout(r, 5))).then(() => (drained = true));
+    await vi.waitFor(() => expect(s.agent.runs.length).toBeGreaterThan(0));
+    expect(drained).toBe(false); // the chat is still open
+    s.sessions.chat("t1", "one more"); // typed while draining: still delivered
+    s.sessions.endChat("t1");
+    await draining;
+    expect(drained).toBe(true);
+    expect(s.agent.runs.map((r) => r.message).join("\n")).toMatch(/Chat: one more/);
+    expect(s.agent.runs.at(-1)?.message).toMatch(/chat/i);
+  });
+});
+
+describe("drain with a chat that can't be delivered", () => {
+  const sleep = () => new Promise<void>((r) => setTimeout(r, 5));
+
+  it("does not wait for the end of a chat with a blocked thread", async () => {
+    const s = await setup();
+    const thread = s.add(aThread("t1", "dev", ["o/r#1"]));
+    thread.session = { id: "session-1", status: "idle", lastRunAt: null };
+    s.sessions.chat("t1", "hello");
+    await s.sessions.idle();
+    thread.session.status = "blocked"; // an ask is waiting for the owner
+    s.sessions.endChat("t1");
+    await s.sessions.drain(sleep);
+    expect(s.agent.runs.at(-1)?.message).not.toMatch(/chat ended/i);
+  });
+
+  it("does not wait for a chat with a thread that has closed", async () => {
+    const s = await setup();
+    const thread = s.add(aThread("t1", "dev", ["o/r#1"]));
+    s.sessions.chat("t1", "hello");
+    await s.sessions.idle();
+    s.sessions.endChat("t1");
+    thread.status = "closed";
+    await s.sessions.drain(sleep);
+  });
+
+  it("waits only so long for an open chat nothing is typed in", async () => {
+    const s = await setup();
+    s.add(aThread("t1", "dev", ["o/r#1"]));
+    s.sessions.chat("t1", "hello");
+    await s.sessions.idle();
+    let polls = 0;
+    await s.sessions.drain(async () => {
+      if (++polls === 3) s.clock.t += 6 * 60_000;
+    });
+    expect(polls).toBe(3);
+  });
+});
+
 describe("delivery", () => {
   it("gives a thread every queued update in one run, oldest first, and empties the queue", async () => {
     const s = await setup();
