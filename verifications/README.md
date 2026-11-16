@@ -46,11 +46,11 @@ What recurred, and what changed:
 
 - **Could not open a sandbox issue** (532, 533, 535, 541, 553, 554; 502 had one close refused): `create_issue` is
   refused for the sandbox and `gh issue create` by the permission check, so the live steps were skipped. Fix:
-  `npm run sandbox`. It still needs an `allow` rule in `.loopway/dev.md` and `review.md`, which is Matthew's to add:
-  `Bash(npm run sandbox:*)`.
+  `npm run sandbox`, with an `allow` rule for it in `.loopway/dev.md` (the review bot ran it without one).
 - **Other loopways' threads mixed with mine** (511, 512): `sandbox list` and `close` match the `[#<pr>]` tag only.
-- **`pkill` refused** (512, 553): the prompt says to use `kill -INT`; an `allow` rule for `Bash(kill -INT:*)` is also
-  Matthew's to add.
+- **`pkill` refused** (512, 553): the prompt says to use `kill -INT <pid>`. It is deliberately not in `allow` (it
+  could signal any of Matthew's processes), so a refused stop makes the dev bot `ask` Matthew to stop that pid. A
+  scoped `npm run scratch -- start|stop` that only signals the pid it started is the next step, as its own issue.
 - **The not-checked section had four different headings** and often no cleanup line: one shape, above.
 - **Left for later:** browser checks (525, 529, 548) were done by hand with headless Chrome and never on a phone or
   Safari; there is no shared script for them. The `create_issue`/`create_pr` flow of the bot itself can still only be
