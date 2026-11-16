@@ -291,33 +291,83 @@ describe("updates", () => {
     expect(updates.map((u) => [u.kind, u.detail])).toEqual([
       ["review", "changes requested"],
       ["review comment", undefined],
-      ["check_run", "test success"],
-      ["status", "vercel pending"],
     ]);
   });
 
-  it("reports a check run again when its result changes, but not when it repeats", async () => {
-    const routes: Record<string, unknown> = {
-      "/repos/o/r/pulls/7": issue({ state: "open", head: { sha: "s" } }),
+  describe("CI", () => {
+    const pr = (checks: unknown[], statuses: unknown[] = [], sha = "s") => ({
+      "/repos/o/r/pulls/7": issue({ state: "open", head: { sha } }),
       "/repos/o/r/issues/7/events": [],
       "/repos/o/r/issues/7/comments": [],
       "/repos/o/r/pulls/7/reviews": [],
       "/repos/o/r/pulls/7/comments": [],
-      "/repos/o/r/commits/s/check-runs": {
-        check_runs: [{ id: 1, name: "ci", status: "in_progress", conclusion: null }],
-      },
-      "/repos/o/r/commits/s/status": { statuses: [] },
+      [`/repos/o/r/commits/${sha}/check-runs`]: { check_runs: checks },
+      [`/repos/o/r/commits/${sha}/status`]: { statuses },
+    });
+    const run = (id: number, status: string, conclusion: string | null, name = `job${id}`) => ({
+      id,
+      name,
+      status,
+      conclusion,
+      completed_at: status === "completed" ? `2026-11-10T12:4${id}:00Z` : undefined,
+    });
+    const ci = async (routes: Record<string, unknown>) => {
+      const { source } = fakeGitHub(routes);
+      return (await source.updates(subject("pull_request"))).updates.map((u) => [u.kind, u.detail]);
     };
-    const { source } = fakeGitHub(routes);
-    const a = await source.updates(subject("pull_request"));
-    const b = await source.updates(subject("pull_request"), a.version);
-    routes["/repos/o/r/commits/s/check-runs"] = {
-      check_runs: [{ id: 1, name: "ci", status: "completed", conclusion: "failure" }],
-    };
-    const c = await source.updates(subject("pull_request"), b.version);
-    expect(a.updates[0]?.id).toBe(b.updates[0]?.id);
-    expect(c.updates[0]?.id).not.toBe(a.updates[0]?.id);
-    expect(c.updates[0]?.detail).toBe("ci failure");
+
+    it("wakes for a check that finished failing, for every failing conclusion", async () => {
+      for (const conclusion of ["failure", "timed_out", "cancelled", "action_required"])
+        expect(await ci(pr([run(1, "completed", conclusion, "test"), run(2, "in_progress", null)]))).toEqual([
+          ["check_run", `test ${conclusion}`],
+        ]);
+    });
+
+    it("says nothing for checks in progress, passing, skipped or neutral while another is still running", async () => {
+      const checks = [run(1, "completed", "success"), run(2, "completed", "skipped"), run(3, "in_progress", null)];
+      expect(
+        await ci(pr(checks, [{ id: 9, context: "v", state: "pending", updated_at: "2026-11-10T12:40:00Z" }])),
+      ).toEqual([]);
+    });
+
+    it("sends one summary once every check and status has finished", async () => {
+      const checks = [
+        run(1, "completed", "success"),
+        run(2, "completed", "failure", "lint"),
+        run(3, "completed", "neutral"),
+      ];
+      const statuses = [{ id: 9, context: "v", state: "success", updated_at: "2026-11-10T12:45:00Z" }];
+      expect(await ci(pr(checks, statuses))).toEqual([
+        ["check_run", "lint failure"],
+        ["ci_finished", "CI finished: 3 passed, 1 failed"],
+      ]);
+    });
+
+    it("sends a failing status when it fails, and holds the summary while a status is pending", async () => {
+      const statuses = [{ id: 9, context: "v", state: "error", updated_at: "2026-11-10T12:45:00Z" }];
+      expect(await ci(pr([run(1, "in_progress", null)], statuses))).toEqual([["status", "v error"]]);
+    });
+
+    it("sends nothing for a commit with no checks yet", async () => {
+      expect(await ci(pr([]))).toEqual([]);
+    });
+
+    it("reports each result once, and starts over for a new head commit", async () => {
+      const routes = pr([run(1, "in_progress", null), run(2, "completed", "failure")]);
+      const { source } = fakeGitHub(routes);
+      const a = await source.updates(subject("pull_request"));
+      const b = await source.updates(subject("pull_request"), a.version);
+      expect(b.updates.map((u) => u.id)).toEqual(a.updates.map((u) => u.id));
+      Object.assign(routes, pr([run(1, "completed", "success"), run(2, "completed", "failure")]));
+      const c = await source.updates(subject("pull_request"), b.version);
+      expect(c.updates.map((u) => u.kind)).toEqual(["check_run", "ci_finished"]);
+      // A push (a longer sha, since the fake's etag is the body's length): the new commit's checks have new ids, and its summary is its own.
+      Object.assign(routes, pr([run(3, "completed", "success")], [], "new-head"));
+      (routes["/repos/o/r/pulls/7"] as unknown as { head: { sha: string } }).head.sha = "new-head";
+      const d = await source.updates(subject("pull_request"), c.version);
+      expect(d.updates.map((u) => [u.kind, u.detail])).toEqual([["ci_finished", "CI finished: 1 passed, 0 failed"]]);
+      expect(c.updates.map((u) => u.id)).not.toContain(d.updates[0]?.id);
+    });
   });
 });
 

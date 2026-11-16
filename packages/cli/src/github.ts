@@ -184,8 +184,7 @@ export class GitHubSource implements SubjectSource {
       ...(await this.reviews(look)),
       ...(await this.reviewComments(look)),
       ...this.edits(look),
-      ...(await this.checkRuns(look)),
-      ...(await this.statuses(look)),
+      ...(await this.ci(look)),
     ].sort((a, b) => a.at.localeCompare(b.at));
     // Only now is what the probe saw safe to call "seen": a failure above leaves the subject changed for next time.
     const signature = this.pending.get(subject.key);
@@ -252,33 +251,63 @@ export class GitHubSource implements SubjectSource {
     return [{ id: `edit:${l.bodyHash}`, kind: "edited", actor: l.item.user?.login ?? "ghost", at: l.item.updated_at }];
   }
 
-  /** CI belongs to the head commit and never touches the pull request's updated_at, so it is asked every time. */
-  private async checkRuns(l: Look): Promise<Update[]> {
+  /**
+   * CI belongs to the head commit and never touches the pull request's updated_at, so it is asked every time. Only two
+   * things are worth waking a session for: a check that finished failing, and the moment every check on the commit has
+   * finished (one summary). In-progress and passing checks are read but reported to nobody. Ids carry the check's own
+   * id or the commit, so a new head commit starts over.
+   */
+  private async ci(l: Look): Promise<Update[]> {
     if (l.pr?.state !== "open") return [];
+    const sha = l.pr.head.sha;
     const { check_runs } = await this.get<{ check_runs: CheckRun[] }>(
-      `/repos/${l.repo}/commits/${l.pr.head.sha}/check-runs?per_page=100`,
+      `/repos/${l.repo}/commits/${sha}/check-runs?per_page=100`,
     );
-    return check_runs.map((run) => ({
-      id: `check_run:${run.id}:${run.status}:${run.conclusion ?? ""}`,
-      kind: "check_run",
-      detail: `${run.name} ${run.conclusion ?? run.status}`,
-      actor: run.app?.slug ?? "github",
-      at: run.completed_at ?? run.started_at ?? l.item.updated_at,
-    }));
-  }
-
-  private async statuses(l: Look): Promise<Update[]> {
-    if (l.pr?.state !== "open") return [];
-    const { statuses } = await this.get<{ statuses: CommitStatus[] }>(
-      `/repos/${l.repo}/commits/${l.pr.head.sha}/status`,
-    );
-    return statuses.map((s) => ({
-      id: `status:${s.id}:${s.state}`,
-      kind: "status",
-      detail: `${s.context} ${s.state}`,
-      actor: s.creator?.login ?? "github",
-      at: s.updated_at,
-    }));
+    const { statuses } = await this.get<{ statuses: CommitStatus[] }>(`/repos/${l.repo}/commits/${sha}/status`);
+    const updates: Update[] = [];
+    let passed = 0;
+    let failed = 0;
+    let running = 0;
+    for (const run of check_runs) {
+      if (run.status !== "completed") running++;
+      else if (FAILED_CONCLUSIONS.has(run.conclusion ?? "")) failed++;
+      else passed++;
+      if (run.status === "completed" && FAILED_CONCLUSIONS.has(run.conclusion ?? ""))
+        updates.push({
+          id: `check_run:${run.id}:${run.status}:${run.conclusion ?? ""}`,
+          kind: "check_run",
+          detail: `${run.name} ${run.conclusion}`,
+          actor: run.app?.slug ?? "github",
+          at: run.completed_at ?? run.started_at ?? l.item.updated_at,
+        });
+    }
+    for (const s of statuses) {
+      if (s.state === "pending") running++;
+      else if (s.state === "failure" || s.state === "error") failed++;
+      else passed++;
+      if (s.state === "failure" || s.state === "error")
+        updates.push({
+          id: `status:${s.id}:${s.state}`,
+          kind: "status",
+          detail: `${s.context} ${s.state}`,
+          actor: s.creator?.login ?? "github",
+          at: s.updated_at,
+        });
+    }
+    if (running === 0 && passed + failed > 0) {
+      const latest = [...check_runs.map((r) => r.completed_at), ...statuses.map((s) => s.updated_at)]
+        .filter((t): t is string => !!t)
+        .sort()
+        .pop();
+      updates.push({
+        id: `ci_finished:${sha}:${passed}:${failed}`,
+        kind: "ci_finished",
+        detail: `CI finished: ${passed} passed, ${failed} failed`,
+        actor: "github",
+        at: latest ?? l.item.updated_at,
+      });
+    }
+    return updates;
   }
 
   private async graphql(query: string): Promise<Record<string, { issueOrPullRequest?: unknown } | null | undefined>> {
@@ -393,6 +422,9 @@ function commentUpdate(what: "comment" | "review comment", c: Comment): Update {
 }
 
 // Noise that says nothing happened to the work itself.
+/** Check run conclusions that count as a failure and wake a thread. */
+const FAILED_CONCLUSIONS = new Set(["failure", "timed_out", "cancelled", "action_required"]);
+
 const SKIPPED_EVENTS = new Set(["subscribed", "unsubscribed", "mentioned"]);
 
 const hash = (text: string) => createHash("sha1").update(text).digest("hex").slice(0, 12);
