@@ -80,7 +80,10 @@ The bare `loopway` adds thread lines to its output, after the line of the event 
 ```
 3f9a1c2e  dev      open   owner/repo#12  2 pending
 8c01d7b4  review   closed owner/repo#13  1 pending
+24edcfc4  dev      open   owner/repo#14  3 pending  blocked: question on owner/repo#14 https://github.com/owner/repo/issues/14#issuecomment-1
 ```
+
+A thread waiting on an ask says so: `blocked: <kind> on <subject> <url>` for its oldest open ask (`(+N more)` when there are several). `--json` has `blocked: { kind, subject, url }` for it, and nothing for a thread that isn't waiting. The TUI shows the same on the main view's row, and the thread view's Pending section says its updates wait on the answer.
 
 ## Sessions
 
@@ -133,7 +136,8 @@ A session can also ask a question itself: `ask(subject, question)` posts it (mar
 How an ask is answered:
 
 - **A reaction.** After every pass over the known subjects (every 30 s) loopway reads the reactions on its open permission asks. A 👍 or 👎 from your `gh` user, and nobody else, answers. A 👍 resumes the session with `approved: <tool> <input>` and "Retry it.", and the approval is remembered (`session.approved`), so the same call passes next time. A 👎 resumes it with `denied`. If you left both, the 👎 wins. It costs one conditional request per open ask, and a 304 is free.
-- **A reply.** A comment from your `gh` user on the question's subject, after the question, answers it. It is queued like any update, and the ask is marked answered.
+- **A reply.** A comment from your `gh` user on any open subject of the thread, after the question, answers it, so a reply on the pull request answers a question asked on its issue. It is queued like any update, and the ask is marked answered.
+- **A chat message.** Anything you send in the TUI's chat answers the thread's open questions (`answered ... chatted`), since you are talking to the session. The queue it held back goes out on the run after the chat block ends. A permission ask is not answered by chat: it still needs a 👍 or 👎.
 - Either way the session leaves `blocked` and its next run gets the answer. A blocked session is not run for other updates meanwhile: they wait in the queue.
 
 Open asks live in the thread's JSON, so a restart keeps waiting on them. The log (`loopway`, `--json`) has `asked` and `answered` lines, and the TUI's thread view lists what the thread is waiting on, with links; `blocked` shows as the session status on the main view.

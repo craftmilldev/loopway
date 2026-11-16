@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.3
+
+### Added
+
+- A question answered in chat, or by a comment on any of the thread's subjects (the pull request, say), unblocks the thread, so its queue goes out. A blocked thread says what it waits on in `loopway threads`, `--json` and the TUI.
+
 ## 2.0.2
 
 ### Added

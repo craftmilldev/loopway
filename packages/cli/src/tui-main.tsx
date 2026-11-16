@@ -1,4 +1,5 @@
 import { Box, Text, useInput, useWindowSize } from "ink";
+import { blockedOn, blockedText } from "./asks.js";
 import { stamp, subjectKeys } from "./format.js";
 import type { Thread } from "./thread.js";
 import { Footer, Header, HEADER_ROWS } from "./tui-header.js";
@@ -94,6 +95,7 @@ export function MainView(props: MainViewProps) {
 /** bot, session status, pending count, time of the latest message, subjects. Closed threads are dim. */
 function Row({ thread, selected }: { thread: Thread; selected: boolean }) {
   const closed = thread.status === "closed";
+  const blocked = blockedOn(thread);
   return (
     <Text
       wrap="truncate-end"
@@ -106,6 +108,7 @@ function Row({ thread, selected }: { thread: Thread; selected: boolean }) {
       <Text color={selected ? theme.cream : sessionColor(thread)}>{sessionText(thread).padEnd(14)}</Text>
       {"  "}
       {thread.queue.length} pending {stamp(thread.latestAt)} {subjectKeys(thread)}
+      {blocked && <Text color={selected ? theme.cream : theme.land}> {blockedText(blocked)}</Text>}
     </Text>
   );
 }

@@ -334,22 +334,81 @@ describe("questions", () => {
     expect(s.runs[0]?.message).toContain("notes.md");
   });
 
-  it("only answers a question asked on the subject the owner commented on", async () => {
+  it("is answered by the owner's comment on any open subject of the thread, such as the pull request", async () => {
     const s = await setup();
-    s.thread.subjects.push({ key: "o/r#13", status: "open" });
+    s.thread.subjects.push({ key: "o/r#13", status: "open", created: true }, { key: "o/r#14", status: "closed" });
     await s.sessions.ask("t1", SUBJECT, question);
-    await s.threads.handle({
-      type: "update",
-      subject: { key: "o/r#13", kind: "issue", title: "t", author: "me", createdAt: "2026-11-10T12:00:00Z" },
-      update: { id: "c1", kind: "comment", actor: "me", at: "2026-11-10T15:01:00Z" },
-    });
+    const comment = (key: string, actor: string, at: string) =>
+      s.threads.handle({
+        type: "update",
+        subject: { key, kind: "pull_request", title: "t", author: "me", createdAt: "2026-11-10T12:00:00Z" },
+        update: { id: `c-${key}-${actor}-${at}`, kind: "comment", actor, at },
+      });
+    // Someone else, the owner before the question, and the owner on a closed subject don't answer it.
+    await comment("o/r#13", "someone", "2026-11-10T15:01:00Z");
+    await comment("o/r#13", "me", "2026-11-10T14:00:00Z");
+    await comment("o/r#14", "me", "2026-11-10T15:01:00Z");
     expect(openAsks(s.thread)).toHaveLength(1);
+    expect(s.thread.session?.status).toBe("blocked");
+
+    const events = await comment("o/r#13", "me", "2026-11-10T15:02:00Z");
+    expect(events).toContainEqual(expect.objectContaining({ type: "answered", how: "replied" }));
+    expect(openAsks(s.thread)).toEqual([]);
+    expect(s.thread.session?.status).toBe("idle");
   });
 
   it("refuses a question on a subject the bot does not read", async () => {
     const s = await setup();
     await expect(s.sessions.ask("t1", "x/y#1", question)).rejects.toThrow("dev does not read x/y");
     expect(s.thread.asks).toBeUndefined();
+  });
+});
+
+describe("a chat message", () => {
+  const question = "Which file name should I use?";
+
+  it("answers the open questions, unblocks the thread, and the next run delivers the whole queue", async () => {
+    const s = await setup();
+    await s.sessions.ask("t1", SUBJECT, question);
+    s.thread.session!.id = "sid";
+    s.thread.queue.push({ id: "c1", kind: "comment", actor: "alice", at: "2026-11-10T15:01:00Z", subject: SUBJECT });
+    s.thread.queue.push({ id: "c2", kind: "check_run", actor: "ci", at: "2026-11-10T15:02:00Z", subject: SUBJECT });
+    s.sessions.kick();
+    await s.sessions.idle();
+    expect(s.runs).toHaveLength(0);
+
+    s.sessions.chat("t1", "call it notes.md");
+    await s.sessions.idle();
+    expect(s.runs).toHaveLength(1);
+    expect(s.runs[0]!.message).toContain("Chat: call it notes.md");
+    expect(s.thread.queue).toHaveLength(2);
+    expect(s.thread.asks).toMatchObject([{ kind: "question", answeredAt: expect.any(String) }]);
+    expect(s.events).toContainEqual(expect.objectContaining({ type: "answered", how: "chatted" }));
+    expect(await s.log()).toContain("answered by chat: " + question);
+    expect(s.thread.session?.status).toBe("idle");
+
+    s.sessions.endChat("t1");
+    await s.sessions.idle();
+    expect(s.runs).toHaveLength(2);
+    expect(s.runs[1]!.message).toContain("2 updates since your last turn");
+    expect(await s.log()).toContain("-> delivered 2 updates");
+    expect(s.thread.queue).toEqual([]);
+  });
+
+  it("does not answer a permission ask: the thread stays blocked and its queue waits", async () => {
+    const s = await setup();
+    await s.sessions.permission("t1", "Bash", CURL);
+    s.thread.session!.id = "sid";
+    s.thread.queue.push({ id: "c1", kind: "comment", actor: "alice", at: "2026-11-10T15:01:00Z", subject: SUBJECT });
+
+    s.sessions.chat("t1", "hello");
+    await s.sessions.idle();
+    s.sessions.endChat("t1");
+    await s.sessions.idle();
+    expect(openAsks(s.thread)).toHaveLength(1);
+    expect(s.thread.session?.status).toBe("blocked");
+    expect(s.thread.queue).toHaveLength(1);
+    expect(s.events.some((e) => e.type === "answered")).toBe(false);
   });
 });
 

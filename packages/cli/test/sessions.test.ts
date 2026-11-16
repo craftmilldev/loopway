@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { Bot } from "../src/bots.js";
 import type { AgentRun, RunAgent, RunOutcome } from "../src/claude.js";
-import { formatLine, type SessionEvent } from "../src/format.js";
+import { formatLine, type SessionEvent, type ThreadEvent } from "../src/format.js";
 import { Sessions, RETRY_AFTER_FAILURE_MS } from "../src/sessions.js";
 import { loadThreads, Threads, threadLogPath } from "../src/threads.js";
 import { markerOf, type Thread } from "../src/thread.js";
@@ -41,7 +41,7 @@ async function setup(opts: { max?: number; bots?: Bot[]; owner?: string } = {}) 
   const dir = await mkdtemp(join(tmpdir(), "loopway-sessions-"));
   const threads = await Threads.load({ dir, bots: [] });
   const agent = fakeAgent();
-  const events: SessionEvent[] = [];
+  const events: (SessionEvent | ThreadEvent)[] = [];
   const posted: string[] = [];
   /** Set `refuses` to make GitHub turn comments, issues and pull requests down with that message. */
   const github = fakeOpening();
