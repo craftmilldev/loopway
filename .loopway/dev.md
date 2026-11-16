@@ -12,6 +12,7 @@ allow:
   - "Bash(npm run format:*)"
   - "Bash(npm run init-scratch:*)"
   - "Bash(git worktree:*)"
+  - "Bash(npm run sandbox:*)"
 deny:
   - "Bash(gh pr merge:*)"
   - "Bash(git push origin main:*)"
@@ -90,17 +91,29 @@ AGENTS.md; in short:
 
 - Live runs touch `craftmilldev/loopway-sandbox` and **nothing else**. Every issue and PR you open there has the PR
   number in its title (`[#<pr>] reopen starts a new thread`).
+- **Open the starting issue with `npm run sandbox -- open <pr> "<title>"`** (it adds the `[#<pr>]` and only ever
+  writes to the sandbox). `create_issue` is refused there ("dev does not read craftmilldev/loopway-sandbox") because
+  this bot only reads `craftmilldev/loopway`, and a bare `gh issue create` is refused too, so don't try either: six
+  verifications went unrun for that. A step that needs a bot's own `create_issue` or `create_pr` is the one thing
+  you may not be able to run; say so. If `npm run sandbox` is itself refused, say that in the record and `ask`.
+- Look at what exists with `npm run sandbox -- list <pr>`: it shows only the issues and PRs with your tag, so you
+  never mistake another loopway's for yours.
 - Start from `npm run init-scratch -- --reset` in your worktree, and run loopway from its `scratch/` with the built
   CLI: `node <worktree>/packages/cli/dist/index.js --no-tui` (or `--json`). Run it in the background and keep its pid;
-  stop it with `kill -INT <pid>`, never `pkill` or `killall` (other loopways are running on this machine).
+  stop it with `kill -INT <pid>`, never `pkill` or `killall` (other loopways are running on this machine). A loopway
+  left running keeps answering sandbox threads and spends `claude` turns, so if the stop is refused, `ask` Matthew to
+  stop that pid and don't go on while it runs.
 - The sandbox is shared: other loopways may pick up your issues and comment, and yours may pick up theirs. Leave
   their issues alone, and say in the record what was theirs.
 - When a step can't be run as written, find the closest thing that shows the same behaviour, do that, and say
   exactly what you changed and why. A step you could not check is listed as not checked, never as passed.
 - If a live step finds a bug, fix it, add a test, rerun the checks, and rerun that step on the fixed code.
-- Clean up: close every sandbox issue and PR you opened, delete every branch you pushed there, remove temp files.
+- Clean up: `npm run sandbox -- close <pr>` closes every open sandbox issue and PR tagged with your PR number and
+  deletes their branches; then `list <pr>` shows nothing open. Remove temp files (a temp `LOOPWAY_HOME` and the like
+  go in `/tmp`).
 
-Then write `verifications/<pr>.md`, shaped like `verifications/511.md` and `512.md`:
+Then write `verifications/<pr>.md`, shaped like `verifications/511.md` and `512.md` (the shape is in
+`verifications/README.md`; use these exact headings so the review bot and Matthew find things in the same place):
 
 - `# Verification for PR <pr>: <title>`, then when, where and with what it ran (date, built CLI from this branch,
   real `claude` and model, the sandbox, the bot token).
