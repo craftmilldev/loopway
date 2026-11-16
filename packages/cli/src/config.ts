@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -41,4 +41,17 @@ export async function loadGitHubConfig(home: string): Promise<GitHubConfig> {
 export async function loadAutoUpdate(home: string, env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
   if (env.LOOPWAY_NO_UPDATE) return false;
   return (await readConfig(home)).auto_update !== false;
+}
+
+/**
+ * Sets the `github` block of config.json and leaves every other key as it was. The file holds a token, so it is
+ * written for you alone (0600), in a folder made if need be.
+ */
+export async function saveGitHubConfig(home: string, github: GitHubConfig): Promise<void> {
+  const config = await readConfig(home);
+  const block = { ...(config.github as Record<string, unknown> | undefined), ...github };
+  await mkdir(home, { recursive: true });
+  const path = join(home, "config.json");
+  await writeFile(path, JSON.stringify({ ...config, github: block }, null, 2) + "\n", { mode: 0o600 });
+  await chmod(path, 0o600); // writeFile's mode only applies to a new file
 }

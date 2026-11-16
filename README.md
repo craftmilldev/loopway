@@ -18,7 +18,7 @@ npm install && npm run build         # Node 22+
 gh auth login                        # loopway acts as whoever gh is logged in as
 ```
 
-Or install the latest release: `npm install -g https://github.com/craftmilldev/loopway/releases/latest/download/loopway-cli.tgz`.
+After installing, run `loopway setup` (see [Setup](#setup)). Or install the latest release: `npm install -g https://github.com/craftmilldev/loopway/releases/latest/download/loopway-cli.tgz`.
 
 Make a directory to run it from, with a `.loopway/` folder holding one file per bot (`scratch/` inside the checkout is git-ignored):
 
@@ -54,6 +54,17 @@ To run it from a directory outside the checkout, `npm link -w @loopway/cli` puts
 `loopway --json` prints the same as NDJSON, one object per line. Stop it with Ctrl-C.
 
 The first run starts now: it does not replay history. An issue or pull request from before that stays quiet until something happens to it; then, if it is open, it is reported as new, with only what happened since as updates, and its bots start threads. After that it remembers where it got to, so a restart prints nothing twice and picks up what happened while it was stopped.
+
+## Setup
+
+`loopway setup` is an interactive walk through what loopway needs, in a terminal (it refuses to run without one). Each step checks first and only asks about what is missing, so it is safe to run again on a machine that is already set up: it never overwrites a file you have, and the steps that can be left out say so.
+
+1. **`gh`**, required. It must be installed and logged in; if it isn't logged in, setup offers to run `gh auth login` for you. It says who you are logged in as. Without a working login it stops.
+2. **Claude Code**, which runs the sessions. It checks `claude --version`; if it isn't there, setup says where to get it and carries on.
+3. **The bot user**, optional. If `~/.loopway/config.json` has a bot token, setup checks GitHub accepts it and says whose it is. Otherwise it asks for the token of a separate GitHub account (typed as dots, never printed), checks it, refuses your own account's (the bot would comment as you), and saves it as the `github` block with the account's login as `name` and its `users.noreply.github.com` address as `email`. The file is written for you alone (0600) and its other keys are kept. Skipping leaves sessions off.
+4. **The bot files**, optional, one each for `.loopway/dev.md` and `.loopway/review.md` in the directory you ran it from. It asks which repos they should watch (guessing from `git remote origin`), warns about one `gh` can't see, and writes the files from the examples under [Bots](#bots-loopway). A file that is already there is left alone.
+
+It ends by telling you to run `loopway` and assign an issue to yourself.
 
 ## Threads
 

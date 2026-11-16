@@ -8,6 +8,8 @@ import { loadAutoUpdate, loadGitHubConfig, loopwayHome, type GitHubConfig } from
 import { formatJson, formatLine, formatThread, formatThreadJson, type LoopwayEvent } from "./format.js";
 import { ghToken, GitHubSource } from "./github.js";
 import { startMcp } from "./mcp.js";
+import { inkIo } from "./setup-io.js";
+import { runSetup } from "./setup.js";
 import { Poller } from "./poller.js";
 import { Sessions } from "./sessions.js";
 import type { Subject } from "./source.js";
@@ -31,9 +33,14 @@ and every update to the ones it knows.
 
 Usage: loopway [--no-tui] [--json] [--max N]
        loopway threads [--json]
+       loopway setup
 
 In a terminal it opens a TUI: the open threads and those closed in the last 3 days. Enter opens a thread, q quits.
 With --no-tui, --json, or output that isn't a terminal, it prints a plain log instead.
+
+\`loopway setup\` walks you through what loopway needs: gh logged in, Claude Code, the bot user's token (optional) and
+.loopway/dev.md and review.md here (optional). It checks each first, only asks about what is missing, and never
+overwrites a file.
 
 Each new issue or pull request starts a thread for every bot whose rules ask for it (on: issue, on: pull_request),
 and every update to it goes on the queue of the open threads that hold it. Each thread's queue goes to a Claude Code
@@ -92,6 +99,11 @@ async function main(): Promise<number> {
   }
 
   const project = projectDir();
+  if (positionals[0] === "setup") {
+    if (!process.stdout.isTTY || !process.stdin.isTTY)
+      throw new Error("loopway setup asks questions: run it in a terminal.");
+    return runSetup({ io: inkIo(), home: loopwayHome(), cwd: project });
+  }
   if (positionals[0] === "threads") return listThreads(stateDir(loopwayHome(), project), values.json);
   if (positionals.length > 0) throw new Error(`Unknown command "${positionals[0]}". Try loopway --help.`);
 
