@@ -24,6 +24,8 @@ loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and i
 
 - Bots say who they listen to: `trusted: [alice, acme/devs]` in a bot file (logins and `org/team` slugs; loopway won't run if a team can't be read). A new issue or pull request starts a thread only when its author is trusted and it is assigned to you; assigning it later starts one. Comments and reviews from anyone else are ignored, with a log line. `create_issue` takes `assign` to start work on what it files, and a pull request a thread opens still gets its review thread at once. See [#530](https://github.com/craftmilldev/loopway/issues/530).
 
+- Self-update: an installed `loopway` follows the latest `cli-v*` GitHub release. It installs a newer one when it starts, and while running (checked every 10 minutes) lets the runs in flight finish, installs it and restarts itself. On by default; `"auto_update": false` in `~/.loopway/config.json` or `LOOPWAY_NO_UPDATE=1` turns it off. A copy run from a checkout never updates. See [#539](https://github.com/craftmilldev/loopway/issues/539).
+
 - `create_issue` needs `subscribe`, with no default. `true` makes the creating thread track the issue, as before; `false` files it without the thread holding it or its marker, so nothing on it comes back to that thread. For spinning work out of one issue into its own. See [#520](https://github.com/craftmilldev/loopway/issues/520).
 
 ### Fixed

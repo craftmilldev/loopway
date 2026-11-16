@@ -185,6 +185,16 @@ In a terminal, a bare `loopway` opens a full-screen TUI on the same poller. `loo
 - **Status line:** under the rows, what the poller is doing: `polling owner/repo · last checked 14:02 · next in 0:24`. `r` polls GitHub right now (discovery and updates), and the line says `refreshing…` until it is done; the timers restart from there. A second `r` while it runs does nothing, and while GitHub has asked loopway to wait, `r` says so and calls nothing.
 - `q` or `Ctrl-C` quits and stops the poller.
 
+## Updates
+
+A `loopway` installed from a release (`install.sh` or `npm i -g`) keeps itself current. It looks at GitHub's latest release (`cli-v<x.y.z>`, the one `install.sh` installs) when it starts, and every 10 minutes while it runs. At start it installs a newer one and runs again at once. While running it stops starting new runs, lets the runs in flight finish their turn, installs it, and restarts itself in place (the same command, the same directory); the threads and their sessions are on disk, so they carry on. If the download or the install fails, it says so and keeps running this version; it tries again for the next release, not the same one. A copy run from a git checkout never updates itself.
+
+Turn it off with `"auto_update": false` in `~/.loopway/config.json`, or `LOOPWAY_NO_UPDATE=1`:
+
+```json
+{ "auto_update": false }
+```
+
 ## Credentials and state
 
 - **GitHub:** loopway uses your `gh` login (`gh auth token`, or `GH_TOKEN`). You are `gh api user`.

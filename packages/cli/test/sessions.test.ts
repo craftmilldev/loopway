@@ -78,6 +78,33 @@ async function setup(opts: { max?: number; bots?: Bot[]; owner?: string } = {}) 
   return { dir, threads, agent, events, posted, github, created, subscribed, clock, sessions, add, files, log };
 }
 
+describe("drain", () => {
+  it("lets a run in flight finish, starts no new ones, and starts them again on resume", async () => {
+    const s = await setup();
+    s.add(queued(aThread("t1", "dev", ["o/r#1"]), ["c:1", "2026-11-10T14:05:00Z"]));
+    s.add(queued(aThread("t2", "dev", ["o/r#2"]), ["c:2", "2026-11-10T14:05:00Z"]));
+    const finish: (() => void)[] = [];
+    s.agent.behave = () => new Promise((resolve) => finish.push(() => resolve(ok)));
+    s.sessions.kick();
+    await vi.waitFor(() => expect(s.agent.runs).toHaveLength(2));
+    let drained = false;
+    const draining = s.sessions.drain().then(() => (drained = true));
+    await Promise.resolve();
+    expect(drained).toBe(false);
+    finish.forEach((f) => f());
+    await draining;
+    expect(drained).toBe(true);
+    queued(s.threads.all[0]!, ["c:3", "2026-11-10T14:30:00Z"]);
+    s.agent.behave = async () => ok;
+    s.sessions.kick();
+    await s.sessions.idle();
+    expect(s.agent.runs).toHaveLength(2);
+    s.sessions.resume();
+    await s.sessions.idle();
+    expect(s.agent.runs).toHaveLength(3);
+  });
+});
+
 describe("delivery", () => {
   it("gives a thread every queued update in one run, oldest first, and empties the queue", async () => {
     const s = await setup();

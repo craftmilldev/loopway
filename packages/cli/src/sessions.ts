@@ -112,6 +112,7 @@ export class Sessions {
   private readonly asking = new Map<string, Promise<unknown>>();
   private readonly chats = new Map<string, Chat>();
   private heldUntil = 0;
+  private draining = false;
   /** Aborts when loopway stops, which stops the runs in flight. */
   private stopped?: AbortSignal;
   private readonly now: () => number;
@@ -137,7 +138,7 @@ export class Sessions {
 
   /** Starts a run for every thread that is ready, up to `max`. */
   kick(): void {
-    if (this.now() < this.heldUntil) return;
+    if (this.draining || this.now() < this.heldUntil) return;
     for (const thread of this.o.threads.all) {
       if (this.running.size >= this.o.max) return;
       if (this.ready(thread)) this.start(thread);
@@ -174,6 +175,18 @@ export class Sessions {
     chat.active = false;
     if (chat.said) chat.ended = true;
     this.log(this.thread(threadId), "── chat ended ──");
+    this.kick();
+  }
+
+  /** Starts no more runs, and resolves when the ones in flight have finished their turn. */
+  drain(): Promise<void> {
+    this.draining = true;
+    return this.idle();
+  }
+
+  /** Starts runs again after a `drain` that was not followed by a restart. */
+  resume(): void {
+    this.draining = false;
     this.kick();
   }
 
