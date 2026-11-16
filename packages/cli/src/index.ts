@@ -102,7 +102,12 @@ async function main(): Promise<number> {
   if (positionals[0] === "setup") {
     if (!process.stdout.isTTY || !process.stdin.isTTY)
       throw new Error("loopway setup asks questions: run it in a terminal.");
-    return runSetup({ io: inkIo(), home: loopwayHome(), cwd: project });
+    const io = inkIo();
+    try {
+      return await runSetup({ io, home: loopwayHome(), cwd: project });
+    } finally {
+      await io.close();
+    }
   }
   if (positionals[0] === "threads") return listThreads(stateDir(loopwayHome(), project), values.json);
   if (positionals.length > 0) throw new Error(`Unknown command "${positionals[0]}". Try loopway --help.`);
