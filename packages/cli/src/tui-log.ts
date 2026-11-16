@@ -42,6 +42,8 @@ const TOOL = /^● (\S+?)\((.*)\)$/;
 export function parseLog(log: string): Item[] {
   const items: Item[] = [];
   let turn: Turn | undefined;
+  /** The turn that just closed: what the session logs right after a run ends (a failure, a silent turn) is about it. */
+  let closed: Turn | undefined;
   let delivered: number | undefined;
   let turns = 0;
   const add = (entry: Entry) => {
@@ -54,11 +56,13 @@ export function parseLog(log: string): Item[] {
   for (const line of lines) {
     const delivery = /^-> delivered (\d+) updates?$/.exec(line);
     if (delivery) {
+      closed = undefined;
       delivered = Number(delivery[1]);
       continue;
     }
     if (line === "── run started ──") {
       if (turn?.state === "running") turn.state = "stopped";
+      closed = undefined;
       turn = { number: ++turns, delivered, state: "running", ended: undefined, entries: [] };
       delivered = undefined;
       items.push({ type: "turn", turn });
@@ -68,15 +72,28 @@ export function parseLog(log: string): Item[] {
     if (run && turn) {
       turn.ended = run[1];
       turn.state = run[1] === "finished" ? "finished" : "failed";
+      closed = turn;
       turn = undefined;
       continue;
     }
     const chat = /^── (chat .+) ──$/.exec(line);
     if (chat) {
+      closed = undefined;
       items.push({ type: "divider", text: chat[1]! });
       continue;
     }
     if (line.startsWith("-> chat:")) continue;
+    if (!turn && closed && line.startsWith("!! run failed")) {
+      closed.entries.push({ type: "error", text: line.slice(3) });
+      closed.state = "failed";
+      closed.ended = "failed";
+      closed = undefined;
+      continue;
+    }
+    if (!turn && closed && line === "turn ended without a message") {
+      closed.entries.push({ type: "note", text: line });
+      continue;
+    }
     if (line.startsWith("  ⎿ ")) continue; // what a tool returned: the call says enough
     const tool = TOOL.exec(line);
     if (tool) add({ type: "tool", name: tool[1]!, what: tool[2]! });
@@ -148,8 +165,7 @@ export function logRows(log: string): LogRow[] {
     } else {
       const { turn } = item;
       const color = STATE_COLOR[turn.state];
-      const updates =
-        turn.delivered === undefined ? "" : ` · ${turn.delivered} update${turn.delivered === 1 ? "" : "s"}`;
+      const updates = !turn.delivered ? "" : ` · ${turn.delivered} update${turn.delivered === 1 ? "" : "s"}`;
       rows.push({
         gutter: "╭─ ",
         color,

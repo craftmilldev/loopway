@@ -453,6 +453,21 @@ describe("chat", () => {
     expect(calls).toEqual(["send t1 acde", "end t1"]);
   });
 
+  it("Home and End move the cursor without moving the log", async () => {
+    chatting();
+    mounted!.unmount();
+    show([dev12()], { readLog: () => lines(100), chat: { send: () => {}, end: () => {} } });
+    await press(KEYS.enter);
+    await press("c");
+    await press(KEYS.up); // scrolled up one line
+    expect(screen()).toContain("scrolled");
+    await press("\u001B[H"); // home
+    await press("\u001B[F"); // end
+    expect(screen()).toContain("line 99");
+    expect(screen()).not.toContain("line 1\n");
+    expect(screen()).toContain("scrolled");
+  });
+
   it("shows a cursor in the chat box and keeps the log in view, and the keys are for chatting", async () => {
     chatting();
     await press(KEYS.enter);

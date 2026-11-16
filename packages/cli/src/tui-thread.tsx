@@ -65,7 +65,8 @@ export function ThreadView({ thread, version, status, log, onBack, onFilter, cha
         if (draft.value.trim()) chat.onSend(draft.value.trim());
         setDraft(emptyInput);
       } else setDraft(editInput(draft, input, key));
-      scrollLog(key);
+      // Home and End belong to the cursor here: only the keys the line doesn't use scroll the log.
+      scrollLog({ ...key, home: false, end: false });
       return;
     }
     if (input === "c" && chat && thread.status === "open") {

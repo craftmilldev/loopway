@@ -11,8 +11,8 @@ const LOG = [
   "  ⎿ the issue text",
   "● mcp__loopway__comment(o/r#12)",
   "<- comment o/r#12 https://github.com/o/r/1",
-  "turn ended without a message",
   "── run finished ──",
+  "turn ended without a message",
   "── chat started ──",
   "you> hello there",
   "-> delivered 0 updates",
@@ -43,6 +43,19 @@ describe("parseLog", () => {
   it("shows a chat starting between turns, and what you typed outside a turn on its own", () => {
     const types = parseLog(LOG).map((i) => i.type);
     expect(types).toEqual(["turn", "divider", "loose", "turn"]);
+  });
+
+  it("marks a run that fails after its result line as failed, with the failure inside the block", () => {
+    const items = parseLog("── run started ──\nsorry\n── run finished ──\n!! run failed: usage limit\n");
+    expect(items).toHaveLength(1);
+    const first = items[0];
+    const turn = first?.type === "turn" ? first.turn : undefined;
+    expect([turn?.state, turn?.ended, turn?.entries.map((e) => e.type)]).toEqual([
+      "failed",
+      "failed",
+      ["say", "error"],
+    ]);
+    expect(logRows("── run started ──\n── run finished ──\n!! run failed: x").at(-1)?.parts[0]?.text).toBe("failed");
   });
 
   it("marks a run that failed, and one that was cut off by the next", () => {
@@ -82,7 +95,7 @@ describe("logRows", () => {
       "╰─ finished",
       "· chat started ·",
       "you hello there",
-      "╭─ Turn 2 · 0 updates · running",
+      "╭─ Turn 2 · running",
       "│  ▸ Read /tmp/x",
     ]);
   });
