@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.2
+
+### Changed
+
+- CI no longer wakes a session for every check. A thread is told when a check finishes failing, and once when every check on the head commit has finished (`CI finished: 5 passed, 1 failed`); running and passing checks say nothing, and a new push starts over. See [#519](https://github.com/craftmilldev/loopway/issues/519).
+
 ## 2.1.1
 
 ### Added
