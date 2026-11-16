@@ -53,6 +53,12 @@ describe("sandbox", () => {
     expect(log).not.toContain("close 5");
   });
 
+  it("never asks GitHub's search, which lags behind new issues", async () => {
+    run("list", "9");
+    run("close", "9");
+    expect(await readFile(calls, "utf8")).not.toContain("--search");
+  });
+
   it("needs a PR number", () => {
     expect(() => execFileSync("node", [script, "open", "x", "t"], { stdio: "pipe" })).toThrow();
   });

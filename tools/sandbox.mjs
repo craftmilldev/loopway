@@ -13,23 +13,13 @@ const gh = (...args) => execFileSync(GH, args, { encoding: "utf8" }).trim();
 const json = (...args) => JSON.parse(gh(...args) || "[]");
 const tag = (pr) => `[#${pr}]`;
 
+/** No `--search`: GitHub's search index lags a few seconds behind new issues, so a list or close right after an open would miss it. The tag is matched here instead. */
 /** Everything in the sandbox whose title carries this PR's tag, issues and pull requests alike. The sandbox is shared, so nothing else is ever touched. */
 function mine(pr, state) {
   const found = (kind, fields) =>
-    json(
-      kind,
-      "list",
-      "-R",
-      SANDBOX,
-      "--state",
-      state,
-      "--search",
-      `"${tag(pr)}" in:title`,
-      "--json",
-      fields,
-      "-L",
-      "100",
-    ).filter((item) => item.title.includes(tag(pr)));
+    json(kind, "list", "-R", SANDBOX, "--state", state, "--json", fields, "-L", "500").filter((item) =>
+      item.title.includes(tag(pr)),
+    );
   return [
     ...found("issue", "number,title,state").map((i) => ({ ...i, kind: "issue" })),
     ...found("pr", "number,title,state,headRefName").map((p) => ({ ...p, kind: "pr" })),
@@ -59,11 +49,19 @@ function main() {
     for (const item of mine(pr, "all"))
       console.log(`${item.kind} #${item.number} ${item.state.toLowerCase()} ${item.title}`);
   } else if (command === "close") {
+    let failed = false;
     for (const item of mine(pr, "open")) {
-      gh(item.kind, "close", String(item.number), "-R", SANDBOX);
-      if (item.kind === "pr") gh("api", "-X", "DELETE", `repos/${SANDBOX}/git/refs/heads/${item.headRefName}`);
-      console.log(`closed ${item.kind} #${item.number} ${item.title}`);
+      try {
+        gh(item.kind, "close", String(item.number), "-R", SANDBOX);
+        console.log(`closed ${item.kind} #${item.number} ${item.title}`);
+        if (item.kind === "pr") gh("api", "-X", "DELETE", `repos/${SANDBOX}/git/refs/heads/${item.headRefName}`);
+      } catch (err) {
+        // Report it and carry on, so one failure (a branch already gone) doesn't leave the rest open.
+        failed = true;
+        console.error(`sandbox: ${item.kind} #${item.number}: ${err.message.split("\n")[0]}`);
+      }
     }
+    if (failed) process.exitCode = 1;
   } else throw new Error(`unknown command ${command}`);
 }
 
