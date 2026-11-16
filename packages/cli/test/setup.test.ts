@@ -163,6 +163,51 @@ describe("loopway setup", () => {
     expect(await readFile(join(t.cwd, ".loopway", "dev.md"), "utf8")).toContain("repos: [a/b, c/d]");
   });
 
+  it("tells being offline from a refused token: a saved bot token is kept, and the gh login is not blamed", async () => {
+    const offline = (async () => {
+      throw new Error("ENOTFOUND");
+    }) as unknown as typeof fetch;
+    const gh = await setup({ fetch: offline });
+    expect(await gh.run()).toBe(1);
+    expect(gh.said.join("\n")).toMatch(/Couldn't reach GitHub/);
+    expect(gh.said.join("\n")).not.toMatch(/didn't accept/);
+
+    // gh answers, the bot's saved token's check fails by network only: kept, no question about replacing it.
+    let calls = 0;
+    const flaky = (async (url: string, init: { headers: Record<string, string> }) => {
+      if (++calls > 1) throw new Error("ENOTFOUND");
+      return fakeFetch(url, init);
+    }) as unknown as typeof fetch;
+    const t = await setup({ fetch: flaky }, []);
+    await mkdir(t.home, { recursive: true });
+    await writeFile(join(t.home, "config.json"), JSON.stringify({ github: { token: "bottoken" } }));
+    await mkdir(join(t.cwd, ".loopway"));
+    for (const f of ["dev.md", "review.md"]) await writeFile(join(t.cwd, ".loopway", f), "x");
+    expect(await t.run()).toBe(0);
+    expect(t.said.join("\n")).toMatch(/leaving it as it is/);
+    expect(t.asked).toEqual([]);
+  });
+
+  it("warns when the bot user can't see a repo you can", async () => {
+    repos.add("o/mine");
+    const t = await setup({ exec: (c) => (c === "git" ? undefined : "ok") }, [
+      "add",
+      "bottoken",
+      "yes",
+      "yes",
+      "o/mine",
+    ]);
+    // the bot's token sees only o/r, yours sees o/mine too
+    const base = t.deps.fetch!;
+    t.deps.fetch = (async (url: string, init: { headers: Record<string, string> }) =>
+      init.headers.authorization === "Bearer bottoken" && url.endsWith("/repos/o/mine")
+        ? new Response("{}", { status: 404 })
+        : base(url, init)) as unknown as typeof fetch;
+    expect(await t.run()).toBe(0);
+    expect(t.said.join("\n")).toMatch(/warn The bot user can't see o\/mine: add it as a collaborator/);
+    expect(t.said.join("\n")).not.toMatch(/Couldn't see o\/mine as me/);
+  });
+
   it("reads owner/name from a GitHub remote", () => {
     expect(repoFromRemote("git@github.com:craftmilldev/loopway.git")).toBe("craftmilldev/loopway");
     expect(repoFromRemote("https://github.com/craftmilldev/loopway")).toBe("craftmilldev/loopway");

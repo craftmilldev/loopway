@@ -8,7 +8,7 @@ import { loadAutoUpdate, loadGitHubConfig, loopwayHome, type GitHubConfig } from
 import { formatJson, formatLine, formatThread, formatThreadJson, type LoopwayEvent } from "./format.js";
 import { ghToken, GitHubSource } from "./github.js";
 import { startMcp } from "./mcp.js";
-import { inkIo } from "./setup-io.js";
+import { inkIo, SetupCancelled } from "./setup-io.js";
 import { runSetup } from "./setup.js";
 import { Poller } from "./poller.js";
 import { Sessions } from "./sessions.js";
@@ -105,6 +105,13 @@ async function main(): Promise<number> {
     const io = inkIo();
     try {
       return await runSetup({ io, home: loopwayHome(), cwd: project });
+    } catch (err) {
+      if (err instanceof SetupCancelled) {
+        await io.close();
+        console.error("Cancelled: nothing more was changed.");
+        return 1;
+      }
+      throw err;
     } finally {
       await io.close();
     }

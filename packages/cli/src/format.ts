@@ -1,3 +1,4 @@
+import { blockedOn, blockedText } from "./asks.js";
 import type { Subject, Update } from "./source.js";
 import type { Thread } from "./thread.js";
 
@@ -24,7 +25,7 @@ export type ThreadEvent =
   | { type: "queued"; subject: string; update: Update; thread: string }
   | { type: "ignored"; subject: string; update: Update; thread: string }
   | { type: "thread_closed"; thread: Thread }
-  | { type: "answered"; at: string; thread: string; what: string; how: "approved" | "denied" | "replied" };
+  | { type: "answered"; at: string; thread: string; what: string; how: "approved" | "denied" | "replied" | "chatted" };
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -147,17 +148,25 @@ export function formatJson(event: LoopwayEvent): string {
   }
 }
 
-/** One row of `loopway threads`: id, bot, status, subjects, pending count. */
-export const formatThread = (t: Thread) =>
-  `${t.id}  ${t.bot.padEnd(8)} ${t.status.padEnd(6)} ${subjectKeys(t)}  ${t.queue.length} pending`;
+/** One row of `loopway threads`: id, bot, status, subjects, pending count, and what it is blocked on if it is. */
+export const formatThread = (t: Thread) => {
+  const blocked = blockedOn(t);
+  return (
+    `${t.id}  ${t.bot.padEnd(8)} ${t.status.padEnd(6)} ${subjectKeys(t)}  ${t.queue.length} pending` +
+    (blocked ? `  ${blockedText(blocked)}` : "")
+  );
+};
 
-export const formatThreadJson = (t: Thread) =>
-  JSON.stringify({
+export const formatThreadJson = (t: Thread) => {
+  const blocked = blockedOn(t);
+  return JSON.stringify({
     id: t.id,
     bot: t.bot,
     status: t.status,
     subjects: t.subjects.map((s) => s.key),
     pending: t.queue.length,
+    ...(blocked ? { blocked: { kind: blocked.kind, subject: blocked.subject, url: blocked.commentUrl } } : {}),
     createdAt: t.createdAt,
     latestAt: t.latestAt,
   });
+};

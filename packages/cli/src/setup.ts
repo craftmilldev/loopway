@@ -79,12 +79,14 @@ export async function runSetup(deps: SetupDeps): Promise<number> {
     api(`https://api.github.com${path}`, {
       headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "user-agent": "loopway" },
     }).catch(() => undefined);
-  const who = async (token: string) => {
+  /** Who a token is; `offline` when GitHub couldn't be reached at all, which is not the same as refusing the token. */
+  type Who = { login: string; id: number } | "rejected" | "offline";
+  const who = async (token: string): Promise<Who> => {
     const res = await get(token, "/user");
-    if (!res?.ok) return undefined;
-    const user = (await res.json()) as { login: string; id: number };
-    return user;
+    if (!res) return "offline";
+    return res.ok ? ((await res.json()) as { login: string; id: number }) : "rejected";
   };
+  const known = (w: Who | undefined): w is { login: string; id: number } => typeof w === "object";
 
   io.say("loopway setup: each step checks first, and only asks about what is missing.");
 
@@ -107,8 +109,15 @@ export async function runSetup(deps: SetupDeps): Promise<number> {
     }
   }
   const me = token ? await who(token) : undefined;
-  if (!token || !me) {
-    io.say(token ? "GitHub didn't accept the gh login." : "No gh login, and loopway can't run without one.", "fail");
+  if (!token || !known(me)) {
+    io.say(
+      !token
+        ? "No gh login, and loopway can't run without one."
+        : me === "offline"
+          ? "Couldn't reach GitHub: check your connection and run `loopway setup` again."
+          : "GitHub didn't accept the gh login.",
+      "fail",
+    );
     return 1;
   }
   io.say(`gh is logged in as ${me.login}.`, "ok");
@@ -125,11 +134,17 @@ export async function runSetup(deps: SetupDeps): Promise<number> {
   // 3. The bot user. Optional: without its token loopway watches and queues, but runs no sessions.
   const config = await loadGitHubConfig(home);
   let botDone = false;
+  let botToken: string | undefined;
   if (config.token) {
     const existing = await who(config.token);
-    if (existing) {
+    if (known(existing)) {
       io.say(`The bot user is ${existing.login} (from ${join(home, "config.json")}).`, "ok");
       botDone = true;
+      botToken = config.token;
+    } else if (existing === "offline") {
+      io.say("Couldn't reach GitHub to check the bot's saved token: leaving it as it is.", "warn");
+      botDone = true;
+      botToken = config.token;
     } else io.say(`The token in ${join(home, "config.json")} isn't accepted by GitHub.`, "warn");
   }
   let skipped = false;
@@ -146,8 +161,9 @@ export async function runSetup(deps: SetupDeps): Promise<number> {
       break;
     }
     const given = (await io.secret("The bot account's GitHub token (a personal access token with repo scope)")).trim();
-    const bot = given ? await who(given) : undefined;
-    if (!bot) io.say("GitHub didn't accept that token.", "fail");
+    const bot = given ? await who(given) : "rejected";
+    if (bot === "offline") io.say("Couldn't reach GitHub to check that token: try again.", "fail");
+    else if (!known(bot)) io.say("GitHub didn't accept that token.", "fail");
     else if (bot.login.toLowerCase() === me.login.toLowerCase())
       io.say(
         `That token is your own account (${me.login}): the bot would comment as you. Use another account's.`,
@@ -161,6 +177,7 @@ export async function runSetup(deps: SetupDeps): Promise<number> {
       });
       io.say(`Saved ${bot.login} as the bot user in ${join(home, "config.json")}.`, "ok");
       botDone = true;
+      botToken = given;
     }
   }
   if (skipped) io.say("Skipped the bot user: sessions are off until you add one (run `loopway setup` again).", "warn");
@@ -191,6 +208,12 @@ export async function runSetup(deps: SetupDeps): Promise<number> {
       const found = await get(token, `/repos/${repo}`);
       if (!found?.ok)
         io.say(`Couldn't see ${repo} as ${me.login}: check the name and your access. Using it anyway.`, "warn");
+      // A new bot account usually hasn't been added to the repo yet: that is what stops its sessions.
+      if (botToken && !(await get(botToken, `/repos/${repo}`))?.ok)
+        io.say(
+          `The bot user can't see ${repo}: add it as a collaborator, or its sessions can't read or comment.`,
+          "warn",
+        );
     }
     await mkdir(folder, { recursive: true });
     for (const file of wanted) {

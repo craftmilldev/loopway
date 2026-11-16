@@ -42,7 +42,15 @@ export function Prompt({ question, input, secret }: { question: string; input: I
 }
 
 /** What the screen shows: the lines said so far, and the question being asked, if any. */
+/** Ctrl-C at a question: setup stops, and says so. */
+export class SetupCancelled extends Error {
+  constructor() {
+    super("Cancelled.");
+  }
+}
+
 class Store {
+  reject?: (err: Error) => void;
   lines: { id: number; text: string }[] = [];
   question?: Question;
   answer?: (value: string) => void;
@@ -78,6 +86,11 @@ function Screen({ store }: { store: Store }) {
     setInput({ value: initial, cursor: initial.length });
   }, [q]);
   useInput((typed, key) => {
+    if (key.ctrl && typed === "c") {
+      if (store.reject) store.reject(new SetupCancelled());
+      else process.exit(1); // between questions, while something is being checked
+      return;
+    }
     if (!q || !store.answer) return;
     if (q.kind === "choose") {
       if (key.upArrow) setAt((i) => Math.max(0, i - 1));
@@ -101,10 +114,12 @@ function Screen({ store }: { store: Store }) {
 export function inkIo(): Io & { close: () => Promise<void> } {
   let store = new Store();
   let app: ReturnType<typeof render> | undefined;
-  const open = () => (app ??= render(<Screen store={store} />));
+  // exitOnCtrlC off: Ink would unmount without settling the question, and setup would end quietly with code 0.
+  const open = () => (app ??= render(<Screen store={store} />, { exitOnCtrlC: false }));
   const ask = (question: Question) => {
     open();
-    return new Promise<string>((resolve) => {
+    return new Promise<string>((resolve, reject) => {
+      store.reject = reject;
       store.change(() => {
         store.question = question;
         store.answer = (value) => {
@@ -115,6 +130,7 @@ export function inkIo(): Io & { close: () => Promise<void> } {
           store.change(() => {
             store.question = undefined;
             store.answer = undefined;
+            store.reject = undefined;
           });
           resolve(value);
         };
@@ -124,6 +140,8 @@ export function inkIo(): Io & { close: () => Promise<void> } {
   const close = async () => {
     const current = app;
     app = undefined;
+    // Ink draws at most every ~30 ms: let the last lines said (the closing "Done.") reach the screen before it stops.
+    if (current) await new Promise((resolve) => setTimeout(resolve, 150));
     current?.unmount();
     await current?.waitUntilExit();
   };

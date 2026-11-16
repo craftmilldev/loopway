@@ -6,6 +6,12 @@
 
 - `loopway setup`: an interactive walk through what loopway needs, safe to run again. It checks `gh` (and offers `gh auth login`), Claude Code, the bot user's token (checked against GitHub, saved to `~/.loopway/config.json` for you alone) and offers `.loopway/dev.md` and `review.md` here, for the repos you name. It only asks about what is missing and never overwrites a file. See [#556](https://github.com/craftmilldev/loopway/issues/556).
 
+## 2.0.3
+
+### Added
+
+- A question answered in chat, or by a comment on any of the thread's subjects (the pull request, say), unblocks the thread, so its queue goes out. A blocked thread says what it waits on in `loopway threads`, `--json` and the TUI.
+
 ## 2.0.2
 
 ### Added

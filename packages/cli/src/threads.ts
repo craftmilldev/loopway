@@ -141,15 +141,35 @@ export class Threads {
     events.push({ type: "queued", subject, update, thread: thread.id });
   }
 
-  /** The owner's comment on a subject after a question was asked there answers it. It is queued like any update. */
+  /**
+   * The owner's comment on any open subject of the thread, after a question was asked, answers it: the question may
+   * have been asked on the issue and the answer given on the pull request. It is queued like any update.
+   */
   private answerQuestions(thread: Thread, subject: string, update: Update, events: ThreadEvent[]) {
     if (update.kind !== "comment" || update.actor.toLowerCase() !== this.o.owner?.toLowerCase()) return;
+    if (thread.subjects.find((s) => s.key === subject)?.status !== "open") return;
     for (const ask of openAsks(thread)) {
-      if (ask.kind !== "question" || ask.subject !== subject || ask.at >= update.at) continue;
+      if (ask.kind !== "question" || ask.at >= update.at) continue;
       ask.answeredAt = update.at;
       events.push({ type: "answered", at: update.at, thread: thread.id, what: askLabel(ask), how: "replied" });
     }
     this.unblock(thread);
+  }
+
+  /**
+   * A chat message from the owner answers the thread's open questions: they are talking to the session, so it need not
+   * wait for a comment. A permission ask still needs its 👍 or 👎. The queue it held back goes out on the next run.
+   * The caller saves the thread.
+   */
+  answerByChat(thread: Thread): ThreadEvent[] {
+    const at = new Date(this.now()).toISOString();
+    const events: ThreadEvent[] = [];
+    for (const ask of openAsks(thread).filter((a) => a.kind === "question")) {
+      ask.answeredAt = at;
+      events.push({ type: "answered", at, thread: thread.id, what: askLabel(ask), how: "chatted" });
+    }
+    if (events.length > 0) this.unblock(thread);
+    return events;
   }
 
   /**
