@@ -12,6 +12,7 @@ allow:
   - "Bash(npm run format:*)"
   - "Bash(npm run init-scratch:*)"
   - "Bash(git worktree:*)"
+  - "Bash(npm run sandbox:*)"
 deny:
   - "Bash(gh pr merge:*)"
   - "Bash(git push origin main:*)"
