@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.3
+
+### Added
+
+- A question answered in chat, or by a comment on any of the thread's subjects (the pull request, say), unblocks the thread, so its queue goes out. A blocked thread says what it waits on in `loopway threads`, `--json` and the TUI.
+
 ## 2.0.2
 
 ### Added
@@ -17,8 +23,6 @@
 loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and it polls GitHub, printing every new issue and pull request by you or your bot and every update to the ones it knows. See [#486](https://github.com/craftmilldev/loopway/issues/486).
 
 ### Added
-
-- A question answered in chat, or by a comment on any of the thread's subjects (the pull request, say), unblocks the thread, so its queue goes out. A blocked thread says what it waits on in `loopway threads`, `--json` and the TUI.
 
 - Bare `loopway`, with `--json`. Bots are `.loopway/<bot>.md` files; state is JSON per project, in `~/.loopway/state/<slug>`.
 
