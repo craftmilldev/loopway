@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.2
+
+### Added
+
+- Self-update: an installed `loopway` follows the latest `cli-v*` GitHub release. It installs a newer one when it starts, and while running (checked every 10 minutes) lets the runs in flight finish, installs it and restarts itself. On by default; `"auto_update": false` in `~/.loopway/config.json` or `LOOPWAY_NO_UPDATE=1` turns it off. A copy run from a checkout never updates. See [#539](https://github.com/craftmilldev/loopway/issues/539).
+
 ## 2.0.1
 
 ### Changed

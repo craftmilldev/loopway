@@ -24,9 +24,10 @@ export interface TuiProps {
   refreshMs?: number;
 }
 
-/** Runs the TUI full-screen until the user quits. */
-export async function showTui(props: TuiProps): Promise<void> {
+/** Runs the TUI full-screen until the user quits, or `stop` aborts. */
+export async function showTui(props: TuiProps, stop?: AbortSignal): Promise<void> {
   const app = render(<Tui {...props} />, { alternateScreen: true });
+  stop?.addEventListener("abort", () => app.unmount());
   await app.waitUntilExit();
 }
 

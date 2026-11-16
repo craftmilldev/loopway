@@ -4,7 +4,7 @@ import { parseArgs } from "node:util";
 import { answerFromReactions } from "./asks.js";
 import { loadBots, reposOf, type Bot } from "./bots.js";
 import { claudeRunner } from "./claude.js";
-import { loadGitHubConfig, loopwayHome, type GitHubConfig } from "./config.js";
+import { loadAutoUpdate, loadGitHubConfig, loopwayHome, type GitHubConfig } from "./config.js";
 import { formatJson, formatLine, formatThread, formatThreadJson, type LoopwayEvent } from "./format.js";
 import { ghToken, GitHubSource } from "./github.js";
 import { startMcp } from "./mcp.js";
@@ -16,6 +16,15 @@ import { loadThreads, readThreadLog, Threads, visibleThreads } from "./threads.j
 import { resolveTrust } from "./trust.js";
 import { showTui } from "./tui.js";
 import { formatPollStatus } from "./tui-text.js";
+import {
+  installedFromRelease,
+  installRelease,
+  latestRelease,
+  isNewer,
+  reexec,
+  UPDATED_ENV,
+  watchForUpdate,
+} from "./update.js";
 
 const HELP = `loopway: watches GitHub and prints every new issue and pull request by you or your bot,
 and every update to the ones it knows.
@@ -34,6 +43,9 @@ threads, and those closed in the last 3 days.
 Run it from a directory with a .loopway/ folder: one <bot>.md per bot, with front matter like
   repos: [owner/name]
   model: sonnet
+It updates itself from the newest GitHub release (only when installed with install.sh or \`npm i -g\`): at start, and
+every 10 minutes while it runs, when it lets the runs in flight finish, installs it and restarts. Turn that off with
+"auto_update": false in ~/.loopway/config.json, or LOOPWAY_NO_UPDATE=1.
 Credentials come from gh (gh auth login), and the bot's from ~/.loopway/config.json (or $LOOPWAY_HOME).
 State is per project, in ~/.loopway/state/<the project's path>.
 
@@ -65,6 +77,18 @@ async function main(): Promise<number> {
   if (values.version) {
     console.log(pkg.version);
     return 0;
+  }
+
+  const updating = (await loadAutoUpdate(loopwayHome())) && installedFromRelease();
+  const tried = process.env[UPDATED_ENV];
+  // A newer release is installed before anything starts, unless this process is the one an update just started.
+  if (updating && !tried && positionals.length === 0 && !values.help) {
+    const latest = await latestRelease();
+    if (latest && isNewer(latest, pkg.version)) {
+      console.error(`loopway ${pkg.version}: updating to ${latest}...`);
+      if (await installRelease(latest, (m) => console.error(m))) return reexec(latest);
+      process.env[UPDATED_ENV] = latest; // it failed: carry on, and don't try that one again (the watch reads this)
+    }
   }
 
   const project = projectDir();
@@ -137,6 +161,24 @@ async function main(): Promise<number> {
 
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => stop.abort());
   const polling = poller.run(stop.signal);
+  // A newer release: no new runs, the ones in flight finish their turn, then it is installed and loopway restarts.
+  let restartAs: string | undefined;
+  if (updating)
+    void watchForUpdate({
+      current: pkg.version,
+      tried: process.env[UPDATED_ENV],
+      latest: () => latestRelease(),
+      signal: stop.signal,
+      found: async (version) => {
+        log(`loopway ${version} is out: finishing the runs in flight, then updating`);
+        await sessions?.drain();
+        if (stop.signal.aborted) return;
+        if (await installRelease(version, log)) {
+          restartAs = version;
+          stop.abort();
+        } else sessions?.resume();
+      },
+    });
   if (tui) {
     const props = {
       threads: () => threads.all,
@@ -147,10 +189,11 @@ async function main(): Promise<number> {
       onRefresh: () => void poller.refresh(),
       chat: sessions && { send: sessions.chat, end: sessions.endChat },
     };
-    await showTui(props).finally(() => stop.abort());
+    await showTui(props, stop.signal).finally(() => stop.abort());
   }
   await polling;
   await sessions?.done;
+  if (restartAs) return reexec(restartAs);
   return 0;
 }
 
@@ -177,6 +220,9 @@ interface StartedSessions {
   /** A chat message from the owner, and the end of the chat block. */
   chat: (threadId: string, text: string) => void;
   endChat: (threadId: string) => void;
+  /** Starts no more runs and waits for those in flight; `resume` starts them again. */
+  drain: () => Promise<void>;
+  resume: () => void;
 }
 
 /**
@@ -217,6 +263,8 @@ async function startSessions(s: SessionsSetup): Promise<StartedSessions | undefi
     done,
     chat: (id, text) => sessions.chat(id, text),
     endChat: (id) => sessions.endChat(id),
+    drain: () => sessions.drain(),
+    resume: () => sessions.resume(),
   };
 }
 
