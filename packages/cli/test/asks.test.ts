@@ -83,16 +83,43 @@ describe("rules", () => {
   });
 
   it("lets deny win over allow, and leaves what neither names undecided", () => {
-    const bot = { allow: ["Bash(curl:*)", "Edit"], deny: ["Bash(curl -X:*)"] };
+    const bot = { allow: ["Bash(curl:*)", "Edit"], ask: [], deny: ["Bash(curl -X:*)"] };
     expect(ruleDecision(bot, "Bash", { command: "curl -s x" })).toBe("allow");
     expect(ruleDecision(bot, "Bash", { command: "curl -X POST x" })).toBe("deny");
     expect(ruleDecision(bot, "Edit", { file_path: "a" })).toBe("allow");
     expect(ruleDecision(bot, "Write", { file_path: "a" })).toBeUndefined();
   });
 
+  it("lets deny beat ask and ask beat allow, so a call that matches ask goes to the owner", () => {
+    const bot = { allow: ["Bash(curl:*)", "Edit"], ask: ["Bash(curl:*)", "Bash(rm:*)"], deny: ["Bash(curl -X:*)"] };
+    expect(ruleDecision(bot, "Bash", { command: "curl -s x" })).toBeUndefined();
+    expect(ruleDecision(bot, "Bash", { command: "curl -X POST x" })).toBe("deny");
+    expect(ruleDecision(bot, "Bash", { command: "rm a" })).toBeUndefined();
+    expect(ruleDecision(bot, "Edit", { file_path: "a" })).toBe("allow");
+  });
+
+  it("asks the owner about a call that allow would pass, then lets it through once approved, and passes the rules to the run", async () => {
+    const s = await setup({ bot: { ...aBot("dev", ["issue"]), allow: ["Bash(curl:*)"], ask: ["Bash(curl:*)"] } });
+    expect(await s.sessions.permission("t1", "Bash", CURL)).toMatchObject({
+      behavior: "deny",
+      message: expect.stringContaining("asked about this call"),
+    });
+    expect(s.posted).toHaveLength(1);
+    s.thread.session!.id = "sid";
+    s.source.react(askedUrl(1), "me", "+1");
+    await s.readReactions();
+    expect(await s.sessions.permission("t1", "Bash", CURL)).toEqual({ behavior: "allow", updatedInput: CURL });
+
+    s.sessions.kick();
+    await s.sessions.idle();
+    expect(s.runs[0]?.ask).toEqual(["Bash(curl:*)"]);
+  });
+
   it("reads allow and deny from a bot's front matter, and rejects anything but a list of patterns", () => {
     const bot = parseBot("dev", '---\nrepos: [o/r]\nallow: ["Bash(curl:*)"]\ndeny: [Write]\n---\nPrompt');
     expect([bot.allow, bot.deny]).toEqual([["Bash(curl:*)"], ["Write"]]);
+    expect(parseBot("dev", '---\nrepos: [o/r]\nask: ["WebFetch"]\n---\nP').ask).toEqual(["WebFetch"]);
+    expect(() => parseBot("dev", "---\nrepos: [o/r]\nask: Bash\n---\nP")).toThrow(/"ask" is a list/);
     expect(parseBot("dev", "---\nrepos: [o/r]\n---\nPrompt")).toMatchObject({ allow: [], deny: [] });
     expect(() => parseBot("dev", "---\nrepos: [o/r]\nallow: Bash\n---\nPrompt")).toThrow(/"allow" is a list/);
   });

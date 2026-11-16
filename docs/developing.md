@@ -46,7 +46,7 @@ When CI passes on a push to `main` and `packages/cli` changed since the last `cl
 | `sessions.ts` | Delivers each thread's queue to its session (`--max`, resume, requeue on failure, usage-limit hold), and records what it sends. Also the TUI's chat blocks: messages from the owner go to the session in order, the queue waits, and the end of the block tells the session to report |
 | `claude.ts`, `transcript.ts` | The Claude Code harness: `claude -p` args, spawn, how a run ended, and the stream turned into log lines |
 | `mcp.ts` | loopway's MCP server (HTTP, one path per thread) with the `comment`, `ask`, `create_issue`, `create_pr` and `permission` tools |
-| `asks.ts` | Asks: the allow/deny rule matching, the comments loopway posts to ask, and reading the owner's reactions |
+| `asks.ts` | Asks: the deny/ask/allow rule matching, the comments loopway posts to ask, and reading the owner's reactions |
 | `update.ts` | Self-update: the latest `cli-v*` release, installing its `loopway-cli.tgz` with `npm install -g`, re-exec, and the 10-minute watch. `index.ts` wires it: a lookup before anything starts, and `Sessions.drain` while a newer release waits for runs to finish |
 | `config.ts`, `state.ts` | `~/.loopway/config.json`'s `github` block and `auto_update`, and `stateDir`, where `state.json` and the threads live |
 | `tui.tsx`, `tui-main.tsx`, `tui-thread.tsx` | The [Ink](https://github.com/vadimdemedes/ink) TUI: the root, the main view (threads grouped by state) and the thread view. Reads threads from the in-process store and the session log from disk |

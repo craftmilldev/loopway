@@ -38,6 +38,15 @@ const aRun = (over: Partial<AgentRun> = {}): AgentRun => ({
 });
 
 describe("claudeArgs", () => {
+  it("hands the bot's ask patterns to Claude Code as ask rules, and passes no settings without any", () => {
+    const args = claudeArgs(aRun({ ask: ["Bash(curl:*)", "WebFetch"] }));
+    expect(JSON.parse(args[args.indexOf("--settings") + 1]!)).toEqual({
+      permissions: { ask: ["Bash(curl:*)", "WebFetch"] },
+    });
+    expect(claudeArgs(aRun())).not.toContain("--settings");
+    expect(claudeArgs(aRun({ ask: [] }))).not.toContain("--settings");
+  });
+
   it("starts a session with its id, in auto mode, with stream-json out and loopway's MCP in", () => {
     const args = claudeArgs(aRun({ model: "sonnet" }));
     expect(args.slice(0, 4)).toEqual(["-p", "--session-id", "sid", "--model"]);

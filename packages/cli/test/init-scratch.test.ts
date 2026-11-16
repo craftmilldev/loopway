@@ -33,6 +33,7 @@ describe("init-scratch", () => {
     expect(dev).toContain("repos: [craftmilldev/loopway-sandbox]");
     expect(dev).toContain("on: issue");
     expect(dev).toContain("Do what the issue asks, then comment with the result.");
+    expect(dev).toContain('# ask: ["Bash(curl:*)"]');
     expect(dev).not.toContain("cwd");
     expect(await readFile(join(dir, ".loopway/review.md"), "utf8")).toContain("on: pull_request");
     expect(existsSync(join(dir, "sandbox"))).toBe(false);

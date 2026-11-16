@@ -75,13 +75,17 @@ export const waitingMessage = (ask: Ask) =>
 /** What the session reads once it has asked a question. */
 export const askedMessage = (url: string) => `asked: ${url}. End your turn now: you will be resumed with the answer.`;
 
-/** The rules of a bot's front matter: `deny` wins over `allow`, and no match leaves it undecided. */
+/**
+ * The rules of a bot's front matter: `deny` wins over `ask`, which wins over `allow`. A call that matches `ask` is left
+ * undecided, so it goes to the owner; so is a call no rule names.
+ */
 export function ruleDecision(
-  bot: Pick<Bot, "allow" | "deny">,
+  bot: Pick<Bot, "allow" | "deny" | "ask">,
   tool: string,
   input: unknown,
 ): "allow" | "deny" | undefined {
   if (bot.deny.some((pattern) => matches(pattern, tool, input))) return "deny";
+  if (bot.ask.some((pattern) => matches(pattern, tool, input))) return;
   if (bot.allow.some((pattern) => matches(pattern, tool, input))) return "allow";
 }
 

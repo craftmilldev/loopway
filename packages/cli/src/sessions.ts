@@ -237,7 +237,7 @@ export class Sessions {
 
   /**
    * What the `permission` tool does: a call Claude Code would still prompt for. The call the owner approved before
-   * passes, then the bot's `deny` and `allow` rules decide. If they don't, the owner is asked on the thread's main
+   * passes, then the bot's `deny`, `ask` and `allow` rules decide. If they don't, the owner is asked on the thread's main
    * subject, and the call is refused for now: the thread is blocked until a reaction answers.
    */
   async permission(threadId: string, tool: string, input: unknown): Promise<PermissionResult> {
@@ -472,6 +472,7 @@ export class Sessions {
       cwd: this.o.root,
       env: { ...process.env, ...this.o.env },
       mcpUrl: this.o.mcpUrl(thread.id),
+      ask: bot.ask,
       signal: this.stopped,
       onLine: (line) => this.log(thread, line),
       onStarted: () => {

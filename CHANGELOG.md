@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.3
+
+### Added
+
+- `ask:` in a bot's front matter, beside `allow:` and `deny:`: tool patterns that always go to the owner for a 👍/👎, even when auto mode or `allow` would let them through. loopway also passes them to Claude Code as ask rules. `deny` beats `ask`, and `ask` beats `allow`. `init-scratch` writes a commented-out example. See [#517](https://github.com/craftmilldev/loopway/issues/517).
+
 ## 2.0.2
 
 ### Added

@@ -13,6 +13,8 @@ export interface AgentRun {
   env: NodeJS.ProcessEnv;
   /** loopway's MCP endpoint for this session. */
   mcpUrl: string;
+  /** The bot's `ask` patterns, handed to Claude Code as ask rules so auto mode sends matching calls to the permission tool. */
+  ask?: string[];
   /** Called with each line of the session log as the run goes: assistant text, tool calls, results. */
   onLine: (line: string) => void;
   /** Called once Claude Code has created the session, so later runs must resume it. */
@@ -54,6 +56,7 @@ export function claudeArgs(run: AgentRun): string[] {
   if (run.model) args.push("--model", run.model);
   // --mcp-config and --allowedTools take several values, so each is followed by another flag.
   args.push("--mcp-config", mcp, "--allowedTools", ...ALLOWED_TOOLS);
+  if (run.ask?.length) args.push("--settings", JSON.stringify({ permissions: { ask: run.ask } }));
   args.push("--permission-prompt-tool", PERMISSION_TOOL);
   args.push("--permission-mode", "auto", "--output-format", "stream-json", "--verbose");
   return args;
