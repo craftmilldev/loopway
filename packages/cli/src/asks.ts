@@ -29,6 +29,16 @@ export interface Ask {
 
 export const openAsks = (thread: Thread): Ask[] => (thread.asks ?? []).filter((a) => !a.answeredAt);
 
+/** What a thread's session waits on: its oldest open ask, and how many more there are. */
+export function blockedOn(thread: Thread): (Ask & { more: number }) | undefined {
+  const [first, ...rest] = openAsks(thread);
+  return first && { ...first, more: rest.length };
+}
+
+/** `blocked: question on owner/repo#12 <url>`, with `(+N more)` when it waits on several. */
+export const blockedText = (ask: Ask & { more: number }) =>
+  `blocked: ${ask.kind} on ${ask.subject} ${ask.commentUrl}${ask.more ? ` (+${ask.more} more)` : ""}`;
+
 /** The same call: the same tool with the same input. */
 export function callKey(tool: string, input: unknown): string {
   // Claude words a Bash call's `description` differently each time it retries; the rest of the input is the call.

@@ -46,16 +46,17 @@ When CI passes on a push to `main` and `packages/cli` changed since the last `cl
 | `sessions.ts` | Delivers each thread's queue to its session (`--max`, resume, requeue on failure, usage-limit hold), and records what it sends. Also the TUI's chat blocks: messages from the owner go to the session in order, the queue waits, and the end of the block tells the session to report |
 | `claude.ts`, `transcript.ts` | The Claude Code harness: `claude -p` args, spawn, how a run ended, and the stream turned into log lines |
 | `mcp.ts` | loopway's MCP server (HTTP, one path per thread) with the `comment`, `ask`, `create_issue`, `create_pr` and `permission` tools |
-| `asks.ts` | Asks: the deny/ask/allow rule matching, the comments loopway posts to ask, and reading the owner's reactions |
+| `asks.ts` | Asks: what a thread is blocked on, the deny/ask/allow rule matching, the comments loopway posts to ask, and reading the owner's reactions |
 | `update.ts` | Self-update: the latest `cli-v*` release, installing its `loopway-cli.tgz` with `npm install -g`, re-exec, and the 10-minute watch. `index.ts` wires it: a lookup before anything starts, and `Sessions.drain` while a newer release waits for runs to finish |
 | `config.ts`, `state.ts` | `~/.loopway/config.json`'s `github` block and `auto_update`, and `stateDir`, where `state.json` and the threads live |
 | `tui.tsx`, `tui-main.tsx`, `tui-thread.tsx` | The [Ink](https://github.com/vadimdemedes/ink) TUI: the root, the main view (threads grouped by state) and the thread view. Reads threads from the in-process store and the session log from disk |
 | `tui-header.tsx`, `tui-theme.ts` | The header (version, poller status) and the pinned keys; the colors, taken from the billboard |
 | `tui-log.ts` | The session log as turn blocks, one row per line, and the tool call sentences |
 | `tui-input.tsx`, `tui-text.ts` | The chat text box (cursor, editing); the thread state and grouping, and the poller's status line |
+| `setup.ts`, `setup-io.tsx` | `loopway setup`: the steps (gh, Claude Code, the bot token, the bot files), written against an `Io` interface so tests script the answers and the fake `exec` and `fetch` keep them off the machine and the network; and the real `Io`, one inline [Ink](https://github.com/vadimdemedev/ink) question at a time (`gh auth login` gets the terminal itself) |
 | `format.ts` | The printed line, and `--json` |
 
-`tools/init-scratch.mjs` (`npm run init-scratch`) is a plain Node script, outside the packages; `test/init-scratch.test.ts` runs it in a temp dir.
+`tools/init-scratch.mjs` (`npm run init-scratch`) and `tools/sandbox.mjs` (`npm run sandbox -- open|list|close <pr>`, the sandbox issues a verification makes, tagged `[#<pr>]`) are plain Node scripts, outside the packages; `test/init-scratch.test.ts` runs the first in a temp dir and `test/sandbox.test.ts` the second with a fake `gh`.
 
 Tests fake the source (`test/fake.ts`) for the poller, and fake `fetch` for `GitHubSource`. `test/fake-claude.mjs` stands in for `claude`: it emits stream-json and, in `comment`, `ask`, `open` and `permission` modes, calls the MCP tool.
 

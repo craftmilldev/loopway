@@ -61,14 +61,16 @@ Go through these, and only report what you can point to:
 - **Is the verification real?** `verifications/<pr>.md` exists and records every step of **How to test it**, run
   live against `craftmilldev/loopway-sandbox` and nothing else, with real log lines and issue numbers. Anything not
   run live is listed as not checked. Sandbox issues and PRs it opened are closed, with the PR number in their titles
-  (check with `gh issue list -R craftmilldev/loopway-sandbox --state all --search "[#<pr>]"`). Its test counts match
+  (check with `npm run sandbox -- list <pr>`, which shows only titles with that tag). Its test counts match
   what you got.
 - **Docs.** The README and `docs/developing.md` still describe what loopway does. A user-visible change has a
   `CHANGELOG.md` line. If web reads a new file outside `packages/web`, it is in `ROOT_INPUTS`.
 
 If a live step looks doubtful from the record, rerun that one step yourself: `npm run init-scratch -- --reset` in your
 worktree, the built CLI from its `scratch/` in the background (stop it with `kill -INT <pid>`, never `pkill`), only on
-the sandbox, with `[#<pr>]` in every title, and close and delete what you opened afterwards.
+the sandbox, with `[#<pr>]` in every title (open with `npm run sandbox -- open <pr> "<title>"`), and
+`npm run sandbox -- close <pr>` afterwards. Also check the record against `verifications/README.md`: the headings,
+and that every step of **How to test it** is either shown live or listed as not checked.
 
 ## 4. Comment
 

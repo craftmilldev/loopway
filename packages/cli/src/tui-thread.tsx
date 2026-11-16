@@ -99,7 +99,11 @@ export function ThreadView({ thread, version, status, log, onBack, onFilter, cha
       <Box>
         <Stat n={thread.subjects.length} label="subjects" color={theme.cream} />
         <Stat n={open.length} label="waiting on you" color={open.length ? theme.land : theme.green} />
-        <Stat n={thread.queue.length} label="updates queued" color={thread.queue.length ? theme.blue : theme.green} />
+        <Stat
+          n={thread.queue.length}
+          label={open.length && thread.queue.length ? "updates waiting on the answer" : "updates queued"}
+          color={thread.queue.length ? theme.blue : theme.green}
+        />
         <Stat n={sent} label="messages sent" color={theme.green} />
       </Box>
       {thread.subjects.map((s, i) => (
