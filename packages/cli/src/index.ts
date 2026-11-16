@@ -141,6 +141,7 @@ async function main(): Promise<number> {
     const props = {
       threads: () => threads.all,
       readLog: (id: string) => readThreadLog(dir, id),
+      version: pkg.version,
       latest: () => latest,
       status: (now: number) => formatPollStatus(repos, poller.status(), now),
       onRefresh: () => void poller.refresh(),

@@ -18,6 +18,8 @@ export interface TuiProps {
   onRefresh: () => void;
   /** Chat with a thread's session, when there are sessions. */
   chat?: { send: (threadId: string, text: string) => void; end: (threadId: string) => void };
+  /** loopway's version, shown in every header. */
+  version: string;
   now?: () => number;
   refreshMs?: number;
 }
@@ -29,7 +31,17 @@ export async function showTui(props: TuiProps): Promise<void> {
 }
 
 /** The main view of threads, and the view of one thread. q quits; Ctrl-C does too. */
-export function Tui({ threads, readLog, latest, status, onRefresh, chat, now = Date.now, refreshMs = 1000 }: TuiProps) {
+export function Tui({
+  threads,
+  readLog,
+  latest,
+  status,
+  onRefresh,
+  chat,
+  version,
+  now = Date.now,
+  refreshMs = 1000,
+}: TuiProps) {
   const { exit } = useApp();
   const [filter, setFilter] = useState<string>();
   const [selectedId, setSelectedId] = useState<string>();
@@ -47,6 +59,8 @@ export function Tui({ threads, readLog, latest, status, onRefresh, chat, now = D
     return (
       <ThreadView
         thread={open}
+        version={version}
+        status={status(now())}
         log={readLog(open.id)}
         onBack={() => setOpenId(undefined)}
         chat={
@@ -72,6 +86,7 @@ export function Tui({ threads, readLog, latest, status, onRefresh, chat, now = D
     <Box flexDirection="column">
       <MainView
         threads={shown}
+        version={version}
         selectedId={selectedId}
         filter={filter}
         latest={latest()}
