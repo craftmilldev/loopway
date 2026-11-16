@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.0
+
+### Added
+
+- `loopway setup`: an interactive walk through what loopway needs, safe to run again. It checks `gh` (and offers `gh auth login`), Claude Code, the bot user's token (checked against GitHub, saved to `~/.loopway/config.json` for you alone) and offers `.loopway/dev.md` and `review.md` here, for the repos you name. It only asks about what is missing and never overwrites a file. See [#556](https://github.com/craftmilldev/loopway/issues/556).
+
 ## 2.0.3
 
 ### Added

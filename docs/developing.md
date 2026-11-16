@@ -53,6 +53,7 @@ When CI passes on a push to `main` and `packages/cli` changed since the last `cl
 | `tui-header.tsx`, `tui-theme.ts` | The header (version, poller status) and the pinned keys; the colors, taken from the billboard |
 | `tui-log.ts` | The session log as turn blocks, one row per line, and the tool call sentences |
 | `tui-input.tsx`, `tui-text.ts` | The chat text box (cursor, editing); the thread state and grouping, and the poller's status line |
+| `setup.ts`, `setup-io.tsx` | `loopway setup`: the steps (gh, Claude Code, the bot token, the bot files), written against an `Io` interface so tests script the answers and the fake `exec` and `fetch` keep them off the machine and the network; and the real `Io`, one inline [Ink](https://github.com/vadimdemedev/ink) question at a time (`gh auth login` gets the terminal itself) |
 | `format.ts` | The printed line, and `--json` |
 
 `tools/init-scratch.mjs` (`npm run init-scratch`) and `tools/sandbox.mjs` (`npm run sandbox -- open|list|close <pr>`, the sandbox issues a verification makes, tagged `[#<pr>]`) are plain Node scripts, outside the packages; `test/init-scratch.test.ts` runs the first in a temp dir and `test/sandbox.test.ts` the second with a fake `gh`.
