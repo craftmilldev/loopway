@@ -1,6 +1,7 @@
 import { Box, Text, useInput } from "ink";
 import { stamp, subjectKeys } from "./format.js";
 import type { Thread } from "./thread.js";
+import { blockedOn, blockedText } from "./asks.js";
 import { sessionColor, sessionText } from "./tui-text.js";
 
 export interface MainViewProps {
@@ -60,6 +61,7 @@ export function MainView(props: MainViewProps) {
 /** bot, subjects, thread status, session status, pending count, time of the latest message. Closed threads are dim. */
 function Row({ thread, selected }: { thread: Thread; selected: boolean }) {
   const closed = thread.status === "closed";
+  const blocked = blockedOn(thread);
   return (
     <Text wrap="truncate-end" dimColor={closed} inverse={selected}>
       {selected ? "▸ " : "  "}
@@ -67,6 +69,7 @@ function Row({ thread, selected }: { thread: Thread; selected: boolean }) {
       <Text color={sessionColor(thread)}>{sessionText(thread).padEnd(14)}</Text>
       {"  "}
       {thread.queue.length} pending {stamp(thread.latestAt)} {subjectKeys(thread)}
+      {blocked && <Text color="yellow"> {blockedText(blocked)}</Text>}
     </Text>
   );
 }

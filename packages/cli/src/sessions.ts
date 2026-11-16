@@ -18,7 +18,7 @@ import {
 } from "./asks.js";
 import type { Bot } from "./bots.js";
 import type { RunAgent, RunOutcome } from "./claude.js";
-import type { SessionEvent } from "./format.js";
+import type { SessionEvent, ThreadEvent } from "./format.js";
 import { abortableSleep } from "./poller.js";
 import type { IssueOptions, Made, Subject } from "./source.js";
 import { markerOf, repoOf, type Pending, type Session, type Thread } from "./thread.js";
@@ -95,7 +95,7 @@ export interface SessionsOptions {
   };
   /** Told after a thread created a subject, once it is recorded as sent: the rest of loopway takes it in. */
   created: (thread: string, subject: Subject, subscribe: boolean) => Promise<void>;
-  emit: (event: SessionEvent) => void;
+  emit: (event: SessionEvent | ThreadEvent) => void;
   now?: () => number;
   newSessionId?: () => string;
   newAskId?: () => string;
@@ -164,7 +164,19 @@ export class Sessions {
     chat.inbox.push(text);
     chat.said = true;
     this.log(thread, `you> ${text}`);
+    this.answerQuestions(thread);
     this.kick();
+  }
+
+  /** The owner said something in chat: the questions the thread was blocked on are answered. */
+  private answerQuestions(thread: Thread): void {
+    const events = this.o.threads.answerByChat(thread);
+    if (events.length === 0) return;
+    void this.o.threads.save(thread);
+    for (const event of events) {
+      if (event.type === "answered") this.log(thread, `answered by chat: ${event.what}`);
+      this.o.emit(event);
+    }
   }
 
   /** Ends the chat block. If anything was said, the session is told so, and reports it to the ticket if it should. */

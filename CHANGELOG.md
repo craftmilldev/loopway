@@ -6,6 +6,8 @@ loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and i
 
 ### Added
 
+- A question answered in chat, or by a comment on any of the thread's subjects (the pull request, say), unblocks the thread, so its queue goes out. A blocked thread says what it waits on in `loopway threads`, `--json` and the TUI.
+
 - Bare `loopway`, with `--json`. Bots are `.loopway/<bot>.md` files; state is JSON per project, in `~/.loopway/state/<slug>`.
 
 - Sessions: each open thread's queued updates go to a Claude Code session that acts as the bot user and talks back through loopway's own MCP server (`comment`). `--max N` caps runs in flight. Bot files gain `model` and `harness`. Each thread has a `session`, the `sent` messages and a `<id>.log`.

@@ -93,7 +93,11 @@ export function ThreadView({ thread, log, onBack, onFilter, chat }: ThreadViewPr
           </Text>
         ))}
       </Section>
-      <Section title={`Pending (${thread.queue.length})`} hidden={pending.hidden} empty={pending.shown.length === 0}>
+      <Section
+        title={`Pending (${thread.queue.length})${open.length > 0 && thread.queue.length > 0 ? " · waiting on the answer above" : ""}`}
+        hidden={pending.hidden}
+        empty={pending.shown.length === 0}
+      >
         {pending.shown.map((p) => (
           <Text key={p.id} wrap="truncate-end">
             {"  "}

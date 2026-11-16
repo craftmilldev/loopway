@@ -130,6 +130,28 @@ describe("output", () => {
       "abc12345  dev      open   o/r#12  1 pending",
     );
     expect(JSON.parse(formatThreadJson(thread))).toMatchObject({ id: "abc12345", bot: "dev", pending: 0 });
+    expect(JSON.parse(formatThreadJson(thread))).not.toHaveProperty("blocked");
+    const url = "https://github.com/o/r/issues/12#issuecomment-1";
+    const ask = (id: string, kind: "question" | "permission") => ({
+      id,
+      kind,
+      commentUrl: url,
+      subject: "o/r#12",
+      tool: "ask",
+      input: "which file?",
+      at: "2026-11-10T14:03:00Z",
+    });
+    const blocked = { ...thread, asks: [ask("a1", "question")] };
+    expect(formatThread(blocked)).toBe(
+      `abc12345  dev      open   o/r#12  0 pending  blocked: question on o/r#12 ${url}`,
+    );
+    expect(JSON.parse(formatThreadJson(blocked)).blocked).toEqual({ kind: "question", subject: "o/r#12", url });
+    expect(formatThread({ ...blocked, asks: [ask("a1", "permission"), ask("a2", "question")] })).toContain(
+      `blocked: permission on o/r#12 ${url} (+1 more)`,
+    );
+    expect(formatThread({ ...thread, asks: [{ ...ask("a1", "question"), answeredAt: "2026-11-10T14:04:00Z" }] })).toBe(
+      "abc12345  dev      open   o/r#12  0 pending",
+    );
     expect(JSON.parse(formatJson({ type: "queued", subject: "o/r#12", update, thread: "abc12345" }))).toMatchObject({
       type: "queued",
       thread: "abc12345",
