@@ -103,8 +103,8 @@ describe("the marketing page", () => {
     expect(html.match(/loops completed:/g)).toHaveLength(1);
   });
 
-  it("sends a moose to eat the cattails before midday or midnight, and only its box unticks", () => {
-    expect(html).toContain("!mooseAte && MOOSE.start === null && mod(daylight(dayNow()).sunU + 0.06, 0.5) < 0.31;");
+  it("sends a moose to eat the cattails at any hour, and only its box unticks", () => {
+    expect(html).toContain("const mooseReady = () => !mooseAte && MOOSE.start === null;");
     expect(html).toContain('if (what === "moose") MOOSE.start = clockNow();');
     // The bunch stays eaten: what is kept decides it, on this visit and the next.
     expect(html).toContain("mooseAte = !!kept().moose;");
@@ -121,16 +121,23 @@ describe("the marketing page", () => {
     const see = html.slice(html.indexOf("function see(what) {"), html.indexOf("function found(what) {"));
     expect(see).toContain("if (!kept()[what]) keep({ [what]: true });");
     expect(see).not.toContain("track(");
-    for (const name of ["snake", "bird", "hummingbird", "moth", "moose"])
-      expect(html).toContain(
-        `if (what === "${name}") ${name === "hummingbird" ? "HUMMER" : name.toUpperCase()}.start = clockNow();`,
-      );
+    for (const name of ["snake", "bird", "moth", "moose"])
+      expect(html).toContain(`if (what === "${name}") ${name.toUpperCase()}.start = clockNow();`);
     expect(html).not.toMatch(/keep\(\{ (snake|bird|hummingbird|moth): false \}\)/);
   });
 
-  it("sends a hummingbird to the freshly opened morning glory, and only then", () => {
-    expect(html).toContain("return u >= 0.13 && u <= 0.16 + (5 * speed) / T;");
-    expect(html).toContain('if (what === "hummingbird") HUMMER.start = clockNow();');
+  it("sends a hummingbird to the morning glory whenever it is clicked: to drink if it is open, to look if it is shut", () => {
+    expect(html).toContain('if (what === "hummingbird") launchHummer();');
+    // The click is not refused for the hour.
+    expect(html).toContain(
+      'if (HUMMER.start === null && Math.hypot(x - NECTAR.x, y - NECTAR.fy) < NECTAR.r + 5) return "hummingbird";',
+    );
+    // It only looks, for a second, at a flower that is shut, shutting, or about to start.
+    expect(html).toContain("HUMMER.looks = gloryOpen(there) < 0.5 || there >= GLORY_CLOSES || left < 0.5;");
+    // And it is gone from an open one before it starts to close.
+    expect(html).toContain("const left = running ? (GLORY_CLOSES - there) / running - 0.25 : Infinity;");
+    expect(html).toContain("HUMMER.until = HUMMER.looks ? from + 1 : Math.min(to, from + left);");
+    expect(html).toContain("const gloryOpen = (u) => smooth(0.1, 0.16, u) * (1 - smooth(GLORY_CLOSES, 0.44, u));");
     expect(html).toContain('drawHummer(ctx, clock, "behind");\n        drawBoard(ctx);');
   });
 
@@ -143,10 +150,16 @@ describe("the marketing page", () => {
     expect(html).toContain('if (what === "moth") MOTH.start = clockNow();');
   });
 
-  it("sends an eagle after a jumping trout: a catch in the middle second, a miss either side", () => {
-    // Too far from the perfect moment and it does not fly; within half a second of it, it catches.
-    expect(html).toContain("if (Math.abs(late) > 1.5) continue;");
+  it("sends an eagle out whenever the birch is clicked: a catch in the middle second, a miss either side", () => {
+    // Within a second and a half of the perfect moment it goes for the trout; within half a second, it catches.
+    expect(html).toContain("if (freeze === null && Math.abs(late) <= 1.5) {");
     expect(html).toContain("const hit = Math.abs(late) <= 0.5;");
+    // Any other time it flies all the same, over the river and out, and does not stoop.
+    expect(html).toContain(
+      "return { jump: nearest.jump, top: nearest.top, hit: false, early: true, out: nearest.out };",
+    );
+    const click = html.slice(html.indexOf("function clickable(x, y) {"), html.indexOf("function drawSnake("));
+    expect(click).not.toContain("eagleChance()");
     expect(html).toContain('if (what === "eagle") launchEagle();');
     // A trout that is taken does not come down, and makes no splash going in.
     expect(html).toContain("[entryX, taken ? -1 : p - 1],");

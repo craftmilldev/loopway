@@ -1859,7 +1859,7 @@ loopway setup</pre>
         .filter((c) => c.tails.length)
         .sort((a, b) => Math.abs(a.x - 1010) - Math.abs(b.x - 1010))[0];
       PERCH.tails[0].perch = true;
-      // A bull moose. Click the bunch of cattails below the tent in the morning or the evening and it walks in along
+      // A bull moose. Click the bunch of cattails below the tent, at any hour, and it walks in along
       // the near bank from the right, puts its head down and eats the bunch, heads first and then the
       // leaves, lifts its head, and walks on down the river: along the water's edge on the near bank,
       // side on to us all the way, until the window has lost sight of it. It never turns round. The bunch stays eaten, on this visit and the next, until
@@ -2900,10 +2900,12 @@ loopway setup</pre>
           ctx.fillStyle = INKY;
           ctx.font = `15px "Courier Prime", Courier, ui-monospace, monospace`;
           // A box for each thing there is to find or see, ticked once it has been. They are in the
-          // order of the day: by the earliest moment in the loop each could first be found or seen. The
-          // snake and the chickadee are there from the start; the moose comes from before sunrise; the
-          // trout first jumps just after it, and that is the eagle's first chance; then the hummingbird,
-          // the squirrel, the blackbird at dusk, and the moth and the skunk in the night. The dead fish
+          // order of the day: by the moment in the loop that each belongs to. The snake and the
+          // chickadee are there from the start; the moose is a thing of first light; the trout first
+          // jumps just after it, and that is the eagle's first chance at one; then the hummingbird,
+          // whose flower opens in the morning, the squirrel, the blackbird at dusk, and the moth and
+          // the skunk in the night. (The moose, the eagle and the hummingbird come whenever they are
+          // called.) The dead fish
           // is a secret, and goes last: its box is not there at all until it has been earned.
           // A tick is only ever earned out in the picture: no box can be ticked here. The moose's is
           // the one box that can be unticked, which puts its cattails back.
@@ -3495,7 +3497,9 @@ loopway setup</pre>
       // Each flower opens and closes well clear of dawn and dusk: the morning glories inside the day,
       // shut again by afternoon, and the moonflowers inside the night. Each one runs a moment behind
       // its neighbours.
-      const gloryOpen = (u) => smooth(0.1, 0.16, u) * (1 - smooth(0.38, 0.44, u));
+      // When in the day the morning glories start to close.
+      const GLORY_CLOSES = 0.38;
+      const gloryOpen = (u) => smooth(0.1, 0.16, u) * (1 - smooth(GLORY_CLOSES, 0.44, u));
       const moonflowerOpen = (u) => smooth(0.585, 0.635, u) * (1 - smooth(0.885, 0.935, u));
 
       function drawFlowers(ctx, u) {
@@ -4985,10 +4989,12 @@ loopway setup</pre>
           [5.3, 1166, 236],
         ],
       };
-      // A hummingbird comes to one morning glory, the one out to the right of the post, but only if
-      // that flower is clicked while it is freshly open: from when it is half open until five seconds
-      // after it is fully open. It darts out from behind the billboard, hovers and drinks, and leaves
-      // by going up under the billboard and behind it.
+      // A hummingbird comes to one morning glory, the one out to the right of the post, whenever
+      // that flower is clicked. It darts out from behind the billboard and down to the flower. If the
+      // flower is open when it gets there, it hovers and drinks, and it is away before the flower
+      // starts to close, however short that makes the drink. If the flower is shut, or shutting, it
+      // goes from side to side in front of it for a second, looking, and gives up. Either way it
+      // leaves by going up under the billboard and behind it.
       const NECTAR = GLORY.flowers.reduce((a, b) =>
         Math.hypot(a.x - 430, a.fy - 708) < Math.hypot(b.x - 430, b.fy - 708) ? a : b,
       );
@@ -5000,6 +5006,11 @@ loopway setup</pre>
           seconds: 5.6,
           at,
           hover: [1.6, 3.9],
+          // What launchHummer() settles for each visit: when it leaves the flower, how much sooner
+          // that is than a full drink, and whether it only looked.
+          until: 3.9,
+          sooner: 0,
+          looks: false,
           // Behind the billboard until it has dropped clear of it, and again once it is back under it.
           frontFrom: 0.42,
           behindFrom: 5.08,
@@ -5063,15 +5074,16 @@ loopway setup</pre>
       })();
       const clockNow = () => performance.now() / 1000;
       const dayNow = () => freeze ?? mod((clockNow() * speed) / T, 1);
-      // A bald eagle sits out of sight in the birch at the left. Click that birch as a trout is about to
-      // jump and the eagle comes out after it. How it goes depends on when the click came, set against
+      // A bald eagle sits out of sight in the birch at the left. Click that birch and the eagle comes
+      // out, whenever it is. Click it as a trout is about to jump and the eagle goes after the trout.
+      // How it goes depends on when the click came, set against
       // the perfect moment: the one that would put the eagle over the trout at the top of its jump,
       // flying at its usual speed from the tree to there.
       //   within half a second of perfect: it takes the trout out of the air (it hurries or dawdles a
       //     little on the way, so that it is there at the top of the jump);
       //   up to a second later than that: it flies out, stoops at the water, and misses;
       //   up to a second earlier than that: there is no trout yet, so it only flies over, high;
-      //   any other time: it stays where it is.
+      //   any other time: it comes out all the same, and flies over the river, high, and on out.
       // The three trout, by when they jump. Each one caught is kept on its own.
       const FISH = ["dawn", "dusk", "night"];
       const NEST = [58, 452];
@@ -5088,8 +5100,7 @@ loopway setup</pre>
       };
       const jumpTop = (j) => [j.x + j.dir * 40, j.y - 60];
       function eagleChance() {
-        // The day has to be running for there to be a moment to catch.
-        if (freeze !== null) return null;
+        let nearest = null;
         for (const jump of JUMPS) {
           const top = jumpTop(jump);
           const usual = Math.hypot(top[0] - NEST[0], top[1] - NEST[1]) / EAGLE.speed;
@@ -5097,15 +5108,19 @@ loopway setup</pre>
           ahead -= Math.round(ahead);
           const untilTop = (ahead * T) / speed;
           const late = usual - untilTop;
-          if (Math.abs(late) > 1.5) continue;
-          const hit = Math.abs(late) <= 0.5;
-          return { jump, top, hit, early: late < -0.5, out: hit ? untilTop : usual };
+          // The day has to be running for there to be a moment to catch.
+          if (freeze === null && Math.abs(late) <= 1.5) {
+            const hit = Math.abs(late) <= 0.5;
+            return { jump, top, hit, early: late < -0.5, out: hit ? untilTop : usual };
+          }
+          if (!nearest || Math.abs(late) < nearest.off) nearest = { jump, top, off: Math.abs(late), out: usual };
         }
-        return null;
+        // No trout is about to jump. It goes anyway, over the place where the next one will, and
+        // does not stoop: the same flight as when it is called too early.
+        return { jump: nearest.jump, top: nearest.top, hit: false, early: true, out: nearest.out };
       }
       function launchEagle() {
         const chance = eagleChance();
-        if (!chance) return;
         const { top, out } = chance;
         const now = clockNow();
         // Hit or miss, it does not come back: it flies on, left to right, up and out of the picture.
@@ -5136,10 +5151,20 @@ loopway setup</pre>
         };
       }
       const BIRCH_SPOT = { x: 42, y: 478, rx: 100, ry: 166 };
-      const nectarFresh = () => {
-        const u = dayNow() - NECTAR.delay;
-        return u >= 0.13 && u <= 0.16 + (5 * speed) / T;
-      };
+      // What the hummingbird finds is settled as it sets off: how open the flower will be when it
+      // gets there, and how long after that the flower starts to close.
+      function launchHummer() {
+        const [from, to] = HUMMER.hover;
+        const running = freeze === null ? speed / T : 0;
+        const there = mod(dayNow() + from * running - NECTAR.delay, 1);
+        // The flower is open enough to drink from once it is half open, and it starts to close at
+        // GLORY_CLOSES. The bird wants to be on its way a little before that.
+        const left = running ? (GLORY_CLOSES - there) / running - 0.25 : Infinity;
+        HUMMER.looks = gloryOpen(there) < 0.5 || there >= GLORY_CLOSES || left < 0.5;
+        HUMMER.until = HUMMER.looks ? from + 1 : Math.min(to, from + left);
+        HUMMER.sooner = to - HUMMER.until;
+        HUMMER.start = clockNow();
+      }
       // Open, and the worker in the red chair, the one in the middle in the green and the sleeper in the blue.
       const mothReady = () => {
         const u = dayNow();
@@ -5181,7 +5206,7 @@ loopway setup</pre>
           SNAKE.start = null;
         }
         if (BIRD.start !== null && clock - BIRD.start >= BIRD.seconds) BIRD.start = null;
-        if (HUMMER.start !== null && clock - HUMMER.start >= HUMMER.seconds) HUMMER.start = null;
+        if (HUMMER.start !== null && clock - HUMMER.start >= HUMMER.seconds - HUMMER.sooner) HUMMER.start = null;
         if (MOTH.start !== null && clock - MOTH.start >= MOTH.seconds) MOTH.start = null;
         if (MOOSE.start !== null && clock - MOOSE.start >= MOOSE.seconds + mooseLate()) MOOSE.start = null;
         if (EAGLE.start !== null) {
@@ -5196,9 +5221,8 @@ loopway setup</pre>
         // Once the rings of that jump have gone, the trout is back for its next one.
         if (EAGLE.taken && clock > EAGLE.taken.at + 8) EAGLE.taken = null;
       }
-      // The bunch is there to be eaten, and it is the first half of the day or of the night: from just
-      // before sunrise until midday, or from just before sunset until midnight.
-      const mooseReady = () => !mooseAte && MOOSE.start === null && mod(daylight(dayNow()).sunU + 0.06, 0.5) < 0.31;
+      // The bunch is there to be eaten, at any hour of the day or the night.
+      const mooseReady = () => !mooseAte && MOOSE.start === null;
       const MOOSE_SPOT = { x0: 1304, y0: 836, x1: 1364, y1: 930 };
       // What a click at this point in the picture would set off, if anything.
       function clickable(x, y) {
@@ -5206,16 +5230,14 @@ loopway setup</pre>
         if (within(x, y, MOOSE_SPOT) && mooseReady()) return "moose";
         if (
           EAGLE.start === null &&
-          ((x - BIRCH_SPOT.x) / BIRCH_SPOT.rx) ** 2 + ((y - BIRCH_SPOT.y) / BIRCH_SPOT.ry) ** 2 < 1 &&
-          eagleChance()
+          ((x - BIRCH_SPOT.x) / BIRCH_SPOT.rx) ** 2 + ((y - BIRCH_SPOT.y) / BIRCH_SPOT.ry) ** 2 < 1
         )
           return "eagle";
         // The moth's flower is half over the snake's rock, so it is asked first.
         if (MOTH.start === null && Math.hypot(x - MOTH_FLOWER.x, y - MOTH_FLOWER.fy) < MOTH_FLOWER.r + 4 && mothReady())
           return "moth";
-        // The hummingbird's flower is half over the snake's rock too, and a freshly opened flower is the rarer thing.
-        if (HUMMER.start === null && Math.hypot(x - NECTAR.x, y - NECTAR.fy) < NECTAR.r + 5 && nectarFresh())
-          return "hummingbird";
+        // The hummingbird's flower is half over the snake's rock too.
+        if (HUMMER.start === null && Math.hypot(x - NECTAR.x, y - NECTAR.fy) < NECTAR.r + 5) return "hummingbird";
         if (SNAKE.start === null && within(x, y, SNAKE.at === "bush" ? BUSH_SPOT : ROCK_SPOT)) return "snake";
         if (BIRD.start === null && inSpruce(x, y)) return "bird";
         return null;
@@ -5522,19 +5544,30 @@ loopway setup</pre>
         settle(clock);
         if (HUMMER.start === null) return;
         const time = clock - HUMMER.start;
-        if ((time < HUMMER.frontFrom || time >= HUMMER.behindFrom ? "behind" : "front") !== layer) return;
-        const [from, to] = HUMMER.hover;
-        const where = (at) => flightAt(at < to ? HUMMER.arrive : HUMMER.leave, at);
+        // It leaves the flower when this visit says, which can be sooner than a full drink: the way
+        // out is the same flight, begun that much earlier.
+        const { sooner, looks } = HUMMER;
+        if ((time < HUMMER.frontFrom || time >= HUMMER.behindFrom - sooner ? "behind" : "front") !== layer) return;
+        const from = HUMMER.hover[0];
+        const to = HUMMER.until;
+        const where = (at) => (at < to ? flightAt(HUMMER.arrive, at) : flightAt(HUMMER.leave, at + sooner));
         const hovering = time >= from && time < to;
         let [x, y] = hovering ? HUMMER.at : where(time);
         const [nx] = where(time + 0.02);
-        // At the flower it drinks in sips: in, back a little, and in again, never quite still.
-        if (hovering) {
-          x += 1.6 * (1 - Math.cos(((time - from) * TAU) / 1.15));
+        if (hovering && looks) {
+          // The flower is shut. It backs off a little and goes from side to side in front of it,
+          // looking for the way in, and is back where it began when it gives up.
+          const part = (time - from) / (to - from);
+          const out = smooth(0, 0.2, part) * (1 - smooth(0.8, 1, part));
+          x += out * (7 + 9 * Math.sin(part * TAU * 1.5));
+          y += out * -3 + 0.8 * Math.sin(clock * 11);
+        } else if (hovering) {
+          // At the flower it drinks in sips: in, back a little, and in again, never quite still.
+          x += 1.6 * (1 - Math.cos(((time - from) * TAU) / 1.15)) * (1 - smooth(to - 0.2, to, time));
           y += 0.8 * Math.sin(clock * 11);
         }
         // It hangs nearly upright to drink and levels out to fly.
-        const upright = smooth(from - 0.4, from, time) * (1 - smooth(to, to + 0.3, time));
+        const upright = smooth(from - 0.4, from, time) * (1 - smooth(to, to + 0.3, time)) * (looks ? 0.45 : 1);
         const tilt = lerp(-0.2, -0.7, upright);
         const facing = time < to ? -1 : nx < x ? -1 : 1;
         ctx.save();
@@ -6299,7 +6332,7 @@ loopway setup</pre>
         const what = clickable(...at);
         if (what === "snake") SNAKE.start = clockNow();
         if (what === "bird") BIRD.start = clockNow();
-        if (what === "hummingbird") HUMMER.start = clockNow();
+        if (what === "hummingbird") launchHummer();
         if (what === "moth") MOTH.start = clockNow();
         if (what === "moose") MOOSE.start = clockNow();
         if (what === "eagle") launchEagle();
