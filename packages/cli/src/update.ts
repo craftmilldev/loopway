@@ -1,4 +1,4 @@
-import { execFile, spawnSync } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
@@ -81,24 +81,37 @@ export async function installRelease(
   }
 }
 
+/** What `reexec` touches, so tests can stand in for it. */
+export interface ReexecProc {
+  execve?: typeof process.execve;
+  spawn?: (file: string, args: string[], options: { stdio: "inherit"; env: NodeJS.ProcessEnv }) => ChildProcess;
+  onSignal?: (signal: "SIGINT" | "SIGTERM", handler: () => void) => void;
+  exit?: (code: number) => never;
+}
+
 /**
  * Runs this same command again, on whatever is installed now; the new process finds `version` in LOOPWAY_UPDATED.
  * Where Node can (`process.execve`, 22.15+, not Windows) the new version takes over this process. Otherwise this one
- * waits on a child and exits with its status.
+ * stays as the parent of a child, passes SIGINT and SIGTERM on to it (so stopping the pid that was started stops the
+ * new version too) and exits with its status.
  */
-export function reexec(
-  version: string,
-  proc: Pick<typeof process, "execve"> & { spawn?: typeof spawnSync; exit?: (code: number) => never } = process,
-): never {
+export function reexec(version: string, proc: ReexecProc = {}): Promise<never> {
   const args = [...process.execArgv, ...process.argv.slice(1)];
   const env = { ...process.env, [UPDATED_ENV]: version };
   try {
-    proc.execve?.(process.execPath, [process.execPath, ...args], env);
+    const execve = "execve" in proc ? proc.execve : process.execve?.bind(process);
+    execve?.(process.execPath, [process.execPath, ...args], env);
   } catch {
     // Not allowed here: wait on a child instead.
   }
-  const res = (proc.spawn ?? spawnSync)(process.execPath, args, { stdio: "inherit", env });
-  return (proc.exit ?? process.exit)(res.status ?? 1);
+  const child = (proc.spawn ?? spawn)(process.execPath, args, { stdio: "inherit", env });
+  const onSignal = proc.onSignal ?? ((signal, handler) => void process.on(signal, handler));
+  for (const signal of ["SIGINT", "SIGTERM"] as const) onSignal(signal, () => child.kill(signal));
+  const exit = proc.exit ?? ((code: number): never => process.exit(code));
+  // Never resolves: the process ends when the child does.
+  return new Promise<never>(() => {
+    child.on("exit", (code) => exit(code ?? 1));
+  });
 }
 
 export interface WatchOptions {

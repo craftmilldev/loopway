@@ -86,7 +86,7 @@ async function main(): Promise<number> {
     const latest = await latestRelease();
     if (latest && isNewer(latest, pkg.version)) {
       console.error(`loopway ${pkg.version}: updating to ${latest}...`);
-      if (await installRelease(latest, (m) => console.error(m))) reexec(latest);
+      if (await installRelease(latest, (m) => console.error(m))) return reexec(latest);
       process.env[UPDATED_ENV] = latest; // it failed: carry on, and don't try that one again (the watch reads this)
     }
   }
@@ -192,7 +192,7 @@ async function main(): Promise<number> {
   }
   await polling;
   await sessions?.done;
-  if (restartAs) reexec(restartAs);
+  if (restartAs) return reexec(restartAs);
   return 0;
 }
 

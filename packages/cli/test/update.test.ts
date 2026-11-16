@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,6 +9,7 @@ import {
   isNewer,
   latestRelease,
   reexec,
+  type ReexecProc,
   releaseVersion,
   UPDATED_ENV,
   watchForUpdate,
@@ -132,28 +134,34 @@ describe("watchForUpdate", () => {
 });
 
 describe("reexec", () => {
-  const spawn = () => vi.fn(() => ({ status: 3 }) as never);
-  const exit = () =>
-    vi.fn((code: number): never => {
-      throw new Error(`exit ${code}`);
-    });
+  /** A child process that records the signals it is sent, and exits when told. */
+  const fakeChild = () => {
+    const child = new EventEmitter() as EventEmitter & { kill: ReturnType<typeof vi.fn> };
+    child.kill = vi.fn();
+    return child;
+  };
+  const setup = () => {
+    const child = fakeChild();
+    const handlers = new Map<string, () => void>();
+    const exit = vi.fn((code: number): never => void code as never);
+    const spawn = vi.fn(() => child as never);
+    const onSignal = (signal: string, handler: () => void) => void handlers.set(signal, handler);
+    return { child, handlers, exit, spawn, onSignal };
+  };
 
   it("replaces the process with the same command, marked with the version it installed", () => {
-    const execve = vi.fn(() => {
-      throw new Error("not here");
-    });
-    const [sp, ex] = [spawn(), exit()];
-    expect(() => reexec("2.0.4", { execve, spawn: sp, exit: ex })).toThrow("exit 3");
+    const execve = vi.fn<NonNullable<ReexecProc["execve"]>>();
+    void reexec("2.0.4", { execve, spawn: vi.fn(() => fakeChild() as never), onSignal: () => {} });
     const [file, args, env] = execve.mock.calls[0] as unknown as [string, string[], Record<string, string>];
     expect(file).toBe(process.execPath);
     expect(args[0]).toBe(process.execPath);
     expect(env[UPDATED_ENV]).toBe("2.0.4");
   });
 
-  it("without execve, waits on a child with the same arguments and the mark, and exits with its status", () => {
-    const [sp, ex] = [spawn(), exit()];
-    expect(() => reexec("2.0.4", { spawn: sp, exit: ex })).toThrow("exit 3");
-    const [file, args, options] = sp.mock.calls[0] as unknown as [
+  it("without execve, runs a child with the same arguments and the mark, and exits with its status", () => {
+    const t = setup();
+    void reexec("2.0.4", { execve: undefined, spawn: t.spawn, onSignal: t.onSignal, exit: t.exit });
+    const [file, args, options] = t.spawn.mock.calls[0] as unknown as [
       string,
       string[],
       { env: Record<string, string>; stdio: string },
@@ -161,5 +169,15 @@ describe("reexec", () => {
     expect(file).toBe(process.execPath);
     expect(args).toEqual([...process.execArgv, ...process.argv.slice(1)]);
     expect(options).toMatchObject({ stdio: "inherit", env: { [UPDATED_ENV]: "2.0.4" } });
+    t.child.emit("exit", 3, null);
+    expect(t.exit).toHaveBeenCalledWith(3);
+  });
+
+  it("passes SIGINT and SIGTERM on to the child, so stopping the parent stops the new version", () => {
+    const t = setup();
+    void reexec("2.0.4", { execve: undefined, spawn: t.spawn, onSignal: t.onSignal, exit: t.exit });
+    t.handlers.get("SIGINT")?.();
+    t.handlers.get("SIGTERM")?.();
+    expect(t.child.kill.mock.calls).toEqual([["SIGINT"], ["SIGTERM"]]);
   });
 });
