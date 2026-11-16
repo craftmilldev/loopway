@@ -138,9 +138,11 @@ export class Sessions {
 
   /** Starts a run for every thread that is ready, up to `max`. */
   kick(): void {
-    if (this.draining || this.now() < this.heldUntil) return;
+    if (this.now() < this.heldUntil) return;
     for (const thread of this.o.threads.all) {
       if (this.running.size >= this.o.max) return;
+      // Draining: only what the owner said in a chat is still delivered; nothing new starts.
+      if (this.draining && !this.chatOwes(thread.id)) continue;
       if (this.ready(thread)) this.start(thread);
     }
   }
@@ -178,10 +180,24 @@ export class Sessions {
     this.kick();
   }
 
-  /** Starts no more runs, and resolves when the ones in flight have finished their turn. */
-  drain(): Promise<void> {
+  /** Whether the owner's chat with this thread has something not yet delivered: messages, or the end of the block. */
+  private chatOwes(threadId: string): boolean {
+    const chat = this.chats.get(threadId);
+    return !!chat && (chat.inbox.length > 0 || (chat.ended && !chat.active));
+  }
+
+  /**
+   * Starts no new runs, and resolves when the ones in flight have finished their turn and no chat is open or owed
+   * anything. Chat lives in memory only, so a restart before then would lose what the owner typed. Messages typed
+   * meanwhile are still delivered.
+   */
+  async drain(sleep = abortableSleep): Promise<void> {
     this.draining = true;
-    return this.idle();
+    const never = new AbortController().signal;
+    while (this.running.size > 0 || [...this.chats.keys()].some((id) => this.chatting(id) || this.chatOwes(id))) {
+      await this.idle();
+      await sleep(500, never);
+    }
   }
 
   /** Starts runs again after a `drain` that was not followed by a restart. */

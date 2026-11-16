@@ -132,19 +132,34 @@ describe("watchForUpdate", () => {
 });
 
 describe("reexec", () => {
+  const spawn = () => vi.fn(() => ({ status: 3 }) as never);
+  const exit = () =>
+    vi.fn((code: number): never => {
+      throw new Error(`exit ${code}`);
+    });
+
   it("replaces the process with the same command, marked with the version it installed", () => {
     const execve = vi.fn(() => {
-      throw new Error("stop here");
+      throw new Error("not here");
     });
-    // The fallback (a child process) is what runs after the throw; stub it out by catching the exit.
-    const exit = vi.spyOn(process, "exit").mockImplementation(() => {
-      throw new Error("exit");
-    });
-    expect(() => reexec("2.0.4", { execve })).toThrow("exit");
-    exit.mockRestore();
+    const [sp, ex] = [spawn(), exit()];
+    expect(() => reexec("2.0.4", { execve, spawn: sp, exit: ex })).toThrow("exit 3");
     const [file, args, env] = execve.mock.calls[0] as unknown as [string, string[], Record<string, string>];
     expect(file).toBe(process.execPath);
     expect(args[0]).toBe(process.execPath);
     expect(env[UPDATED_ENV]).toBe("2.0.4");
+  });
+
+  it("without execve, waits on a child with the same arguments and the mark, and exits with its status", () => {
+    const [sp, ex] = [spawn(), exit()];
+    expect(() => reexec("2.0.4", { spawn: sp, exit: ex })).toThrow("exit 3");
+    const [file, args, options] = sp.mock.calls[0] as unknown as [
+      string,
+      string[],
+      { env: Record<string, string>; stdio: string },
+    ];
+    expect(file).toBe(process.execPath);
+    expect(args).toEqual([...process.execArgv, ...process.argv.slice(1)]);
+    expect(options).toMatchObject({ stdio: "inherit", env: { [UPDATED_ENV]: "2.0.4" } });
   });
 });

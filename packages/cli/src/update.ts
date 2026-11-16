@@ -67,7 +67,7 @@ export async function installRelease(
   const dir = await mkdtemp(join(tmpdir(), "loopway-update-"));
   try {
     const url = `https://github.com/${REPO}/releases/download/cli-v${version}/loopway-cli.tgz`;
-    const res = await (deps.fetch ?? fetch)(url);
+    const res = await (deps.fetch ?? fetch)(url, { signal: AbortSignal.timeout(60_000) });
     if (!res.ok) throw new Error(`could not download ${url} (${res.status})`);
     const file = join(dir, "loopway-cli.tgz");
     await writeFile(file, Buffer.from(await res.arrayBuffer()));
@@ -86,7 +86,10 @@ export async function installRelease(
  * Where Node can (`process.execve`, 22.15+, not Windows) the new version takes over this process. Otherwise this one
  * waits on a child and exits with its status.
  */
-export function reexec(version: string, proc: Pick<typeof process, "execve"> = process): never {
+export function reexec(
+  version: string,
+  proc: Pick<typeof process, "execve"> & { spawn?: typeof spawnSync; exit?: (code: number) => never } = process,
+): never {
   const args = [...process.execArgv, ...process.argv.slice(1)];
   const env = { ...process.env, [UPDATED_ENV]: version };
   try {
@@ -94,8 +97,8 @@ export function reexec(version: string, proc: Pick<typeof process, "execve"> = p
   } catch {
     // Not allowed here: wait on a child instead.
   }
-  const res = spawnSync(process.execPath, args, { stdio: "inherit", env });
-  process.exit(res.status ?? 1);
+  const res = (proc.spawn ?? spawnSync)(process.execPath, args, { stdio: "inherit", env });
+  return (proc.exit ?? process.exit)(res.status ?? 1);
 }
 
 export interface WatchOptions {

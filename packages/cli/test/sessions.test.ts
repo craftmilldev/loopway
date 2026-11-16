@@ -105,6 +105,25 @@ describe("drain", () => {
   });
 });
 
+describe("drain with a chat", () => {
+  it("waits for an open chat to end and its messages to be delivered before it is done", async () => {
+    const s = await setup();
+    s.add(aThread("t1", "dev", ["o/r#1"]));
+    s.sessions.chat("t1", "hello");
+    await s.sessions.idle();
+    let drained = false;
+    const draining = s.sessions.drain(() => new Promise((r) => setTimeout(r, 5))).then(() => (drained = true));
+    await vi.waitFor(() => expect(s.agent.runs.length).toBeGreaterThan(0));
+    expect(drained).toBe(false); // the chat is still open
+    s.sessions.chat("t1", "one more"); // typed while draining: still delivered
+    s.sessions.endChat("t1");
+    await draining;
+    expect(drained).toBe(true);
+    expect(s.agent.runs.map((r) => r.message).join("\n")).toMatch(/Chat: one more/);
+    expect(s.agent.runs.at(-1)?.message).toMatch(/chat/i);
+  });
+});
+
 describe("delivery", () => {
   it("gives a thread every queued update in one run, oldest first, and empties the queue", async () => {
     const s = await setup();
