@@ -100,7 +100,9 @@ AGENTS.md; in short:
   never mistake another loopway's for yours.
 - Start from `npm run init-scratch -- --reset` in your worktree, and run loopway from its `scratch/` with the built
   CLI: `node <worktree>/packages/cli/dist/index.js --no-tui` (or `--json`). Run it in the background and keep its pid;
-  stop it with `kill -INT <pid>`, never `pkill` or `killall` (other loopways are running on this machine).
+  stop it with `kill -INT <pid>`, never `pkill` or `killall` (other loopways are running on this machine). A loopway
+  left running keeps answering sandbox threads and spends `claude` turns, so if the stop is refused, `ask` Matthew to
+  stop that pid and don't go on while it runs.
 - The sandbox is shared: other loopways may pick up your issues and comment, and yours may pick up theirs. Leave
   their issues alone, and say in the record what was theirs.
 - When a step can't be run as written, find the closest thing that shows the same behaviour, do that, and say
