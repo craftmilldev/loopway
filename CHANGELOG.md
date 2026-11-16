@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.1
+
+### Changed
+
+- The TUI looks like loopway: the main view groups threads by status and, for the open ones, by state (needs you, running, failed, updates waiting, quiet) under the version and the poller's status, with the keys pinned to the bottom of the screen. The thread view shows the queue and the sent messages as counts, and the session log as a block per turn, with the updates delivered as a detail of the turn and each tool call as a sentence. `↑`/`↓` scroll the log, so `PgUp`/`PgDn` are no longer needed (`Tab` picks a subject). The chat line is a text box: `←`/`→` move the cursor, so you can type in the middle. Colors come from the billboard.
+
 ## 2.0.0
 
 loopway goes local. Run `loopway` in a directory with a `.loopway/` folder and it polls GitHub, printing every new issue and pull request by you or your bot and every update to the ones it knows. See [#486](https://github.com/craftmilldev/loopway/issues/486).

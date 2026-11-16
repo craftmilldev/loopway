@@ -28,6 +28,7 @@ function show(threads: Thread[] | (() => Thread[]), more: Partial<TuiProps> = {}
   mounted = render(
     <Tui
       threads={typeof threads === "function" ? threads : () => threads}
+      version="2.0.1"
       readLog={() => ""}
       latest={() => "14:03 update o/r#12 comment by me"}
       status={() => "polling o/r · last checked 14:02 · next in 0:24"}
@@ -48,18 +49,80 @@ describe("main view", () => {
     const withQueue = { ...dev12(), queue: [{ ...anUpdate("c1"), subject: "o/r#12" }] };
     const running = { ...review13(), session: { id: "s1", status: "running" as const, lastRunAt: null } };
     show([withQueue, running]);
-    expect(screen()).toContain("▸ dev      open   no session yet  1 pending 2026-11-10 14:05 o/r#12");
-    expect(screen()).toContain("  review   open   running         0 pending 2026-11-10 14:30 o/r#13");
+    expect(screen()).toContain("▸ review   running         0 pending 2026-11-10 14:30 o/r#13");
+    expect(screen()).toContain("  dev      no session yet  1 pending 2026-11-10 14:05 o/r#12");
+  });
+
+  it("always shows loopway's version, with the poller's status a row below it", () => {
+    show([dev12()]);
+    const [title, status] = screen().split("\n");
+    expect(title).toContain("loopway  v2.0.1");
+    expect(status).toContain("polling o/r · last checked 14:02 · next in 0:24");
+  });
+
+  it("groups the open threads by state, what needs you first, and the closed ones last", () => {
+    const blocked = {
+      ...aThread("b", "dev", ["o/r#1"]),
+      session: { id: "s", status: "blocked" as const, lastRunAt: null },
+    };
+    const running = {
+      ...aThread("r", "dev", ["o/r#2"]),
+      session: { id: "s", status: "running" as const, lastRunAt: null },
+    };
+    const failed = {
+      ...aThread("f", "dev", ["o/r#3"]),
+      session: { id: "s", status: "failed" as const, lastRunAt: null },
+    };
+    const queued = { ...aThread("q", "dev", ["o/r#4"]), queue: [{ ...anUpdate("c1"), subject: "o/r#4" }] };
+    const quiet = aThread("i", "dev", ["o/r#5"]);
+    const closed = { ...aThread("c", "dev", ["o/r#6"], "closed"), ...when("2026-11-10T14:00:00Z") };
+    show([closed, quiet, queued, failed, running, blocked]);
+    const headings = screen()
+      .split("\n")
+      .filter((l) => /^(Open|Closed)/.test(l))
+      .map((l) => l.replace(/ \d+\s*$/, ""));
+    expect(headings).toEqual([
+      "Open · needs you",
+      "Open · running",
+      "Open · failed",
+      "Open · updates waiting",
+      "Open · quiet",
+      "Closed",
+    ]);
+    const subjects = screen()
+      .split("\n")
+      .filter((l) => l.includes(" pending "))
+      .map((l) => l.match(/o\/r#\d/)![0]);
+    expect(subjects).toEqual(["o/r#1", "o/r#2", "o/r#3", "o/r#4", "o/r#5", "o/r#6"]);
+  });
+
+  it("moves through the rows in the order shown, not the order the threads came in", async () => {
+    const running = {
+      ...aThread("r", "dev", ["o/r#2"]),
+      session: { id: "s", status: "running" as const, lastRunAt: null },
+    };
+    show([aThread("i", "dev", ["o/r#5"]), running]);
+    expect(screen()).toContain("▸ dev      running");
+    await press(KEYS.down);
+    expect(screen()).toContain("▸ dev      no session yet");
+  });
+
+  it("pins the keys to the bottom of the screen, under the poller's latest line", () => {
+    show([dev12()]);
+    const lines = screen().trimEnd().split("\n");
+    expect(lines.at(-1)).toContain("↑/↓ move");
+    expect(lines.at(-2)).toBe("14:03 update o/r#12 comment by me");
+    expect(lines.at(-1)).not.toContain("pgup");
   });
 
   it("shows the latest poller line at the bottom", () => {
     show([dev12()]);
-    expect(screen().trim().split("\n").at(-3)).toBe("14:03 update o/r#12 comment by me");
+    expect(screen()).toContain("14:03 update o/r#12 comment by me");
   });
 
   it("shows the poller's status line, so a quiet repo does not look stuck", () => {
     show([]);
-    expect(screen().trim().split("\n").at(-2)).toBe("polling o/r · last checked 14:02 · next in 0:24");
+    expect(screen().split("\n")[1]).toBe("polling o/r · last checked 14:02 · next in 0:24");
     expect(screen()).not.toContain("waiting for the poller");
   });
 
@@ -78,9 +141,9 @@ describe("main view", () => {
     expect(screen()).toContain("▸ review");
     await press(KEYS.up);
     await press(KEYS.up);
-    expect(screen()).toContain("▸ dev      open   no session yet  0 pending 2026-11-10 14:00 o/r#1");
+    expect(screen()).toContain("▸ dev      no session yet  0 pending 2026-11-10 14:00 o/r#1");
     await press(KEYS.up);
-    expect(screen()).toContain("▸ dev      open   no session yet  0 pending 2026-11-10 14:00 o/r#1");
+    expect(screen()).toContain("▸ dev      no session yet  0 pending 2026-11-10 14:00 o/r#1");
   });
 
   it("shows new threads and changes as the store changes", async () => {
@@ -162,19 +225,20 @@ describe("thread view", () => {
     sent,
   });
 
-  it("opens with enter and shows subjects, session, pending updates and sent messages", async () => {
+  it("opens with enter and shows the version, the session, the subjects, and the queue and sent messages as counts", async () => {
     show([full()]);
     await press(KEYS.enter);
     const frame = screen();
+    expect(frame).toContain("loopway  v2.0.1");
     expect(frame).toContain("dev t1 · open");
-    expect(frame).toContain("session blocked · last run 2026-11-10 14:08 · needs a decision");
+    expect(frame).toContain("session ● blocked · needs a decision · last run 2026-11-10 14:08");
     expect(frame).toContain("▸ o/r#12 open");
     expect(frame).toContain("  o/r#13 open");
-    expect(frame).toContain("Pending (2)");
-    expect(frame).toContain("2026-11-10 14:05 comment o/r#12 by ann");
-    expect(frame).toContain("2026-11-10 14:06 labeled o/r#13 by bob");
-    expect(frame).toContain("Sent (1)");
-    expect(frame).toContain("2026-11-10 14:10 comment o/r#12 https://github.com/o/r/1");
+    expect(frame).toContain(" 2  subjects");
+    expect(frame).toContain(" 2  updates queued");
+    expect(frame).toContain(" 1  messages sent");
+    expect(frame).not.toContain("by ann"); // the messages themselves are not listed
+    expect(frame).not.toContain("https://github.com/o/r/1");
   });
 
   it("shows what the thread is waiting on, with the links, and a blocked session on the main view", async () => {
@@ -206,7 +270,8 @@ describe("thread view", () => {
     expect(screen()).toContain("blocked");
     await press(KEYS.enter);
     const frame = screen();
-    expect(frame).toContain("Waiting on (1)");
+    expect(frame).toContain("Waiting on you (1)");
+    expect(frame).toContain(" 1  waiting on you");
     expect(frame).toContain("2026-11-10 14:09 permission https://github.com/o/r/issues/12#issuecomment-5 Bash curl");
     expect(frame).toContain("https://github.com/o/r/issues/12#issuecomment-5");
     expect(frame).not.toContain("Which?");
@@ -217,39 +282,45 @@ describe("thread view", () => {
     made.subjects[1]!.created = true;
     show([made]);
     await press(KEYS.enter);
-    expect(screen()).toContain("▸ o/r#12 open\n");
+    expect(screen()).toContain("▸ o/r#12 open");
     expect(screen()).toContain("o/r#13 open · created by this thread");
   });
 
   it("opens with the right arrow, and goes back with the left arrow or escape", async () => {
     show([full()]);
     await press(KEYS.right);
-    expect(screen()).toContain("Subjects");
+    expect(screen()).toContain("subjects");
     await press(KEYS.left);
-    expect(screen()).toContain("loopway · 1 threads");
+    expect(screen()).toContain("1 threads");
     await press(KEYS.enter);
     await press(KEYS.esc);
-    expect(screen()).toContain("loopway · 1 threads");
+    expect(screen()).toContain("1 threads");
   });
 
   it("says there is no session yet when the thread has none, and no log", async () => {
     show([dev12()]);
     await press(KEYS.enter);
-    expect(screen()).toContain("session no session yet");
+    expect(screen()).toContain("session ● no session yet");
     expect(screen()).toContain("no log yet");
-    expect(screen()).toContain("Sent (0)");
+    expect(screen()).toContain(" 0  messages sent");
   });
 
-  it("follows the session log, and stops following when you scroll up", async () => {
+  it("follows the session log, and stops following when you scroll up with the arrow keys", async () => {
     let log = lines(100);
     show([dev12()], { readLog: () => log });
     await press(KEYS.enter);
     expect(screen()).toContain("line 100");
     expect(screen()).not.toContain("line 1\n");
-    await press("\u001B[5~"); // page up
+    await press(KEYS.up);
     const scrolled = screen();
     expect(scrolled).toContain("scrolled");
     expect(scrolled).not.toContain("line 100");
+    expect(scrolled).toContain("line 99");
+    await press(KEYS.down); // down to the end follows again
+    expect(screen()).not.toContain("scrolled");
+    expect(screen()).toContain("line 100");
+    await press("\u001B[5~"); // page up still works
+    expect(screen()).toContain("scrolled");
     log = lines(120);
     await sleep(30);
     expect(screen()).not.toContain("line 120");
@@ -269,7 +340,7 @@ describe("subject filter", () => {
     show(two());
     await press(KEYS.down);
     await press(KEYS.enter);
-    await press(KEYS.down); // the second subject of the review thread: o/r#12
+    await press("\t"); // the second subject of the review thread: o/r#12
     await press(KEYS.enter);
     expect(screen()).toContain("filter o/r#12 (esc clears)");
     expect(screen()).toContain("dev ");
@@ -285,7 +356,7 @@ describe("subject filter", () => {
     dev.subjects[1]!.created = true;
     show([dev, aThread("t2", "review", ["o/r#13"])]);
     await press(KEYS.enter);
-    await press(KEYS.down);
+    await press("\t");
     await press(KEYS.enter); // filter by o/r#13
     expect(screen()).toContain("filter o/r#13");
     expect(screen()).toContain("dev ");
@@ -331,6 +402,7 @@ describe("chat", () => {
     expect(screen()).toContain("chat ›");
     await typed("quick q");
     expect(screen()).toContain("chat › quick q");
+    expect(screen()).not.toContain("pgup");
     await press(KEYS.enter);
     await press(KEYS.esc);
     expect(calls).toEqual(["send t1 quick q", "end t1"]);
@@ -348,6 +420,60 @@ describe("chat", () => {
     await press(KEYS.enter);
     await press(KEYS.esc);
     expect(calls).toEqual(["send t1 ab", "end t1"]);
+  });
+
+  it("moves the cursor with left and right, so text can be added in the middle", async () => {
+    const calls = chatting();
+    await press(KEYS.enter);
+    await press("c");
+    await typed("hello");
+    await press(KEYS.left);
+    await press(KEYS.left);
+    await press(KEYS.left);
+    await typed("XY");
+    await press(KEYS.right);
+    await typed("!");
+    await press(KEYS.enter);
+    await press(KEYS.esc);
+    expect(calls).toEqual(["send t1 heXYl!lo", "end t1"]);
+  });
+
+  it("jumps to the ends with home and end, and Delete removes the character after the cursor", async () => {
+    const calls = chatting();
+    await press(KEYS.enter);
+    await press("c");
+    await typed("bcd");
+    await press("\u001B[H"); // home
+    await typed("a");
+    await press("\u001B[3~"); // delete
+    await press("\u001B[F"); // end
+    await typed("e");
+    await press(KEYS.enter);
+    await press(KEYS.esc);
+    expect(calls).toEqual(["send t1 acde", "end t1"]);
+  });
+
+  it("Home and End move the cursor without moving the log", async () => {
+    chatting();
+    mounted!.unmount();
+    show([dev12()], { readLog: () => lines(100), chat: { send: () => {}, end: () => {} } });
+    await press(KEYS.enter);
+    await press("c");
+    await press(KEYS.up); // scrolled up one line
+    expect(screen()).toContain("scrolled");
+    await press("\u001B[H"); // home
+    await press("\u001B[F"); // end
+    expect(screen()).toContain("line 99");
+    expect(screen()).not.toContain("line 1\n");
+    expect(screen()).toContain("scrolled");
+  });
+
+  it("shows a cursor in the chat box and keeps the log in view, and the keys are for chatting", async () => {
+    chatting();
+    await press(KEYS.enter);
+    await press("c");
+    expect(screen()).toContain("←/→ move in the line");
+    expect(screen()).not.toContain("pgup");
   });
 
   it("does not start a chat on a closed thread", async () => {
