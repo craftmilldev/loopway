@@ -25,7 +25,7 @@ export interface Made {
 /** One thing that happened to a subject. `id` is stable, so seeing it twice is how a repeat is spotted. */
 export interface Update {
   id: string;
-  /** "comment", "review", "closed", "labeled", "check_run" ... */
+  /** "comment", "review", "closed", "labeled", "check_run", "ci_finished" ... */
   kind: string;
   detail?: string;
   /** The text of a comment or review, for whoever reads the update. */

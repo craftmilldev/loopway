@@ -6,7 +6,7 @@ This is 2.0, an alpha. It started as a poller; threads are the second slice, and
 
 - A **subject** is an issue or a pull request, keyed `owner/repo#N`.
 - **Discovery**, every 2 minutes: new issues and pull requests in your repos, authored by you, the bot user or a login a bot lists under `trusted`. An older one, made before loopway was watching, is picked up the first time anyone touches it while it is open (a comment, an assignment, a reopen). An old closed one stays quiet until it is reopened.
-- **Updates**, every 30 seconds, for each known subject: comments, reviews, review comments, state changes (closed, merged, reopened), labels, assignees, edits, and CI check runs and statuses on pull requests.
+- **Updates**, every 30 seconds, for each known subject: comments, reviews, review comments, state changes (closed, merged, reopened), labels, assignees, edits, and CI on pull requests. CI wakes a thread only when a check finishes failing (`failure`, `timed_out`, `cancelled`, `action_required`, or a status in `failure`/`error`), or once when every check and status on the head commit has finished (`CI finished: 5 passed, 1 failed`). Checks still running and checks that pass wake nothing. A new push starts over.
 - It backs off when GitHub rate limits it (`x-ratelimit-reset`, `retry-after`).
 
 ## Getting started
