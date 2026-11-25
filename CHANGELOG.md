@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.0
+
+### Added
+
+- `labels:` in a bot's front matter picks which issues and pull requests start a thread for it, by their labels. A name (`labels: epic`) needs the label; `"!epic"` needs it absent; `{ and: [...] }`, `{ or: [...] }` and `{ not: ... }` combine them, and a bare list is `and`. A bot without `labels:` still takes everything, and a label added later can start the bot. `init-scratch` writes an `epic` bot, and the `dev` bot skips `epic` issues. See [#561](https://github.com/craftmilldev/loopway/issues/561).
+
 ## 2.1.2
 
 ### Changed

@@ -124,6 +124,7 @@ describe("opening an issue or a pull request", () => {
         author: "loopway-bot",
         createdAt: "2026-11-10T13:00:00Z",
         assignees: [],
+        labels: [],
         body: "Do it.",
       },
     });
@@ -412,6 +413,14 @@ describe("assignees and teams", () => {
     });
     const found = await source.discover("o/r", "2026-11-10T12:00:00Z");
     expect(found.map((s) => s.assignees)).toEqual([["me", "alice"], []]);
+  });
+
+  it("reads each issue's label names, from discovery and from a created issue", async () => {
+    const { source } = fakeGitHub({
+      "/repos/o/r/issues": [issue({ labels: [{ name: "epic" }, { name: "bug" }] }), issue({ number: 8 })],
+    });
+    const found = await source.discover("o/r", "2026-11-10T12:00:00Z");
+    expect(found.map((s) => s.labels)).toEqual([["epic", "bug"], []]);
   });
 
   it("teamMembers lists a team's logins, and fails when GitHub can't show the team", async () => {

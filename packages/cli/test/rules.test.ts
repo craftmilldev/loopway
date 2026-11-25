@@ -36,6 +36,37 @@ describe("a new subject", () => {
   });
 });
 
+describe("bots filtered by labels", () => {
+  const epic = { ...aBot("epic", ["issue"]), labels: "epic" };
+  const plain = { ...dev, labels: "!epic" };
+  const withLabels = (n: number, labels: string[], kind: "issue" | "pull_request" = "issue") => ({
+    ...aSubject(n, kind),
+    labels,
+  });
+  const opened = (actions: ReturnType<typeof decide>) => actions.flatMap((a) => (a.type === "open" ? [a.bot] : []));
+
+  it("starts only the bots whose labels match, for issues and pull requests", () => {
+    const both = [epic, plain, { ...aBot("rev", ["pull_request"]), labels: "epic" }];
+    expect(opened(decide({ type: "new", subject: withLabels(1, ["epic"]) }, [], both))).toEqual(["epic"]);
+    expect(opened(decide({ type: "new", subject: withLabels(2, ["bug"]) }, [], both))).toEqual(["dev"]);
+    expect(opened(decide({ type: "new", subject: withLabels(3, ["epic"], "pull_request") }, [], both))).toEqual([
+      "rev",
+    ]);
+    expect(opened(decide({ type: "new", subject: withLabels(4, ["bug"], "pull_request") }, [], both))).toEqual([]);
+  });
+
+  it("treats a subject with no labels as having none, and a bot with no labels: as wanting any", () => {
+    expect(opened(decide({ type: "new", subject: aSubject(1) }, [], [epic, plain, dev]))).toEqual(["dev", "dev"]);
+    expect(opened(decide({ type: "new", subject: withLabels(2, ["epic", "x"]) }, [], [dev]))).toEqual(["dev"]);
+  });
+
+  it("starts a bot when a label it wants arrives later, as an update on the known subject", () => {
+    const issue = withLabels(1, ["epic"]); // the poller has already applied the labeled event
+    const labeled = { ...anUpdate("event:1", "labeled"), detail: "epic" };
+    expect(opened(decide({ type: "update", subject: issue, update: labeled }, [], [epic, plain]))).toEqual(["epic"]);
+  });
+});
+
 describe("an update", () => {
   const comment = anUpdate("comment:1");
 

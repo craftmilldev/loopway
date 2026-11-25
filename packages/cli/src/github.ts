@@ -88,6 +88,7 @@ export class GitHubSource implements SubjectSource {
           updatedAt: issue.updated_at,
           open: issue.state === "open",
           assignees: (issue.assignees ?? []).map((a) => a.login),
+          labels: labelNames(issue.labels),
           ...(issue.body ? { body: issue.body } : {}),
         });
       }
@@ -394,6 +395,7 @@ interface Look {
 interface Created extends Item {
   number: number;
   assignees?: User[];
+  labels?: Label[];
   created_at: string;
   html_url: string;
 }
@@ -406,6 +408,7 @@ function madeOf(repo: string, kind: Subject["kind"], c: Created): Made {
     author: c.user?.login ?? "ghost",
     createdAt: c.created_at,
     assignees: (c.assignees ?? []).map((a) => a.login),
+    labels: labelNames(c.labels),
     ...(c.body ? { body: c.body } : {}),
   };
   return { subject, url: c.html_url };
@@ -445,6 +448,10 @@ function nextLink(link: string | null): string | undefined {
 interface User {
   login: string;
 }
+/** GitHub sends a label as an object, or as a bare name in some older payloads. */
+type Label = string | { name?: string };
+const labelNames = (labels: Label[] = []): string[] =>
+  labels.flatMap((l) => (typeof l === "string" ? l : (l.name ?? [])));
 interface Item {
   title: string;
   body: string | null;
@@ -455,6 +462,7 @@ interface Issue extends Item {
   number: number;
   state: string;
   assignees?: User[];
+  labels?: Label[];
   created_at: string;
   pull_request?: unknown;
 }

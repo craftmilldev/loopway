@@ -16,7 +16,13 @@ const EXAMPLE = '# ask: ["Bash(curl:*)"]\n';
 const bot = (on, prompt, extra = "") =>
   `---\nrepos: [${SANDBOX}]\non: ${on}\nmodel: sonnet\n${extra}---\n\n${prompt}\n`;
 const BOTS = {
-  "dev.md": bot("issue", "Do what the issue asks, then comment with the result.", EXAMPLE),
+  // dev leaves `epic` issues to the epic bot: labels: filters which subjects start a thread.
+  "dev.md": bot("issue", "Do what the issue asks, then comment with the result.", `labels: "!epic"\n${EXAMPLE}`),
+  "epic.md": bot(
+    "issue",
+    "This is an epic: break it into steps in one comment, and do not do the work.",
+    "labels: epic\n",
+  ),
   "review.md": bot("pull_request", "Review the PR in one comment."),
 };
 
