@@ -27,7 +27,13 @@ beforeEach(async () => {
 });
 
 describe("init-scratch", () => {
-  it("creates both bots on the sandbox repo, with relative paths", async () => {
+  it("writes an epic bot, and keeps dev off epic issues", async () => {
+    init();
+    expect(await readFile(join(dir, ".loopway/epic.md"), "utf8")).toContain("labels: epic");
+    expect(await readFile(join(dir, ".loopway/dev.md"), "utf8")).toContain('labels: "!epic"');
+  });
+
+  it("creates the dev and review bots on the sandbox repo, with relative paths", async () => {
     const out = init();
     const dev = await readFile(join(dir, ".loopway/dev.md"), "utf8");
     expect(dev).toContain("repos: [craftmilldev/loopway-sandbox]");

@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { loadBots, parseBot, reposOf } from "../src/bots.js";
+import { loadBots, matchesLabels, parseBot, reposOf } from "../src/bots.js";
 import { loadGitHubConfig, loopwayHome } from "../src/config.js";
 import { formatJson, formatLine, formatThread, formatThreadJson } from "../src/format.js";
 import { emptyState, loadState, saveState } from "../src/state.js";
@@ -47,6 +47,39 @@ describe("bots", () => {
   it("rejects a repo that is not owner/name, and bad YAML, naming the file", () => {
     expect(() => parseBot("x", "---\nrepos: [nope]\n---\n", ".loopway/x.md")).toThrow(/\.loopway\/x\.md.*owner\/name/);
     expect(() => parseBot("x", "---\nrepos: [a/b\n---\n", ".loopway/x.md")).toThrow(/not valid YAML/);
+  });
+
+  it("reads labels: from the front matter, and rejects what is not an expression", () => {
+    expect(parseBot("x", "---\nrepos: [a/b]\n---\n").labels).toBeUndefined();
+    expect(parseBot("x", "---\nlabels: epic\n---\n").labels).toBe("epic");
+    expect(parseBot("x", '---\nlabels: ["!epic", bug]\n---\n').labels).toEqual(["!epic", "bug"]);
+    expect(parseBot("x", "---\nlabels:\n  or: [bug, {not: epic}]\n---\n").labels).toEqual({
+      or: ["bug", { not: "epic" }],
+    });
+    for (const bad of [
+      "labels: 3",
+      "labels: {xor: [a]}",
+      "labels: {and: a}",
+      "labels: {and: [a], or: [b]}",
+      'labels: "!"',
+    ]) {
+      expect(() => parseBot("x", `---\n${bad}\n---\n`, ".loopway/x.md")).toThrow(/\.loopway\/x\.md.*"labels" is/);
+    }
+  });
+
+  it("matches labels with and, or and !, ignoring case", () => {
+    const m = matchesLabels;
+    expect(m(undefined, [])).toBe(true);
+    expect(m("epic", ["Epic"])).toBe(true);
+    expect(m("epic", ["bug"])).toBe(false);
+    expect(m("!epic", [])).toBe(true);
+    expect(m("!epic", ["epic"])).toBe(false);
+    expect(m(["bug", "p1"], ["bug"])).toBe(false); // a list is "and"
+    expect(m({ and: ["bug", "!epic"] }, ["bug"])).toBe(true);
+    expect(m({ and: ["bug", "!epic"] }, ["bug", "epic"])).toBe(false);
+    expect(m({ or: ["bug", "epic"] }, ["epic"])).toBe(true);
+    expect(m({ or: ["bug", "epic"] }, ["docs"])).toBe(false);
+    expect(m({ not: { or: ["bug", "epic"] } }, ["docs"])).toBe(true);
   });
 
   it("loads every .md in .loopway and polls the union of their repos", async () => {

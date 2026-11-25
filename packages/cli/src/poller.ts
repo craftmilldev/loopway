@@ -1,5 +1,5 @@
 import type { LoopwayEvent } from "./format.js";
-import { RateLimitError, type Subject, type SubjectSource } from "./source.js";
+import { RateLimitError, type Subject, type SubjectSource, type Update } from "./source.js";
 import type { State } from "./state.js";
 
 export const DISCOVER_EVERY_MS = 2 * 60_000;
@@ -134,6 +134,7 @@ export class Poller {
           if (seen.has(update.id)) continue;
           seen.add(update.id);
           known.seen.push(update.id);
+          known.subject = withLabelChange(known.subject, update);
           await this.o.emit({ type: "update", subject: known.subject, update });
         }
         known.version = got.version;
@@ -212,6 +213,13 @@ export class Poller {
   }
 
   private waitingMessage = () => `rate limited: waiting ${Math.ceil((this.pausedUntil - this.now()) / 1000)}s`;
+}
+
+/** A label added or removed keeps the subject's labels current, so a bot filtered on labels sees the new ones. */
+function withLabelChange(subject: Subject, update: Update): Subject {
+  if ((update.kind !== "labeled" && update.kind !== "unlabeled") || !update.detail) return subject;
+  const rest = (subject.labels ?? []).filter((l) => l !== update.detail);
+  return { ...subject, labels: update.kind === "labeled" ? [...rest, update.detail] : rest };
 }
 
 /** The poller keeps what a subject is, not its text. */

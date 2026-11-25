@@ -12,6 +12,8 @@ export interface Subject {
   open?: boolean;
   /** Logins it is assigned to, as read when it was found or created. */
   assignees?: string[];
+  /** Names of the labels on it, as read when it was found or created, and kept current by labeled/unlabeled updates. */
+  labels?: string[];
   /** Its text, only when it was just read from the source: the poller doesn't keep it. */
   body?: string;
 }

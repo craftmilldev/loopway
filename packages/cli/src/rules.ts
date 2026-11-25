@@ -1,4 +1,4 @@
-import type { Bot } from "./bots.js";
+import { matchesLabels, type Bot } from "./bots.js";
 import type { Subject, Update } from "./source.js";
 import { holds, markerOf, repoOf, type Thread } from "./thread.js";
 
@@ -32,6 +32,7 @@ export interface Trust {
  * - A new subject starts a thread for each bot that wants its kind (`on:`) in its repo, trusts its author, and sees it
  *   assigned to you. A subject that is not assigned yet is known, and gets its threads when it is assigned to you.
  *   With a `trust`, that is the rule; without one, every subject starts them.
+ * - A bot with `labels:` also needs the subject's labels to match them (and a label added later can start it).
  * - A comment or review from a login the bot does not trust is not queued for it.
  * - An update goes on the queue of every open thread holding the subject, except a comment that thread sent itself. A subject closing or merging is marked on
  *   the thread, and the thread closes when none of its subjects is open. A subject reopening is marked open again.
@@ -137,6 +138,7 @@ function startThreads(
     (b) =>
       b.repos.includes(repoOf(subject)) &&
       b.on.includes(subject.kind) &&
+      matchesLabels(b.labels, subject.labels ?? []) &&
       (!trust || trust.trusts(b.name, subject.author)),
   );
   return wanting.map((b) => ({ type: "open", bot: b.name, subject, pending }));

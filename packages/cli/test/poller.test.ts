@@ -147,6 +147,17 @@ describe("updates", () => {
     expect(h.events).toHaveLength(3);
   });
 
+  it("keeps the subject's labels current from labeled and unlabeled updates", async () => {
+    const h = await withIssue();
+    h.source.say("o/r#1", { id: "event:2", kind: "labeled", detail: "epic" });
+    h.source.say("o/r#1", { id: "event:3", kind: "labeled", detail: "bug" });
+    h.source.say("o/r#1", { id: "event:4", kind: "unlabeled", detail: "bug" });
+    await h.poller.updates();
+    const seen = h.events.flatMap((e) => (e.type === "update" ? [e.subject.labels] : []));
+    expect(seen.at(-1)).toEqual(["epic"]);
+    expect(h.state.subjects["o/r#1"]?.subject.labels).toEqual(["epic"]);
+  });
+
   it("says nothing about subjects it has not discovered", async () => {
     const h = await withIssue();
     h.source.say("o/r#99", { id: "comment:1" });

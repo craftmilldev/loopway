@@ -9,7 +9,7 @@
 ```bash
 npm install
 npm run build
-npm run init-scratch                      # scratch/ (git-ignored): dev and review bots on the sandbox repo
+npm run init-scratch                      # scratch/ (git-ignored): dev, review and epic bots on the sandbox repo (dev skips `epic`-labeled issues)
 cd scratch
 node ../packages/cli/dist/index.js                                   # bare `loopway`, reading ./.loopway
 node ../packages/cli/dist/index.js --no-tui                      # the plain log

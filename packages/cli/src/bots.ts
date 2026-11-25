@@ -3,6 +3,9 @@ import { join } from "node:path";
 import { parse } from "yaml";
 import type { Subject } from "./source.js";
 
+/** A test on a subject's labels. */
+export type LabelExpr = string | LabelExpr[] | { and: LabelExpr[] } | { or: LabelExpr[] } | { not: LabelExpr };
+
 /** A bot file, `.loopway/<name>.md`: YAML front matter for its rules, Markdown for its prompt. */
 export interface Bot {
   name: string;
@@ -14,6 +17,12 @@ export interface Bot {
   harness: "claude";
   /** Passed to the harness as its model, like `sonnet`. Left out, the harness picks. */
   model?: string;
+  /**
+   * Which labels a subject needs for this bot to start a thread. Left out, any subject does.
+   * A label name, `"!name"` (the label is absent), `{ and: [...] }`, `{ or: [...] }`, `{ not: x }`, or a bare list,
+   * which is `and`.
+   */
+  labels?: LabelExpr;
   /**
    * Logins and `org/team` slugs whose issues, pull requests, comments and reviews this bot acts on, besides yours and
    * the bot user's, who are always trusted. Work still starts only on what is assigned to you.
@@ -77,6 +86,7 @@ export function parseBot(name: string, text: string, where = `${name}.md`): Bot 
     on: parseOn(rules.on, where),
     harness: parseHarness(rules.harness, where),
     model: typeof rules.model === "string" ? rules.model : undefined,
+    labels: parseLabels(rules.labels, where),
     trusted: parseTrusted(rules.trusted, where),
     allow: parsePatterns(rules.allow, "allow", where),
     deny: parsePatterns(rules.deny, "deny", where),
@@ -91,6 +101,55 @@ function parsePatterns(raw: unknown, key: string, where: string): string[] {
   if (!Array.isArray(raw) || raw.some((p) => typeof p !== "string"))
     throw new Error(`${where}: "${key}" is a list of tool patterns, like ["Bash(npm test:*)"]`);
   return raw as string[];
+}
+
+const LABEL_HELP = `a label name, "!name", or and/or/not of those, like labels: { or: [bug, "!epic"] }`;
+
+function parseLabels(raw: unknown, where: string): LabelExpr | undefined {
+  if (raw === undefined) return undefined;
+  return checkLabels(raw, where);
+}
+
+function checkLabels(raw: unknown, where: string): LabelExpr {
+  const bad = () => new Error(`${where}: "labels" is ${LABEL_HELP}`);
+  if (typeof raw === "string") {
+    if (raw.replace(/^!/, "").trim() === "") throw bad();
+    return raw;
+  }
+  if (Array.isArray(raw)) return raw.map((e) => checkLabels(e, where));
+  if (raw && typeof raw === "object") {
+    const entries = Object.entries(raw);
+    const [op, value] = entries[0] ?? [];
+    if (entries.length !== 1) throw bad();
+    if ((op === "and" || op === "or") && Array.isArray(value))
+      return { [op]: value.map((e) => checkLabels(e, where)) } as LabelExpr;
+    if (op === "not") return { not: checkLabels(value, where) };
+  }
+  throw bad();
+}
+
+/** Whether a subject with these labels passes a bot's `labels:`. No expression passes everything. Names ignore case. */
+export function matchesLabels(expr: LabelExpr | undefined, labels: string[]): boolean {
+  if (expr === undefined) return true;
+  const have = new Set(labels.map((l) => l.toLowerCase()));
+  const test = (e: LabelExpr): boolean => {
+    if (typeof e === "string") {
+      const negated = e.startsWith("!");
+      return (
+        have.has(
+          e
+            .slice(negated ? 1 : 0)
+            .trim()
+            .toLowerCase(),
+        ) !== negated
+      );
+    }
+    if (Array.isArray(e)) return e.every(test);
+    if ("and" in e) return e.and.every(test);
+    if ("or" in e) return e.or.some(test);
+    return !test(e.not);
+  };
+  return test(expr);
 }
 
 const LOGIN = /^[\w-]+(?:\/[\w.-]+)?$/;
