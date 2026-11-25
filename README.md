@@ -139,7 +139,7 @@ Per thread, the JSON has `session: { id, status: idle | running | blocked | fail
 Sessions run with `--permission-mode auto`, so Claude Code's auto mode classifier decides first. Whatever it would still prompt for goes to loopway's `permission` tool (`--permission-prompt-tool`), and loopway decides in this order, with no model involved:
 
 1. A call you already approved for this session passes.
-2. The bot's front matter rules: `deny:` then `allow:`, lists of tool patterns in Claude Code's syntax, like `allow: ["Bash(npm test:*)", "Read"]`. `Bash(curl:*)` is every command that starts with `curl`, `Bash(git status)` that command exactly, `Read(src/*)` a glob over the path.
+2. The bot's front matter rules: `deny:`, then `ask:`, then `allow:`. A call that matches `ask` skips `allow` and goes straight to step 3, even when auto mode would have let it through (loopway also hands the `ask` patterns to Claude Code as ask rules, because auto mode rarely asks on its own). They are lists of tool patterns in Claude Code's syntax, like `allow: ["Bash(npm test:*)", "Read"]`. `Bash(curl:*)` is every command that starts with `curl`, `Bash(git status)` that command exactly, `Read(src/*)` a glob over the path.
 3. Otherwise loopway **asks**: one comment on the thread's main subject (the first one it tracks), by the bot and carrying the thread marker, with the tool and its input and a request for a 👍 to allow or a 👎 to deny. The call is refused for now with a message telling the session it has asked and will be resumed. The session is marked `blocked`, and the ask is recorded on the thread as `asks: [{ id, kind, commentUrl, subject, tool, input, at, answeredAt? }]`. The same call is not asked again while its ask is open.
 
 A session can also ask a question itself: `ask(subject, question)` posts it (marked) and blocks the session until it is answered. The prompt tells the session to use it when it needs someone to decide, or is stuck.
@@ -155,7 +155,7 @@ Open asks live in the thread's JSON, so a restart keeps waiting on them. The log
 
 ## Bots: `.loopway/`
 
-`loopway` reads the `.loopway/` folder in the directory it runs from. Each bot is one file, `.loopway/<bot>.md`: Markdown with YAML front matter. The front matter is the bot's rules; the Markdown is its prompt, which starts each thread's session. The keys: `repos`; `on: issue`, `on: pull_request` or a list of both, which says which new subjects start a thread for the bot; `model` (like `sonnet`, passed to Claude Code); `harness` (only `claude`, the default); `allow` and `deny`, lists of tool patterns that decide permission asks (see Asks); and `trusted` (see Who a bot listens to). Keys loopway does not know are ignored. It polls the union of every bot's repos.
+`loopway` reads the `.loopway/` folder in the directory it runs from. Each bot is one file, `.loopway/<bot>.md`: Markdown with YAML front matter. The front matter is the bot's rules; the Markdown is its prompt, which starts each thread's session. The keys: `repos`; `on: issue`, `on: pull_request` or a list of both, which says which new subjects start a thread for the bot; `model` (like `sonnet`, passed to Claude Code); `harness` (only `claude`, the default); `allow`, `deny` and `ask`, lists of tool patterns that decide permission asks (see Asks); and `trusted` (see Who a bot listens to). Keys loopway does not know are ignored. It polls the union of every bot's repos.
 
 `.loopway/dev.md`:
 
